@@ -29,7 +29,9 @@ export const projectsAPI = {
   submit: (id) => api.post(`/projects/${id}/submit`),
   approve: (id) => api.post(`/projects/${id}/approve`),
   reject: (id, reason) => api.post(`/projects/${id}/reject`, { reason }),
-  complete: (id) => api.post(`/projects/${id}/complete`)
+  complete: (id) => api.post(`/projects/${id}/complete`),
+  requestDeletion: (id, reason) => api.post(`/projects/${id}/request-deletion`, { reason }),
+  forceDelete: (id) => api.delete(`/projects/${id}/force`)
 };
 
 // Users API (Admin only)
@@ -54,6 +56,45 @@ export const dashboardAPI = {
 // AI API
 export const aiAPI = {
   getRecommendations: (data) => api.post('/ai/recommendations', data)
+};
+
+// Terms & Conditions API
+export const termsAPI = {
+  getAll: () => api.get('/terms'),
+  getActive: (language = 'en') => api.get('/terms/active', { params: { language } }),
+  create: (data) => api.post('/terms', data),
+  update: (id, data) => api.put(`/terms/${id}`, data),
+  delete: (id) => api.delete(`/terms/${id}`)
+};
+
+// Inventory API
+export const inventoryAPI = {
+  // Locations
+  getLocations: () => api.get('/inventory/locations'),
+  createLocation: (data) => api.post('/inventory/locations', data),
+  deleteLocation: (id) => api.delete(`/inventory/locations/${id}`),
+  
+  // Items
+  getItems: (params = {}) => api.get('/inventory/items', { params }),
+  getItem: (id) => api.get(`/inventory/items/${id}`),
+  createItem: (data) => api.post('/inventory/items', data),
+  updateItem: (id, data) => api.put(`/inventory/items/${id}`, data),
+  deleteItem: (id) => api.delete(`/inventory/items/${id}`),
+  
+  // Alerts
+  getAlerts: () => api.get('/inventory/alerts')
+};
+
+// Deletion Requests API
+export const deletionRequestsAPI = {
+  getAll: (status = null) => api.get('/deletion-requests', { params: status ? { status } : {} }),
+  approve: (id) => api.post(`/deletion-requests/${id}/approve`),
+  reject: (id) => api.post(`/deletion-requests/${id}/reject`)
+};
+
+// Audit Logs API
+export const auditLogsAPI = {
+  getAll: (params = {}) => api.get('/audit-logs', { params })
 };
 
 export default api;

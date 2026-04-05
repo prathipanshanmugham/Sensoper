@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Link, useNavigate, Outlet } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { dashboardAPI, projectsAPI } from '../utils/api';
 import { Button } from '../components/ui/button';
@@ -20,7 +20,12 @@ import {
   TrendingUp,
   DollarSign,
   Menu,
-  X
+  X,
+  Package,
+  Trash2,
+  History,
+  ScrollText,
+  AlertTriangle
 } from 'lucide-react';
 
 const statusConfig = {
@@ -28,12 +33,13 @@ const statusConfig = {
   submitted: { label: 'Submitted', color: 'bg-blue-100 text-blue-800', icon: AlertCircle },
   approved: { label: 'Approved', color: 'bg-green-100 text-green-800', icon: CheckCircle2 },
   rejected: { label: 'Rejected', color: 'bg-red-100 text-red-800', icon: XCircle },
-  completed: { label: 'Completed', color: 'bg-emerald-100 text-emerald-800', icon: CheckCircle2 }
+  completed: { label: 'Completed', color: 'bg-emerald-100 text-emerald-800', icon: CheckCircle2 },
+  deletion_requested: { label: 'Deletion Requested', color: 'bg-orange-100 text-orange-800', icon: Trash2 }
 };
 
-function StatCard({ title, value, icon: Icon, trend, color = "emerald" }) {
+function StatCard({ title, value, icon: Icon, trend, color = "emerald", alert = false }) {
   return (
-    <Card className="border-slate-200 card-hover">
+    <Card className={`border-slate-200 card-hover ${alert ? 'border-amber-300 bg-amber-50' : ''}`}>
       <CardContent className="p-6">
         <div className="flex items-center justify-between">
           <div>
@@ -129,8 +135,12 @@ export default function Dashboard() {
     { icon: LayoutDashboard, label: 'Dashboard', href: '/dashboard', show: true },
     { icon: FolderPlus, label: 'New Project', href: '/dashboard/projects/new', show: true },
     { icon: FileText, label: 'All Projects', href: '/dashboard/projects', show: true },
+    { icon: Trash2, label: 'Deletion Approvals', href: '/dashboard/deletion-approvals', show: isAdmin || isManager, badge: stats?.pending_deletions },
+    { icon: Package, label: 'Inventory', href: '/dashboard/inventory', show: isAdmin || isManager, badge: stats?.low_stock_alerts },
+    { icon: ScrollText, label: 'Terms & Conditions', href: '/dashboard/terms', show: isAdmin || isManager },
     { icon: Users, label: 'User Management', href: '/dashboard/users', show: isAdmin },
     { icon: Settings, label: 'Pricing Config', href: '/dashboard/pricing', show: isAdmin },
+    { icon: History, label: 'Audit Logs', href: '/dashboard/audit-logs', show: isAdmin },
   ].filter(item => item.show);
 
   return (
@@ -169,7 +179,12 @@ export default function Dashboard() {
                 data-testid={`nav-${item.label.toLowerCase().replace(/\s+/g, '-')}`}
               >
                 <item.icon className="h-5 w-5" />
-                <span className="font-medium">{item.label}</span>
+                <span className="font-medium flex-1">{item.label}</span>
+                {item.badge > 0 && (
+                  <Badge className="bg-red-500 text-white text-xs px-2 py-0.5">
+                    {item.badge}
+                  </Badge>
+                )}
               </Link>
             ))}
           </nav>
@@ -240,6 +255,42 @@ export default function Dashboard() {
             </div>
           ) : (
             <>
+              {/* Alert Banners */}
+              {(stats?.pending_deletions > 0 || stats?.low_stock_alerts > 0) && (isAdmin || isManager) && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                  {stats?.pending_deletions > 0 && (
+                    <Link to="/dashboard/deletion-approvals">
+                      <Card className="border-amber-300 bg-amber-50 hover:bg-amber-100 transition-colors cursor-pointer">
+                        <CardContent className="p-4 flex items-center gap-3">
+                          <AlertTriangle className="h-5 w-5 text-amber-600" />
+                          <div>
+                            <p className="font-medium text-amber-800">
+                              {stats.pending_deletions} Deletion Request{stats.pending_deletions > 1 ? 's' : ''} Pending
+                            </p>
+                            <p className="text-sm text-amber-600">Click to review</p>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    </Link>
+                  )}
+                  {stats?.low_stock_alerts > 0 && (
+                    <Link to="/dashboard/inventory">
+                      <Card className="border-red-300 bg-red-50 hover:bg-red-100 transition-colors cursor-pointer">
+                        <CardContent className="p-4 flex items-center gap-3">
+                          <Package className="h-5 w-5 text-red-600" />
+                          <div>
+                            <p className="font-medium text-red-800">
+                              {stats.low_stock_alerts} Item{stats.low_stock_alerts > 1 ? 's' : ''} Low on Stock
+                            </p>
+                            <p className="text-sm text-red-600">Click to manage inventory</p>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    </Link>
+                  )}
+                </div>
+              )}
+
               {/* Stats Grid */}
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
                 <StatCard 

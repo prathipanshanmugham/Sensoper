@@ -10,12 +10,13 @@ import os
 import logging
 from pathlib import Path
 from pydantic import BaseModel, Field, EmailStr
-from typing import List, Optional, Literal
+from typing import List, Optional, Literal, Any
 import uuid
 from datetime import datetime, timezone, timedelta
 import bcrypt
 import jwt
 import secrets
+import json
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -115,7 +116,7 @@ class ProjectUpdate(BaseModel):
     mounting: Optional[MountingStructure] = None
     additional: Optional[AdditionalInputs] = None
     site_images: Optional[List[str]] = None
-    status: Optional[Literal["draft", "submitted", "approved", "rejected", "completed"]] = None
+    status: Optional[Literal["draft", "submitted", "approved", "rejected", "completed", "deletion_requested"]] = None
 
 class PricingConfig(BaseModel):
     panel_price_per_watt: float = 25.0
@@ -128,25 +129,52 @@ class PricingConfig(BaseModel):
     gst_percentage: float = 13.8
     battery_price_per_ah: float = 150.0
 
-class CostEstimation(BaseModel):
-    panels_required: int
-    total_capacity_kw: float
-    panel_cost: float
-    inverter_cost: float
-    structure_cost: float
-    wiring_cost: float
-    labor_cost: float
-    transportation_cost: float
-    subtotal: float
-    margin: float
-    gst: float
-    total_cost: float
-
 class AIRecommendationRequest(BaseModel):
     monthly_consumption_units: float
     sanction_load_kw: float
     roof_type: str
     budget_range: Optional[str] = None
+
+# ================== NEW MODELS FOR ENTERPRISE FEATURES ==================
+
+class TermsConditionsCreate(BaseModel):
+    title: str
+    content: str  # HTML content
+    language: str = "en"
+
+class TermsConditionsUpdate(BaseModel):
+    title: Optional[str] = None
+    content: Optional[str] = None
+    is_active: Optional[bool] = None
+    language: Optional[str] = None
+
+class InventoryLocationCreate(BaseModel):
+    code: str  # e.g., WH-Erode-01
+    name: str
+    address: Optional[str] = None
+
+class InventoryItemCreate(BaseModel):
+    name: str
+    sku_code: str
+    category: Literal["solar_panels", "inverters", "batteries", "mounting_structures", "cables_accessories"]
+    location_code: str
+    quantity: int
+    unit_price: float
+    supplier: Optional[str] = None
+    gst_percentage: float = 18.0
+    reorder_level: int = 10
+
+class InventoryItemUpdate(BaseModel):
+    name: Optional[str] = None
+    location_code: Optional[str] = None
+    quantity: Optional[int] = None
+    unit_price: Optional[float] = None
+    supplier: Optional[str] = None
+    gst_percentage: Optional[float] = None
+    reorder_level: Optional[int] = None
+
+class DeletionRequestCreate(BaseModel):
+    reason: str
 
 # ================== HELPER FUNCTIONS ==================
 
@@ -211,6 +239,33 @@ def require_role(*roles):
             raise HTTPException(status_code=403, detail="Insufficient permissions")
         return user
     return role_checker
+
+def serialize_for_json(obj):
+    """Helper to serialize objects for JSON, handling ObjectId"""
+    if obj is None:
+        return None
+    if isinstance(obj, ObjectId):
+        return str(obj)
+    if isinstance(obj, dict):
+        return {k: serialize_for_json(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [serialize_for_json(item) for item in obj]
+    return obj
+
+async def create_audit_log(user_id: str, user_name: str, action_type: str, entity_type: str, entity_id: str, old_data: Any = None, new_data: Any = None, details: str = None):
+    """Create an audit log entry"""
+    log_entry = {
+        "user_id": user_id,
+        "user_name": user_name,
+        "action_type": action_type,
+        "entity_type": entity_type,
+        "entity_id": entity_id,
+        "old_data": json.dumps(serialize_for_json(old_data)) if old_data else None,
+        "new_data": json.dumps(serialize_for_json(new_data)) if new_data else None,
+        "details": details,
+        "timestamp": datetime.now(timezone.utc).isoformat()
+    }
+    await db.audit_logs.insert_one(log_entry)
 
 def calculate_cost_estimation(project: dict, pricing: dict) -> dict:
     """Calculate cost estimation based on project details and pricing config"""
@@ -414,7 +469,7 @@ async def get_users(request: Request):
 
 @api_router.post("/users")
 async def create_user(user_data: UserCreate, request: Request):
-    await require_role("admin")(request)
+    current_user = await require_role("admin")(request)
     
     email = user_data.email.lower()
     existing = await db.users.find_one({"email": email})
@@ -433,6 +488,11 @@ async def create_user(user_data: UserCreate, request: Request):
     
     result = await db.users.insert_one(user_doc)
     
+    await create_audit_log(
+        current_user["id"], current_user["name"], "create", "user", 
+        str(result.inserted_id), None, {"email": email, "role": user_data.role}
+    )
+    
     return {
         "id": str(result.inserted_id),
         "email": email,
@@ -444,7 +504,7 @@ async def create_user(user_data: UserCreate, request: Request):
 
 @api_router.put("/users/{user_id}")
 async def update_user(user_id: str, request: Request):
-    await require_role("admin")(request)
+    current_user = await require_role("admin")(request)
     
     body = await request.json()
     update_data = {}
@@ -469,6 +529,11 @@ async def update_user(user_id: str, request: Request):
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="User not found")
     
+    await create_audit_log(
+        current_user["id"], current_user["name"], "update", "user", 
+        user_id, None, update_data
+    )
+    
     return {"message": "User updated successfully"}
 
 @api_router.delete("/users/{user_id}")
@@ -483,6 +548,10 @@ async def delete_user(user_id: str, request: Request):
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="User not found")
     
+    await create_audit_log(
+        current_user["id"], current_user["name"], "delete", "user", user_id
+    )
+    
     return {"message": "User deleted successfully"}
 
 # ================== PRICING CONFIG (Admin Only) ==================
@@ -493,13 +562,14 @@ async def get_pricing(request: Request):
     
     pricing = await db.pricing_config.find_one({}, {"_id": 0})
     if not pricing:
-        # Return default pricing
         return PricingConfig().model_dump()
     return pricing
 
 @api_router.put("/pricing")
 async def update_pricing(pricing: PricingConfig, request: Request):
-    await require_role("admin")(request)
+    current_user = await require_role("admin")(request)
+    
+    old_pricing = await db.pricing_config.find_one({}, {"_id": 0})
     
     await db.pricing_config.update_one(
         {},
@@ -507,7 +577,455 @@ async def update_pricing(pricing: PricingConfig, request: Request):
         upsert=True
     )
     
+    await create_audit_log(
+        current_user["id"], current_user["name"], "update", "pricing", 
+        "global", old_pricing, pricing.model_dump()
+    )
+    
     return {"message": "Pricing updated successfully"}
+
+# ================== TERMS & CONDITIONS ==================
+
+@api_router.get("/terms")
+async def get_all_terms(request: Request):
+    await get_current_user(request)
+    
+    terms = await db.terms_conditions.find().sort("version", -1).to_list(100)
+    return [
+        {
+            "id": str(t["_id"]),
+            "title": t["title"],
+            "content": t["content"],
+            "version": t["version"],
+            "is_active": t.get("is_active", False),
+            "language": t.get("language", "en"),
+            "created_by": t.get("created_by"),
+            "created_by_name": t.get("created_by_name"),
+            "created_at": t["created_at"],
+            "updated_at": t.get("updated_at")
+        }
+        for t in terms
+    ]
+
+@api_router.get("/terms/active")
+async def get_active_terms(language: str = "en"):
+    """Get the active terms & conditions for PDF generation"""
+    terms = await db.terms_conditions.find_one({"is_active": True, "language": language})
+    if not terms:
+        # Return default terms if none set
+        return {
+            "id": None,
+            "title": "Standard Terms & Conditions",
+            "content": """<ol>
+<li>This quotation is valid for 30 days from the date of issue.</li>
+<li>50% advance payment required to confirm the order.</li>
+<li>Balance payment due upon installation completion.</li>
+<li>Installation timeline: 7-14 working days after material delivery.</li>
+<li>5-year warranty on installation workmanship.</li>
+<li>Panel warranty as per manufacturer terms (typically 25 years).</li>
+<li>Inverter warranty as per manufacturer terms.</li>
+<li>All prices are subject to change without prior notice.</li>
+</ol>""",
+            "version": 0
+        }
+    return {
+        "id": str(terms["_id"]),
+        "title": terms["title"],
+        "content": terms["content"],
+        "version": terms["version"]
+    }
+
+@api_router.post("/terms")
+async def create_terms(terms_data: TermsConditionsCreate, request: Request):
+    current_user = await require_role("admin", "manager")(request)
+    
+    # Get the next version number
+    latest = await db.terms_conditions.find_one(
+        {"language": terms_data.language}, 
+        sort=[("version", -1)]
+    )
+    next_version = (latest["version"] + 1) if latest else 1
+    
+    terms_doc = {
+        "title": terms_data.title,
+        "content": terms_data.content,
+        "version": next_version,
+        "is_active": False,
+        "language": terms_data.language,
+        "created_by": current_user["id"],
+        "created_by_name": current_user["name"],
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "updated_at": datetime.now(timezone.utc).isoformat()
+    }
+    
+    result = await db.terms_conditions.insert_one(terms_doc)
+    
+    await create_audit_log(
+        current_user["id"], current_user["name"], "create", "terms_conditions",
+        str(result.inserted_id), None, {"title": terms_data.title, "version": next_version}
+    )
+    
+    return {
+        "id": str(result.inserted_id),
+        "version": next_version,
+        "message": "Terms created successfully"
+    }
+
+@api_router.put("/terms/{terms_id}")
+async def update_terms(terms_id: str, updates: TermsConditionsUpdate, request: Request):
+    current_user = await require_role("admin", "manager")(request)
+    
+    terms = await db.terms_conditions.find_one({"_id": ObjectId(terms_id)})
+    if not terms:
+        raise HTTPException(status_code=404, detail="Terms not found")
+    
+    update_data = {"updated_at": datetime.now(timezone.utc).isoformat()}
+    
+    if updates.title is not None:
+        update_data["title"] = updates.title
+    if updates.content is not None:
+        update_data["content"] = updates.content
+    if updates.language is not None:
+        update_data["language"] = updates.language
+    
+    # Handle activation
+    if updates.is_active is True:
+        # Deactivate all other terms for this language
+        lang = updates.language or terms.get("language", "en")
+        await db.terms_conditions.update_many(
+            {"language": lang, "_id": {"$ne": ObjectId(terms_id)}},
+            {"$set": {"is_active": False}}
+        )
+        update_data["is_active"] = True
+    elif updates.is_active is False:
+        update_data["is_active"] = False
+    
+    await db.terms_conditions.update_one(
+        {"_id": ObjectId(terms_id)},
+        {"$set": update_data}
+    )
+    
+    await create_audit_log(
+        current_user["id"], current_user["name"], "update", "terms_conditions",
+        terms_id, {"is_active": terms.get("is_active")}, update_data
+    )
+    
+    return {"message": "Terms updated successfully"}
+
+@api_router.delete("/terms/{terms_id}")
+async def delete_terms(terms_id: str, request: Request):
+    current_user = await require_role("admin")(request)
+    
+    terms = await db.terms_conditions.find_one({"_id": ObjectId(terms_id)})
+    if not terms:
+        raise HTTPException(status_code=404, detail="Terms not found")
+    
+    if terms.get("is_active"):
+        raise HTTPException(status_code=400, detail="Cannot delete active terms")
+    
+    await db.terms_conditions.delete_one({"_id": ObjectId(terms_id)})
+    
+    await create_audit_log(
+        current_user["id"], current_user["name"], "delete", "terms_conditions", terms_id
+    )
+    
+    return {"message": "Terms deleted successfully"}
+
+# ================== INVENTORY MANAGEMENT ==================
+
+@api_router.get("/inventory/locations")
+async def get_inventory_locations(request: Request):
+    await get_current_user(request)
+    
+    locations = await db.inventory_locations.find().to_list(100)
+    return [
+        {
+            "id": str(loc["_id"]),
+            "code": loc["code"],
+            "name": loc["name"],
+            "address": loc.get("address"),
+            "created_at": loc["created_at"]
+        }
+        for loc in locations
+    ]
+
+@api_router.post("/inventory/locations")
+async def create_inventory_location(location: InventoryLocationCreate, request: Request):
+    current_user = await require_role("admin")(request)
+    
+    existing = await db.inventory_locations.find_one({"code": location.code})
+    if existing:
+        raise HTTPException(status_code=400, detail="Location code already exists")
+    
+    loc_doc = {
+        "code": location.code,
+        "name": location.name,
+        "address": location.address,
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    
+    result = await db.inventory_locations.insert_one(loc_doc)
+    
+    await create_audit_log(
+        current_user["id"], current_user["name"], "create", "inventory_location",
+        str(result.inserted_id), None, loc_doc
+    )
+    
+    return {"id": str(result.inserted_id), "message": "Location created successfully"}
+
+@api_router.delete("/inventory/locations/{location_id}")
+async def delete_inventory_location(location_id: str, request: Request):
+    current_user = await require_role("admin")(request)
+    
+    # Check if any items use this location
+    loc = await db.inventory_locations.find_one({"_id": ObjectId(location_id)})
+    if not loc:
+        raise HTTPException(status_code=404, detail="Location not found")
+    
+    items_count = await db.inventory_items.count_documents({"location_code": loc["code"]})
+    if items_count > 0:
+        raise HTTPException(status_code=400, detail=f"Cannot delete location with {items_count} items")
+    
+    await db.inventory_locations.delete_one({"_id": ObjectId(location_id)})
+    
+    await create_audit_log(
+        current_user["id"], current_user["name"], "delete", "inventory_location", location_id
+    )
+    
+    return {"message": "Location deleted successfully"}
+
+@api_router.get("/inventory/items")
+async def get_inventory_items(
+    request: Request, 
+    category: Optional[str] = None,
+    location_code: Optional[str] = None,
+    low_stock: bool = False
+):
+    await get_current_user(request)
+    
+    query = {}
+    if category:
+        query["category"] = category
+    if location_code:
+        query["location_code"] = location_code
+    
+    items = await db.inventory_items.find(query).to_list(500)
+    
+    result = []
+    for item in items:
+        item_data = {
+            "id": str(item["_id"]),
+            "name": item["name"],
+            "sku_code": item["sku_code"],
+            "category": item["category"],
+            "location_code": item["location_code"],
+            "quantity": item["quantity"],
+            "unit_price": item["unit_price"],
+            "supplier": item.get("supplier"),
+            "gst_percentage": item.get("gst_percentage", 18.0),
+            "reorder_level": item.get("reorder_level", 10),
+            "created_at": item["created_at"],
+            "updated_at": item.get("updated_at")
+        }
+        
+        # Check if low stock
+        if item["quantity"] <= item.get("reorder_level", 10):
+            item_data["low_stock_alert"] = True
+        
+        if low_stock and not item_data.get("low_stock_alert"):
+            continue
+            
+        result.append(item_data)
+    
+    return result
+
+@api_router.get("/inventory/items/{item_id}")
+async def get_inventory_item(item_id: str, request: Request):
+    await get_current_user(request)
+    
+    item = await db.inventory_items.find_one({"_id": ObjectId(item_id)})
+    if not item:
+        raise HTTPException(status_code=404, detail="Item not found")
+    
+    # Get transaction history
+    transactions = await db.inventory_transactions.find(
+        {"item_id": item_id}
+    ).sort("timestamp", -1).limit(50).to_list(50)
+    
+    return {
+        "id": str(item["_id"]),
+        "name": item["name"],
+        "sku_code": item["sku_code"],
+        "category": item["category"],
+        "location_code": item["location_code"],
+        "quantity": item["quantity"],
+        "unit_price": item["unit_price"],
+        "supplier": item.get("supplier"),
+        "gst_percentage": item.get("gst_percentage", 18.0),
+        "reorder_level": item.get("reorder_level", 10),
+        "created_at": item["created_at"],
+        "transactions": [
+            {
+                "id": str(t["_id"]),
+                "type": t["type"],
+                "quantity": t["quantity"],
+                "project_id": t.get("project_id"),
+                "notes": t.get("notes"),
+                "user_name": t.get("user_name"),
+                "timestamp": t["timestamp"]
+            }
+            for t in transactions
+        ]
+    }
+
+@api_router.post("/inventory/items")
+async def create_inventory_item(item: InventoryItemCreate, request: Request):
+    current_user = await require_role("admin", "manager")(request)
+    
+    # Check if SKU exists
+    existing = await db.inventory_items.find_one({"sku_code": item.sku_code})
+    if existing:
+        raise HTTPException(status_code=400, detail="SKU code already exists")
+    
+    # Check if location exists
+    location = await db.inventory_locations.find_one({"code": item.location_code})
+    if not location:
+        raise HTTPException(status_code=400, detail="Invalid location code")
+    
+    item_doc = {
+        "name": item.name,
+        "sku_code": item.sku_code,
+        "category": item.category,
+        "location_code": item.location_code,
+        "quantity": item.quantity,
+        "unit_price": item.unit_price,
+        "supplier": item.supplier,
+        "gst_percentage": item.gst_percentage,
+        "reorder_level": item.reorder_level,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "updated_at": datetime.now(timezone.utc).isoformat()
+    }
+    
+    result = await db.inventory_items.insert_one(item_doc)
+    
+    # Create initial stock transaction
+    await db.inventory_transactions.insert_one({
+        "item_id": str(result.inserted_id),
+        "type": "initial_stock",
+        "quantity": item.quantity,
+        "user_id": current_user["id"],
+        "user_name": current_user["name"],
+        "notes": "Initial stock entry",
+        "timestamp": datetime.now(timezone.utc).isoformat()
+    })
+    
+    await create_audit_log(
+        current_user["id"], current_user["name"], "create", "inventory_item",
+        str(result.inserted_id), None, item_doc
+    )
+    
+    return {"id": str(result.inserted_id), "message": "Item created successfully"}
+
+@api_router.put("/inventory/items/{item_id}")
+async def update_inventory_item(item_id: str, updates: InventoryItemUpdate, request: Request):
+    current_user = await require_role("admin", "manager")(request)
+    
+    item = await db.inventory_items.find_one({"_id": ObjectId(item_id)})
+    if not item:
+        raise HTTPException(status_code=404, detail="Item not found")
+    
+    old_data = {k: item.get(k) for k in ["quantity", "unit_price", "location_code"]}
+    update_data = {"updated_at": datetime.now(timezone.utc).isoformat()}
+    
+    if updates.name is not None:
+        update_data["name"] = updates.name
+    if updates.location_code is not None:
+        location = await db.inventory_locations.find_one({"code": updates.location_code})
+        if not location:
+            raise HTTPException(status_code=400, detail="Invalid location code")
+        update_data["location_code"] = updates.location_code
+    if updates.unit_price is not None:
+        update_data["unit_price"] = updates.unit_price
+    if updates.supplier is not None:
+        update_data["supplier"] = updates.supplier
+    if updates.gst_percentage is not None:
+        update_data["gst_percentage"] = updates.gst_percentage
+    if updates.reorder_level is not None:
+        update_data["reorder_level"] = updates.reorder_level
+    
+    # Handle quantity adjustment
+    if updates.quantity is not None and updates.quantity != item["quantity"]:
+        quantity_diff = updates.quantity - item["quantity"]
+        update_data["quantity"] = updates.quantity
+        
+        # Record transaction
+        await db.inventory_transactions.insert_one({
+            "item_id": item_id,
+            "type": "adjustment",
+            "quantity": quantity_diff,
+            "user_id": current_user["id"],
+            "user_name": current_user["name"],
+            "notes": "Manual stock adjustment",
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        })
+    
+    await db.inventory_items.update_one(
+        {"_id": ObjectId(item_id)},
+        {"$set": update_data}
+    )
+    
+    await create_audit_log(
+        current_user["id"], current_user["name"], "update", "inventory_item",
+        item_id, old_data, update_data
+    )
+    
+    return {"message": "Item updated successfully"}
+
+@api_router.delete("/inventory/items/{item_id}")
+async def delete_inventory_item(item_id: str, request: Request):
+    current_user = await require_role("admin")(request)
+    
+    item = await db.inventory_items.find_one({"_id": ObjectId(item_id)})
+    if not item:
+        raise HTTPException(status_code=404, detail="Item not found")
+    
+    await db.inventory_items.delete_one({"_id": ObjectId(item_id)})
+    await db.inventory_transactions.delete_many({"item_id": item_id})
+    
+    await create_audit_log(
+        current_user["id"], current_user["name"], "delete", "inventory_item", item_id
+    )
+    
+    return {"message": "Item deleted successfully"}
+
+@api_router.get("/inventory/alerts")
+async def get_inventory_alerts(request: Request):
+    """Get all low stock alerts"""
+    await get_current_user(request)
+    
+    # Use aggregation to find items below reorder level
+    pipeline = [
+        {
+            "$match": {
+                "$expr": {"$lte": ["$quantity", "$reorder_level"]}
+            }
+        }
+    ]
+    
+    items = await db.inventory_items.aggregate(pipeline).to_list(100)
+    
+    return [
+        {
+            "id": str(item["_id"]),
+            "name": item["name"],
+            "sku_code": item["sku_code"],
+            "category": item["category"],
+            "location_code": item["location_code"],
+            "quantity": item["quantity"],
+            "reorder_level": item.get("reorder_level", 10)
+        }
+        for item in items
+    ]
 
 # ================== PROJECTS ==================
 
@@ -540,6 +1058,11 @@ async def create_project(project: ProjectCreate, request: Request):
     
     result = await db.projects.insert_one(project_doc)
     
+    await create_audit_log(
+        user["id"], user["name"], "create", "project",
+        str(result.inserted_id), None, {"customer": project.customer.name, "status": "draft"}
+    )
+    
     return {
         "id": str(result.inserted_id),
         "message": "Project created successfully"
@@ -549,7 +1072,7 @@ async def create_project(project: ProjectCreate, request: Request):
 async def get_projects(request: Request, status: Optional[str] = None):
     user = await get_current_user(request)
     
-    query = {}
+    query = {"deleted_at": {"$exists": False}}  # Exclude soft-deleted projects
     
     # Staff can only see their own projects
     if user["role"] == "staff":
@@ -578,7 +1101,7 @@ async def get_projects(request: Request, status: Optional[str] = None):
 async def get_project(project_id: str, request: Request):
     user = await get_current_user(request)
     
-    project = await db.projects.find_one({"_id": ObjectId(project_id)})
+    project = await db.projects.find_one({"_id": ObjectId(project_id), "deleted_at": {"$exists": False}})
     
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
@@ -586,6 +1109,18 @@ async def get_project(project_id: str, request: Request):
     # Staff can only see their own projects
     if user["role"] == "staff" and project["created_by"] != user["id"]:
         raise HTTPException(status_code=403, detail="Access denied")
+    
+    # Get deletion request if exists
+    deletion_request = None
+    if project["status"] == "deletion_requested":
+        dr = await db.deletion_requests.find_one({"project_id": project_id, "status": "pending"})
+        if dr:
+            deletion_request = {
+                "id": str(dr["_id"]),
+                "requested_by": dr["requested_by_name"],
+                "reason": dr["reason"],
+                "requested_at": dr["requested_at"]
+            }
     
     return {
         "id": str(project["_id"]),
@@ -604,14 +1139,15 @@ async def get_project(project_id: str, request: Request):
         "updated_at": project["updated_at"],
         "approved_by": project.get("approved_by"),
         "approved_at": project.get("approved_at"),
-        "rejection_reason": project.get("rejection_reason")
+        "rejection_reason": project.get("rejection_reason"),
+        "deletion_request": deletion_request
     }
 
 @api_router.put("/projects/{project_id}")
 async def update_project(project_id: str, updates: ProjectUpdate, request: Request):
     user = await get_current_user(request)
     
-    project = await db.projects.find_one({"_id": ObjectId(project_id)})
+    project = await db.projects.find_one({"_id": ObjectId(project_id), "deleted_at": {"$exists": False}})
     
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
@@ -648,7 +1184,6 @@ async def update_project(project_id: str, updates: ProjectUpdate, request: Reque
         if not pricing:
             pricing = PricingConfig().model_dump()
         
-        # Merge with existing project data
         merged = {**project}
         merged.update(update_data)
         update_data["cost_estimation"] = calculate_cost_estimation(merged, pricing)
@@ -658,13 +1193,17 @@ async def update_project(project_id: str, updates: ProjectUpdate, request: Reque
         {"$set": update_data}
     )
     
+    await create_audit_log(
+        user["id"], user["name"], "update", "project", project_id
+    )
+    
     return {"message": "Project updated successfully"}
 
 @api_router.post("/projects/{project_id}/submit")
 async def submit_project(project_id: str, request: Request):
     user = await get_current_user(request)
     
-    project = await db.projects.find_one({"_id": ObjectId(project_id)})
+    project = await db.projects.find_one({"_id": ObjectId(project_id), "deleted_at": {"$exists": False}})
     
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
@@ -684,13 +1223,17 @@ async def submit_project(project_id: str, request: Request):
         }}
     )
     
+    await create_audit_log(
+        user["id"], user["name"], "submit", "project", project_id
+    )
+    
     return {"message": "Project submitted for review"}
 
 @api_router.post("/projects/{project_id}/approve")
 async def approve_project(project_id: str, request: Request):
     user = await require_role("admin", "manager")(request)
     
-    project = await db.projects.find_one({"_id": ObjectId(project_id)})
+    project = await db.projects.find_one({"_id": ObjectId(project_id), "deleted_at": {"$exists": False}})
     
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
@@ -709,6 +1252,10 @@ async def approve_project(project_id: str, request: Request):
         }}
     )
     
+    await create_audit_log(
+        user["id"], user["name"], "approve", "project", project_id
+    )
+    
     return {"message": "Project approved"}
 
 @api_router.post("/projects/{project_id}/reject")
@@ -718,7 +1265,7 @@ async def reject_project(project_id: str, request: Request):
     body = await request.json()
     reason = body.get("reason", "No reason provided")
     
-    project = await db.projects.find_one({"_id": ObjectId(project_id)})
+    project = await db.projects.find_one({"_id": ObjectId(project_id), "deleted_at": {"$exists": False}})
     
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
@@ -736,13 +1283,17 @@ async def reject_project(project_id: str, request: Request):
         }}
     )
     
+    await create_audit_log(
+        user["id"], user["name"], "reject", "project", project_id, None, {"reason": reason}
+    )
+    
     return {"message": "Project rejected"}
 
 @api_router.post("/projects/{project_id}/complete")
 async def complete_project(project_id: str, request: Request):
     user = await require_role("admin", "manager")(request)
     
-    project = await db.projects.find_one({"_id": ObjectId(project_id)})
+    project = await db.projects.find_one({"_id": ObjectId(project_id), "deleted_at": {"$exists": False}})
     
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
@@ -759,27 +1310,236 @@ async def complete_project(project_id: str, request: Request):
         }}
     )
     
+    await create_audit_log(
+        user["id"], user["name"], "complete", "project", project_id
+    )
+    
     return {"message": "Project marked as completed"}
 
-@api_router.delete("/projects/{project_id}")
-async def delete_project(project_id: str, request: Request):
+# ================== PROJECT DELETION WORKFLOW ==================
+
+@api_router.post("/projects/{project_id}/request-deletion")
+async def request_project_deletion(project_id: str, deletion: DeletionRequestCreate, request: Request):
+    """Staff requests deletion, requires manager approval"""
     user = await get_current_user(request)
+    
+    project = await db.projects.find_one({"_id": ObjectId(project_id), "deleted_at": {"$exists": False}})
+    
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    
+    # Staff can only request deletion of their own projects
+    if user["role"] == "staff" and project["created_by"] != user["id"]:
+        raise HTTPException(status_code=403, detail="Access denied")
+    
+    # Check for existing pending request
+    existing = await db.deletion_requests.find_one({
+        "project_id": project_id,
+        "status": "pending"
+    })
+    if existing:
+        raise HTTPException(status_code=400, detail="Deletion request already pending")
+    
+    # Create deletion request
+    request_doc = {
+        "project_id": project_id,
+        "project_name": project["customer"]["name"],
+        "requested_by": user["id"],
+        "requested_by_name": user["name"],
+        "reason": deletion.reason,
+        "status": "pending",
+        "requested_at": datetime.now(timezone.utc).isoformat()
+    }
+    
+    result = await db.deletion_requests.insert_one(request_doc)
+    
+    # Update project status
+    await db.projects.update_one(
+        {"_id": ObjectId(project_id)},
+        {"$set": {
+            "status": "deletion_requested",
+            "updated_at": datetime.now(timezone.utc).isoformat()
+        }}
+    )
+    
+    await create_audit_log(
+        user["id"], user["name"], "deletion_request", "project", project_id,
+        None, {"reason": deletion.reason}
+    )
+    
+    return {"id": str(result.inserted_id), "message": "Deletion request submitted"}
+
+@api_router.get("/deletion-requests")
+async def get_deletion_requests(request: Request, status: Optional[str] = None):
+    """Get all deletion requests (Manager/Admin only)"""
+    user = await require_role("admin", "manager")(request)
+    
+    query = {}
+    if status:
+        query["status"] = status
+    
+    requests = await db.deletion_requests.find(query).sort("requested_at", -1).to_list(100)
+    
+    return [
+        {
+            "id": str(r["_id"]),
+            "project_id": r["project_id"],
+            "project_name": r["project_name"],
+            "requested_by": r["requested_by_name"],
+            "reason": r["reason"],
+            "status": r["status"],
+            "requested_at": r["requested_at"],
+            "resolved_by": r.get("resolved_by_name"),
+            "resolved_at": r.get("resolved_at")
+        }
+        for r in requests
+    ]
+
+@api_router.post("/deletion-requests/{request_id}/approve")
+async def approve_deletion(request_id: str, request: Request):
+    """Approve deletion request - soft delete the project"""
+    user = await require_role("admin", "manager")(request)
+    
+    del_request = await db.deletion_requests.find_one({"_id": ObjectId(request_id)})
+    
+    if not del_request:
+        raise HTTPException(status_code=404, detail="Deletion request not found")
+    
+    if del_request["status"] != "pending":
+        raise HTTPException(status_code=400, detail="Request already processed")
+    
+    # Soft delete the project
+    await db.projects.update_one(
+        {"_id": ObjectId(del_request["project_id"])},
+        {"$set": {
+            "deleted_at": datetime.now(timezone.utc).isoformat(),
+            "deleted_by": user["id"],
+            "deleted_by_name": user["name"],
+            "status": "deleted"
+        }}
+    )
+    
+    # Update deletion request
+    await db.deletion_requests.update_one(
+        {"_id": ObjectId(request_id)},
+        {"$set": {
+            "status": "approved",
+            "resolved_by": user["id"],
+            "resolved_by_name": user["name"],
+            "resolved_at": datetime.now(timezone.utc).isoformat()
+        }}
+    )
+    
+    await create_audit_log(
+        user["id"], user["name"], "deletion_approved", "project", del_request["project_id"]
+    )
+    
+    return {"message": "Deletion approved, project soft-deleted"}
+
+@api_router.post("/deletion-requests/{request_id}/reject")
+async def reject_deletion(request_id: str, request: Request):
+    """Reject deletion request - restore project status"""
+    user = await require_role("admin", "manager")(request)
+    
+    del_request = await db.deletion_requests.find_one({"_id": ObjectId(request_id)})
+    
+    if not del_request:
+        raise HTTPException(status_code=404, detail="Deletion request not found")
+    
+    if del_request["status"] != "pending":
+        raise HTTPException(status_code=400, detail="Request already processed")
+    
+    # Restore project status to draft
+    await db.projects.update_one(
+        {"_id": ObjectId(del_request["project_id"])},
+        {"$set": {
+            "status": "draft",
+            "updated_at": datetime.now(timezone.utc).isoformat()
+        }}
+    )
+    
+    # Update deletion request
+    await db.deletion_requests.update_one(
+        {"_id": ObjectId(request_id)},
+        {"$set": {
+            "status": "rejected",
+            "resolved_by": user["id"],
+            "resolved_by_name": user["name"],
+            "resolved_at": datetime.now(timezone.utc).isoformat()
+        }}
+    )
+    
+    await create_audit_log(
+        user["id"], user["name"], "deletion_rejected", "project", del_request["project_id"]
+    )
+    
+    return {"message": "Deletion rejected, project restored"}
+
+@api_router.delete("/projects/{project_id}/force")
+async def force_delete_project(project_id: str, request: Request):
+    """Admin force delete (hard delete)"""
+    user = await require_role("admin")(request)
     
     project = await db.projects.find_one({"_id": ObjectId(project_id)})
     
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
     
-    # Staff can only delete their own draft projects
-    if user["role"] == "staff":
-        if project["created_by"] != user["id"]:
-            raise HTTPException(status_code=403, detail="Access denied")
-        if project["status"] != "draft":
-            raise HTTPException(status_code=400, detail="Can only delete draft projects")
-    
+    # Hard delete
     await db.projects.delete_one({"_id": ObjectId(project_id)})
+    await db.deletion_requests.delete_many({"project_id": project_id})
     
-    return {"message": "Project deleted"}
+    await create_audit_log(
+        user["id"], user["name"], "force_delete", "project", project_id,
+        {"customer": project["customer"]["name"]}
+    )
+    
+    return {"message": "Project permanently deleted"}
+
+# ================== AUDIT LOGS ==================
+
+@api_router.get("/audit-logs")
+async def get_audit_logs(
+    request: Request,
+    entity_type: Optional[str] = None,
+    action_type: Optional[str] = None,
+    user_id: Optional[str] = None,
+    limit: int = 100
+):
+    """Get audit logs (Admin only, Manager limited)"""
+    user = await get_current_user(request)
+    
+    if user["role"] not in ["admin", "manager"]:
+        raise HTTPException(status_code=403, detail="Access denied")
+    
+    query = {}
+    
+    # Manager can only see project-related logs
+    if user["role"] == "manager":
+        query["entity_type"] = "project"
+    elif entity_type:
+        query["entity_type"] = entity_type
+    
+    if action_type:
+        query["action_type"] = action_type
+    if user_id:
+        query["user_id"] = user_id
+    
+    logs = await db.audit_logs.find(query).sort("timestamp", -1).limit(limit).to_list(limit)
+    
+    return [
+        {
+            "id": str(log["_id"]),
+            "user_id": log["user_id"],
+            "user_name": log["user_name"],
+            "action_type": log["action_type"],
+            "entity_type": log["entity_type"],
+            "entity_id": log["entity_id"],
+            "details": log.get("details"),
+            "timestamp": log["timestamp"]
+        }
+        for log in logs
+    ]
 
 # ================== DASHBOARD STATS ==================
 
@@ -787,7 +1547,7 @@ async def delete_project(project_id: str, request: Request):
 async def get_dashboard_stats(request: Request):
     user = await get_current_user(request)
     
-    query = {}
+    query = {"deleted_at": {"$exists": False}}
     if user["role"] == "staff":
         query["created_by"] = user["id"]
     
@@ -805,6 +1565,7 @@ async def get_dashboard_stats(request: Request):
         "approved": 0,
         "rejected": 0,
         "completed": 0,
+        "deletion_requested": 0,
         "total": 0
     }
     
@@ -827,6 +1588,18 @@ async def get_dashboard_stats(request: Request):
         stats["conversion_rate"] = round((stats["completed"] / stats["total"]) * 100, 1)
     else:
         stats["conversion_rate"] = 0
+    
+    # Pending deletion requests count (for managers/admins)
+    if user["role"] in ["admin", "manager"]:
+        pending_deletions = await db.deletion_requests.count_documents({"status": "pending"})
+        stats["pending_deletions"] = pending_deletions
+        
+        # Low stock alerts count
+        low_stock_pipeline = [
+            {"$match": {"$expr": {"$lte": ["$quantity", "$reorder_level"]}}}
+        ]
+        low_stock_items = await db.inventory_items.aggregate(low_stock_pipeline).to_list(100)
+        stats["low_stock_alerts"] = len(low_stock_items)
     
     return stats
 
@@ -910,10 +1683,18 @@ async def startup_event():
     await db.login_attempts.create_index("identifier")
     await db.projects.create_index("created_by")
     await db.projects.create_index("status")
+    await db.audit_logs.create_index("timestamp")
+    await db.audit_logs.create_index("entity_type")
+    await db.inventory_items.create_index("sku_code", unique=True)
+    await db.inventory_items.create_index("category")
+    await db.inventory_locations.create_index("code", unique=True)
+    await db.terms_conditions.create_index([("language", 1), ("is_active", 1)])
+    await db.deletion_requests.create_index("project_id")
+    await db.deletion_requests.create_index("status")
     
     # Seed admin user
     admin_email = os.environ.get("ADMIN_EMAIL", "admin@sensoper.com")
-    admin_password = os.environ.get("ADMIN_PASSWORD", "admin123")
+    admin_password = os.environ.get("ADMIN_PASSWORD", "Admin@123")
     
     existing = await db.users.find_one({"email": admin_email})
     if existing is None:
@@ -938,6 +1719,17 @@ async def startup_event():
     if not pricing:
         await db.pricing_config.insert_one(PricingConfig().model_dump())
         logger.info("Default pricing configuration created")
+    
+    # Seed default inventory location
+    loc = await db.inventory_locations.find_one({})
+    if not loc:
+        await db.inventory_locations.insert_one({
+            "code": "WH-MAIN-01",
+            "name": "Main Warehouse",
+            "address": "Sensoper HQ",
+            "created_at": datetime.now(timezone.utc).isoformat()
+        })
+        logger.info("Default inventory location created")
     
     # Write test credentials
     try:

@@ -1,11 +1,12 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { projectsAPI } from '../utils/api';
+import { projectsAPI, termsAPI } from '../utils/api';
 import { Button } from '../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
 import { Textarea } from '../components/ui/textarea';
+import { Label } from '../components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../components/ui/dialog';
 import { 
   ArrowLeft, 
@@ -18,12 +19,11 @@ import {
   CheckCircle2,
   XCircle,
   AlertCircle,
-  FileText,
   Download,
   Share2,
-  Edit,
   Trash2,
-  Send
+  Send,
+  AlertTriangle
 } from 'lucide-react';
 import jsPDF from 'jspdf';
 
@@ -32,7 +32,8 @@ const statusConfig = {
   submitted: { label: 'Submitted', color: 'bg-blue-100 text-blue-800', icon: AlertCircle },
   approved: { label: 'Approved', color: 'bg-green-100 text-green-800', icon: CheckCircle2 },
   rejected: { label: 'Rejected', color: 'bg-red-100 text-red-800', icon: XCircle },
-  completed: { label: 'Completed', color: 'bg-emerald-100 text-emerald-800', icon: CheckCircle2 }
+  completed: { label: 'Completed', color: 'bg-emerald-100 text-emerald-800', icon: CheckCircle2 },
+  deletion_requested: { label: 'Deletion Requested', color: 'bg-orange-100 text-orange-800', icon: Trash2 }
 };
 
 function InfoRow({ label, value }) {
@@ -55,6 +56,25 @@ function CostRow({ label, value, isTotal = false }) {
   );
 }
 
+// Helper to strip HTML tags for plain text
+function stripHtml(html) {
+  const tmp = document.createElement('div');
+  tmp.innerHTML = html;
+  return tmp.textContent || tmp.innerText || '';
+}
+
+// Helper to convert HTML to structured terms list
+function parseTermsHtml(html) {
+  const tmp = document.createElement('div');
+  tmp.innerHTML = html;
+  const items = tmp.querySelectorAll('li');
+  if (items.length > 0) {
+    return Array.from(items).map(li => stripHtml(li.innerHTML));
+  }
+  // Fallback: split by newlines
+  return stripHtml(html).split('\n').filter(line => line.trim());
+}
+
 export default function ProjectDetails() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -65,9 +85,12 @@ export default function ProjectDetails() {
   const [showRejectDialog, setShowRejectDialog] = useState(false);
   const [rejectReason, setRejectReason] = useState('');
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [deletionReason, setDeletionReason] = useState('');
+  const [terms, setTerms] = useState(null);
 
   useEffect(() => {
     fetchProject();
+    fetchTerms();
   }, [id]);
 
   const fetchProject = async () => {
@@ -79,6 +102,15 @@ export default function ProjectDetails() {
       navigate('/dashboard/projects');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchTerms = async () => {
+    try {
+      const res = await termsAPI.getActive();
+      setTerms(res.data);
+    } catch (error) {
+      console.error('Failed to fetch terms:', error);
     }
   };
 
@@ -131,13 +163,31 @@ export default function ProjectDetails() {
     }
   };
 
-  const handleDelete = async () => {
+  const handleRequestDeletion = async () => {
+    if (!deletionReason.trim()) return;
+    
     setActionLoading(true);
     try {
-      await projectsAPI.delete(id);
+      await projectsAPI.requestDeletion(id, deletionReason);
+      setShowDeleteDialog(false);
+      fetchProject();
+    } catch (error) {
+      console.error('Failed to request deletion:', error);
+      alert(error.response?.data?.detail || 'Failed to request deletion');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleForceDelete = async () => {
+    if (!window.confirm('This will PERMANENTLY delete the project. Are you sure?')) return;
+    
+    setActionLoading(true);
+    try {
+      await projectsAPI.forceDelete(id);
       navigate('/dashboard/projects');
     } catch (error) {
-      console.error('Failed to delete:', error);
+      console.error('Failed to force delete:', error);
     } finally {
       setActionLoading(false);
     }
@@ -146,6 +196,7 @@ export default function ProjectDetails() {
   const generatePDF = () => {
     const doc = new jsPDF();
     const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
     
     // Header
     doc.setFillColor(4, 120, 87); // Emerald-700
@@ -247,7 +298,7 @@ export default function ProjectDetails() {
     doc.text('TOTAL AMOUNT', 20, y);
     doc.text(`₹${(project.cost_estimation?.total_cost || 0).toLocaleString('en-IN')}`, pageWidth - 60, y);
     
-    // Terms
+    // Terms & Conditions (Dynamic from backend)
     doc.setTextColor(0, 0, 0);
     doc.setFontSize(10);
     doc.setFont('helvetica', 'bold');
@@ -256,25 +307,40 @@ export default function ProjectDetails() {
     
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(8);
-    const terms = [
-      '1. This quotation is valid for 30 days from the date of issue.',
-      '2. 50% advance payment required to confirm the order.',
-      '3. Balance payment due upon installation completion.',
-      '4. Installation timeline: 7-14 working days after material delivery.',
-      '5. 5-year warranty on installation workmanship.',
-      '6. Panel warranty as per manufacturer terms (typically 25 years).'
-    ];
     
-    terms.forEach((term, i) => {
-      doc.text(term, 20, y + 7 + (i * 5));
+    // Parse and display terms
+    const termsList = terms?.content 
+      ? parseTermsHtml(terms.content)
+      : [
+          'This quotation is valid for 30 days from the date of issue.',
+          '50% advance payment required to confirm the order.',
+          'Balance payment due upon installation completion.',
+          'Installation timeline: 7-14 working days after material delivery.',
+          '5-year warranty on installation workmanship.',
+          'Panel warranty as per manufacturer terms (typically 25 years).'
+        ];
+    
+    termsList.forEach((term, i) => {
+      const termText = term.startsWith(`${i + 1}.`) ? term : `${i + 1}. ${term}`;
+      const splitText = doc.splitTextToSize(termText, pageWidth - 40);
+      
+      // Check if we need a new page
+      if (y + (splitText.length * 4) > pageHeight - 20) {
+        doc.addPage();
+        y = 20;
+      }
+      
+      splitText.forEach((line, lineIndex) => {
+        doc.text(line, 20, y + 7 + (i * 5) + (lineIndex * 4));
+      });
     });
     
     // Footer
     doc.setFillColor(4, 120, 87);
-    doc.rect(0, 280, pageWidth, 17, 'F');
+    doc.rect(0, pageHeight - 17, pageWidth, 17, 'F');
     doc.setTextColor(255, 255, 255);
     doc.setFontSize(9);
-    doc.text('Sensoper Controls & Renewables | Solar Solutions Provider', pageWidth / 2, 288, { align: 'center' });
+    doc.text('Sensoper Controls & Renewables | Solar Solutions Provider', pageWidth / 2, pageHeight - 8, { align: 'center' });
     
     // Save
     doc.save(`Quotation-${project.customer?.name || 'Customer'}-${new Date().toISOString().split('T')[0]}.pdf`);
@@ -309,11 +375,12 @@ export default function ProjectDetails() {
 
   const config = statusConfig[project.status] || statusConfig.draft;
   const StatusIcon = config.icon;
-  const canEdit = isStaff && project.status === 'draft' && project.created_by === user?.id;
   const canSubmit = project.status === 'draft' && (project.created_by === user?.id || isAdmin || isManager);
   const canReview = (isAdmin || isManager) && project.status === 'submitted';
   const canComplete = (isAdmin || isManager) && project.status === 'approved';
-  const canDelete = (isAdmin || (isStaff && project.status === 'draft' && project.created_by === user?.id));
+  const canRequestDeletion = isStaff && project.status === 'draft' && project.created_by === user?.id;
+  const canForceDelete = isAdmin;
+  const isDeletionPending = project.status === 'deletion_requested';
 
   return (
     <div className="min-h-screen bg-slate-50 py-8 px-4">
@@ -342,7 +409,7 @@ export default function ProjectDetails() {
             </div>
           </div>
           <div className="flex gap-2">
-            {project.status === 'approved' && (
+            {(project.status === 'approved' || project.status === 'completed') && (
               <>
                 <Button 
                   variant="outline" 
@@ -365,6 +432,23 @@ export default function ProjectDetails() {
             )}
           </div>
         </div>
+
+        {/* Deletion request pending banner */}
+        {isDeletionPending && project.deletion_request && (
+          <Card className="border-orange-200 bg-orange-50 mb-6">
+            <CardContent className="p-4">
+              <div className="flex items-start gap-3">
+                <AlertTriangle className="h-5 w-5 text-orange-600 mt-0.5" />
+                <div>
+                  <p className="font-medium text-orange-800">Deletion Request Pending</p>
+                  <p className="text-sm text-orange-700">
+                    Requested by {project.deletion_request.requested_by} • Reason: {project.deletion_request.reason}
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Rejection reason banner */}
         {project.status === 'rejected' && project.rejection_reason && (
@@ -529,16 +613,29 @@ export default function ProjectDetails() {
                     </Button>
                   )}
 
-                  {canDelete && (
+                  {canRequestDeletion && !isDeletionPending && (
                     <Button 
                       onClick={() => setShowDeleteDialog(true)}
                       disabled={actionLoading}
                       variant="outline"
                       className="w-full gap-2 text-red-600 hover:text-red-700 hover:bg-red-50"
-                      data-testid="delete-btn"
+                      data-testid="request-deletion-btn"
                     >
                       <Trash2 className="h-4 w-4" />
-                      Delete Project
+                      Request Deletion
+                    </Button>
+                  )}
+
+                  {canForceDelete && (
+                    <Button 
+                      onClick={handleForceDelete}
+                      disabled={actionLoading}
+                      variant="destructive"
+                      className="w-full gap-2"
+                      data-testid="force-delete-btn"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                      Force Delete (Admin)
                     </Button>
                   )}
                 </div>
@@ -555,9 +652,9 @@ export default function ProjectDetails() {
             <DialogTitle>Reject Project</DialogTitle>
           </DialogHeader>
           <div className="py-4">
-            <label className="text-sm font-medium text-slate-700 mb-2 block">
+            <Label className="text-sm font-medium text-slate-700 mb-2 block">
               Reason for rejection
-            </label>
+            </Label>
             <Textarea
               value={rejectReason}
               onChange={(e) => setRejectReason(e.target.value)}
@@ -583,27 +680,39 @@ export default function ProjectDetails() {
         </DialogContent>
       </Dialog>
 
-      {/* Delete Dialog */}
+      {/* Request Deletion Dialog */}
       <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Delete Project</DialogTitle>
+            <DialogTitle>Request Project Deletion</DialogTitle>
           </DialogHeader>
-          <p className="text-slate-600">
-            Are you sure you want to delete this project? This action cannot be undone.
-          </p>
+          <div className="py-4">
+            <p className="text-sm text-slate-600 mb-4">
+              Your request will be sent to a manager for approval. Please provide a reason.
+            </p>
+            <Label className="text-sm font-medium text-slate-700 mb-2 block">
+              Reason for deletion
+            </Label>
+            <Textarea
+              value={deletionReason}
+              onChange={(e) => setDeletionReason(e.target.value)}
+              placeholder="Enter the reason for deleting this project..."
+              rows={4}
+              data-testid="deletion-reason-input"
+            />
+          </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowDeleteDialog(false)}>
               Cancel
             </Button>
             <Button 
               variant="destructive" 
-              onClick={handleDelete}
-              disabled={actionLoading}
-              data-testid="confirm-delete-btn"
+              onClick={handleRequestDeletion}
+              disabled={actionLoading || !deletionReason.trim()}
+              data-testid="confirm-deletion-request-btn"
             >
               {actionLoading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-              Delete Project
+              Submit Request
             </Button>
           </DialogFooter>
         </DialogContent>

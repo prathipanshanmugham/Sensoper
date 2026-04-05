@@ -12,6 +12,10 @@ import ProjectDetails from "./pages/ProjectDetails";
 import SiteVisitForm from "./pages/SiteVisitForm";
 import UserManagement from "./pages/UserManagement";
 import PricingConfig from "./pages/PricingConfig";
+import TermsConditions from "./pages/TermsConditions";
+import InventoryManagement from "./pages/InventoryManagement";
+import DeletionApprovals from "./pages/DeletionApprovals";
+import AuditLogs from "./pages/AuditLogs";
 
 // Protected Route Component
 function ProtectedRoute({ children, allowedRoles = null }) {
@@ -124,6 +128,40 @@ function AppRoutes() {
         element={
           <ProtectedRoute allowedRoles={["admin"]}>
             <PricingConfig />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/dashboard/audit-logs"
+        element={
+          <ProtectedRoute allowedRoles={["admin"]}>
+            <AuditLogs />
+          </ProtectedRoute>
+        }
+      />
+
+      {/* Admin & Manager Routes */}
+      <Route
+        path="/dashboard/terms"
+        element={
+          <ProtectedRoute allowedRoles={["admin", "manager"]}>
+            <TermsConditions />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/dashboard/inventory"
+        element={
+          <ProtectedRoute allowedRoles={["admin", "manager"]}>
+            <InventoryManagement />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/dashboard/deletion-approvals"
+        element={
+          <ProtectedRoute allowedRoles={["admin", "manager"]}>
+            <DeletionApprovals />
           </ProtectedRoute>
         }
       />

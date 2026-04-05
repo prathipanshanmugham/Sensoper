@@ -281,6 +281,176 @@ class SolarEstimatorAPITester:
         except Exception as e:
             return self.log_test("AI Recommendations", False, str(e))
 
+    # ================== ENTERPRISE FEATURES TESTS ==================
+
+    def test_terms_conditions_crud(self):
+        """Test Terms & Conditions CRUD operations"""
+        try:
+            # Create new terms
+            terms_data = {
+                "title": "Test Terms v1",
+                "content": "<ol><li>Test term 1</li><li>Test term 2</li></ol>",
+                "language": "en"
+            }
+            
+            response = self.session.post(f"{self.base_url}/api/terms", json=terms_data)
+            if response.status_code != 200:
+                return self.log_test("Terms & Conditions CRUD", False, f"Create failed: {response.status_code}")
+            
+            terms_id = response.json().get("id")
+            
+            # Get all terms
+            response = self.session.get(f"{self.base_url}/api/terms")
+            if response.status_code != 200:
+                return self.log_test("Terms & Conditions CRUD", False, f"Get all failed: {response.status_code}")
+            
+            # Get active terms
+            response = self.session.get(f"{self.base_url}/api/terms/active")
+            if response.status_code != 200:
+                return self.log_test("Terms & Conditions CRUD", False, f"Get active failed: {response.status_code}")
+            
+            # Update terms (activate)
+            response = self.session.put(f"{self.base_url}/api/terms/{terms_id}", json={"is_active": True})
+            if response.status_code != 200:
+                return self.log_test("Terms & Conditions CRUD", False, f"Update failed: {response.status_code}")
+            
+            return self.log_test("Terms & Conditions CRUD", True)
+        except Exception as e:
+            return self.log_test("Terms & Conditions CRUD", False, str(e))
+
+    def test_inventory_locations(self):
+        """Test Inventory Locations management"""
+        try:
+            # Create location with unique code
+            timestamp = datetime.now().strftime("%H%M%S")
+            location_data = {
+                "code": f"WH-TEST-{timestamp}",
+                "name": f"Test Warehouse {timestamp}",
+                "address": "Test Address"
+            }
+            
+            response = self.session.post(f"{self.base_url}/api/inventory/locations", json=location_data)
+            if response.status_code != 200:
+                return self.log_test("Inventory Locations", False, f"Create failed: {response.status_code} - {response.text}")
+            
+            location_id = response.json().get("id")
+            
+            # Get all locations
+            response = self.session.get(f"{self.base_url}/api/inventory/locations")
+            if response.status_code != 200:
+                return self.log_test("Inventory Locations", False, f"Get all failed: {response.status_code}")
+            
+            locations = response.json()
+            test_location_found = any(loc.get("code") == f"WH-TEST-{timestamp}" for loc in locations)
+            
+            return self.log_test("Inventory Locations", test_location_found)
+        except Exception as e:
+            return self.log_test("Inventory Locations", False, str(e))
+
+    def test_inventory_items(self):
+        """Test Inventory Items management"""
+        try:
+            # Create item with unique SKU
+            timestamp = datetime.now().strftime("%H%M%S")
+            item_data = {
+                "name": f"Test Solar Panel {timestamp}",
+                "sku_code": f"TST-{timestamp}-MONO",
+                "category": "solar_panels",
+                "location_code": "WH-MAIN-01",  # Using default location
+                "quantity": 100,
+                "unit_price": 15000.0,
+                "supplier": "Test Supplier",
+                "gst_percentage": 18.0,
+                "reorder_level": 10
+            }
+            
+            response = self.session.post(f"{self.base_url}/api/inventory/items", json=item_data)
+            if response.status_code != 200:
+                return self.log_test("Inventory Items", False, f"Create failed: {response.status_code} - {response.text}")
+            
+            item_id = response.json().get("id")
+            
+            # Get all items
+            response = self.session.get(f"{self.base_url}/api/inventory/items")
+            if response.status_code != 200:
+                return self.log_test("Inventory Items", False, f"Get all failed: {response.status_code}")
+            
+            # Get item details
+            response = self.session.get(f"{self.base_url}/api/inventory/items/{item_id}")
+            if response.status_code != 200:
+                return self.log_test("Inventory Items", False, f"Get details failed: {response.status_code}")
+            
+            # Update item
+            response = self.session.put(f"{self.base_url}/api/inventory/items/{item_id}", json={"quantity": 95})
+            if response.status_code != 200:
+                return self.log_test("Inventory Items", False, f"Update failed: {response.status_code}")
+            
+            return self.log_test("Inventory Items", True)
+        except Exception as e:
+            return self.log_test("Inventory Items", False, str(e))
+
+    def test_inventory_alerts(self):
+        """Test Inventory Low Stock Alerts"""
+        try:
+            response = self.session.get(f"{self.base_url}/api/inventory/alerts")
+            if response.status_code == 200:
+                data = response.json()
+                return self.log_test("Inventory Alerts", isinstance(data, list))
+            else:
+                return self.log_test("Inventory Alerts", False, f"Status: {response.status_code}")
+        except Exception as e:
+            return self.log_test("Inventory Alerts", False, str(e))
+
+    def test_deletion_workflow(self):
+        """Test Project Deletion Approval Workflow"""
+        if not self.test_project_id:
+            return self.log_test("Deletion Workflow", False, "No test project ID available")
+        
+        try:
+            # First, reset project to draft status for deletion request
+            response = self.session.put(f"{self.base_url}/api/projects/{self.test_project_id}", json={"status": "draft"})
+            
+            # Request deletion
+            deletion_data = {"reason": "Test deletion request"}
+            response = self.session.post(f"{self.base_url}/api/projects/{self.test_project_id}/request-deletion", json=deletion_data)
+            if response.status_code != 200:
+                return self.log_test("Deletion Workflow", False, f"Request deletion failed: {response.status_code}")
+            
+            request_id = response.json().get("id")
+            
+            # Get deletion requests
+            response = self.session.get(f"{self.base_url}/api/deletion-requests")
+            if response.status_code != 200:
+                return self.log_test("Deletion Workflow", False, f"Get requests failed: {response.status_code}")
+            
+            # Approve deletion
+            response = self.session.post(f"{self.base_url}/api/deletion-requests/{request_id}/approve")
+            if response.status_code != 200:
+                return self.log_test("Deletion Workflow", False, f"Approve deletion failed: {response.status_code}")
+            
+            return self.log_test("Deletion Workflow", True)
+        except Exception as e:
+            return self.log_test("Deletion Workflow", False, str(e))
+
+    def test_audit_logs(self):
+        """Test Audit Logs system"""
+        try:
+            response = self.session.get(f"{self.base_url}/api/audit-logs")
+            if response.status_code == 200:
+                data = response.json()
+                # Check if logs contain required fields
+                if data and len(data) > 0:
+                    log = data[0]
+                    required_fields = ["user_name", "action_type", "entity_type", "timestamp"]
+                    has_required = all(field in log for field in required_fields)
+                    return self.log_test("Audit Logs", has_required)
+                else:
+                    return self.log_test("Audit Logs", True, "No logs yet (expected for new system)")
+            else:
+                return self.log_test("Audit Logs", False, f"Status: {response.status_code}")
+        except Exception as e:
+            return self.log_test("Audit Logs", False, str(e))
+
     def test_logout(self):
         """Test logout functionality"""
         try:
@@ -291,8 +461,8 @@ class SolarEstimatorAPITester:
 
     def run_all_tests(self):
         """Run all backend tests"""
-        print("🚀 Starting Solar Estimator Backend API Tests")
-        print("=" * 50)
+        print("🚀 Starting Solar Estimator Backend API Tests (Enterprise Features)")
+        print("=" * 60)
         
         # Basic connectivity
         self.test_health_check()
@@ -321,10 +491,28 @@ class SolarEstimatorAPITester:
         # AI features
         self.test_ai_recommendations()
         
+        # ================== ENTERPRISE FEATURES ==================
+        print("\n🏢 Testing Enterprise Features:")
+        print("-" * 40)
+        
+        # Terms & Conditions
+        self.test_terms_conditions_crud()
+        
+        # Inventory Management
+        self.test_inventory_locations()
+        self.test_inventory_items()
+        self.test_inventory_alerts()
+        
+        # Project Deletion Workflow
+        self.test_deletion_workflow()
+        
+        # Audit Logs
+        self.test_audit_logs()
+        
         # Cleanup
         self.test_logout()
         
-        print("=" * 50)
+        print("=" * 60)
         print(f"📊 Tests completed: {self.tests_passed}/{self.tests_run} passed")
         
         if self.tests_passed == self.tests_run:
