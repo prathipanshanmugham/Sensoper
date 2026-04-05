@@ -166,7 +166,7 @@ export default function Dashboard() {
                 to={item.href}
                 className="flex items-center gap-3 px-4 py-3 rounded-lg text-slate-600 hover:bg-emerald-50 hover:text-emerald-700 transition-colors"
                 onClick={() => setSidebarOpen(false)}
-                data-testid={`nav-${item.label.toLowerCase().replace(' ', '-')}`}
+                data-testid={`nav-${item.label.toLowerCase().replace(/\s+/g, '-')}`}
               >
                 <item.icon className="h-5 w-5" />
                 <span className="font-medium">{item.label}</span>
