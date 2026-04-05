@@ -263,13 +263,13 @@ export default function SiteVisitForm() {
             {STEPS.map((step) => (
               <div 
                 key={step.id}
-                className={`flex flex-col items-center ${currentStep >= step.id ? 'text-emerald-600' : 'text-slate-400'}`}
+                className={`flex flex-col items-center ${currentStep >= step.id ? 'text-[#4ADE40]' : 'text-slate-400'}`}
               >
                 <div className={`w-10 h-10 rounded-full flex items-center justify-center mb-2 ${
                   currentStep > step.id 
                     ? 'bg-emerald-600 text-white' 
                     : currentStep === step.id 
-                      ? 'bg-emerald-100 text-emerald-600 border-2 border-emerald-600' 
+                      ? 'bg-emerald-100 text-[#4ADE40] border-2 border-emerald-600' 
                       : 'bg-slate-100 text-slate-400'
                 }`}>
                   {currentStep > step.id ? (
@@ -362,13 +362,13 @@ export default function SiteVisitForm() {
                   <div className="flex items-center justify-between mb-4">
                     <div>
                       <h3 className="font-semibold text-emerald-800">GPS Coordinates</h3>
-                      <p className="text-sm text-emerald-600">Click to capture current location</p>
+                      <p className="text-sm text-[#4ADE40]">Click to capture current location</p>
                     </div>
                     <Button 
                       type="button"
                       onClick={getCurrentLocation}
                       disabled={gettingLocation}
-                      className="bg-emerald-600 hover:bg-emerald-700"
+                      className="bg-[#4ADE40] hover:bg-[#3dba35] text-black"
                       data-testid="get-location-btn"
                     >
                       {gettingLocation ? (
@@ -694,7 +694,7 @@ export default function SiteVisitForm() {
                 <Button
                   type="button"
                   onClick={nextStep}
-                  className="gap-2 bg-emerald-600 hover:bg-emerald-700"
+                  className="gap-2 bg-[#4ADE40] hover:bg-[#3dba35] text-black"
                   data-testid="next-step-btn"
                 >
                   Next
@@ -705,7 +705,7 @@ export default function SiteVisitForm() {
                   type="button"
                   onClick={handleSubmit}
                   disabled={loading}
-                  className="gap-2 bg-emerald-600 hover:bg-emerald-700"
+                  className="gap-2 bg-[#4ADE40] hover:bg-[#3dba35] text-black"
                   data-testid="submit-project-btn"
                 >
                   {loading ? (

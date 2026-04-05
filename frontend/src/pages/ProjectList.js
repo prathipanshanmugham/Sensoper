@@ -79,7 +79,7 @@ export default function ProjectList() {
             </div>
           </div>
           <Link to="/dashboard/projects/new">
-            <Button className="bg-emerald-600 hover:bg-emerald-700 text-white" data-testid="new-project-btn">
+            <Button className="bg-[#4ADE40] hover:bg-[#3dba35] text-black text-white" data-testid="new-project-btn">
               <FolderPlus className="h-4 w-4 mr-2" />
               New Project
             </Button>
@@ -123,7 +123,7 @@ export default function ProjectList() {
         {/* Projects List */}
         {loading ? (
           <div className="flex items-center justify-center py-12">
-            <Loader2 className="h-8 w-8 animate-spin text-emerald-600" />
+            <Loader2 className="h-8 w-8 animate-spin text-[#4ADE40]" />
           </div>
         ) : filteredProjects.length === 0 ? (
           <Card className="border-slate-200">
@@ -135,7 +135,7 @@ export default function ProjectList() {
               </p>
               {!searchQuery && (
                 <Link to="/dashboard/projects/new">
-                  <Button className="bg-emerald-600 hover:bg-emerald-700 text-white">
+                  <Button className="bg-[#4ADE40] hover:bg-[#3dba35] text-black text-white">
                     <FolderPlus className="h-4 w-4 mr-2" />
                     New Project
                   </Button>
@@ -184,7 +184,7 @@ export default function ProjectList() {
                         </p>
                       </div>
                       <div className="text-right">
-                        <p className="text-2xl font-bold font-['Outfit'] text-emerald-600">
+                        <p className="text-2xl font-bold font-['Outfit'] text-[#4ADE40]">
                           ₹{(project.cost_estimation?.total_cost || 0).toLocaleString('en-IN')}
                         </p>
                         <p className="text-sm text-slate-500">

@@ -27,6 +27,8 @@ import {
 } from 'lucide-react';
 import jsPDF from 'jspdf';
 
+const LOGO_URL = "https://customer-assets.emergentagent.com/job_solar-estimator-14/artifacts/2dpfr2zb_slg.png";
+
 const statusConfig = {
   draft: { label: 'Draft', color: 'bg-amber-100 text-amber-800', icon: Clock },
   submitted: { label: 'Submitted', color: 'bg-blue-100 text-blue-800', icon: AlertCircle },
@@ -49,7 +51,7 @@ function CostRow({ label, value, isTotal = false }) {
   return (
     <div className={`flex justify-between py-2 ${isTotal ? 'border-t-2 border-slate-300 pt-3 mt-2' : 'border-b border-slate-100'}`}>
       <span className={isTotal ? 'font-bold text-slate-900' : 'text-slate-500'}>{label}</span>
-      <span className={isTotal ? 'font-bold text-emerald-600 text-lg' : 'font-medium text-slate-900'}>
+      <span className={isTotal ? 'font-bold text-[#4ADE40] text-lg' : 'font-medium text-slate-900'}>
         ₹{(value || 0).toLocaleString('en-IN')}
       </span>
     </div>
@@ -198,21 +200,32 @@ export default function ProjectDetails() {
     const pageWidth = doc.internal.pageSize.getWidth();
     const pageHeight = doc.internal.pageSize.getHeight();
     
-    // Header
-    doc.setFillColor(4, 120, 87); // Emerald-700
-    doc.rect(0, 0, pageWidth, 40, 'F');
+    // Header - Black background with brand colors
+    doc.setFillColor(10, 10, 10); // Near black like logo background
+    doc.rect(0, 0, pageWidth, 45, 'F');
     
-    doc.setTextColor(255, 255, 255);
-    doc.setFontSize(24);
+    // Company Name with brand colors
+    doc.setFontSize(22);
     doc.setFont('helvetica', 'bold');
-    doc.text('SENSOPER CONTROLS', 20, 20);
-    doc.setFontSize(12);
-    doc.setFont('helvetica', 'normal');
-    doc.text('& RENEWABLES', 20, 28);
-    doc.setFontSize(10);
-    doc.text('Solar Project Quotation', 20, 36);
+    doc.setTextColor(74, 222, 64); // #4ADE40 - Sensoper Green
+    doc.text('Sens', 20, 18);
+    doc.setTextColor(45, 155, 240); // #2D9BF0 - Sensoper Blue  
+    doc.text('Oper', 44, 18);
     
-    // Date
+    doc.setFontSize(14);
+    doc.setTextColor(45, 155, 240); // Blue
+    doc.text('Controls', 20, 28);
+    doc.setTextColor(74, 222, 64); // Green
+    doc.text(' & ', 52, 28);
+    doc.setTextColor(45, 155, 240); // Blue
+    doc.text('Renewables', 62, 28);
+    
+    doc.setFontSize(10);
+    doc.setTextColor(150, 150, 150);
+    doc.text('Solar Project Quotation', 20, 38);
+    
+    // Date and Quote number
+    doc.setTextColor(255, 255, 255);
     doc.setFontSize(10);
     doc.text(`Date: ${new Date().toLocaleDateString('en-IN')}`, pageWidth - 60, 20);
     doc.text(`Quotation #: SCR-${id.slice(0, 8).toUpperCase()}`, pageWidth - 60, 28);
@@ -288,13 +301,13 @@ export default function ProjectDetails() {
     
     // Total
     y += 5;
-    doc.setDrawColor(4, 120, 87);
+    doc.setDrawColor(74, 222, 64); // Sensoper Green
     doc.setLineWidth(0.5);
     doc.line(20, y, pageWidth - 20, y);
     y += 10;
     doc.setFontSize(14);
     doc.setFont('helvetica', 'bold');
-    doc.setTextColor(4, 120, 87);
+    doc.setTextColor(74, 222, 64); // Sensoper Green
     doc.text('TOTAL AMOUNT', 20, y);
     doc.text(`₹${(project.cost_estimation?.total_cost || 0).toLocaleString('en-IN')}`, pageWidth - 60, y);
     
@@ -335,12 +348,16 @@ export default function ProjectDetails() {
       });
     });
     
-    // Footer
-    doc.setFillColor(4, 120, 87);
+    // Footer - Brand colored
+    doc.setFillColor(10, 10, 10); // Near black
     doc.rect(0, pageHeight - 17, pageWidth, 17, 'F');
-    doc.setTextColor(255, 255, 255);
     doc.setFontSize(9);
-    doc.text('Sensoper Controls & Renewables | Solar Solutions Provider', pageWidth / 2, pageHeight - 8, { align: 'center' });
+    doc.setTextColor(74, 222, 64); // Green
+    doc.text('Sensoper', pageWidth / 2 - 35, pageHeight - 8);
+    doc.setTextColor(45, 155, 240); // Blue
+    doc.text('Controls & Renewables', pageWidth / 2 - 12, pageHeight - 8);
+    doc.setTextColor(150, 150, 150);
+    doc.text(' | Solar Solutions Provider', pageWidth / 2 + 45, pageHeight - 8);
     
     // Save
     doc.save(`Quotation-${project.customer?.name || 'Customer'}-${new Date().toISOString().split('T')[0]}.pdf`);
@@ -360,7 +377,7 @@ export default function ProjectDetails() {
   if (loading) {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-emerald-600" />
+        <Loader2 className="h-8 w-8 animate-spin text-[#4ADE40]" />
       </div>
     );
   }
@@ -422,7 +439,7 @@ export default function ProjectDetails() {
                 </Button>
                 <Button 
                   onClick={generatePDF}
-                  className="gap-2 bg-emerald-600 hover:bg-emerald-700"
+                  className="gap-2 bg-[#4ADE40] hover:bg-[#3dba35] text-black"
                   data-testid="download-pdf-btn"
                 >
                   <Download className="h-4 w-4" />
@@ -465,7 +482,7 @@ export default function ProjectDetails() {
             <Card className="border-slate-200">
               <CardHeader className="pb-3">
                 <CardTitle className="text-lg font-['Outfit'] flex items-center gap-2">
-                  <User className="h-5 w-5 text-emerald-600" />
+                  <User className="h-5 w-5 text-[#4ADE40]" />
                   Customer Details
                 </CardTitle>
               </CardHeader>
@@ -481,7 +498,7 @@ export default function ProjectDetails() {
             <Card className="border-slate-200">
               <CardHeader className="pb-3">
                 <CardTitle className="text-lg font-['Outfit'] flex items-center gap-2">
-                  <MapPin className="h-5 w-5 text-emerald-600" />
+                  <MapPin className="h-5 w-5 text-[#4ADE40]" />
                   Site Location
                 </CardTitle>
               </CardHeader>
@@ -498,7 +515,7 @@ export default function ProjectDetails() {
             <Card className="border-slate-200">
               <CardHeader className="pb-3">
                 <CardTitle className="text-lg font-['Outfit'] flex items-center gap-2">
-                  <Zap className="h-5 w-5 text-emerald-600" />
+                  <Zap className="h-5 w-5 text-[#4ADE40]" />
                   Electrical Details
                 </CardTitle>
               </CardHeader>
@@ -516,7 +533,7 @@ export default function ProjectDetails() {
             <Card className="border-slate-200">
               <CardHeader className="pb-3">
                 <CardTitle className="text-lg font-['Outfit'] flex items-center gap-2">
-                  <Sun className="h-5 w-5 text-emerald-600" />
+                  <Sun className="h-5 w-5 text-[#4ADE40]" />
                   Solar System Configuration
                 </CardTitle>
               </CardHeader>

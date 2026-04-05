@@ -107,7 +107,7 @@ export default function DeletionApprovals() {
         {/* Requests List */}
         {loading ? (
           <div className="flex items-center justify-center py-12">
-            <Loader2 className="h-8 w-8 animate-spin text-emerald-600" />
+            <Loader2 className="h-8 w-8 animate-spin text-[#4ADE40]" />
           </div>
         ) : requests.length === 0 ? (
           <Card className="border-slate-200">
@@ -179,7 +179,7 @@ export default function DeletionApprovals() {
                             )}
                           </Button>
                           <Button
-                            className="bg-emerald-600 hover:bg-emerald-700"
+                            className="bg-[#4ADE40] hover:bg-[#3dba35] text-black"
                             onClick={() => handleApprove(request.id)}
                             disabled={actionLoading === request.id}
                             data-testid={`approve-deletion-${request.id}`}

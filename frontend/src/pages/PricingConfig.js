@@ -130,7 +130,7 @@ export default function PricingConfig() {
             <Button 
               onClick={handleSave}
               disabled={saving}
-              className="gap-2 bg-emerald-600 hover:bg-emerald-700"
+              className="gap-2 bg-[#4ADE40] hover:bg-[#3dba35] text-black"
               data-testid="save-pricing-btn"
             >
               {saving ? (
@@ -149,7 +149,7 @@ export default function PricingConfig() {
 
         {loading ? (
           <div className="flex items-center justify-center py-12">
-            <Loader2 className="h-8 w-8 animate-spin text-emerald-600" />
+            <Loader2 className="h-8 w-8 animate-spin text-[#4ADE40]" />
           </div>
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -158,7 +158,7 @@ export default function PricingConfig() {
               <Card className="border-slate-200">
                 <CardHeader>
                   <CardTitle className="text-lg font-['Outfit'] flex items-center gap-2">
-                    <Settings className="h-5 w-5 text-emerald-600" />
+                    <Settings className="h-5 w-5 text-[#4ADE40]" />
                     Pricing Parameters
                   </CardTitle>
                   <CardDescription>
@@ -199,7 +199,7 @@ export default function PricingConfig() {
               <Card className="border-slate-200 sticky top-6">
                 <CardHeader>
                   <CardTitle className="text-lg font-['Outfit'] flex items-center gap-2">
-                    <DollarSign className="h-5 w-5 text-emerald-600" />
+                    <DollarSign className="h-5 w-5 text-[#4ADE40]" />
                     Sample Estimate
                   </CardTitle>
                   <CardDescription>
@@ -252,7 +252,7 @@ export default function PricingConfig() {
                     
                     <div className="flex justify-between py-2">
                       <span className="font-bold text-slate-900">TOTAL</span>
-                      <span className="font-bold text-emerald-600 text-lg">
+                      <span className="font-bold text-[#4ADE40] text-lg">
                         ₹{Math.round(total).toLocaleString('en-IN')}
                       </span>
                     </div>

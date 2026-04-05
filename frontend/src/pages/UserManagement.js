@@ -137,7 +137,7 @@ export default function UserManagement() {
           </div>
           <Button 
             onClick={openCreateDialog}
-            className="bg-emerald-600 hover:bg-emerald-700 text-white"
+            className="bg-[#4ADE40] hover:bg-[#3dba35] text-black text-white"
             data-testid="add-user-btn"
           >
             <Plus className="h-4 w-4 mr-2" />
@@ -148,7 +148,7 @@ export default function UserManagement() {
         {/* Users List */}
         {loading ? (
           <div className="flex items-center justify-center py-12">
-            <Loader2 className="h-8 w-8 animate-spin text-emerald-600" />
+            <Loader2 className="h-8 w-8 animate-spin text-[#4ADE40]" />
           </div>
         ) : (
           <div className="space-y-4">
@@ -162,9 +162,9 @@ export default function UserManagement() {
                       <div className="flex items-center gap-4">
                         <div className="h-12 w-12 rounded-full bg-emerald-100 flex items-center justify-center">
                           {user.role === 'admin' ? (
-                            <Shield className="h-6 w-6 text-emerald-600" />
+                            <Shield className="h-6 w-6 text-[#4ADE40]" />
                           ) : (
-                            <UserIcon className="h-6 w-6 text-emerald-600" />
+                            <UserIcon className="h-6 w-6 text-[#4ADE40]" />
                           )}
                         </div>
                         <div>
@@ -287,7 +287,7 @@ export default function UserManagement() {
             <Button
               onClick={handleSubmit}
               disabled={actionLoading || !formData.name}
-              className="bg-emerald-600 hover:bg-emerald-700"
+              className="bg-[#4ADE40] hover:bg-[#3dba35] text-black"
               data-testid="save-user-btn"
             >
               {actionLoading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}

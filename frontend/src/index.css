@@ -21,27 +21,32 @@ code {
 
 @layer base {
     :root {
+        /* Sensoper Brand Colors - Based on Logo */
+        --sensoper-green: 120 100% 45%;  /* #4ADE40 - Bright Lime Green */
+        --sensoper-blue: 207 89% 56%;    /* #2D9BF0 - Bright Blue */
+        --sensoper-dark: 0 0% 8%;        /* #141414 - Near Black */
+        
         --background: 210 40% 98%;
-        --foreground: 222 47% 11%;
+        --foreground: 0 0% 8%;
         --card: 0 0% 100%;
-        --card-foreground: 222 47% 11%;
+        --card-foreground: 0 0% 8%;
         --popover: 0 0% 100%;
-        --popover-foreground: 222 47% 11%;
-        --primary: 160 84% 18%;
+        --popover-foreground: 0 0% 8%;
+        --primary: 120 100% 45%;         /* Sensoper Green */
         --primary-foreground: 0 0% 100%;
-        --secondary: 199 89% 40%;
+        --secondary: 207 89% 56%;        /* Sensoper Blue */
         --secondary-foreground: 0 0% 100%;
         --muted: 210 40% 96%;
         --muted-foreground: 215 16% 47%;
-        --accent: 38 92% 50%;
+        --accent: 207 89% 56%;           /* Sensoper Blue */
         --accent-foreground: 0 0% 100%;
         --destructive: 0 84% 60%;
         --destructive-foreground: 0 0% 100%;
         --border: 214 32% 91%;
         --input: 214 32% 91%;
-        --ring: 160 84% 18%;
-        --chart-1: 160 84% 18%;
-        --chart-2: 199 89% 40%;
+        --ring: 120 100% 45%;            /* Sensoper Green */
+        --chart-1: 120 100% 45%;
+        --chart-2: 207 89% 56%;
         --chart-3: 38 92% 50%;
         --chart-4: 0 84% 60%;
         --chart-5: 262 83% 58%;
@@ -56,6 +61,27 @@ code {
     body {
         @apply bg-background text-foreground;
     }
+}
+
+/* Brand colors utility classes */
+.bg-sensoper-green {
+    background-color: #4ADE40;
+}
+
+.bg-sensoper-blue {
+    background-color: #2D9BF0;
+}
+
+.bg-sensoper-dark {
+    background-color: #141414;
+}
+
+.text-sensoper-green {
+    color: #4ADE40;
+}
+
+.text-sensoper-blue {
+    color: #2D9BF0;
 }
 
 /* Custom scrollbar */
@@ -126,6 +152,18 @@ code {
 
 .status-completed {
     @apply bg-emerald-100 text-emerald-800;
+}
+
+/* Brand gradient */
+.brand-gradient {
+    background: linear-gradient(135deg, #4ADE40 0%, #2D9BF0 100%);
+}
+
+.brand-gradient-text {
+    background: linear-gradient(135deg, #4ADE40 0%, #2D9BF0 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
 }
 
 @layer base {

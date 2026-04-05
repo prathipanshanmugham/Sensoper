@@ -152,7 +152,7 @@ export default function TermsConditions() {
           </div>
           <Button 
             onClick={openCreateDialog}
-            className="bg-emerald-600 hover:bg-emerald-700 text-white"
+            className="bg-[#4ADE40] hover:bg-[#3dba35] text-black text-white"
             data-testid="add-terms-btn"
           >
             <Plus className="h-4 w-4 mr-2" />
@@ -173,7 +173,7 @@ export default function TermsConditions() {
         {/* Terms List */}
         {loading ? (
           <div className="flex items-center justify-center py-12">
-            <Loader2 className="h-8 w-8 animate-spin text-emerald-600" />
+            <Loader2 className="h-8 w-8 animate-spin text-[#4ADE40]" />
           </div>
         ) : terms.length === 0 ? (
           <Card className="border-slate-200">
@@ -181,7 +181,7 @@ export default function TermsConditions() {
               <FileText className="h-12 w-12 mx-auto mb-4 text-slate-300" />
               <h3 className="text-lg font-medium text-slate-900 mb-2">No terms configured</h3>
               <p className="text-slate-500 mb-4">Create your first terms & conditions version</p>
-              <Button onClick={openCreateDialog} className="bg-emerald-600 hover:bg-emerald-700 text-white">
+              <Button onClick={openCreateDialog} className="bg-[#4ADE40] hover:bg-[#3dba35] text-black text-white">
                 <Plus className="h-4 w-4 mr-2" />
                 Create Terms
               </Button>
@@ -335,7 +335,7 @@ export default function TermsConditions() {
             <Button
               onClick={handleSubmit}
               disabled={actionLoading}
-              className="bg-emerald-600 hover:bg-emerald-700"
+              className="bg-[#4ADE40] hover:bg-[#3dba35] text-black"
               data-testid="save-terms-btn"
             >
               {actionLoading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}

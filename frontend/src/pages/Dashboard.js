@@ -6,7 +6,6 @@ import { Button } from '../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
 import { 
-  Sun, 
   LayoutDashboard, 
   FolderPlus, 
   Users, 
@@ -27,6 +26,8 @@ import {
   ScrollText,
   AlertTriangle
 } from 'lucide-react';
+
+const LOGO_URL = "https://customer-assets.emergentagent.com/job_solar-estimator-14/artifacts/2dpfr2zb_slg.png";
 
 const statusConfig = {
   draft: { label: 'Draft', color: 'bg-amber-100 text-amber-800', icon: Clock },
@@ -154,34 +155,37 @@ export default function Dashboard() {
       )}
 
       {/* Sidebar */}
-      <aside className={`fixed top-0 left-0 z-50 h-full w-64 bg-white border-r border-slate-200 transform transition-transform lg:translate-x-0 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+      <aside className={`fixed top-0 left-0 z-50 h-full w-64 bg-[#0a0a0a] border-r border-slate-800 transform transition-transform lg:translate-x-0 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
         <div className="flex flex-col h-full">
           {/* Logo */}
-          <div className="flex items-center gap-3 px-6 py-5 border-b border-slate-200">
-            <Sun className="h-8 w-8 text-emerald-600" />
-            <span className="text-lg font-bold font-['Outfit'] text-slate-900">Sensoper</span>
+          <div className="flex items-center gap-3 px-4 py-4 border-b border-slate-800">
+            <img 
+              src={LOGO_URL} 
+              alt="Sensoper" 
+              className="h-12 w-auto object-contain"
+            />
             <button 
               className="ml-auto lg:hidden"
               onClick={() => setSidebarOpen(false)}
             >
-              <X className="h-5 w-5 text-slate-500" />
+              <X className="h-5 w-5 text-slate-400" />
             </button>
           </div>
 
           {/* Navigation */}
-          <nav className="flex-1 px-4 py-6 space-y-1 overflow-y-auto">
+          <nav className="flex-1 px-3 py-6 space-y-1 overflow-y-auto">
             {navItems.map((item) => (
               <Link
                 key={item.href}
                 to={item.href}
-                className="flex items-center gap-3 px-4 py-3 rounded-lg text-slate-600 hover:bg-emerald-50 hover:text-emerald-700 transition-colors"
+                className="flex items-center gap-3 px-4 py-3 rounded-lg text-slate-400 hover:bg-slate-800 hover:text-[#4ADE40] transition-colors"
                 onClick={() => setSidebarOpen(false)}
                 data-testid={`nav-${item.label.toLowerCase().replace(/\s+/g, '-')}`}
               >
                 <item.icon className="h-5 w-5" />
                 <span className="font-medium flex-1">{item.label}</span>
                 {item.badge > 0 && (
-                  <Badge className="bg-red-500 text-white text-xs px-2 py-0.5">
+                  <Badge className="bg-[#2D9BF0] text-white text-xs px-2 py-0.5">
                     {item.badge}
                   </Badge>
                 )}
@@ -190,21 +194,21 @@ export default function Dashboard() {
           </nav>
 
           {/* User section */}
-          <div className="px-4 py-4 border-t border-slate-200">
+          <div className="px-3 py-4 border-t border-slate-800">
             <div className="flex items-center gap-3 px-4 py-3">
-              <div className="h-10 w-10 rounded-full bg-emerald-100 flex items-center justify-center">
-                <span className="text-emerald-700 font-semibold">
+              <div className="h-10 w-10 rounded-full bg-[#4ADE40]/20 flex items-center justify-center">
+                <span className="text-[#4ADE40] font-semibold">
                   {user?.name?.charAt(0).toUpperCase()}
                 </span>
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-slate-900 truncate">{user?.name}</p>
+                <p className="text-sm font-medium text-white truncate">{user?.name}</p>
                 <p className="text-xs text-slate-500 capitalize">{user?.role}</p>
               </div>
             </div>
             <Button 
               variant="ghost" 
-              className="w-full mt-2 text-slate-600 hover:text-red-600 hover:bg-red-50 justify-start"
+              className="w-full mt-2 text-slate-400 hover:text-red-400 hover:bg-red-900/20 justify-start"
               onClick={handleLogout}
               data-testid="logout-btn"
             >
@@ -233,7 +237,7 @@ export default function Dashboard() {
               </h1>
             </div>
             <Link to="/dashboard/projects/new">
-              <Button className="bg-emerald-600 hover:bg-emerald-700 text-white" data-testid="new-project-btn">
+              <Button className="bg-[#4ADE40] hover:bg-[#3dba35] text-black font-medium" data-testid="new-project-btn">
                 <FolderPlus className="h-4 w-4 mr-2" />
                 New Project
               </Button>
@@ -325,7 +329,7 @@ export default function Dashboard() {
                 <CardHeader className="flex flex-row items-center justify-between py-4 px-6 border-b border-slate-200">
                   <CardTitle className="text-lg font-['Outfit'] text-slate-900">Recent Projects</CardTitle>
                   <Link to="/dashboard/projects">
-                    <Button variant="ghost" size="sm" className="text-emerald-600 hover:text-emerald-700" data-testid="view-all-projects-btn">
+                    <Button variant="ghost" size="sm" className="text-[#4ADE40] hover:text-emerald-700" data-testid="view-all-projects-btn">
                       View all
                     </Button>
                   </Link>
