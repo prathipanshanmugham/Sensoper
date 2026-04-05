@@ -1,30 +1,57 @@
-.App-logo {
-    height: 40vmin;
-    pointer-events: none;
+/* Custom styles for Sensoper Solar Estimator */
+
+/* Card hover effect */
+.card-hover {
+    @apply transition-all duration-200 ease-out;
 }
 
-@media (prefers-reduced-motion: no-preference) {
-    .App-logo {
-        animation: App-logo-spin infinite 20s linear;
+.card-hover:hover {
+    @apply shadow-md -translate-y-[2px];
+}
+
+/* Status badge colors */
+.status-draft {
+    @apply bg-amber-100 text-amber-800;
+}
+
+.status-submitted {
+    @apply bg-blue-100 text-blue-800;
+}
+
+.status-approved {
+    @apply bg-green-100 text-green-800;
+}
+
+.status-rejected {
+    @apply bg-red-100 text-red-800;
+}
+
+.status-completed {
+    @apply bg-emerald-100 text-emerald-800;
+}
+
+/* Form animations */
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
     }
 }
 
-.App-header {
-    background-color: #0f0f10;
-    min-height: 100vh;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    font-size: calc(10px + 2vmin);
-    color: white;
+.animate-fadeIn {
+    animation: fadeIn 0.3s ease-out forwards;
 }
 
-.App-link {
-    color: #61dafb;
+/* Loading spinner */
+.spinner {
+    animation: spin 1s linear infinite;
 }
 
-@keyframes App-logo-spin {
+@keyframes spin {
     from {
         transform: rotate(0deg);
     }
