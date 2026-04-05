@@ -1,0 +1,120 @@
+{
+  "theme": "light",
+  "archetype": "1_organic_and_earthy",
+  "design_philosophy": {
+    "core_principles": [
+      "Clarity over complexity: Field staff need large, readable inputs under sunlight.",
+      "Trust and Precision: The cost estimation must feel reliable and professional.",
+      "Progressive Disclosure: Break down complex site visit data into a manageable multi-step form.",
+      "Eco-Tech Aesthetic: Blend earthy sustainability with high-tech precision."
+    ],
+    "mood": "Professional, reliable, eco-friendly, efficient"
+  },
+  "colors": {
+    "primary": {
+      "DEFAULT": "#047857",
+      "foreground": "#FFFFFF",
+      "hover": "#065F46",
+      "description": "Sensoper Forest Green - used for primary actions, active states, and key highlights."
+    },
+    "secondary": {
+      "DEFAULT": "#0284C7",
+      "foreground": "#FFFFFF",
+      "hover": "#0369A1",
+      "description": "Sensoper Ocean Blue - used for secondary actions, informational badges, and progress indicators."
+    },
+    "background": {
+      "DEFAULT": "#F8FAFC",
+      "description": "Slightly cool off-white to reduce glare for field staff outdoors."
+    },
+    "surface": {
+      "DEFAULT": "#FFFFFF",
+      "foreground": "#0F172A",
+      "description": "Pure white for cards and forms to ensure high contrast."
+    },
+    "accent": {
+      "DEFAULT": "#F59E0B",
+      "foreground": "#FFFFFF",
+      "description": "Warm amber for pending statuses, warnings, or draft projects."
+    },
+    "destructive": {
+      "DEFAULT": "#EF4444",
+      "foreground": "#FFFFFF"
+    },
+    "muted": {
+      "DEFAULT": "#F1F5F9",
+      "foreground": "#64748B"
+    },
+    "border": "#E2E8F0",
+    "ring": "#047857"
+  },
+  "typography": {
+    "heading_font": "Outfit",
+    "body_font": "Figtree",
+    "scale": {
+      "h1": "text-4xl sm:text-5xl font-bold tracking-tight text-slate-900",
+      "h2": "text-2xl sm:text-3xl font-semibold tracking-tight text-slate-900",
+      "h3": "text-xl sm:text-2xl font-semibold text-slate-800",
+      "h4": "text-lg font-medium text-slate-800",
+      "body": "text-base text-slate-600 leading-relaxed",
+      "small": "text-sm text-slate-500",
+      "overline": "text-xs font-semibold uppercase tracking-[0.2em] text-slate-500"
+    },
+    "rules": [
+      "Never use Inter for headings.",
+      "Use Outfit for a modern, geometric tech feel mixed with friendliness.",
+      "Use Figtree for highly legible form inputs and data tables."
+    ]
+  },
+  "spacing_and_layout": {
+    "grid_system": "Control Room Grid (Dashboard) & Centered Multi-Step (Forms)",
+    "dashboard_layout": "grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-6",
+    "form_layout": "max-w-3xl mx-auto p-6 md:p-8 bg-white rounded-xl border border-slate-200 shadow-sm",
+    "spacing_scale": "Use generous padding (p-6, p-8) inside containers.",
+    "border_radius": "rounded-xl for main containers, rounded-lg for inputs/buttons.",
+    "surfaces": {
+      "cards": "Flat solid background, 1px border (border-slate-200), no heavy drop shadows. On hover: shadow-md and -translate-y-[2px] transition.",
+      "header": "Solid white background with border-b border-slate-200. Sticky top with z-50."
+    }
+  },
+  "components": {
+    "buttons": "Shadcn standard. Primary uses Forest Green. Secondary uses Ocean Blue. Always include distinct hover states.",
+    "forms": "Multi-step form with a horizontal progress stepper at the top. Use Shadcn Form, Input, Select, Checkbox. Group related fields (Customer Info, GPS, Electrical, Solar Inputs).",
+    "tables": "Shadcn Table for project tracking. Clean, border-b only for rows. Use badges for status (Draft, Submitted, Approved).",
+    "charts": "Shadcn Charts (Recharts) for cost breakdown (Pie Chart for Materials vs Labor).",
+    "cards": "Go cardless where possible in dashboards, or use subtle 1px border cards.",
+    "modals": "Shadcn Dialog for quick actions (e.g., viewing an uploaded site image)."
+  },
+  "interactions_and_animations": {
+    "hover": "Subtle transform and shadow updates on interactive cards. Color shifts on buttons.",
+    "form_transitions": "Smooth fade/slide when moving between multi-step form sections (use Framer Motion).",
+    "loading": "Skeleton loaders for data fetching. Spinner for form submissions.",
+    "micro_interactions": "Checkmark animations on successful step completion."
+  },
+  "icons": {
+    "library": "lucide-react",
+    "usage": "Use icons for form step indicators, dashboard sidebar navigation, and status badges. Keep stroke-width to 2px."
+  },
+  "image_urls": {
+    "login_background": {
+      "url": "https://images.unsplash.com/photo-1694327671725-e2a81cda3436?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxODl8MHwxfHNlYXJjaHwzfHxzb2xhciUyMHBhbmVscyUyMHJvb2Z8ZW58MHx8fHwxNzc1NDE5NTk4fDA&ixlib=rb-4.1.0&q=85",
+      "description": "Rows of solar panels on a roof. Use with a heavy gradient overlay (bg-black/60) or white overlay depending on login card style.",
+      "category": "background"
+    },
+    "hero_alternative": {
+      "url": "https://images.pexels.com/photos/17965455/pexels-photo-17965455.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+      "description": "Close-up of solar panels on a red tiled roof. Good for marketing or PDF cover pages.",
+      "category": "cover"
+    }
+  },
+  "instructions_to_main_agent": [
+    "Use standard HTML/Tailwind CSS with Shadcn UI for the entire application.",
+    "Implement role-based routing (Admin, Manager, Staff). Staff mostly use the Multi-step Site Visit Form.",
+    "The Multi-step form MUST use progressive disclosure: Step 1 (Customer/Location), Step 2 (Site Details & Photos), Step 3 (Electrical & Solar Inputs).",
+    "Use Recharts (via Shadcn) to display cost estimation breakdowns.",
+    "For the PDF generation, use a library like 'jspdf' and 'html2canvas' or '@react-pdf/renderer'. Ensure the Sensoper logo (placeholder if missing) and primary green color are prominent in the PDF.",
+    "Ensure the dashboard utilizes the 'Control Room Grid' approach for admins/managers to track projects.",
+    "Do NOT use 'Inter' for headings. Use 'Outfit' for headings and 'Figtree' for body text. Load them via Google Fonts.",
+    "Add data-testid attributes to all form inputs, buttons, and critical UI elements for automated testing."
+  ]
+}
