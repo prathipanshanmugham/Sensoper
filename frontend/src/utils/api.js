@@ -103,7 +103,14 @@ export const companyAPI = {
   getActive: () => api.get('/company/active'),
   create: (data) => api.post('/company', data),
   update: (id, data) => api.put(`/company/${id}`, data),
-  delete: (id) => api.delete(`/company/${id}`)
+  delete: (id) => api.delete(`/company/${id}`),
+  uploadLogo: (file) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return api.post('/company/upload-logo', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    });
+  }
 };
 
 export default api;

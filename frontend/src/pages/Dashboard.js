@@ -24,7 +24,8 @@ import {
   Trash2,
   History,
   ScrollText,
-  AlertTriangle
+  AlertTriangle,
+  Building2
 } from 'lucide-react';
 
 const LOGO_URL = "https://customer-assets.emergentagent.com/job_solar-estimator-14/artifacts/2dpfr2zb_slg.png";
@@ -141,6 +142,7 @@ export default function Dashboard() {
     { icon: ScrollText, label: 'Terms & Conditions', href: '/dashboard/terms', show: isAdmin || isManager },
     { icon: Users, label: 'User Management', href: '/dashboard/users', show: isAdmin },
     { icon: Settings, label: 'Pricing Config', href: '/dashboard/pricing', show: isAdmin },
+    { icon: Building2, label: 'Company Profile', href: '/dashboard/company-profile', show: isAdmin },
     { icon: History, label: 'Audit Logs', href: '/dashboard/audit-logs', show: isAdmin },
   ].filter(item => item.show);
 

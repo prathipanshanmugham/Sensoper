@@ -20,7 +20,8 @@ import {
   Check,
   Palette,
   CreditCard,
-  Globe
+  Globe,
+  Upload
 } from 'lucide-react';
 
 export default function CompanyProfile() {
@@ -31,6 +32,7 @@ export default function CompanyProfile() {
   const [activeTab, setActiveTab] = useState('basic');
   const [actionLoading, setActionLoading] = useState(false);
   const [error, setError] = useState('');
+  const [uploading, setUploading] = useState(false);
 
   const [formData, setFormData] = useState({
     company_name: '',
@@ -486,26 +488,54 @@ export default function CompanyProfile() {
 
             <TabsContent value="branding" className="mt-4 space-y-4">
               <div className="space-y-2">
-                <Label>Logo URL</Label>
-                <Input
-                  value={formData.logo_url}
-                  onChange={(e) => updateField('logo_url', e.target.value)}
-                  placeholder="https://example.com/logo.png"
-                  data-testid="logo-url-input"
-                />
-                {formData.logo_url && (
-                  <div className="mt-2 p-4 bg-slate-100 rounded-lg">
-                    <p className="text-xs text-slate-500 mb-2">Preview:</p>
-                    <img 
-                      src={formData.logo_url} 
-                      alt="Logo preview"
-                      className="h-16 w-auto object-contain"
-                      onError={(e) => {
-                        e.target.style.display = 'none';
-                      }}
+                <Label>Company Logo</Label>
+                <div className="flex gap-3 items-start">
+                  <div className="flex-1">
+                    <Input
+                      value={formData.logo_url}
+                      onChange={(e) => updateField('logo_url', e.target.value)}
+                      placeholder="https://example.com/logo.png or upload below"
+                      data-testid="logo-url-input"
                     />
+                    <div className="mt-2">
+                      <label className="inline-flex items-center gap-2 px-4 py-2 border border-dashed border-slate-300 rounded-lg cursor-pointer hover:bg-slate-50 transition-colors">
+                        <Upload className="h-4 w-4 text-slate-500" />
+                        <span className="text-sm text-slate-600">{uploading ? 'Uploading...' : 'Upload Logo Image'}</span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          data-testid="logo-file-input"
+                          disabled={uploading}
+                          onChange={async (e) => {
+                            const file = e.target.files?.[0];
+                            if (!file) return;
+                            setUploading(true);
+                            try {
+                              const res = await companyAPI.uploadLogo(file);
+                              updateField('logo_url', res.data.logo_url);
+                            } catch (err) {
+                              setError(err.response?.data?.detail || 'Logo upload failed');
+                            } finally {
+                              setUploading(false);
+                            }
+                          }}
+                        />
+                      </label>
+                      <p className="text-xs text-slate-400 mt-1">Max 2MB. PNG, JPG, SVG supported.</p>
+                    </div>
                   </div>
-                )}
+                  {formData.logo_url && (
+                    <div className="flex-shrink-0 p-3 bg-slate-100 rounded-lg border">
+                      <img 
+                        src={formData.logo_url} 
+                        alt="Logo preview"
+                        className="h-16 w-auto object-contain"
+                        onError={(e) => { e.target.style.display = 'none'; }}
+                      />
+                    </div>
+                  )}
+                </div>
               </div>
               
               <div className="grid grid-cols-2 gap-4">

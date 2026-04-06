@@ -16,6 +16,7 @@ import TermsConditions from "./pages/TermsConditions";
 import InventoryManagement from "./pages/InventoryManagement";
 import DeletionApprovals from "./pages/DeletionApprovals";
 import AuditLogs from "./pages/AuditLogs";
+import CompanyProfile from "./pages/CompanyProfile";
 
 // Protected Route Component
 function ProtectedRoute({ children, allowedRoles = null }) {
@@ -136,6 +137,14 @@ function AppRoutes() {
         element={
           <ProtectedRoute allowedRoles={["admin"]}>
             <AuditLogs />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/dashboard/company-profile"
+        element={
+          <ProtectedRoute allowedRoles={["admin"]}>
+            <CompanyProfile />
           </ProtectedRoute>
         }
       />

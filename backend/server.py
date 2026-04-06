@@ -817,6 +817,24 @@ async def delete_company_profile(profile_id: str, request: Request):
     
     return {"message": "Company profile deleted successfully"}
 
+@api_router.post("/company/upload-logo")
+async def upload_company_logo(request: Request, file: UploadFile = File(...)):
+    """Upload a logo image and return a base64 data URL"""
+    current_user = await require_role("admin")(request)
+    
+    if not file.content_type or not file.content_type.startswith("image/"):
+        raise HTTPException(status_code=400, detail="Only image files are allowed")
+    
+    contents = await file.read()
+    if len(contents) > 2 * 1024 * 1024:  # 2MB limit
+        raise HTTPException(status_code=400, detail="File size must be under 2MB")
+    
+    import base64
+    b64 = base64.b64encode(contents).decode("utf-8")
+    data_url = f"data:{file.content_type};base64,{b64}"
+    
+    return {"logo_url": data_url}
+
 # ================== TERMS & CONDITIONS ==================
 
 @api_router.get("/terms")

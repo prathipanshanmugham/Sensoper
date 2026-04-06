@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { projectsAPI, termsAPI } from '../utils/api';
+import { projectsAPI, termsAPI, companyAPI } from '../utils/api';
 import { Button } from '../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
@@ -26,6 +26,7 @@ import {
   AlertTriangle
 } from 'lucide-react';
 import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 const LOGO_URL = "https://customer-assets.emergentagent.com/job_solar-estimator-14/artifacts/2dpfr2zb_slg.png";
 
@@ -89,10 +90,12 @@ export default function ProjectDetails() {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [deletionReason, setDeletionReason] = useState('');
   const [terms, setTerms] = useState(null);
+  const [companyProfile, setCompanyProfile] = useState(null);
 
   useEffect(() => {
     fetchProject();
     fetchTerms();
+    fetchCompanyProfile();
   }, [id]);
 
   const fetchProject = async () => {
@@ -113,6 +116,15 @@ export default function ProjectDetails() {
       setTerms(res.data);
     } catch (error) {
       console.error('Failed to fetch terms:', error);
+    }
+  };
+
+  const fetchCompanyProfile = async () => {
+    try {
+      const res = await companyAPI.getActive();
+      setCompanyProfile(res.data);
+    } catch (error) {
+      console.error('Failed to fetch company profile:', error);
     }
   };
 
@@ -195,134 +207,314 @@ export default function ProjectDetails() {
     }
   };
 
-  const generatePDF = () => {
+  const generatePDF = async () => {
+    const cp = companyProfile || {};
     const doc = new jsPDF();
     const pageWidth = doc.internal.pageSize.getWidth();
     const pageHeight = doc.internal.pageSize.getHeight();
-    
-    // Header - Black background with brand colors
-    doc.setFillColor(10, 10, 10); // Near black like logo background
-    doc.rect(0, 0, pageWidth, 45, 'F');
-    
-    // Company Name with brand colors
-    doc.setFontSize(22);
+    const margin = 15;
+    const contentWidth = pageWidth - margin * 2;
+
+    // Colors from company profile or defaults
+    const primaryHex = cp.primary_color || '#4ADE40';
+    const secondaryHex = cp.secondary_color || '#2D9BF0';
+    const hexToRgb = (hex) => {
+      const r = parseInt(hex.slice(1, 3), 16);
+      const g = parseInt(hex.slice(3, 5), 16);
+      const b = parseInt(hex.slice(5, 7), 16);
+      return [r, g, b];
+    };
+    const primaryRgb = hexToRgb(primaryHex);
+    const secondaryRgb = hexToRgb(secondaryHex);
+
+    // ─── HELPER: Draw header on every page ───
+    const drawHeader = (pageDoc) => {
+      pageDoc.setFillColor(15, 15, 15);
+      pageDoc.rect(0, 0, pageWidth, 38, 'F');
+      
+      // Company name
+      pageDoc.setFontSize(18);
+      pageDoc.setFont('helvetica', 'bold');
+      pageDoc.setTextColor(...primaryRgb);
+      const companyName = cp.company_name || 'Sensoper Controls & Renewables';
+      pageDoc.text(companyName, margin, 16);
+      
+      // Tagline
+      if (cp.tagline) {
+        pageDoc.setFontSize(9);
+        pageDoc.setFont('helvetica', 'normal');
+        pageDoc.setTextColor(180, 180, 180);
+        pageDoc.text(cp.tagline, margin, 24);
+      }
+      
+      // Contact on right
+      pageDoc.setFontSize(8);
+      pageDoc.setTextColor(200, 200, 200);
+      const contactLines = [];
+      if (cp.phone) contactLines.push(cp.phone);
+      if (cp.email) contactLines.push(cp.email);
+      if (cp.website) contactLines.push(cp.website);
+      contactLines.forEach((line, i) => {
+        pageDoc.text(line, pageWidth - margin, 14 + i * 4, { align: 'right' });
+      });
+
+      // Accent line
+      pageDoc.setFillColor(...primaryRgb);
+      pageDoc.rect(0, 38, pageWidth, 1.5, 'F');
+    };
+
+    // ─── HELPER: Draw footer on every page ───
+    const drawFooter = (pageDoc, pageNum, totalPages) => {
+      pageDoc.setFillColor(15, 15, 15);
+      pageDoc.rect(0, pageHeight - 14, pageWidth, 14, 'F');
+      pageDoc.setFontSize(7);
+      pageDoc.setTextColor(150, 150, 150);
+      const companyName = cp.company_name || 'Sensoper Controls & Renewables';
+      pageDoc.text(companyName, margin, pageHeight - 5);
+      pageDoc.text(`Page ${pageNum} of ${totalPages}`, pageWidth - margin, pageHeight - 5, { align: 'right' });
+      if (cp.gst_number) {
+        pageDoc.text(`GSTIN: ${cp.gst_number}`, pageWidth / 2, pageHeight - 5, { align: 'center' });
+      }
+    };
+
+    // ═══════════════ PAGE 1: Cover + Customer + System ═══════════════
+    drawHeader(doc);
+    let y = 48;
+
+    // Quote reference box
+    doc.setFillColor(245, 245, 245);
+    doc.roundedRect(margin, y, contentWidth, 18, 2, 2, 'F');
+    doc.setFontSize(10);
     doc.setFont('helvetica', 'bold');
-    doc.setTextColor(74, 222, 64); // #4ADE40 - Sensoper Green
-    doc.text('Sens', 20, 18);
-    doc.setTextColor(45, 155, 240); // #2D9BF0 - Sensoper Blue  
-    doc.text('Oper', 44, 18);
-    
-    doc.setFontSize(14);
-    doc.setTextColor(45, 155, 240); // Blue
-    doc.text('Controls', 20, 28);
-    doc.setTextColor(74, 222, 64); // Green
-    doc.text(' & ', 52, 28);
-    doc.setTextColor(45, 155, 240); // Blue
-    doc.text('Renewables', 62, 28);
-    
-    doc.setFontSize(10);
-    doc.setTextColor(150, 150, 150);
-    doc.text('Solar Project Quotation', 20, 38);
-    
-    // Date and Quote number
-    doc.setTextColor(255, 255, 255);
-    doc.setFontSize(10);
-    doc.text(`Date: ${new Date().toLocaleDateString('en-IN')}`, pageWidth - 60, 20);
-    doc.text(`Quotation #: SCR-${id.slice(0, 8).toUpperCase()}`, pageWidth - 60, 28);
-    
-    // Customer Details
-    doc.setTextColor(0, 0, 0);
-    doc.setFontSize(14);
-    doc.setFont('helvetica', 'bold');
-    doc.text('Customer Details', 20, 55);
-    
-    doc.setFontSize(10);
+    doc.setTextColor(50, 50, 50);
+    doc.text('SOLAR PROJECT QUOTATION', margin + 4, y + 7);
     doc.setFont('helvetica', 'normal');
-    doc.text(`Name: ${project.customer?.name || '-'}`, 20, 65);
-    doc.text(`Phone: ${project.customer?.phone || '-'}`, 20, 72);
-    doc.text(`Address: ${project.customer?.address || '-'}`, 20, 79);
-    
-    // System Configuration
-    doc.setFontSize(14);
+    doc.setFontSize(9);
+    doc.setTextColor(100, 100, 100);
+    doc.text(`Ref: SCR-${id.slice(0, 8).toUpperCase()}`, margin + 4, y + 14);
+    doc.text(`Date: ${new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' })}`, pageWidth - margin - 4, y + 7, { align: 'right' });
+    doc.text(`Status: ${(project.status || 'draft').toUpperCase()}`, pageWidth - margin - 4, y + 14, { align: 'right' });
+    y += 26;
+
+    // ─── Customer Details ───
+    doc.setFontSize(12);
     doc.setFont('helvetica', 'bold');
-    doc.text('System Configuration', 20, 95);
-    
-    doc.setFontSize(10);
-    doc.setFont('helvetica', 'normal');
-    let y = 105;
-    doc.text(`System Type: ${project.solar_system?.system_type?.toUpperCase() || '-'}`, 20, y);
-    doc.text(`Total Capacity: ${project.cost_estimation?.total_capacity_kw || 0} kW`, 20, y + 7);
-    doc.text(`Panels Required: ${project.cost_estimation?.panels_required || 0} x ${project.solar_system?.panel_wattage || 540}W`, 20, y + 14);
-    doc.text(`Inverter: ${project.solar_system?.inverter_model || '-'}`, 20, y + 21);
-    doc.text(`Mounting: ${project.mounting?.roof_type?.toUpperCase() || '-'} - ${project.mounting?.structure_type || '-'}`, 20, y + 28);
-    
-    // Cost Breakdown
-    doc.setFontSize(14);
-    doc.setFont('helvetica', 'bold');
-    doc.text('Cost Breakdown', 20, y + 48);
-    
-    y = y + 58;
-    doc.setFontSize(10);
-    doc.setFont('helvetica', 'normal');
-    
-    const costs = [
-      ['Solar Panels', project.cost_estimation?.panel_cost],
-      ['Inverter', project.cost_estimation?.inverter_cost],
-      ['Mounting Structure', project.cost_estimation?.structure_cost],
-      ['Wiring & Accessories', project.cost_estimation?.wiring_cost],
-      ['Installation Labor', project.cost_estimation?.labor_cost],
-      ['Transportation', project.cost_estimation?.transportation_cost],
-    ];
-    
-    if (project.cost_estimation?.battery_cost > 0) {
-      costs.push(['Battery Backup', project.cost_estimation?.battery_cost]);
-    }
-    
-    costs.forEach(([label, value]) => {
-      doc.text(label, 20, y);
-      doc.text(`₹${(value || 0).toLocaleString('en-IN')}`, pageWidth - 60, y);
-      y += 7;
-    });
-    
-    // Subtotal
-    doc.setDrawColor(200, 200, 200);
-    doc.line(20, y, pageWidth - 20, y);
-    y += 7;
-    doc.text('Subtotal', 20, y);
-    doc.text(`₹${(project.cost_estimation?.subtotal || 0).toLocaleString('en-IN')}`, pageWidth - 60, y);
-    
-    y += 7;
-    doc.text(`Margin (${project.cost_estimation?.margin_percentage || 15}%)`, 20, y);
-    doc.text(`₹${(project.cost_estimation?.margin || 0).toLocaleString('en-IN')}`, pageWidth - 60, y);
-    
-    y += 7;
-    doc.text(`GST (${project.cost_estimation?.gst_percentage || 13.8}%)`, 20, y);
-    doc.text(`₹${(project.cost_estimation?.gst || 0).toLocaleString('en-IN')}`, pageWidth - 60, y);
-    
-    // Total
-    y += 5;
-    doc.setDrawColor(74, 222, 64); // Sensoper Green
+    doc.setTextColor(...secondaryRgb);
+    doc.text('Customer Details', margin, y);
+    doc.setDrawColor(...secondaryRgb);
     doc.setLineWidth(0.5);
-    doc.line(20, y, pageWidth - 20, y);
-    y += 10;
-    doc.setFontSize(14);
+    doc.line(margin, y + 2, margin + 42, y + 2);
+    y += 8;
+
+    autoTable(doc, {
+      startY: y,
+      margin: { left: margin, right: margin },
+      theme: 'plain',
+      styles: { fontSize: 9, cellPadding: 2 },
+      columnStyles: { 0: { fontStyle: 'bold', cellWidth: 40, textColor: [100, 100, 100] } },
+      body: [
+        ['Name', project.customer?.name || '-'],
+        ['Phone', project.customer?.phone || '-'],
+        ['Email', project.customer?.email || '-'],
+        ['Address', project.customer?.address || '-'],
+      ],
+    });
+    y = doc.lastAutoTable.finalY + 10;
+
+    // ─── Site & System Info ───
+    doc.setFontSize(12);
     doc.setFont('helvetica', 'bold');
-    doc.setTextColor(74, 222, 64); // Sensoper Green
-    doc.text('TOTAL AMOUNT', 20, y);
-    doc.text(`₹${(project.cost_estimation?.total_cost || 0).toLocaleString('en-IN')}`, pageWidth - 60, y);
-    
-    // Terms & Conditions (Dynamic from backend)
-    doc.setTextColor(0, 0, 0);
-    doc.setFontSize(10);
+    doc.setTextColor(...secondaryRgb);
+    doc.text('System Configuration', margin, y);
+    doc.line(margin, y + 2, margin + 52, y + 2);
+    y += 8;
+
+    autoTable(doc, {
+      startY: y,
+      margin: { left: margin, right: margin },
+      theme: 'plain',
+      styles: { fontSize: 9, cellPadding: 2 },
+      columnStyles: { 0: { fontStyle: 'bold', cellWidth: 50, textColor: [100, 100, 100] } },
+      body: [
+        ['System Type', (project.solar_system?.system_type || '-').toUpperCase()],
+        ['Total Capacity', `${project.cost_estimation?.total_capacity_kw || 0} kW`],
+        ['Panels Required', `${project.cost_estimation?.panels_required || 0} x ${project.solar_system?.panel_wattage || 540}W`],
+        ['Inverter Model', project.solar_system?.inverter_model || '-'],
+        ['Roof Type', (project.mounting?.roof_type || '-').toUpperCase()],
+        ['Mounting Structure', project.mounting?.structure_type || '-'],
+        ['Tilt Angle', `${project.mounting?.tilt_angle || 0}°`],
+        ...(project.solar_system?.battery_required ? [['Battery Capacity', `${project.solar_system?.battery_capacity_ah || 0} Ah`]] : []),
+      ],
+    });
+    y = doc.lastAutoTable.finalY + 10;
+
+    // ─── Electrical Details ───
+    doc.setFontSize(12);
     doc.setFont('helvetica', 'bold');
-    y += 20;
-    doc.text('Terms & Conditions:', 20, y);
-    
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(8);
-    
-    // Parse and display terms
-    const termsList = terms?.content 
+    doc.setTextColor(...secondaryRgb);
+    doc.text('Electrical Details', margin, y);
+    doc.line(margin, y + 2, margin + 44, y + 2);
+    y += 8;
+
+    autoTable(doc, {
+      startY: y,
+      margin: { left: margin, right: margin },
+      theme: 'plain',
+      styles: { fontSize: 9, cellPadding: 2 },
+      columnStyles: { 0: { fontStyle: 'bold', cellWidth: 50, textColor: [100, 100, 100] } },
+      body: [
+        ['Sanction Load', `${project.electrical?.sanction_load_kw || 0} kW`],
+        ['Connected Load', `${project.electrical?.connected_load_kw || 0} kW`],
+        ['Monthly Consumption', `${project.electrical?.monthly_consumption_units || 0} units`],
+        ['EB Tariff', `₹${project.electrical?.eb_tariff || 0}/unit`],
+        ['Cable Length', `${project.additional?.cable_length_meters || 0} m`],
+        ['Complexity', (project.additional?.installation_complexity || '-').toUpperCase()],
+      ],
+    });
+    y = doc.lastAutoTable.finalY + 14;
+
+    // ═══════════════ COST BREAKDOWN TABLE ═══════════════
+    // Check if enough space, otherwise add a page
+    if (y > pageHeight - 100) {
+      doc.addPage();
+      drawHeader(doc);
+      y = 48;
+    }
+
+    doc.setFontSize(12);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(...primaryRgb);
+    doc.text('Cost Breakdown', margin, y);
+    doc.setDrawColor(...primaryRgb);
+    doc.line(margin, y + 2, margin + 40, y + 2);
+    y += 8;
+
+    const costRows = [
+      ['Solar Panels', `₹${(project.cost_estimation?.panel_cost || 0).toLocaleString('en-IN')}`],
+      ['Inverter', `₹${(project.cost_estimation?.inverter_cost || 0).toLocaleString('en-IN')}`],
+      ['Mounting Structure', `₹${(project.cost_estimation?.structure_cost || 0).toLocaleString('en-IN')}`],
+      ['Wiring & Accessories', `₹${(project.cost_estimation?.wiring_cost || 0).toLocaleString('en-IN')}`],
+      ['Installation Labor', `₹${(project.cost_estimation?.labor_cost || 0).toLocaleString('en-IN')}`],
+      ['Transportation', `₹${(project.cost_estimation?.transportation_cost || 0).toLocaleString('en-IN')}`],
+    ];
+
+    if (project.cost_estimation?.battery_cost > 0) {
+      costRows.push(['Battery Backup', `₹${(project.cost_estimation?.battery_cost || 0).toLocaleString('en-IN')}`]);
+    }
+
+    autoTable(doc, {
+      startY: y,
+      margin: { left: margin, right: margin },
+      head: [['Component', 'Amount']],
+      body: costRows,
+      theme: 'striped',
+      headStyles: {
+        fillColor: primaryRgb,
+        textColor: [0, 0, 0],
+        fontStyle: 'bold',
+        fontSize: 10,
+      },
+      styles: { fontSize: 9, cellPadding: 3 },
+      columnStyles: {
+        0: { cellWidth: contentWidth * 0.6 },
+        1: { halign: 'right', cellWidth: contentWidth * 0.4 },
+      },
+      alternateRowStyles: { fillColor: [248, 250, 252] },
+    });
+    y = doc.lastAutoTable.finalY + 4;
+
+    // Summary rows
+    autoTable(doc, {
+      startY: y,
+      margin: { left: margin, right: margin },
+      theme: 'plain',
+      styles: { fontSize: 9, cellPadding: 3 },
+      columnStyles: {
+        0: { cellWidth: contentWidth * 0.6, fontStyle: 'bold' },
+        1: { halign: 'right', cellWidth: contentWidth * 0.4 },
+      },
+      body: [
+        ['Subtotal', `₹${(project.cost_estimation?.subtotal || 0).toLocaleString('en-IN')}`],
+        [`Margin (${project.cost_estimation?.margin_percentage || 15}%)`, `₹${(project.cost_estimation?.margin || 0).toLocaleString('en-IN')}`],
+        [`GST (${project.cost_estimation?.gst_percentage || 13.8}%)`, `₹${(project.cost_estimation?.gst || 0).toLocaleString('en-IN')}`],
+      ],
+    });
+    y = doc.lastAutoTable.finalY + 2;
+
+    // Grand Total row
+    autoTable(doc, {
+      startY: y,
+      margin: { left: margin, right: margin },
+      theme: 'plain',
+      styles: { fontSize: 13, cellPadding: 4, fontStyle: 'bold' },
+      columnStyles: {
+        0: { cellWidth: contentWidth * 0.6, textColor: [30, 30, 30] },
+        1: { halign: 'right', cellWidth: contentWidth * 0.4, textColor: primaryRgb },
+      },
+      body: [
+        ['TOTAL AMOUNT', `₹${(project.cost_estimation?.total_cost || 0).toLocaleString('en-IN')}`],
+      ],
+      didDrawCell: (data) => {
+        if (data.row.index === 0 && data.column.index === 0) {
+          doc.setDrawColor(...primaryRgb);
+          doc.setLineWidth(0.8);
+          doc.line(data.cell.x, data.cell.y, data.cell.x + contentWidth, data.cell.y);
+        }
+      },
+    });
+    y = doc.lastAutoTable.finalY + 14;
+
+    // ═══════════════ BANK DETAILS ═══════════════
+    const bank = cp.bank_details;
+    if (bank && bank.account_name) {
+      if (y > pageHeight - 60) {
+        doc.addPage();
+        drawHeader(doc);
+        y = 48;
+      }
+
+      doc.setFontSize(12);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(...secondaryRgb);
+      doc.text('Bank Details for Payment', margin, y);
+      doc.setDrawColor(...secondaryRgb);
+      doc.line(margin, y + 2, margin + 56, y + 2);
+      y += 8;
+
+      autoTable(doc, {
+        startY: y,
+        margin: { left: margin, right: margin },
+        theme: 'plain',
+        styles: { fontSize: 9, cellPadding: 2 },
+        columnStyles: { 0: { fontStyle: 'bold', cellWidth: 45, textColor: [100, 100, 100] } },
+        body: [
+          ['Account Name', bank.account_name],
+          ['Account Number', bank.account_number],
+          ['IFSC Code', bank.ifsc_code],
+          ['Bank Name', bank.bank_name],
+          ['Branch', bank.branch],
+        ],
+      });
+      y = doc.lastAutoTable.finalY + 14;
+    }
+
+    // ═══════════════ TERMS & CONDITIONS ═══════════════
+    if (y > pageHeight - 50) {
+      doc.addPage();
+      drawHeader(doc);
+      y = 48;
+    }
+
+    doc.setFontSize(12);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(80, 80, 80);
+    doc.text('Terms & Conditions', margin, y);
+    doc.setDrawColor(180, 180, 180);
+    doc.setLineWidth(0.3);
+    doc.line(margin, y + 2, margin + 48, y + 2);
+    y += 8;
+
+    const termsList = terms?.content
       ? parseTermsHtml(terms.content)
       : [
           'This quotation is valid for 30 days from the date of issue.',
@@ -330,36 +522,68 @@ export default function ProjectDetails() {
           'Balance payment due upon installation completion.',
           'Installation timeline: 7-14 working days after material delivery.',
           '5-year warranty on installation workmanship.',
-          'Panel warranty as per manufacturer terms (typically 25 years).'
+          'Panel warranty as per manufacturer terms (typically 25 years).',
         ];
-    
-    termsList.forEach((term, i) => {
-      const termText = term.startsWith(`${i + 1}.`) ? term : `${i + 1}. ${term}`;
-      const splitText = doc.splitTextToSize(termText, pageWidth - 40);
-      
-      // Check if we need a new page
-      if (y + (splitText.length * 4) > pageHeight - 20) {
-        doc.addPage();
-        y = 20;
-      }
-      
-      splitText.forEach((line, lineIndex) => {
-        doc.text(line, 20, y + 7 + (i * 5) + (lineIndex * 4));
-      });
+
+    const termsBody = termsList.map((term, i) => [`${i + 1}. ${term}`]);
+
+    autoTable(doc, {
+      startY: y,
+      margin: { left: margin, right: margin },
+      theme: 'plain',
+      styles: { fontSize: 8, cellPadding: { top: 1.5, bottom: 1.5, left: 2, right: 2 }, textColor: [80, 80, 80] },
+      body: termsBody,
+      didDrawPage: (data) => {
+        // Draw header/footer on overflow pages
+        drawHeader(data.doc);
+      },
     });
-    
-    // Footer - Brand colored
-    doc.setFillColor(10, 10, 10); // Near black
-    doc.rect(0, pageHeight - 17, pageWidth, 17, 'F');
-    doc.setFontSize(9);
-    doc.setTextColor(74, 222, 64); // Green
-    doc.text('Sensoper', pageWidth / 2 - 35, pageHeight - 8);
-    doc.setTextColor(45, 155, 240); // Blue
-    doc.text('Controls & Renewables', pageWidth / 2 - 12, pageHeight - 8);
+    y = doc.lastAutoTable.finalY + 20;
+
+    // ═══════════════ AUTHORIZED SIGNATORY ═══════════════
+    if (y > pageHeight - 45) {
+      doc.addPage();
+      drawHeader(doc);
+      y = 48;
+    }
+
+    // Left side: company stamp placeholder
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'normal');
     doc.setTextColor(150, 150, 150);
-    doc.text(' | Solar Solutions Provider', pageWidth / 2 + 45, pageHeight - 8);
-    
-    // Save
+    doc.text('Company Seal / Stamp', margin, y + 20);
+    doc.setDrawColor(200, 200, 200);
+    doc.setLineDashPattern([2, 2], 0);
+    doc.rect(margin, y, 50, 25);
+    doc.setLineDashPattern([], 0);
+
+    // Right side: authorized signatory
+    const sigX = pageWidth - margin - 60;
+    doc.setDrawColor(100, 100, 100);
+    doc.line(sigX, y + 15, sigX + 55, y + 15);
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(50, 50, 50);
+    doc.text(cp.authorized_signatory || 'Authorized Signatory', sigX, y + 21);
+    if (cp.designation) {
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8);
+      doc.setTextColor(120, 120, 120);
+      doc.text(cp.designation, sigX, y + 26);
+    }
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7);
+    doc.setTextColor(150, 150, 150);
+    doc.text('For ' + (cp.company_name || 'Sensoper Controls & Renewables'), sigX, y + 31);
+
+    // ─── Add headers/footers to ALL pages ───
+    const totalPages = doc.internal.getNumberOfPages();
+    for (let i = 1; i <= totalPages; i++) {
+      doc.setPage(i);
+      if (i > 1) drawHeader(doc); // page 1 already has header
+      drawFooter(doc, i, totalPages);
+    }
+
     doc.save(`Quotation-${project.customer?.name || 'Customer'}-${new Date().toISOString().split('T')[0]}.pdf`);
   };
 
