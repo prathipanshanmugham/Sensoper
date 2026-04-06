@@ -176,6 +176,48 @@ class InventoryItemUpdate(BaseModel):
 class DeletionRequestCreate(BaseModel):
     reason: str
 
+# ================== COMPANY PROFILE MODELS ==================
+
+class BankDetails(BaseModel):
+    account_name: Optional[str] = None
+    account_number: Optional[str] = None
+    ifsc_code: Optional[str] = None
+    bank_name: Optional[str] = None
+    branch: Optional[str] = None
+
+class CompanyProfileCreate(BaseModel):
+    company_name: str
+    tagline: Optional[str] = None
+    logo_url: Optional[str] = None
+    primary_color: str = "#4ADE40"
+    secondary_color: str = "#2D9BF0"
+    address: str
+    phone: str
+    email: EmailStr
+    website: Optional[str] = None
+    gst_number: Optional[str] = None
+    pan_number: Optional[str] = None
+    bank_details: Optional[BankDetails] = None
+    authorized_signatory: Optional[str] = None
+    designation: Optional[str] = None
+
+class CompanyProfileUpdate(BaseModel):
+    company_name: Optional[str] = None
+    tagline: Optional[str] = None
+    logo_url: Optional[str] = None
+    primary_color: Optional[str] = None
+    secondary_color: Optional[str] = None
+    address: Optional[str] = None
+    phone: Optional[str] = None
+    email: Optional[EmailStr] = None
+    website: Optional[str] = None
+    gst_number: Optional[str] = None
+    pan_number: Optional[str] = None
+    bank_details: Optional[BankDetails] = None
+    authorized_signatory: Optional[str] = None
+    designation: Optional[str] = None
+    is_active: Optional[bool] = None
+
 # ================== HELPER FUNCTIONS ==================
 
 def hash_password(password: str) -> str:
@@ -583,6 +625,197 @@ async def update_pricing(pricing: PricingConfig, request: Request):
     )
     
     return {"message": "Pricing updated successfully"}
+
+# ================== COMPANY PROFILE ==================
+
+@api_router.get("/company")
+async def get_company_profiles(request: Request):
+    """Get all company profiles"""
+    await get_current_user(request)
+    
+    profiles = await db.company_profiles.find().to_list(100)
+    return [
+        {
+            "id": str(p["_id"]),
+            "company_name": p["company_name"],
+            "tagline": p.get("tagline"),
+            "logo_url": p.get("logo_url"),
+            "primary_color": p.get("primary_color", "#4ADE40"),
+            "secondary_color": p.get("secondary_color", "#2D9BF0"),
+            "address": p["address"],
+            "phone": p["phone"],
+            "email": p["email"],
+            "website": p.get("website"),
+            "gst_number": p.get("gst_number"),
+            "pan_number": p.get("pan_number"),
+            "bank_details": p.get("bank_details"),
+            "authorized_signatory": p.get("authorized_signatory"),
+            "designation": p.get("designation"),
+            "is_active": p.get("is_active", False),
+            "created_at": p["created_at"]
+        }
+        for p in profiles
+    ]
+
+@api_router.get("/company/active")
+async def get_active_company():
+    """Get the active company profile (for PDF generation, public access)"""
+    profile = await db.company_profiles.find_one({"is_active": True})
+    
+    if not profile:
+        # Return default profile if none exists
+        return {
+            "id": None,
+            "company_name": "Sensoper Controls & Renewables",
+            "tagline": "Solar Solutions Provider",
+            "logo_url": "https://customer-assets.emergentagent.com/job_solar-estimator-14/artifacts/y3yo3sfo_snspr.png",
+            "primary_color": "#4ADE40",
+            "secondary_color": "#2D9BF0",
+            "address": "Tamil Nadu, India",
+            "phone": "+91 XXXXX XXXXX",
+            "email": "info@sensoper.com",
+            "website": "www.sensoper.com",
+            "gst_number": None,
+            "pan_number": None,
+            "bank_details": None,
+            "authorized_signatory": None,
+            "designation": None
+        }
+    
+    return {
+        "id": str(profile["_id"]),
+        "company_name": profile["company_name"],
+        "tagline": profile.get("tagline"),
+        "logo_url": profile.get("logo_url"),
+        "primary_color": profile.get("primary_color", "#4ADE40"),
+        "secondary_color": profile.get("secondary_color", "#2D9BF0"),
+        "address": profile["address"],
+        "phone": profile["phone"],
+        "email": profile["email"],
+        "website": profile.get("website"),
+        "gst_number": profile.get("gst_number"),
+        "pan_number": profile.get("pan_number"),
+        "bank_details": profile.get("bank_details"),
+        "authorized_signatory": profile.get("authorized_signatory"),
+        "designation": profile.get("designation")
+    }
+
+@api_router.post("/company")
+async def create_company_profile(profile: CompanyProfileCreate, request: Request):
+    """Create a new company profile"""
+    current_user = await require_role("admin")(request)
+    
+    profile_doc = {
+        "company_name": profile.company_name,
+        "tagline": profile.tagline,
+        "logo_url": profile.logo_url,
+        "primary_color": profile.primary_color,
+        "secondary_color": profile.secondary_color,
+        "address": profile.address,
+        "phone": profile.phone,
+        "email": profile.email,
+        "website": profile.website,
+        "gst_number": profile.gst_number,
+        "pan_number": profile.pan_number,
+        "bank_details": profile.bank_details.model_dump() if profile.bank_details else None,
+        "authorized_signatory": profile.authorized_signatory,
+        "designation": profile.designation,
+        "is_active": False,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "updated_at": datetime.now(timezone.utc).isoformat()
+    }
+    
+    result = await db.company_profiles.insert_one(profile_doc)
+    
+    await create_audit_log(
+        current_user["id"], current_user["name"], "create", "company_profile",
+        str(result.inserted_id), None, {"company_name": profile.company_name}
+    )
+    
+    return {"id": str(result.inserted_id), "message": "Company profile created successfully"}
+
+@api_router.put("/company/{profile_id}")
+async def update_company_profile(profile_id: str, updates: CompanyProfileUpdate, request: Request):
+    """Update a company profile"""
+    current_user = await require_role("admin")(request)
+    
+    profile = await db.company_profiles.find_one({"_id": ObjectId(profile_id)})
+    if not profile:
+        raise HTTPException(status_code=404, detail="Company profile not found")
+    
+    update_data = {"updated_at": datetime.now(timezone.utc).isoformat()}
+    
+    if updates.company_name is not None:
+        update_data["company_name"] = updates.company_name
+    if updates.tagline is not None:
+        update_data["tagline"] = updates.tagline
+    if updates.logo_url is not None:
+        update_data["logo_url"] = updates.logo_url
+    if updates.primary_color is not None:
+        update_data["primary_color"] = updates.primary_color
+    if updates.secondary_color is not None:
+        update_data["secondary_color"] = updates.secondary_color
+    if updates.address is not None:
+        update_data["address"] = updates.address
+    if updates.phone is not None:
+        update_data["phone"] = updates.phone
+    if updates.email is not None:
+        update_data["email"] = updates.email
+    if updates.website is not None:
+        update_data["website"] = updates.website
+    if updates.gst_number is not None:
+        update_data["gst_number"] = updates.gst_number
+    if updates.pan_number is not None:
+        update_data["pan_number"] = updates.pan_number
+    if updates.bank_details is not None:
+        update_data["bank_details"] = updates.bank_details.model_dump()
+    if updates.authorized_signatory is not None:
+        update_data["authorized_signatory"] = updates.authorized_signatory
+    if updates.designation is not None:
+        update_data["designation"] = updates.designation
+    
+    # Handle activation
+    if updates.is_active is True:
+        # Deactivate all other profiles
+        await db.company_profiles.update_many(
+            {"_id": {"$ne": ObjectId(profile_id)}},
+            {"$set": {"is_active": False}}
+        )
+        update_data["is_active"] = True
+    elif updates.is_active is False:
+        update_data["is_active"] = False
+    
+    await db.company_profiles.update_one(
+        {"_id": ObjectId(profile_id)},
+        {"$set": update_data}
+    )
+    
+    await create_audit_log(
+        current_user["id"], current_user["name"], "update", "company_profile",
+        profile_id, None, update_data
+    )
+    
+    return {"message": "Company profile updated successfully"}
+
+@api_router.delete("/company/{profile_id}")
+async def delete_company_profile(profile_id: str, request: Request):
+    """Delete a company profile"""
+    current_user = await require_role("admin")(request)
+    
+    profile = await db.company_profiles.find_one({"_id": ObjectId(profile_id)})
+    if not profile:
+        raise HTTPException(status_code=404, detail="Company profile not found")
+    
+    if profile.get("is_active"):
+        raise HTTPException(status_code=400, detail="Cannot delete active profile")
+    
+    await db.company_profiles.delete_one({"_id": ObjectId(profile_id)})
+    
+    await create_audit_log(
+        current_user["id"], current_user["name"], "delete", "company_profile", profile_id
+    )
+    
+    return {"message": "Company profile deleted successfully"}
 
 # ================== TERMS & CONDITIONS ==================
 
@@ -1731,6 +1964,36 @@ async def startup_event():
         })
         logger.info("Default inventory location created")
     
+    # Seed default company profile
+    company = await db.company_profiles.find_one({})
+    if not company:
+        await db.company_profiles.insert_one({
+            "company_name": "Sensoper Controls & Renewables",
+            "tagline": "Solar Solutions Provider",
+            "logo_url": "https://customer-assets.emergentagent.com/job_solar-estimator-14/artifacts/y3yo3sfo_snspr.png",
+            "primary_color": "#4ADE40",
+            "secondary_color": "#2D9BF0",
+            "address": "123 Solar Street, Erode\nTamil Nadu, India - 638001",
+            "phone": "+91 98765 43210",
+            "email": "info@sensoper.com",
+            "website": "www.sensoper.com",
+            "gst_number": "33XXXXX1234X1ZX",
+            "pan_number": "XXXXX1234X",
+            "bank_details": {
+                "account_name": "Sensoper Controls & Renewables",
+                "account_number": "1234567890123456",
+                "ifsc_code": "SBIN0001234",
+                "bank_name": "State Bank of India",
+                "branch": "Erode Main Branch"
+            },
+            "authorized_signatory": "John Doe",
+            "designation": "Managing Director",
+            "is_active": True,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "updated_at": datetime.now(timezone.utc).isoformat()
+        })
+        logger.info("Default company profile created")
+    
     # Write test credentials
     try:
         os.makedirs("/app/memory", exist_ok=True)
@@ -1764,7 +2027,7 @@ frontend_url = os.environ.get("FRONTEND_URL", "http://localhost:3000")
 app.add_middleware(
     CORSMiddleware,
     allow_credentials=True,
-    allow_origins=[frontend_url, "http://localhost:3000", "https://solar-estimator-14.preview.emergentagent.com"],
+    allow_origins=[frontend_url, "http://localhost:3000", "https://renewable-estimator.preview.emergentagent.com"],
     allow_methods=["*"],
     allow_headers=["*"],
 )

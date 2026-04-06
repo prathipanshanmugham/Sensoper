@@ -97,4 +97,13 @@ export const auditLogsAPI = {
   getAll: (params = {}) => api.get('/audit-logs', { params })
 };
 
+// Company Profile API
+export const companyAPI = {
+  getAll: () => api.get('/company'),
+  getActive: () => api.get('/company/active'),
+  create: (data) => api.post('/company', data),
+  update: (id, data) => api.put(`/company/${id}`, data),
+  delete: (id) => api.delete(`/company/${id}`)
+};
+
 export default api;
