@@ -172,7 +172,7 @@ export default function ProjectList() {
                           <span>{project.customer?.phone || 'No phone'}</span>
                           <span>•</span>
                           <span className="truncate max-w-[300px]">
-                            {project.location?.address || `${project.location?.latitude?.toFixed(4)}, ${project.location?.longitude?.toFixed(4)}`}
+                            {project.location?.site_location_words || project.location?.address || '-'}
                           </span>
                         </div>
                         <p className="text-xs text-slate-400 mt-2">

@@ -11,7 +11,6 @@ import ProjectList from "./pages/ProjectList";
 import ProjectDetails from "./pages/ProjectDetails";
 import SiteVisitForm from "./pages/SiteVisitForm";
 import UserManagement from "./pages/UserManagement";
-import PricingConfig from "./pages/PricingConfig";
 import TermsConditions from "./pages/TermsConditions";
 import InventoryManagement from "./pages/InventoryManagement";
 import DeletionApprovals from "./pages/DeletionApprovals";
@@ -121,14 +120,6 @@ function AppRoutes() {
         element={
           <ProtectedRoute allowedRoles={["admin"]}>
             <UserManagement />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/dashboard/pricing"
-        element={
-          <ProtectedRoute allowedRoles={["admin"]}>
-            <PricingConfig />
           </ProtectedRoute>
         }
       />

@@ -71,9 +71,10 @@ class CustomerDetails(BaseModel):
     email: Optional[str] = None
 
 class LocationDetails(BaseModel):
-    latitude: float
-    longitude: float
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
     address: Optional[str] = None
+    site_location_words: Optional[str] = None
 
 class ElectricalDetails(BaseModel):
     sanction_load_kw: float
@@ -83,8 +84,8 @@ class ElectricalDetails(BaseModel):
 
 class SolarSystemInputs(BaseModel):
     system_type: Literal["on-grid", "off-grid", "hybrid"]
-    inverter_model: str
-    panel_wattage: int
+    inverter_model: Optional[str] = None
+    panel_wattage: Optional[int] = 540
     battery_required: bool = False
     battery_capacity_ah: Optional[int] = None
 
@@ -99,6 +100,18 @@ class AdditionalInputs(BaseModel):
     installation_complexity: Literal["simple", "moderate", "complex"]
     shadow_analysis_notes: Optional[str] = None
 
+class SelectedItem(BaseModel):
+    inventory_item_id: Optional[str] = None
+    name: str
+    category: str
+    unit_price: float
+    gst_percentage: float = 18.0
+    quantity: int = 1
+
+class ManualCost(BaseModel):
+    description: str
+    amount: float
+
 class ProjectCreate(BaseModel):
     customer: CustomerDetails
     location: LocationDetails
@@ -106,6 +119,8 @@ class ProjectCreate(BaseModel):
     solar_system: SolarSystemInputs
     mounting: MountingStructure
     additional: AdditionalInputs
+    selected_items: List[SelectedItem] = []
+    manual_costs: List[ManualCost] = []
     site_images: List[str] = []
 
 class ProjectUpdate(BaseModel):
@@ -115,19 +130,10 @@ class ProjectUpdate(BaseModel):
     solar_system: Optional[SolarSystemInputs] = None
     mounting: Optional[MountingStructure] = None
     additional: Optional[AdditionalInputs] = None
+    selected_items: Optional[List[SelectedItem]] = None
+    manual_costs: Optional[List[ManualCost]] = None
     site_images: Optional[List[str]] = None
     status: Optional[Literal["draft", "submitted", "approved", "rejected", "completed", "deletion_requested"]] = None
-
-class PricingConfig(BaseModel):
-    panel_price_per_watt: float = 25.0
-    inverter_price_per_kw: float = 8000.0
-    structure_price_per_kw: float = 5000.0
-    wiring_price_per_meter: float = 50.0
-    labor_price_per_kw: float = 3000.0
-    transportation_base: float = 5000.0
-    margin_percentage: float = 15.0
-    gst_percentage: float = 13.8
-    battery_price_per_ah: float = 150.0
 
 class AIRecommendationRequest(BaseModel):
     monthly_consumption_units: float
@@ -157,7 +163,11 @@ class InventoryItemCreate(BaseModel):
     name: str
     sku_code: str
     category: Literal["solar_panels", "inverters", "batteries", "mounting_structures", "cables_accessories"]
-    location_code: str
+    zone: Optional[str] = None
+    aisle: Optional[str] = None
+    shelf: Optional[str] = None
+    rack: Optional[str] = None
+    bin_location: Optional[str] = None
     quantity: int
     unit_price: float
     supplier: Optional[str] = None
@@ -166,7 +176,11 @@ class InventoryItemCreate(BaseModel):
 
 class InventoryItemUpdate(BaseModel):
     name: Optional[str] = None
-    location_code: Optional[str] = None
+    zone: Optional[str] = None
+    aisle: Optional[str] = None
+    shelf: Optional[str] = None
+    rack: Optional[str] = None
+    bin_location: Optional[str] = None
     quantity: Optional[int] = None
     unit_price: Optional[float] = None
     supplier: Optional[str] = None
@@ -309,65 +323,41 @@ async def create_audit_log(user_id: str, user_name: str, action_type: str, entit
     }
     await db.audit_logs.insert_one(log_entry)
 
-def calculate_cost_estimation(project: dict, pricing: dict) -> dict:
-    """Calculate cost estimation based on project details and pricing config"""
-    electrical = project.get("electrical", {})
-    solar_system = project.get("solar_system", {})
-    additional = project.get("additional", {})
-    
-    monthly_consumption = electrical.get("monthly_consumption_units", 0)
-    panel_wattage = solar_system.get("panel_wattage", 540)
-    
-    # Calculate required capacity (rough estimate: monthly units / 120 = kW needed)
-    required_kw = max(1, monthly_consumption / 120)
-    total_capacity_kw = round(required_kw, 2)
-    
-    # Calculate panels needed
-    panels_required = int((total_capacity_kw * 1000) / panel_wattage) + 1
-    
-    # Calculate costs
-    panel_cost = panels_required * panel_wattage * pricing.get("panel_price_per_watt", 25)
-    inverter_cost = total_capacity_kw * pricing.get("inverter_price_per_kw", 8000)
-    structure_cost = total_capacity_kw * pricing.get("structure_price_per_kw", 5000)
-    
-    cable_length = additional.get("cable_length_meters", 50)
-    wiring_cost = cable_length * pricing.get("wiring_price_per_meter", 50)
-    
-    labor_cost = total_capacity_kw * pricing.get("labor_price_per_kw", 3000)
-    transportation_cost = pricing.get("transportation_base", 5000)
-    
-    # Battery cost if applicable
-    battery_cost = 0
-    if solar_system.get("battery_required") and solar_system.get("battery_capacity_ah"):
-        battery_cost = solar_system["battery_capacity_ah"] * pricing.get("battery_price_per_ah", 150)
-    
-    subtotal = panel_cost + inverter_cost + structure_cost + wiring_cost + labor_cost + transportation_cost + battery_cost
-    
-    margin_percentage = pricing.get("margin_percentage", 15)
+def calculate_cost_estimation(selected_items: list, manual_costs: list, margin_percentage: float = 15.0) -> dict:
+    """Calculate cost estimation from selected inventory items and manual costs"""
+    items_breakdown = []
+    total_items_cost = 0
+    total_gst = 0
+
+    for item in selected_items:
+        item_cost = item["unit_price"] * item["quantity"]
+        item_gst = item_cost * (item["gst_percentage"] / 100)
+        total_items_cost += item_cost
+        total_gst += item_gst
+        items_breakdown.append({
+            "name": item["name"],
+            "category": item["category"],
+            "unit_price": item["unit_price"],
+            "quantity": item["quantity"],
+            "gst_percentage": item["gst_percentage"],
+            "amount": round(item_cost, 2),
+            "gst_amount": round(item_gst, 2)
+        })
+
+    manual_total = sum(c["amount"] for c in manual_costs)
+    subtotal = total_items_cost + manual_total
     margin = subtotal * (margin_percentage / 100)
-    
-    subtotal_with_margin = subtotal + margin
-    
-    gst_percentage = pricing.get("gst_percentage", 13.8)
-    gst = subtotal_with_margin * (gst_percentage / 100)
-    
-    total_cost = subtotal_with_margin + gst
-    
+    total_cost = subtotal + margin + total_gst
+
     return {
-        "panels_required": panels_required,
-        "total_capacity_kw": total_capacity_kw,
-        "panel_cost": round(panel_cost, 2),
-        "inverter_cost": round(inverter_cost, 2),
-        "structure_cost": round(structure_cost, 2),
-        "wiring_cost": round(wiring_cost, 2),
-        "labor_cost": round(labor_cost, 2),
-        "transportation_cost": round(transportation_cost, 2),
-        "battery_cost": round(battery_cost, 2),
+        "items_breakdown": items_breakdown,
+        "manual_costs": [{"description": c["description"], "amount": round(c["amount"], 2)} for c in manual_costs],
+        "items_subtotal": round(total_items_cost, 2),
+        "manual_subtotal": round(manual_total, 2),
         "subtotal": round(subtotal, 2),
         "margin": round(margin, 2),
         "margin_percentage": margin_percentage,
-        "gst": round(gst, 2),
-        "gst_percentage": gst_percentage,
+        "total_gst": round(total_gst, 2),
         "total_cost": round(total_cost, 2)
     }
 
@@ -595,36 +585,6 @@ async def delete_user(user_id: str, request: Request):
     )
     
     return {"message": "User deleted successfully"}
-
-# ================== PRICING CONFIG (Admin Only) ==================
-
-@api_router.get("/pricing")
-async def get_pricing(request: Request):
-    await get_current_user(request)
-    
-    pricing = await db.pricing_config.find_one({}, {"_id": 0})
-    if not pricing:
-        return PricingConfig().model_dump()
-    return pricing
-
-@api_router.put("/pricing")
-async def update_pricing(pricing: PricingConfig, request: Request):
-    current_user = await require_role("admin")(request)
-    
-    old_pricing = await db.pricing_config.find_one({}, {"_id": 0})
-    
-    await db.pricing_config.update_one(
-        {},
-        {"$set": pricing.model_dump()},
-        upsert=True
-    )
-    
-    await create_audit_log(
-        current_user["id"], current_user["name"], "update", "pricing", 
-        "global", old_pricing, pricing.model_dump()
-    )
-    
-    return {"message": "Pricing updated successfully"}
 
 # ================== COMPANY PROFILE ==================
 
@@ -1049,7 +1009,6 @@ async def delete_inventory_location(location_id: str, request: Request):
 async def get_inventory_items(
     request: Request, 
     category: Optional[str] = None,
-    location_code: Optional[str] = None,
     low_stock: bool = False
 ):
     await get_current_user(request)
@@ -1057,8 +1016,6 @@ async def get_inventory_items(
     query = {}
     if category:
         query["category"] = category
-    if location_code:
-        query["location_code"] = location_code
     
     items = await db.inventory_items.find(query).to_list(500)
     
@@ -1069,7 +1026,11 @@ async def get_inventory_items(
             "name": item["name"],
             "sku_code": item["sku_code"],
             "category": item["category"],
-            "location_code": item["location_code"],
+            "zone": item.get("zone", ""),
+            "aisle": item.get("aisle", ""),
+            "shelf": item.get("shelf", ""),
+            "rack": item.get("rack", ""),
+            "bin_location": item.get("bin_location", ""),
             "quantity": item["quantity"],
             "unit_price": item["unit_price"],
             "supplier": item.get("supplier"),
@@ -1079,7 +1040,6 @@ async def get_inventory_items(
             "updated_at": item.get("updated_at")
         }
         
-        # Check if low stock
         if item["quantity"] <= item.get("reorder_level", 10):
             item_data["low_stock_alert"] = True
         
@@ -1108,7 +1068,11 @@ async def get_inventory_item(item_id: str, request: Request):
         "name": item["name"],
         "sku_code": item["sku_code"],
         "category": item["category"],
-        "location_code": item["location_code"],
+        "zone": item.get("zone", ""),
+        "aisle": item.get("aisle", ""),
+        "shelf": item.get("shelf", ""),
+        "rack": item.get("rack", ""),
+        "bin_location": item.get("bin_location", ""),
         "quantity": item["quantity"],
         "unit_price": item["unit_price"],
         "supplier": item.get("supplier"),
@@ -1133,21 +1097,19 @@ async def get_inventory_item(item_id: str, request: Request):
 async def create_inventory_item(item: InventoryItemCreate, request: Request):
     current_user = await require_role("admin", "manager")(request)
     
-    # Check if SKU exists
     existing = await db.inventory_items.find_one({"sku_code": item.sku_code})
     if existing:
         raise HTTPException(status_code=400, detail="SKU code already exists")
-    
-    # Check if location exists
-    location = await db.inventory_locations.find_one({"code": item.location_code})
-    if not location:
-        raise HTTPException(status_code=400, detail="Invalid location code")
     
     item_doc = {
         "name": item.name,
         "sku_code": item.sku_code,
         "category": item.category,
-        "location_code": item.location_code,
+        "zone": item.zone or "",
+        "aisle": item.aisle or "",
+        "shelf": item.shelf or "",
+        "rack": item.rack or "",
+        "bin_location": item.bin_location or "",
         "quantity": item.quantity,
         "unit_price": item.unit_price,
         "supplier": item.supplier,
@@ -1185,16 +1147,21 @@ async def update_inventory_item(item_id: str, updates: InventoryItemUpdate, requ
     if not item:
         raise HTTPException(status_code=404, detail="Item not found")
     
-    old_data = {k: item.get(k) for k in ["quantity", "unit_price", "location_code"]}
+    old_data = {k: item.get(k) for k in ["quantity", "unit_price"]}
     update_data = {"updated_at": datetime.now(timezone.utc).isoformat()}
     
     if updates.name is not None:
         update_data["name"] = updates.name
-    if updates.location_code is not None:
-        location = await db.inventory_locations.find_one({"code": updates.location_code})
-        if not location:
-            raise HTTPException(status_code=400, detail="Invalid location code")
-        update_data["location_code"] = updates.location_code
+    if updates.zone is not None:
+        update_data["zone"] = updates.zone
+    if updates.aisle is not None:
+        update_data["aisle"] = updates.aisle
+    if updates.shelf is not None:
+        update_data["shelf"] = updates.shelf
+    if updates.rack is not None:
+        update_data["rack"] = updates.rack
+    if updates.bin_location is not None:
+        update_data["bin_location"] = updates.bin_location
     if updates.unit_price is not None:
         update_data["unit_price"] = updates.unit_price
     if updates.supplier is not None:
@@ -1271,7 +1238,7 @@ async def get_inventory_alerts(request: Request):
             "name": item["name"],
             "sku_code": item["sku_code"],
             "category": item["category"],
-            "location_code": item["location_code"],
+            "zone": item.get("zone", ""),
             "quantity": item["quantity"],
             "reorder_level": item.get("reorder_level", 10)
         }
@@ -1284,10 +1251,9 @@ async def get_inventory_alerts(request: Request):
 async def create_project(project: ProjectCreate, request: Request):
     user = await get_current_user(request)
     
-    # Get pricing for cost estimation
-    pricing = await db.pricing_config.find_one({}, {"_id": 0})
-    if not pricing:
-        pricing = PricingConfig().model_dump()
+    # Build selected items list for cost calculation
+    selected_items_data = [si.model_dump() for si in project.selected_items]
+    manual_costs_data = [mc.model_dump() for mc in project.manual_costs]
     
     project_doc = {
         "customer": project.customer.model_dump(),
@@ -1296,6 +1262,8 @@ async def create_project(project: ProjectCreate, request: Request):
         "solar_system": project.solar_system.model_dump(),
         "mounting": project.mounting.model_dump(),
         "additional": project.additional.model_dump(),
+        "selected_items": selected_items_data,
+        "manual_costs": manual_costs_data,
         "site_images": project.site_images,
         "status": "draft",
         "created_by": user["id"],
@@ -1304,8 +1272,8 @@ async def create_project(project: ProjectCreate, request: Request):
         "updated_at": datetime.now(timezone.utc).isoformat()
     }
     
-    # Calculate cost estimation
-    project_doc["cost_estimation"] = calculate_cost_estimation(project_doc, pricing)
+    # Calculate cost estimation from selected items
+    project_doc["cost_estimation"] = calculate_cost_estimation(selected_items_data, manual_costs_data)
     
     result = await db.projects.insert_one(project_doc)
     
@@ -1381,6 +1349,8 @@ async def get_project(project_id: str, request: Request):
         "solar_system": project["solar_system"],
         "mounting": project["mounting"],
         "additional": project["additional"],
+        "selected_items": project.get("selected_items", []),
+        "manual_costs": project.get("manual_costs", []),
         "site_images": project.get("site_images", []),
         "status": project["status"],
         "cost_estimation": project.get("cost_estimation", {}),
@@ -1426,18 +1396,18 @@ async def update_project(project_id: str, updates: ProjectUpdate, request: Reque
         update_data["additional"] = updates.additional.model_dump()
     if updates.site_images is not None:
         update_data["site_images"] = updates.site_images
+    if updates.selected_items is not None:
+        update_data["selected_items"] = [si.model_dump() for si in updates.selected_items]
+    if updates.manual_costs is not None:
+        update_data["manual_costs"] = [mc.model_dump() for mc in updates.manual_costs]
     if updates.status and user["role"] in ["admin", "manager"]:
         update_data["status"] = updates.status
     
-    # Recalculate cost if relevant fields changed
-    if any(k in update_data for k in ["electrical", "solar_system", "additional"]):
-        pricing = await db.pricing_config.find_one({}, {"_id": 0})
-        if not pricing:
-            pricing = PricingConfig().model_dump()
-        
-        merged = {**project}
-        merged.update(update_data)
-        update_data["cost_estimation"] = calculate_cost_estimation(merged, pricing)
+    # Recalculate cost if items changed
+    if "selected_items" in update_data or "manual_costs" in update_data:
+        sel_items = update_data.get("selected_items", project.get("selected_items", []))
+        man_costs = update_data.get("manual_costs", project.get("manual_costs", []))
+        update_data["cost_estimation"] = calculate_cost_estimation(sel_items, man_costs)
     
     await db.projects.update_one(
         {"_id": ObjectId(project_id)},
@@ -1964,23 +1934,6 @@ async def startup_event():
             {"$set": {"password_hash": hash_password(admin_password)}}
         )
         logger.info(f"Admin password updated: {admin_email}")
-    
-    # Seed default pricing if not exists
-    pricing = await db.pricing_config.find_one({})
-    if not pricing:
-        await db.pricing_config.insert_one(PricingConfig().model_dump())
-        logger.info("Default pricing configuration created")
-    
-    # Seed default inventory location
-    loc = await db.inventory_locations.find_one({})
-    if not loc:
-        await db.inventory_locations.insert_one({
-            "code": "WH-MAIN-01",
-            "name": "Main Warehouse",
-            "address": "Sensoper HQ",
-            "created_at": datetime.now(timezone.utc).isoformat()
-        })
-        logger.info("Default inventory location created")
     
     # Seed default company profile
     company = await db.company_profiles.find_one({})

@@ -42,11 +42,7 @@ export const usersAPI = {
   delete: (id) => api.delete(`/users/${id}`)
 };
 
-// Pricing API
-export const pricingAPI = {
-  get: () => api.get('/pricing'),
-  update: (pricing) => api.put('/pricing', pricing)
-};
+// Pricing API removed - costs come from inventory items
 
 // Dashboard API
 export const dashboardAPI = {
@@ -69,11 +65,6 @@ export const termsAPI = {
 
 // Inventory API
 export const inventoryAPI = {
-  // Locations
-  getLocations: () => api.get('/inventory/locations'),
-  createLocation: (data) => api.post('/inventory/locations', data),
-  deleteLocation: (id) => api.delete(`/inventory/locations/${id}`),
-  
   // Items
   getItems: (params = {}) => api.get('/inventory/items', { params }),
   getItem: (id) => api.get(`/inventory/items/${id}`),

@@ -9,7 +9,6 @@ import {
   LayoutDashboard, 
   FolderPlus, 
   Users, 
-  Settings, 
   LogOut,
   FileText,
   Clock,
@@ -80,7 +79,7 @@ function ProjectRow({ project, onClick }) {
       </td>
       <td className="py-4 px-4">
         <p className="text-sm text-slate-600 truncate max-w-[200px]">
-          {project.location?.address || `${project.location?.latitude?.toFixed(4)}, ${project.location?.longitude?.toFixed(4)}`}
+          {project.location?.site_location_words || project.location?.address || '-'}
         </p>
       </td>
       <td className="py-4 px-4">
@@ -141,26 +140,24 @@ export default function Dashboard() {
     { icon: Package, label: 'Inventory', href: '/dashboard/inventory', show: isAdmin || isManager, badge: stats?.low_stock_alerts },
     { icon: ScrollText, label: 'Terms & Conditions', href: '/dashboard/terms', show: isAdmin || isManager },
     { icon: Users, label: 'User Management', href: '/dashboard/users', show: isAdmin },
-    { icon: Settings, label: 'Pricing Config', href: '/dashboard/pricing', show: isAdmin },
     { icon: Building2, label: 'Company Profile', href: '/dashboard/company-profile', show: isAdmin },
     { icon: History, label: 'Audit Logs', href: '/dashboard/audit-logs', show: isAdmin },
   ].filter(item => item.show);
 
   return (
     <div className="min-h-screen bg-slate-50">
-      {/* Mobile sidebar overlay */}
       {sidebarOpen && (
         <div 
-          className="fixed inset-0 bg-black/50 z-40 lg:hidden"
+          className="fixed inset-0 bg-black/30 z-40 lg:hidden"
           onClick={() => setSidebarOpen(false)}
         />
       )}
 
-      {/* Sidebar */}
-      <aside className={`fixed top-0 left-0 z-50 h-full w-64 bg-[#0a0a0a] border-r border-slate-800 transform transition-transform lg:translate-x-0 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+      {/* Light Sidebar */}
+      <aside className={`fixed top-0 left-0 z-50 h-full w-64 bg-white border-r border-slate-200 shadow-sm transform transition-transform lg:translate-x-0 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
         <div className="flex flex-col h-full">
           {/* Logo */}
-          <div className="flex items-center gap-3 px-4 py-4 border-b border-slate-800">
+          <div className="flex items-center gap-3 px-4 py-4 border-b border-slate-200">
             <img 
               src={LOGO_URL} 
               alt="Sensoper" 
@@ -180,14 +177,14 @@ export default function Dashboard() {
               <Link
                 key={item.href}
                 to={item.href}
-                className="flex items-center gap-3 px-4 py-3 rounded-lg text-slate-400 hover:bg-slate-800 hover:text-[#4ADE40] transition-colors"
+                className="flex items-center gap-3 px-4 py-3 rounded-lg text-slate-600 hover:bg-emerald-50 hover:text-emerald-700 transition-colors"
                 onClick={() => setSidebarOpen(false)}
                 data-testid={`nav-${item.label.toLowerCase().replace(/\s+/g, '-')}`}
               >
                 <item.icon className="h-5 w-5" />
                 <span className="font-medium flex-1">{item.label}</span>
                 {item.badge > 0 && (
-                  <Badge className="bg-[#2D9BF0] text-white text-xs px-2 py-0.5">
+                  <Badge className="bg-red-500 text-white text-xs px-2 py-0.5">
                     {item.badge}
                   </Badge>
                 )}
@@ -196,21 +193,21 @@ export default function Dashboard() {
           </nav>
 
           {/* User section */}
-          <div className="px-3 py-4 border-t border-slate-800">
+          <div className="px-3 py-4 border-t border-slate-200">
             <div className="flex items-center gap-3 px-4 py-3">
-              <div className="h-10 w-10 rounded-full bg-[#4ADE40]/20 flex items-center justify-center">
-                <span className="text-[#4ADE40] font-semibold">
+              <div className="h-10 w-10 rounded-full bg-emerald-100 flex items-center justify-center">
+                <span className="text-emerald-700 font-semibold">
                   {user?.name?.charAt(0).toUpperCase()}
                 </span>
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-white truncate">{user?.name}</p>
+                <p className="text-sm font-medium text-slate-900 truncate">{user?.name}</p>
                 <p className="text-xs text-slate-500 capitalize">{user?.role}</p>
               </div>
             </div>
             <Button 
               variant="ghost" 
-              className="w-full mt-2 text-slate-400 hover:text-red-400 hover:bg-red-900/20 justify-start"
+              className="w-full mt-2 text-slate-500 hover:text-red-600 hover:bg-red-50 justify-start"
               onClick={handleLogout}
               data-testid="logout-btn"
             >
@@ -239,7 +236,7 @@ export default function Dashboard() {
               </h1>
             </div>
             <Link to="/dashboard/projects/new">
-              <Button className="bg-[#4ADE40] hover:bg-[#3dba35] text-black font-medium" data-testid="new-project-btn">
+              <Button className="bg-emerald-600 hover:bg-emerald-700 text-white font-medium" data-testid="new-project-btn">
                 <FolderPlus className="h-4 w-4 mr-2" />
                 New Project
               </Button>
@@ -299,24 +296,9 @@ export default function Dashboard() {
 
               {/* Stats Grid */}
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-                <StatCard 
-                  title="Total Projects" 
-                  value={stats?.total || 0} 
-                  icon={FileText}
-                  color="emerald"
-                />
-                <StatCard 
-                  title="Pending Review" 
-                  value={stats?.submitted || 0} 
-                  icon={AlertCircle}
-                  color="blue"
-                />
-                <StatCard 
-                  title="Approved" 
-                  value={stats?.approved || 0} 
-                  icon={CheckCircle2}
-                  color="green"
-                />
+                <StatCard title="Total Projects" value={stats?.total || 0} icon={FileText} color="emerald" />
+                <StatCard title="Pending Review" value={stats?.submitted || 0} icon={AlertCircle} color="blue" />
+                <StatCard title="Approved" value={stats?.approved || 0} icon={CheckCircle2} color="green" />
                 <StatCard 
                   title="Total Revenue" 
                   value={`₹${((stats?.total_revenue || 0) / 100000).toFixed(1)}L`} 
@@ -331,7 +313,7 @@ export default function Dashboard() {
                 <CardHeader className="flex flex-row items-center justify-between py-4 px-6 border-b border-slate-200">
                   <CardTitle className="text-lg font-['Outfit'] text-slate-900">Recent Projects</CardTitle>
                   <Link to="/dashboard/projects">
-                    <Button variant="ghost" size="sm" className="text-[#4ADE40] hover:text-emerald-700" data-testid="view-all-projects-btn">
+                    <Button variant="ghost" size="sm" className="text-emerald-600 hover:text-emerald-700" data-testid="view-all-projects-btn">
                       View all
                     </Button>
                   </Link>
