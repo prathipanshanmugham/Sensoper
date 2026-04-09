@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { projectsAPI, termsAPI, companyAPI } from '../utils/api';
+import { projectsAPI, termsAPI, companyAPI, marginAPI } from '../utils/api';
 import { Button } from '../components/ui/button';
+import { Input } from '../components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
 import { Textarea } from '../components/ui/textarea';
@@ -10,7 +11,7 @@ import { Label } from '../components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../components/ui/dialog';
 import { 
   ArrowLeft, Loader2, User, MapPin, Zap, Sun, Clock, CheckCircle2, XCircle, 
-  AlertCircle, Download, Share2, Trash2, Send, AlertTriangle, Package
+  AlertCircle, Download, Share2, Trash2, Send, AlertTriangle, Package, Percent
 } from 'lucide-react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -65,6 +66,8 @@ export default function ProjectDetails() {
   const [deletionReason, setDeletionReason] = useState('');
   const [terms, setTerms] = useState(null);
   const [companyProfile, setCompanyProfile] = useState(null);
+  const [marginPct, setMarginPct] = useState('');
+  const [marginLoading, setMarginLoading] = useState(false);
 
   useEffect(() => {
     fetchProject();
@@ -121,6 +124,18 @@ export default function ProjectDetails() {
     if (!window.confirm('Permanently delete this project?')) return;
     setActionLoading(true);
     try { await projectsAPI.forceDelete(id); navigate('/dashboard/projects'); } catch (e) { alert(e.response?.data?.detail || 'Failed'); } finally { setActionLoading(false); }
+  };
+
+  const handleMarginUpdate = async () => {
+    const val = parseFloat(marginPct);
+    if (isNaN(val) || val < 0) return;
+    setMarginLoading(true);
+    try {
+      const res = await marginAPI.update(id, val);
+      setProject(prev => ({ ...prev, cost_estimation: res.data.cost_estimation }));
+    } catch (e) {
+      alert(e.response?.data?.detail || 'Failed to update margin');
+    } finally { setMarginLoading(false); }
   };
 
   // ════════════════════════════════════════════════
@@ -401,34 +416,7 @@ export default function ProjectDetails() {
       body: termsBody,
       didDrawPage: (data) => { drawHeader(data.doc); },
     });
-    y = doc.lastAutoTable.finalY + 16;
-
-    // ── Signatory ──
-    if (y > pageHeight - 40) { doc.addPage(); drawHeader(doc); y = 44; }
-    doc.setDrawColor(200, 200, 200);
-    doc.setLineDashPattern([2, 2], 0);
-    doc.rect(m, y, 50, 22);
-    doc.setLineDashPattern([], 0);
-    doc.setFontSize(7);
-    doc.setTextColor(150, 150, 150);
-    doc.text('Company Seal', m + 12, y + 14);
-
-    const sigX = pageWidth - m - 60;
-    doc.setDrawColor(120, 120, 120);
-    doc.line(sigX, y + 12, sigX + 55, y + 12);
-    doc.setFontSize(9);
-    doc.setFont('helvetica', 'bold');
-    doc.setTextColor(50, 50, 50);
-    doc.text(cp.authorized_signatory || 'Authorized Signatory', sigX, y + 18);
-    if (cp.designation) {
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(7.5);
-      doc.setTextColor(120, 120, 120);
-      doc.text(cp.designation, sigX, y + 23);
-    }
-    doc.setFontSize(7);
-    doc.setTextColor(150, 150, 150);
-    doc.text('For ' + (cp.company_name || 'Sensoper Controls & Renewables'), sigX, y + 28);
+    y = doc.lastAutoTable.finalY + 12;
 
     // Apply headers/footers to all pages
     const totalPages = doc.internal.getNumberOfPages();
@@ -463,6 +451,11 @@ export default function ProjectDetails() {
   const selectedItems = project.cost_estimation?.items_breakdown || project.selected_items || [];
   const manualCosts = project.cost_estimation?.manual_costs || project.manual_costs || [];
   const ce = project.cost_estimation || {};
+
+  // Initialize margin input
+  if (marginPct === '' && ce.margin_percentage !== undefined) {
+    setMarginPct(String(ce.margin_percentage));
+  }
 
   return (
     <div className="min-h-screen bg-slate-50 py-8 px-4">
@@ -607,6 +600,46 @@ export default function ProjectDetails() {
                 <div className="mt-4 pt-3 border-t border-slate-200 space-y-2">
                   <div className="flex justify-between text-sm"><span className="text-slate-500">Subtotal</span><span className="font-medium">Rs {(ce.subtotal || 0).toLocaleString('en-IN')}</span></div>
                   <div className="flex justify-between text-sm"><span className="text-slate-500">GST</span><span className="font-medium">Rs {(ce.total_gst || 0).toLocaleString('en-IN')}</span></div>
+                  
+                  {/* Margin Control — Manager/Admin Only */}
+                  {(isAdmin || isManager) && (
+                    <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg mt-2">
+                      <div className="flex items-center gap-2 mb-2">
+                        <Percent className="h-4 w-4 text-amber-600" />
+                        <span className="text-sm font-medium text-amber-800">Internal Margin</span>
+                      </div>
+                      <div className="flex gap-2 items-center">
+                        <Input
+                          type="number"
+                          min="0"
+                          max="100"
+                          step="0.5"
+                          value={marginPct}
+                          onChange={(e) => setMarginPct(e.target.value)}
+                          className="h-9 w-24 text-sm"
+                          data-testid="margin-input"
+                        />
+                        <span className="text-sm text-slate-500">%</span>
+                        <Button 
+                          size="sm" 
+                          onClick={handleMarginUpdate}
+                          disabled={marginLoading}
+                          className="bg-amber-600 hover:bg-amber-700 text-white h-9"
+                          data-testid="update-margin-btn"
+                        >
+                          {marginLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Apply'}
+                        </Button>
+                      </div>
+                      <div className="flex justify-between text-xs mt-2">
+                        <span className="text-amber-600">Margin Amount</span>
+                        <span className="font-medium text-amber-800">Rs {(ce.margin || 0).toLocaleString('en-IN')}</span>
+                      </div>
+                      {project.margin_added_by && (
+                        <p className="text-xs text-amber-500 mt-1">Last updated by {project.margin_added_by}</p>
+                      )}
+                    </div>
+                  )}
+                  
                   <div className="flex justify-between pt-3 border-t-2 border-slate-300 mt-2">
                     <span className="font-bold text-slate-900 text-base">TOTAL</span>
                     <span className="font-bold text-emerald-600 text-lg">Rs {(ce.total_cost || 0).toLocaleString('en-IN')}</span>

@@ -65,6 +65,11 @@ export const termsAPI = {
 
 // Inventory API
 export const inventoryAPI = {
+  // Categories
+  getCategories: () => api.get('/inventory/categories'),
+  createCategory: (data) => api.post('/inventory/categories', data),
+  deleteCategory: (id) => api.delete(`/inventory/categories/${id}`),
+  
   // Items
   getItems: (params = {}) => api.get('/inventory/items', { params }),
   getItem: (id) => api.get(`/inventory/items/${id}`),
@@ -74,6 +79,21 @@ export const inventoryAPI = {
   
   // Alerts
   getAlerts: () => api.get('/inventory/alerts')
+};
+
+// File Upload API
+export const uploadAPI = {
+  uploadImage: (file) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return api.post('/upload/image', formData, { headers: { 'Content-Type': 'multipart/form-data' } });
+  },
+  getFileUrl: (path) => `${API_URL}/files/${path}`
+};
+
+// Margin API
+export const marginAPI = {
+  update: (projectId, marginPercentage) => api.put(`/projects/${projectId}/margin`, { margin_percentage: marginPercentage })
 };
 
 // Deletion Requests API

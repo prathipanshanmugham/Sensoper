@@ -17,6 +17,7 @@ import bcrypt
 import jwt
 import secrets
 import json
+import requests as http_requests
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -30,6 +31,40 @@ db = client[os.environ['DB_NAME']]
 # JWT Configuration
 JWT_SECRET = os.environ.get("JWT_SECRET", secrets.token_hex(32))
 JWT_ALGORITHM = "HS256"
+
+# Object Storage Configuration
+STORAGE_URL = "https://integrations.emergentagent.com/objstore/api/v1/storage"
+EMERGENT_KEY = os.environ.get("EMERGENT_LLM_KEY")
+APP_NAME = "sensoper-solar"
+storage_key = None
+
+def init_storage():
+    global storage_key
+    if storage_key:
+        return storage_key
+    resp = http_requests.post(f"{STORAGE_URL}/init", json={"emergent_key": EMERGENT_KEY}, timeout=30)
+    resp.raise_for_status()
+    storage_key = resp.json()["storage_key"]
+    return storage_key
+
+def put_object(path: str, data: bytes, content_type: str) -> dict:
+    key = init_storage()
+    resp = http_requests.put(
+        f"{STORAGE_URL}/objects/{path}",
+        headers={"X-Storage-Key": key, "Content-Type": content_type},
+        data=data, timeout=120
+    )
+    resp.raise_for_status()
+    return resp.json()
+
+def get_object(path: str):
+    key = init_storage()
+    resp = http_requests.get(
+        f"{STORAGE_URL}/objects/{path}",
+        headers={"X-Storage-Key": key}, timeout=60
+    )
+    resp.raise_for_status()
+    return resp.content, resp.headers.get("Content-Type", "application/octet-stream")
 
 # Create the main app
 app = FastAPI(title="Sensoper Solar Estimator API")
@@ -90,7 +125,7 @@ class SolarSystemInputs(BaseModel):
     battery_capacity_ah: Optional[int] = None
 
 class MountingStructure(BaseModel):
-    roof_type: Literal["rcc", "metal", "ground"]
+    roof_type: str  # Free text field (e.g., "RCC Flat Roof", "Metal Sheet", "Terrace with slope")
     tilt_angle: int
     structure_type: str
 
@@ -154,15 +189,10 @@ class TermsConditionsUpdate(BaseModel):
     is_active: Optional[bool] = None
     language: Optional[str] = None
 
-class InventoryLocationCreate(BaseModel):
-    code: str  # e.g., WH-Erode-01
-    name: str
-    address: Optional[str] = None
-
 class InventoryItemCreate(BaseModel):
     name: str
     sku_code: str
-    category: Literal["solar_panels", "inverters", "batteries", "mounting_structures", "cables_accessories"]
+    category: str
     zone: Optional[str] = None
     aisle: Optional[str] = None
     shelf: Optional[str] = None
@@ -173,9 +203,11 @@ class InventoryItemCreate(BaseModel):
     supplier: Optional[str] = None
     gst_percentage: float = 18.0
     reorder_level: int = 10
+    image_url: Optional[str] = None
 
 class InventoryItemUpdate(BaseModel):
     name: Optional[str] = None
+    category: Optional[str] = None
     zone: Optional[str] = None
     aisle: Optional[str] = None
     shelf: Optional[str] = None
@@ -186,6 +218,12 @@ class InventoryItemUpdate(BaseModel):
     supplier: Optional[str] = None
     gst_percentage: Optional[float] = None
     reorder_level: Optional[int] = None
+    image_url: Optional[str] = None
+
+class InventoryCategoryCreate(BaseModel):
+    name: str
+    slug: str
+    description: Optional[str] = None
 
 class DeletionRequestCreate(BaseModel):
     reason: str
@@ -942,68 +980,104 @@ async def delete_terms(terms_id: str, request: Request):
     
     return {"message": "Terms deleted successfully"}
 
-# ================== INVENTORY MANAGEMENT ==================
+# ================== INVENTORY CATEGORIES ==================
 
-@api_router.get("/inventory/locations")
-async def get_inventory_locations(request: Request):
+@api_router.get("/inventory/categories")
+async def get_inventory_categories(request: Request):
     await get_current_user(request)
-    
-    locations = await db.inventory_locations.find().to_list(100)
+    categories = await db.inventory_categories.find().to_list(100)
     return [
-        {
-            "id": str(loc["_id"]),
-            "code": loc["code"],
-            "name": loc["name"],
-            "address": loc.get("address"),
-            "created_at": loc["created_at"]
-        }
-        for loc in locations
+        {"id": str(c["_id"]), "name": c["name"], "slug": c["slug"], "description": c.get("description", "")}
+        for c in categories
     ]
 
-@api_router.post("/inventory/locations")
-async def create_inventory_location(location: InventoryLocationCreate, request: Request):
-    current_user = await require_role("admin")(request)
-    
-    existing = await db.inventory_locations.find_one({"code": location.code})
+@api_router.post("/inventory/categories")
+async def create_inventory_category(cat: InventoryCategoryCreate, request: Request):
+    current_user = await require_role("admin", "manager")(request)
+    existing = await db.inventory_categories.find_one({"slug": cat.slug})
     if existing:
-        raise HTTPException(status_code=400, detail="Location code already exists")
-    
-    loc_doc = {
-        "code": location.code,
-        "name": location.name,
-        "address": location.address,
+        raise HTTPException(status_code=400, detail="Category slug already exists")
+    result = await db.inventory_categories.insert_one({
+        "name": cat.name, "slug": cat.slug, "description": cat.description or "",
         "created_at": datetime.now(timezone.utc).isoformat()
-    }
-    
-    result = await db.inventory_locations.insert_one(loc_doc)
-    
-    await create_audit_log(
-        current_user["id"], current_user["name"], "create", "inventory_location",
-        str(result.inserted_id), None, loc_doc
-    )
-    
-    return {"id": str(result.inserted_id), "message": "Location created successfully"}
+    })
+    return {"id": str(result.inserted_id), "message": "Category created"}
 
-@api_router.delete("/inventory/locations/{location_id}")
-async def delete_inventory_location(location_id: str, request: Request):
+@api_router.delete("/inventory/categories/{cat_id}")
+async def delete_inventory_category(cat_id: str, request: Request):
     current_user = await require_role("admin")(request)
-    
-    # Check if any items use this location
-    loc = await db.inventory_locations.find_one({"_id": ObjectId(location_id)})
-    if not loc:
-        raise HTTPException(status_code=404, detail="Location not found")
-    
-    items_count = await db.inventory_items.count_documents({"location_code": loc["code"]})
+    cat = await db.inventory_categories.find_one({"_id": ObjectId(cat_id)})
+    if not cat:
+        raise HTTPException(status_code=404, detail="Category not found")
+    items_count = await db.inventory_items.count_documents({"category": cat["slug"]})
     if items_count > 0:
-        raise HTTPException(status_code=400, detail=f"Cannot delete location with {items_count} items")
+        raise HTTPException(status_code=400, detail=f"Cannot delete category with {items_count} items")
+    await db.inventory_categories.delete_one({"_id": ObjectId(cat_id)})
+    return {"message": "Category deleted"}
+
+# ================== FILE UPLOAD ==================
+
+@api_router.post("/upload/image")
+async def upload_image(request: Request, file: UploadFile = File(...)):
+    current_user = await get_current_user(request)
+    if not file.content_type or not file.content_type.startswith("image/"):
+        raise HTTPException(status_code=400, detail="Only image files are allowed")
+    contents = await file.read()
+    if len(contents) > 5 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="File size must be under 5MB")
+    ext = file.filename.split(".")[-1] if "." in file.filename else "png"
+    path = f"{APP_NAME}/images/{uuid.uuid4()}.{ext}"
+    try:
+        result = put_object(path, contents, file.content_type or "image/png")
+        return {"storage_path": result["path"], "size": result.get("size", len(contents))}
+    except Exception as e:
+        logger.error(f"Upload failed: {e}")
+        raise HTTPException(status_code=500, detail="Image upload failed")
+
+@api_router.get("/files/{path:path}")
+async def serve_file(path: str, request: Request):
+    try:
+        data, content_type = get_object(path)
+        return Response(content=data, media_type=content_type)
+    except Exception as e:
+        raise HTTPException(status_code=404, detail="File not found")
+
+# ================== MARGIN UPDATE ==================
+
+@api_router.put("/projects/{project_id}/margin")
+async def update_project_margin(project_id: str, request: Request):
+    current_user = await require_role("admin", "manager")(request)
+    body = await request.json()
+    margin_pct = body.get("margin_percentage")
+    if margin_pct is None or margin_pct < 0:
+        raise HTTPException(status_code=400, detail="Invalid margin percentage")
     
-    await db.inventory_locations.delete_one({"_id": ObjectId(location_id)})
+    project = await db.projects.find_one({"_id": ObjectId(project_id)})
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
     
-    await create_audit_log(
-        current_user["id"], current_user["name"], "delete", "inventory_location", location_id
+    selected_items = project.get("selected_items", [])
+    manual_costs = project.get("manual_costs", [])
+    new_estimation = calculate_cost_estimation(selected_items, manual_costs, float(margin_pct))
+    
+    await db.projects.update_one(
+        {"_id": ObjectId(project_id)},
+        {"$set": {
+            "cost_estimation": new_estimation,
+            "margin_added_by": current_user["name"],
+            "updated_at": datetime.now(timezone.utc).isoformat()
+        }}
     )
     
-    return {"message": "Location deleted successfully"}
+    await create_audit_log(
+        current_user["id"], current_user["name"], "update", "project_margin",
+        project_id, {"margin_percentage": project.get("cost_estimation", {}).get("margin_percentage")},
+        {"margin_percentage": margin_pct}
+    )
+    
+    return {"message": "Margin updated", "cost_estimation": new_estimation}
+
+# ================== INVENTORY MANAGEMENT ==================
 
 @api_router.get("/inventory/items")
 async def get_inventory_items(
@@ -1036,6 +1110,7 @@ async def get_inventory_items(
             "supplier": item.get("supplier"),
             "gst_percentage": item.get("gst_percentage", 18.0),
             "reorder_level": item.get("reorder_level", 10),
+            "image_url": item.get("image_url"),
             "created_at": item["created_at"],
             "updated_at": item.get("updated_at")
         }
@@ -1078,6 +1153,7 @@ async def get_inventory_item(item_id: str, request: Request):
         "supplier": item.get("supplier"),
         "gst_percentage": item.get("gst_percentage", 18.0),
         "reorder_level": item.get("reorder_level", 10),
+        "image_url": item.get("image_url"),
         "created_at": item["created_at"],
         "transactions": [
             {
@@ -1115,6 +1191,7 @@ async def create_inventory_item(item: InventoryItemCreate, request: Request):
         "supplier": item.supplier,
         "gst_percentage": item.gst_percentage,
         "reorder_level": item.reorder_level,
+        "image_url": item.image_url,
         "created_at": datetime.now(timezone.utc).isoformat(),
         "updated_at": datetime.now(timezone.utc).isoformat()
     }
@@ -1162,6 +1239,10 @@ async def update_inventory_item(item_id: str, updates: InventoryItemUpdate, requ
         update_data["rack"] = updates.rack
     if updates.bin_location is not None:
         update_data["bin_location"] = updates.bin_location
+    if updates.image_url is not None:
+        update_data["image_url"] = updates.image_url
+    if updates.category is not None:
+        update_data["category"] = updates.category
     if updates.unit_price is not None:
         update_data["unit_price"] = updates.unit_price
     if updates.supplier is not None:
@@ -1908,7 +1989,7 @@ async def startup_event():
     await db.audit_logs.create_index("entity_type")
     await db.inventory_items.create_index("sku_code", unique=True)
     await db.inventory_items.create_index("category")
-    await db.inventory_locations.create_index("code", unique=True)
+    await db.inventory_categories.create_index("slug", unique=True)
     await db.terms_conditions.create_index([("language", 1), ("is_active", 1)])
     await db.deletion_requests.create_index("project_id")
     await db.deletion_requests.create_index("status")
@@ -1957,13 +2038,32 @@ async def startup_event():
                 "bank_name": "State Bank of India",
                 "branch": "Erode Main Branch"
             },
-            "authorized_signatory": "John Doe",
-            "designation": "Managing Director",
             "is_active": True,
             "created_at": datetime.now(timezone.utc).isoformat(),
             "updated_at": datetime.now(timezone.utc).isoformat()
         })
         logger.info("Default company profile created")
+    
+    # Seed default inventory categories
+    default_categories = [
+        {"name": "Solar Panels", "slug": "solar_panels", "description": "Photovoltaic solar panels"},
+        {"name": "Inverters", "slug": "inverters", "description": "Solar inverters and micro-inverters"},
+        {"name": "Batteries", "slug": "batteries", "description": "Battery storage systems"},
+        {"name": "Mounting Structures", "slug": "mounting_structures", "description": "Panel mounting and racking"},
+        {"name": "Cables & Accessories", "slug": "cables_accessories", "description": "Wiring, connectors, and accessories"},
+    ]
+    for cat in default_categories:
+        existing_cat = await db.inventory_categories.find_one({"slug": cat["slug"]})
+        if not existing_cat:
+            await db.inventory_categories.insert_one({**cat, "created_at": datetime.now(timezone.utc).isoformat()})
+    logger.info("Inventory categories seeded")
+    
+    # Init object storage
+    try:
+        init_storage()
+        logger.info("Object storage initialized")
+    except Exception as e:
+        logger.warning(f"Object storage init failed (non-critical): {e}")
     
     # Write test credentials
     try:

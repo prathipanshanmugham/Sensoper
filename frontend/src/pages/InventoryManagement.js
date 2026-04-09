@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
-import { inventoryAPI } from '../utils/api';
+import { inventoryAPI, uploadAPI } from '../utils/api';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
@@ -9,59 +9,46 @@ import { Badge } from '../components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '../components/ui/dialog';
 import { 
-  ArrowLeft,
-  Plus,
-  Edit,
-  Trash2,
-  Loader2,
-  Package,
-  AlertTriangle,
-  Search,
-  Warehouse
+  ArrowLeft, Plus, Edit, Trash2, Loader2, Package, AlertTriangle,
+  Search, Warehouse, Image, Upload, Tag, X
 } from 'lucide-react';
-
-const CATEGORIES = [
-  { value: 'solar_panels', label: 'Solar Panels' },
-  { value: 'inverters', label: 'Inverters' },
-  { value: 'batteries', label: 'Batteries' },
-  { value: 'mounting_structures', label: 'Mounting Structures' },
-  { value: 'cables_accessories', label: 'Cables & Accessories' }
-];
 
 export default function InventoryManagement() {
   const [items, setItems] = useState([]);
   const [alerts, setAlerts] = useState([]);
+  const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showItemDialog, setShowItemDialog] = useState(false);
+  const [showCatDialog, setShowCatDialog] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterCategory, setFilterCategory] = useState('all');
+  const [imageUploading, setImageUploading] = useState(false);
+  const [newCat, setNewCat] = useState({ name: '', slug: '', description: '' });
   
   const [itemForm, setItemForm] = useState({
-    name: '', sku_code: '', category: 'solar_panels',
+    name: '', sku_code: '', category: '',
     zone: '', aisle: '', shelf: '', rack: '', bin_location: '',
-    quantity: 0, unit_price: 0, supplier: '', gst_percentage: 18, reorder_level: 10
+    quantity: 0, unit_price: 0, supplier: '', gst_percentage: 18, reorder_level: 10,
+    image_url: ''
   });
   
   const [actionLoading, setActionLoading] = useState(false);
   const [error, setError] = useState('');
 
-  useEffect(() => { fetchData(); }, []);
-
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     try {
-      const [itemsRes, alertsRes] = await Promise.all([
-        inventoryAPI.getItems(),
-        inventoryAPI.getAlerts()
+      const [itemsRes, alertsRes, catsRes] = await Promise.all([
+        inventoryAPI.getItems(), inventoryAPI.getAlerts(), inventoryAPI.getCategories()
       ]);
       setItems(itemsRes.data);
       setAlerts(alertsRes.data);
-    } catch (error) {
-      console.error('Failed to fetch inventory:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
+      setCategories(catsRes.data);
+    } catch (err) { console.error('Failed to fetch inventory:', err); }
+    finally { setLoading(false); }
+  }, []);
+
+  useEffect(() => { fetchData(); }, [fetchData]);
 
   const openItemDialog = (item = null) => {
     if (item) {
@@ -72,23 +59,37 @@ export default function InventoryManagement() {
         rack: item.rack || '', bin_location: item.bin_location || '',
         quantity: item.quantity, unit_price: item.unit_price,
         supplier: item.supplier || '', gst_percentage: item.gst_percentage || 18,
-        reorder_level: item.reorder_level || 10
+        reorder_level: item.reorder_level || 10, image_url: item.image_url || ''
       });
     } else {
       setEditingItem(null);
       setItemForm({
-        name: '', sku_code: '', category: 'solar_panels',
+        name: '', sku_code: '', category: categories[0]?.slug || '',
         zone: '', aisle: '', shelf: '', rack: '', bin_location: '',
-        quantity: 0, unit_price: 0, supplier: '', gst_percentage: 18, reorder_level: 10
+        quantity: 0, unit_price: 0, supplier: '', gst_percentage: 18, reorder_level: 10,
+        image_url: ''
       });
     }
     setError('');
     setShowItemDialog(true);
   };
 
+  const handleImageUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImageUploading(true);
+    try {
+      const res = await uploadAPI.uploadImage(file);
+      const url = uploadAPI.getFileUrl(res.data.storage_path);
+      setItemForm(p => ({ ...p, image_url: url }));
+    } catch (err) {
+      setError('Image upload failed');
+    } finally { setImageUploading(false); }
+  };
+
   const handleSaveItem = async () => {
-    if (!itemForm.name || !itemForm.sku_code) {
-      setError('Name and SKU Code are required');
+    if (!itemForm.name || !itemForm.sku_code || !itemForm.category) {
+      setError('Name, SKU Code, and Category are required');
       return;
     }
     setActionLoading(true);
@@ -103,87 +104,86 @@ export default function InventoryManagement() {
       fetchData();
     } catch (err) {
       setError(err.response?.data?.detail || 'Operation failed');
-    } finally {
-      setActionLoading(false);
-    }
+    } finally { setActionLoading(false); }
   };
 
   const handleDeleteItem = async (item) => {
     if (!window.confirm(`Delete "${item.name}"?`)) return;
+    try { await inventoryAPI.deleteItem(item.id); fetchData(); }
+    catch (err) { alert(err.response?.data?.detail || 'Failed to delete'); }
+  };
+
+  const handleCreateCategory = async () => {
+    if (!newCat.name || !newCat.slug) return;
     try {
-      await inventoryAPI.deleteItem(item.id);
+      await inventoryAPI.createCategory(newCat);
+      setNewCat({ name: '', slug: '', description: '' });
+      setShowCatDialog(false);
       fetchData();
-    } catch (err) {
-      alert(err.response?.data?.detail || 'Failed to delete');
-    }
+    } catch (err) { setError(err.response?.data?.detail || 'Failed'); }
+  };
+
+  const handleDeleteCategory = async (id) => {
+    if (!window.confirm('Delete this category?')) return;
+    try { await inventoryAPI.deleteCategory(id); fetchData(); }
+    catch (err) { alert(err.response?.data?.detail || 'Cannot delete'); }
   };
 
   const filteredItems = items.filter(item => {
-    if (searchQuery && !item.name.toLowerCase().includes(searchQuery.toLowerCase()) && 
+    if (searchQuery && !item.name.toLowerCase().includes(searchQuery.toLowerCase()) &&
         !item.sku_code.toLowerCase().includes(searchQuery.toLowerCase())) return false;
     if (filterCategory !== 'all' && item.category !== filterCategory) return false;
     return true;
   });
 
-  const getCategoryLabel = (value) => CATEGORIES.find(c => c.value === value)?.label || value;
-
+  const getCategoryLabel = (slug) => categories.find(c => c.slug === slug)?.name || slug;
   const getWarehouseLocation = (item) => {
     const parts = [item.zone, item.aisle, item.shelf, item.rack, item.bin_location].filter(Boolean);
     return parts.length > 0 ? parts.join(' > ') : '-';
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 py-8 px-4">
+    <div className="min-h-screen bg-slate-50 py-6 px-4">
       <div className="max-w-6xl mx-auto">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
-          <div className="flex items-center gap-4">
-            <Link to="/dashboard">
-              <Button variant="ghost" size="icon" className="text-slate-600" data-testid="back-btn"><ArrowLeft className="h-5 w-5" /></Button>
-            </Link>
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
+          <div className="flex items-center gap-3">
+            <Link to="/dashboard"><Button variant="ghost" size="icon" className="text-slate-600" data-testid="back-btn"><ArrowLeft className="h-5 w-5" /></Button></Link>
             <div>
-              <h1 className="text-2xl font-bold font-['Outfit'] text-slate-900">Inventory Management</h1>
-              <p className="text-slate-500">{items.length} items in warehouse</p>
+              <h1 className="text-xl sm:text-2xl font-bold font-['Outfit'] text-slate-900">Inventory</h1>
+              <p className="text-sm text-slate-500">{items.length} items in warehouse</p>
             </div>
           </div>
         </div>
 
         {alerts.length > 0 && (
-          <Card className="border-amber-200 bg-amber-50 mb-6">
-            <CardHeader className="py-3">
-              <CardTitle className="text-sm font-medium text-amber-800 flex items-center gap-2">
-                <AlertTriangle className="h-4 w-4" />Low Stock Alerts ({alerts.length})
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="py-2">
-              <div className="flex flex-wrap gap-2">
-                {alerts.map(item => (
-                  <Badge key={item.id} variant="outline" className="bg-white text-amber-800 border-amber-300">
-                    {item.name} - Only {item.quantity} left
-                  </Badge>
-                ))}
-              </div>
+          <Card className="border-amber-200 bg-amber-50 mb-4">
+            <CardContent className="py-3 px-4 flex flex-wrap gap-2 items-center">
+              <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0" />
+              <span className="text-sm font-medium text-amber-800">Low Stock:</span>
+              {alerts.map(a => <Badge key={a.id} variant="outline" className="bg-white text-amber-800 border-amber-300 text-xs">{a.name} ({a.quantity})</Badge>)}
             </CardContent>
           </Card>
         )}
 
         {/* Filters */}
         <Card className="border-slate-200 mb-4">
-          <CardContent className="p-4">
-            <div className="flex flex-col sm:flex-row gap-4">
+          <CardContent className="p-3 sm:p-4">
+            <div className="flex flex-col sm:flex-row gap-3">
               <div className="relative flex-1">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-                <Input placeholder="Search by name or SKU..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="pl-10" data-testid="search-items" />
+                <Input placeholder="Search..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="pl-10 h-11" data-testid="search-items" />
               </div>
               <Select value={filterCategory} onValueChange={setFilterCategory}>
-                <SelectTrigger className="w-[180px]" data-testid="filter-category"><SelectValue placeholder="Category" /></SelectTrigger>
+                <SelectTrigger className="w-full sm:w-[180px] h-11" data-testid="filter-category"><SelectValue placeholder="Category" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Categories</SelectItem>
-                  {CATEGORIES.map(cat => <SelectItem key={cat.value} value={cat.value}>{cat.label}</SelectItem>)}
+                  {categories.map(c => <SelectItem key={c.id} value={c.slug}>{c.name}</SelectItem>)}
                 </SelectContent>
               </Select>
-              <Button onClick={() => openItemDialog()} className="bg-emerald-600 hover:bg-emerald-700 text-white" data-testid="add-item-btn">
-                <Plus className="h-4 w-4 mr-2" />Add Item
-              </Button>
+              <div className="flex gap-2">
+                <Button variant="outline" onClick={() => setShowCatDialog(true)} className="flex-1 sm:flex-none h-11" data-testid="manage-categories-btn"><Tag className="h-4 w-4 mr-1" />Categories</Button>
+                <Button onClick={() => openItemDialog()} className="flex-1 sm:flex-none bg-emerald-600 hover:bg-emerald-700 text-white h-11" data-testid="add-item-btn"><Plus className="h-4 w-4 mr-1" />Add Item</Button>
+              </div>
             </div>
           </CardContent>
         </Card>
@@ -193,143 +193,193 @@ export default function InventoryManagement() {
         ) : filteredItems.length === 0 ? (
           <Card className="border-slate-200"><CardContent className="py-12 text-center"><Package className="h-12 w-12 mx-auto mb-4 text-slate-300" /><p className="text-slate-500">No items found</p></CardContent></Card>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full bg-white rounded-lg border border-slate-200">
-              <thead>
-                <tr className="border-b border-slate-200 bg-slate-50">
-                  <th className="text-left py-3 px-4 text-xs font-semibold uppercase text-slate-500">Item</th>
-                  <th className="text-left py-3 px-4 text-xs font-semibold uppercase text-slate-500">SKU</th>
-                  <th className="text-left py-3 px-4 text-xs font-semibold uppercase text-slate-500">Category</th>
-                  <th className="text-left py-3 px-4 text-xs font-semibold uppercase text-slate-500">Warehouse Location</th>
-                  <th className="text-right py-3 px-4 text-xs font-semibold uppercase text-slate-500">Qty</th>
-                  <th className="text-right py-3 px-4 text-xs font-semibold uppercase text-slate-500">Price</th>
-                  <th className="text-right py-3 px-4 text-xs font-semibold uppercase text-slate-500">GST</th>
-                  <th className="text-right py-3 px-4 text-xs font-semibold uppercase text-slate-500">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredItems.map(item => (
-                  <tr key={item.id} className="border-b border-slate-100 hover:bg-slate-50" data-testid={`item-row-${item.id}`}>
-                    <td className="py-3 px-4">
-                      <div className="font-medium text-slate-900">{item.name}</div>
-                      {item.supplier && <div className="text-xs text-slate-500">{item.supplier}</div>}
-                    </td>
-                    <td className="py-3 px-4 text-sm text-slate-600 font-mono">{item.sku_code}</td>
-                    <td className="py-3 px-4"><Badge variant="outline">{getCategoryLabel(item.category)}</Badge></td>
-                    <td className="py-3 px-4 text-sm text-slate-600">
-                      <div className="flex items-center gap-1">
-                        <Warehouse className="h-3 w-3 text-slate-400" />
-                        {getWarehouseLocation(item)}
-                      </div>
-                    </td>
-                    <td className="py-3 px-4 text-right">
-                      <span className={item.quantity <= item.reorder_level ? 'text-red-600 font-semibold' : 'text-slate-900'}>
-                        {item.quantity}
-                      </span>
-                      {item.quantity <= item.reorder_level && <AlertTriangle className="h-3 w-3 inline ml-1 text-red-500" />}
-                    </td>
-                    <td className="py-3 px-4 text-right font-medium text-slate-900">Rs {item.unit_price.toLocaleString('en-IN')}</td>
-                    <td className="py-3 px-4 text-right text-slate-600">{item.gst_percentage}%</td>
-                    <td className="py-3 px-4 text-right">
-                      <div className="flex justify-end gap-2">
-                        <Button variant="ghost" size="icon" onClick={() => openItemDialog(item)} data-testid={`edit-item-${item.id}`}><Edit className="h-4 w-4" /></Button>
-                        <Button variant="ghost" size="icon" className="text-red-600 hover:text-red-700" onClick={() => handleDeleteItem(item)} data-testid={`delete-item-${item.id}`}><Trash2 className="h-4 w-4" /></Button>
-                      </div>
-                    </td>
+          <>
+            {/* Desktop Table */}
+            <div className="hidden md:block overflow-x-auto">
+              <table className="w-full bg-white rounded-lg border border-slate-200">
+                <thead>
+                  <tr className="border-b border-slate-200 bg-slate-50">
+                    <th className="text-left py-3 px-4 text-xs font-semibold uppercase text-slate-500">Item</th>
+                    <th className="text-left py-3 px-4 text-xs font-semibold uppercase text-slate-500">Category</th>
+                    <th className="text-left py-3 px-4 text-xs font-semibold uppercase text-slate-500">Location</th>
+                    <th className="text-right py-3 px-4 text-xs font-semibold uppercase text-slate-500">Qty</th>
+                    <th className="text-right py-3 px-4 text-xs font-semibold uppercase text-slate-500">Price</th>
+                    <th className="text-right py-3 px-4 text-xs font-semibold uppercase text-slate-500">GST</th>
+                    <th className="text-right py-3 px-4 text-xs font-semibold uppercase text-slate-500">Actions</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {filteredItems.map(item => (
+                    <tr key={item.id} className="border-b border-slate-100 hover:bg-slate-50" data-testid={`item-row-${item.id}`}>
+                      <td className="py-3 px-4">
+                        <div className="flex items-center gap-3">
+                          {item.image_url ? (
+                            <img src={item.image_url} alt="" className="h-10 w-10 rounded-lg object-cover border border-slate-200" />
+                          ) : (
+                            <div className="h-10 w-10 rounded-lg bg-slate-100 flex items-center justify-center"><Package className="h-5 w-5 text-slate-400" /></div>
+                          )}
+                          <div>
+                            <div className="font-medium text-slate-900">{item.name}</div>
+                            <div className="text-xs text-slate-500 font-mono">{item.sku_code}</div>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="py-3 px-4"><Badge variant="outline" className="text-xs">{getCategoryLabel(item.category)}</Badge></td>
+                      <td className="py-3 px-4 text-sm text-slate-600"><div className="flex items-center gap-1"><Warehouse className="h-3 w-3 text-slate-400" />{getWarehouseLocation(item)}</div></td>
+                      <td className="py-3 px-4 text-right"><span className={item.quantity <= item.reorder_level ? 'text-red-600 font-semibold' : 'text-slate-900'}>{item.quantity}</span>{item.quantity <= item.reorder_level && <AlertTriangle className="h-3 w-3 inline ml-1 text-red-500" />}</td>
+                      <td className="py-3 px-4 text-right font-medium text-slate-900">Rs {item.unit_price.toLocaleString('en-IN')}</td>
+                      <td className="py-3 px-4 text-right text-slate-600">{item.gst_percentage}%</td>
+                      <td className="py-3 px-4 text-right">
+                        <div className="flex justify-end gap-1">
+                          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openItemDialog(item)} data-testid={`edit-item-${item.id}`}><Edit className="h-4 w-4" /></Button>
+                          <Button variant="ghost" size="icon" className="h-8 w-8 text-red-600" onClick={() => handleDeleteItem(item)} data-testid={`delete-item-${item.id}`}><Trash2 className="h-4 w-4" /></Button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Mobile Cards */}
+            <div className="md:hidden space-y-3">
+              {filteredItems.map(item => (
+                <Card key={item.id} className="border-slate-200" data-testid={`item-card-${item.id}`}>
+                  <CardContent className="p-4">
+                    <div className="flex items-start gap-3">
+                      {item.image_url ? (
+                        <img src={item.image_url} alt="" className="h-14 w-14 rounded-lg object-cover border" />
+                      ) : (
+                        <div className="h-14 w-14 rounded-lg bg-slate-100 flex items-center justify-center shrink-0"><Package className="h-6 w-6 text-slate-400" /></div>
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-start justify-between">
+                          <div>
+                            <p className="font-medium text-slate-900 truncate">{item.name}</p>
+                            <p className="text-xs text-slate-500 font-mono">{item.sku_code}</p>
+                          </div>
+                          <div className="flex gap-1 shrink-0 ml-2">
+                            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openItemDialog(item)}><Edit className="h-4 w-4" /></Button>
+                            <Button variant="ghost" size="icon" className="h-8 w-8 text-red-600" onClick={() => handleDeleteItem(item)}><Trash2 className="h-4 w-4" /></Button>
+                          </div>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2 mt-2">
+                          <Badge variant="outline" className="text-xs">{getCategoryLabel(item.category)}</Badge>
+                          <span className={`text-sm font-medium ${item.quantity <= item.reorder_level ? 'text-red-600' : 'text-slate-900'}`}>Qty: {item.quantity}</span>
+                          <span className="text-sm font-semibold text-slate-900">Rs {item.unit_price.toLocaleString('en-IN')}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          </>
         )}
       </div>
 
       {/* Item Dialog */}
       <Dialog open={showItemDialog} onOpenChange={setShowItemDialog}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{editingItem ? 'Edit Item' : 'Add New Item'}</DialogTitle>
             <DialogDescription>Fill in item details and warehouse location</DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 py-4 max-h-[70vh] overflow-y-auto">
+          <div className="space-y-4 py-4">
             {error && <div className="p-3 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg">{error}</div>}
+
+            {/* Image Upload */}
+            <div className="space-y-2">
+              <Label>Product Image</Label>
+              <div className="flex items-center gap-4">
+                {itemForm.image_url ? (
+                  <div className="relative">
+                    <img src={itemForm.image_url} alt="" className="h-20 w-20 rounded-lg object-cover border" />
+                    <button onClick={() => setItemForm(p => ({ ...p, image_url: '' }))} className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-0.5"><X className="h-3 w-3" /></button>
+                  </div>
+                ) : (
+                  <label className="h-20 w-20 rounded-lg border-2 border-dashed border-slate-300 flex flex-col items-center justify-center cursor-pointer hover:bg-slate-50 transition-colors">
+                    {imageUploading ? <Loader2 className="h-5 w-5 animate-spin text-slate-400" /> : <><Upload className="h-5 w-5 text-slate-400" /><span className="text-[10px] text-slate-400 mt-1">Upload</span></>}
+                    <input type="file" accept="image/*" className="hidden" onChange={handleImageUpload} disabled={imageUploading} data-testid="item-image-input" />
+                  </label>
+                )}
+              </div>
+            </div>
+
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Name *</Label>
-                <Input value={itemForm.name} onChange={(e) => setItemForm(p => ({ ...p, name: e.target.value }))} placeholder="e.g., Trina 540W Panel" data-testid="item-name-input" />
+                <Input value={itemForm.name} onChange={(e) => setItemForm(p => ({ ...p, name: e.target.value }))} placeholder="e.g., Trina 540W Panel" className="h-11" data-testid="item-name-input" />
               </div>
               <div className="space-y-2">
                 <Label>SKU Code *</Label>
-                <Input value={itemForm.sku_code} onChange={(e) => setItemForm(p => ({ ...p, sku_code: e.target.value }))} placeholder="e.g., TRN-540-MONO" disabled={!!editingItem} data-testid="item-sku-input" />
+                <Input value={itemForm.sku_code} onChange={(e) => setItemForm(p => ({ ...p, sku_code: e.target.value }))} placeholder="e.g., TRN-540" disabled={!!editingItem} className="h-11" data-testid="item-sku-input" />
               </div>
             </div>
             <div className="space-y-2">
               <Label>Category *</Label>
               <Select value={itemForm.category} onValueChange={(v) => setItemForm(p => ({ ...p, category: v }))}>
-                <SelectTrigger data-testid="item-category-select"><SelectValue /></SelectTrigger>
-                <SelectContent>{CATEGORIES.map(c => <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>)}</SelectContent>
+                <SelectTrigger className="h-11" data-testid="item-category-select"><SelectValue placeholder="Select category" /></SelectTrigger>
+                <SelectContent>{categories.map(c => <SelectItem key={c.id} value={c.slug}>{c.name}</SelectItem>)}</SelectContent>
               </Select>
             </div>
 
-            {/* Warehouse Location */}
             <div className="p-3 bg-slate-50 rounded-lg border border-slate-200">
               <Label className="text-sm font-semibold text-slate-700 mb-2 flex items-center gap-2"><Warehouse className="h-4 w-4" /> Warehouse Location</Label>
               <div className="grid grid-cols-5 gap-2 mt-2">
-                <div className="space-y-1">
-                  <Label className="text-xs">Zone</Label>
-                  <Input value={itemForm.zone} onChange={(e) => setItemForm(p => ({ ...p, zone: e.target.value.toUpperCase() }))} placeholder="A" className="text-center" data-testid="item-zone-input" />
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-xs">Aisle</Label>
-                  <Input value={itemForm.aisle} onChange={(e) => setItemForm(p => ({ ...p, aisle: e.target.value.toUpperCase() }))} placeholder="A1" className="text-center" data-testid="item-aisle-input" />
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-xs">Shelf</Label>
-                  <Input value={itemForm.shelf} onChange={(e) => setItemForm(p => ({ ...p, shelf: e.target.value.toUpperCase() }))} placeholder="S2" className="text-center" data-testid="item-shelf-input" />
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-xs">Rack</Label>
-                  <Input value={itemForm.rack} onChange={(e) => setItemForm(p => ({ ...p, rack: e.target.value.toUpperCase() }))} placeholder="R3" className="text-center" data-testid="item-rack-input" />
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-xs">Bin</Label>
-                  <Input value={itemForm.bin_location} onChange={(e) => setItemForm(p => ({ ...p, bin_location: e.target.value.toUpperCase() }))} placeholder="B5" className="text-center" data-testid="item-bin-input" />
-                </div>
+                {[['zone','Zone','A'], ['aisle','Aisle','A1'], ['shelf','Shelf','S2'], ['rack','Rack','R3'], ['bin_location','Bin','B5']].map(([key, label, ph]) => (
+                  <div key={key} className="space-y-1">
+                    <Label className="text-xs">{label}</Label>
+                    <Input value={itemForm[key]} onChange={(e) => setItemForm(p => ({ ...p, [key]: e.target.value.toUpperCase() }))} placeholder={ph} className="text-center h-10" data-testid={`item-${key}-input`} />
+                  </div>
+                ))}
               </div>
             </div>
 
             <div className="grid grid-cols-3 gap-4">
-              <div className="space-y-2">
-                <Label>Quantity</Label>
-                <Input type="number" min="0" value={itemForm.quantity} onChange={(e) => setItemForm(p => ({ ...p, quantity: parseInt(e.target.value) || 0 }))} data-testid="item-quantity-input" />
-              </div>
-              <div className="space-y-2">
-                <Label>Unit Price (Rs)</Label>
-                <Input type="number" min="0" value={itemForm.unit_price} onChange={(e) => setItemForm(p => ({ ...p, unit_price: parseFloat(e.target.value) || 0 }))} data-testid="item-price-input" />
-              </div>
-              <div className="space-y-2">
-                <Label>GST %</Label>
-                <Input type="number" min="0" max="100" value={itemForm.gst_percentage} onChange={(e) => setItemForm(p => ({ ...p, gst_percentage: parseFloat(e.target.value) || 0 }))} data-testid="item-gst-input" />
-              </div>
+              <div className="space-y-2"><Label>Quantity</Label><Input type="number" min="0" value={itemForm.quantity} onChange={(e) => setItemForm(p => ({ ...p, quantity: parseInt(e.target.value) || 0 }))} className="h-11" data-testid="item-quantity-input" /></div>
+              <div className="space-y-2"><Label>Unit Price (Rs)</Label><Input type="number" min="0" value={itemForm.unit_price} onChange={(e) => setItemForm(p => ({ ...p, unit_price: parseFloat(e.target.value) || 0 }))} className="h-11" data-testid="item-price-input" /></div>
+              <div className="space-y-2"><Label>GST %</Label><Input type="number" min="0" max="100" value={itemForm.gst_percentage} onChange={(e) => setItemForm(p => ({ ...p, gst_percentage: parseFloat(e.target.value) || 0 }))} className="h-11" data-testid="item-gst-input" /></div>
             </div>
             <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Supplier</Label>
-                <Input value={itemForm.supplier} onChange={(e) => setItemForm(p => ({ ...p, supplier: e.target.value }))} placeholder="Supplier name" data-testid="item-supplier-input" />
-              </div>
-              <div className="space-y-2">
-                <Label>Reorder Level</Label>
-                <Input type="number" min="0" value={itemForm.reorder_level} onChange={(e) => setItemForm(p => ({ ...p, reorder_level: parseInt(e.target.value) || 0 }))} data-testid="item-reorder-input" />
-              </div>
+              <div className="space-y-2"><Label>Supplier</Label><Input value={itemForm.supplier} onChange={(e) => setItemForm(p => ({ ...p, supplier: e.target.value }))} placeholder="Supplier name" className="h-11" data-testid="item-supplier-input" /></div>
+              <div className="space-y-2"><Label>Reorder Level</Label><Input type="number" min="0" value={itemForm.reorder_level} onChange={(e) => setItemForm(p => ({ ...p, reorder_level: parseInt(e.target.value) || 0 }))} className="h-11" data-testid="item-reorder-input" /></div>
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowItemDialog(false)}>Cancel</Button>
-            <Button onClick={handleSaveItem} disabled={actionLoading} className="bg-emerald-600 hover:bg-emerald-700 text-white" data-testid="save-item-btn">
-              {actionLoading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-              {editingItem ? 'Save' : 'Create'}
+            <Button variant="outline" onClick={() => setShowItemDialog(false)} className="h-11">Cancel</Button>
+            <Button onClick={handleSaveItem} disabled={actionLoading} className="bg-emerald-600 hover:bg-emerald-700 text-white h-11" data-testid="save-item-btn">
+              {actionLoading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}{editingItem ? 'Save' : 'Create'}
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Categories Dialog */}
+      <Dialog open={showCatDialog} onOpenChange={setShowCatDialog}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Manage Categories</DialogTitle>
+            <DialogDescription>Add or remove inventory categories</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              {categories.map(c => (
+                <div key={c.id} className="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
+                  <div><p className="font-medium text-sm">{c.name}</p><p className="text-xs text-slate-500">{c.slug}</p></div>
+                  <Button variant="ghost" size="icon" className="h-8 w-8 text-red-500" onClick={() => handleDeleteCategory(c.id)}><Trash2 className="h-3.5 w-3.5" /></Button>
+                </div>
+              ))}
+            </div>
+            <div className="border-t border-slate-200 pt-4">
+              <Label className="text-sm font-medium mb-2 block">Add New Category</Label>
+              <div className="space-y-2">
+                <Input value={newCat.name} onChange={(e) => setNewCat(p => ({ ...p, name: e.target.value, slug: e.target.value.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '') }))} placeholder="Category name" className="h-11" data-testid="new-cat-name" />
+                <Input value={newCat.slug} onChange={(e) => setNewCat(p => ({ ...p, slug: e.target.value }))} placeholder="Slug (auto-generated)" className="h-11 font-mono text-sm" data-testid="new-cat-slug" />
+                <Button onClick={handleCreateCategory} disabled={!newCat.name || !newCat.slug} className="w-full bg-emerald-600 hover:bg-emerald-700 text-white h-11" data-testid="create-cat-btn"><Plus className="h-4 w-4 mr-1" />Add Category</Button>
+              </div>
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
     </div>

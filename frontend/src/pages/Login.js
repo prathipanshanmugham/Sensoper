@@ -5,7 +5,7 @@ import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Sun } from 'lucide-react';
 
 const LOGO_URL = "https://customer-assets.emergentagent.com/job_solar-estimator-14/artifacts/2dpfr2zb_slg.png";
 
@@ -21,7 +21,6 @@ export default function Login() {
     e.preventDefault();
     setError('');
     setLoading(true);
-
     try {
       await login(email, password);
       navigate('/dashboard');
@@ -34,112 +33,60 @@ export default function Login() {
 
   return (
     <div className="min-h-screen flex">
-      {/* Left side - Dark branded section */}
-      <div 
-        className="hidden lg:flex lg:w-1/2 bg-[#0a0a0a] relative overflow-hidden"
-      >
-        {/* Decorative elements */}
-        <div className="absolute top-20 left-10 w-4 h-4 rounded-full bg-[#2D9BF0] opacity-80"></div>
-        <div className="absolute top-28 left-16 w-3 h-3 rounded-full bg-[#2D9BF0] opacity-60"></div>
-        <div className="absolute top-24 left-24 w-2 h-2 rounded-full bg-[#2D9BF0] opacity-40"></div>
-        <div className="absolute top-36 left-12 w-2 h-2 rounded-full bg-[#2D9BF0] opacity-50"></div>
-        <div className="absolute top-16 left-20 w-3 h-3 rounded-full bg-[#2D9BF0] opacity-70"></div>
+      {/* Left side - Light branded section */}
+      <div className="hidden lg:flex lg:w-1/2 bg-gradient-to-br from-emerald-50 via-white to-sky-50 relative overflow-hidden">
+        <div className="absolute top-20 left-10 w-32 h-32 rounded-full bg-[#4ADE40] opacity-10 blur-3xl"></div>
+        <div className="absolute bottom-40 right-20 w-48 h-48 rounded-full bg-[#2D9BF0] opacity-10 blur-3xl"></div>
+        <div className="absolute top-1/2 left-1/4 w-64 h-64 rounded-full bg-emerald-200 opacity-20 blur-3xl"></div>
         
-        <div className="absolute bottom-40 right-20 w-32 h-32 rounded-full bg-[#4ADE40] opacity-10 blur-3xl"></div>
-        <div className="absolute top-40 right-40 w-48 h-48 rounded-full bg-[#2D9BF0] opacity-10 blur-3xl"></div>
-        
-        <div className="relative z-10 flex flex-col justify-center px-12 text-white">
-          <img 
-            src={LOGO_URL} 
-            alt="Sensoper Controls & Renewables" 
-            className="h-32 w-auto object-contain mb-8"
-          />
+        <div className="relative z-10 flex flex-col justify-center px-12">
+          <img src={LOGO_URL} alt="Sensoper Controls & Renewables" className="h-28 w-auto object-contain mb-8" />
           <h1 className="text-4xl font-bold font-['Outfit'] mb-4">
             <span className="text-[#4ADE40]">Solar</span>{' '}
             <span className="text-[#2D9BF0]">Project</span>{' '}
-            <span className="text-white">Cost Estimator</span>
+            <span className="text-slate-800">Cost Estimator</span>
           </h1>
-          <p className="text-lg text-slate-400 leading-relaxed">
-            Streamline your solar installations with accurate cost estimations, 
+          <p className="text-base text-slate-500 leading-relaxed max-w-md">
+            Streamline your solar installations with accurate cost estimations,
             professional quotations, and efficient project management.
           </p>
+          <div className="mt-8 flex items-center gap-3 text-sm text-slate-400">
+            <Sun className="h-4 w-4 text-[#4ADE40]" />
+            <span>Powering India's solar future</span>
+          </div>
         </div>
       </div>
 
-      {/* Right side - Login form */}
-      <div className="flex-1 flex items-center justify-center p-8 bg-slate-50">
+      {/* Right side */}
+      <div className="flex-1 flex items-center justify-center p-6 bg-white">
         <Card className="w-full max-w-md border-slate-200 shadow-lg">
           <CardHeader className="text-center pb-2">
             <div className="flex items-center justify-center mb-4 lg:hidden">
-              <img 
-                src={LOGO_URL} 
-                alt="Sensoper" 
-                className="h-16 w-auto object-contain"
-              />
+              <img src={LOGO_URL} alt="Sensoper" className="h-16 w-auto object-contain" />
             </div>
             <CardTitle className="text-2xl font-['Outfit'] text-slate-900">Welcome back</CardTitle>
-            <CardDescription className="text-slate-500">
-              Sign in to your account to continue
-            </CardDescription>
+            <CardDescription className="text-slate-500">Sign in to your account to continue</CardDescription>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-4">
               {error && (
-                <div className="p-3 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg" data-testid="login-error">
-                  {error}
-                </div>
+                <div className="p-3 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg" data-testid="login-error">{error}</div>
               )}
-              
               <div className="space-y-2">
                 <Label htmlFor="email" className="text-slate-700">Email</Label>
-                <Input
-                  id="email"
-                  type="email"
-                  placeholder="Enter your email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  required
-                  className="h-11"
-                  data-testid="login-email-input"
-                />
+                <Input id="email" type="email" placeholder="Enter your email" value={email} onChange={(e) => setEmail(e.target.value)} required className="h-12" data-testid="login-email-input" />
               </div>
-              
               <div className="space-y-2">
                 <Label htmlFor="password" className="text-slate-700">Password</Label>
-                <Input
-                  id="password"
-                  type="password"
-                  placeholder="Enter your password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                  className="h-11"
-                  data-testid="login-password-input"
-                />
+                <Input id="password" type="password" placeholder="Enter your password" value={password} onChange={(e) => setPassword(e.target.value)} required className="h-12" data-testid="login-password-input" />
               </div>
-
-              <Button 
-                type="submit" 
-                className="w-full h-11 bg-[#4ADE40] hover:bg-[#3dba35] text-black font-medium"
-                disabled={loading}
-                data-testid="login-submit-btn"
-              >
-                {loading ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Signing in...
-                  </>
-                ) : (
-                  'Sign in'
-                )}
+              <Button type="submit" className="w-full h-12 bg-[#4ADE40] hover:bg-[#3dba35] text-black font-medium text-base" disabled={loading} data-testid="login-submit-btn">
+                {loading ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Signing in...</> : 'Sign in'}
               </Button>
             </form>
-
             <div className="mt-6 text-center text-sm text-slate-500">
               Don't have an account?{' '}
-              <Link to="/register" className="text-[#2D9BF0] hover:text-[#1a8ae0] font-medium" data-testid="register-link">
-                Create account
-              </Link>
+              <Link to="/register" className="text-[#2D9BF0] hover:text-[#1a8ae0] font-medium" data-testid="register-link">Create account</Link>
             </div>
           </CardContent>
         </Card>

@@ -37,24 +37,10 @@ const SYSTEM_TYPES = [
   { value: 'hybrid', label: 'Hybrid' }
 ];
 
-const ROOF_TYPES = [
-  { value: 'rcc', label: 'RCC (Concrete)' },
-  { value: 'metal', label: 'Metal Sheet' },
-  { value: 'ground', label: 'Ground Mount' }
-];
-
 const COMPLEXITY_LEVELS = [
   { value: 'simple', label: 'Simple' },
   { value: 'moderate', label: 'Moderate' },
   { value: 'complex', label: 'Complex' }
-];
-
-const CATEGORIES = [
-  { value: 'solar_panels', label: 'Solar Panels' },
-  { value: 'inverters', label: 'Inverters' },
-  { value: 'batteries', label: 'Batteries' },
-  { value: 'mounting_structures', label: 'Mounting Structures' },
-  { value: 'cables_accessories', label: 'Cables & Accessories' }
 ];
 
 export default function SiteVisitForm() {
@@ -66,12 +52,13 @@ export default function SiteVisitForm() {
   const [error, setError] = useState('');
   const [inventoryItems, setInventoryItems] = useState([]);
 
+  const [categories, setCategories] = useState([]);
   const [formData, setFormData] = useState({
     customer: { name: '', phone: '', address: '', email: '' },
     location: { latitude: null, longitude: null, address: '', site_location_words: '' },
     electrical: { sanction_load_kw: '', connected_load_kw: '', monthly_consumption_units: '', eb_tariff: '' },
     solar_system: { system_type: 'on-grid', inverter_model: '', panel_wattage: 540, battery_required: false, battery_capacity_ah: '' },
-    mounting: { roof_type: 'rcc', tilt_angle: 15, structure_type: 'Standard' },
+    mounting: { roof_type: '', tilt_angle: 15, structure_type: '' },
     additional: { cable_length_meters: 50, inverter_to_panel_distance: 10, installation_complexity: 'simple', shadow_analysis_notes: '' },
     selected_items: [],
     manual_costs: [],
@@ -80,15 +67,14 @@ export default function SiteVisitForm() {
 
   useEffect(() => {
     fetchInventory();
+    fetchCategories();
   }, []);
 
   const fetchInventory = async () => {
-    try {
-      const res = await inventoryAPI.getItems();
-      setInventoryItems(res.data);
-    } catch (err) {
-      console.error('Failed to fetch inventory:', err);
-    }
+    try { const res = await inventoryAPI.getItems(); setInventoryItems(res.data); } catch (err) { console.error(err); }
+  };
+  const fetchCategories = async () => {
+    try { const res = await inventoryAPI.getCategories(); setCategories(res.data); } catch (err) { console.error(err); }
   };
 
   const updateField = (section, field, value) => {
@@ -171,7 +157,7 @@ export default function SiteVisitForm() {
   };
 
   const getItemsByCategory = (cat) => inventoryItems.filter(i => i.category === cat && i.quantity > 0);
-  const getCategoryLabel = (val) => CATEGORIES.find(c => c.value === val)?.label || val;
+  const getCategoryLabel = (slug) => categories.find(c => c.slug === slug)?.name || slug;
 
   const calculateTotal = () => {
     const itemsTotal = formData.selected_items.reduce((sum, i) => sum + i.unit_price * i.quantity, 0);
@@ -329,11 +315,11 @@ export default function SiteVisitForm() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label>Customer Name *</Label>
-                    <Input value={formData.customer.name} onChange={(e) => updateField('customer', 'name', e.target.value)} placeholder="Enter customer name" data-testid="customer-name-input" />
+                    <Input value={formData.customer.name} onChange={(e) => updateField('customer', 'name', e.target.value)} placeholder="Enter customer name" className="h-11" data-testid="customer-name-input" />
                   </div>
                   <div className="space-y-2">
                     <Label>Phone Number *</Label>
-                    <Input type="tel" value={formData.customer.phone} onChange={(e) => updateField('customer', 'phone', e.target.value)} placeholder="Enter phone number" data-testid="customer-phone-input" />
+                    <Input type="tel" value={formData.customer.phone} onChange={(e) => updateField('customer', 'phone', e.target.value)} placeholder="Enter phone number" className="h-11" data-testid="customer-phone-input" />
                   </div>
                 </div>
                 <div className="space-y-2">
@@ -371,12 +357,7 @@ export default function SiteVisitForm() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label>Roof Type</Label>
-                    <Select value={formData.mounting.roof_type} onValueChange={(v) => updateField('mounting', 'roof_type', v)}>
-                      <SelectTrigger data-testid="roof-type-select"><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        {ROOF_TYPES.map(t => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}
-                      </SelectContent>
-                    </Select>
+                    <Input value={formData.mounting.roof_type} onChange={(e) => updateField('mounting', 'roof_type', e.target.value)} placeholder="e.g., RCC Flat Roof, Metal Sheet, Terrace with slope" className="h-11" data-testid="roof-type-input" />
                   </div>
                   <div className="space-y-2">
                     <Label>Tilt Angle (degrees)</Label>
@@ -473,15 +454,15 @@ export default function SiteVisitForm() {
                 {/* Inventory Item Selection */}
                 <div>
                   <h3 className="font-semibold text-slate-900 mb-3 flex items-center gap-2"><Package className="h-4 w-4" /> Select Items from Inventory</h3>
-                  {CATEGORIES.map(cat => {
-                    const catItems = getItemsByCategory(cat.value);
+                  {categories.map(cat => {
+                    const catItems = getItemsByCategory(cat.slug);
                     if (catItems.length === 0) return null;
                     return (
-                      <div key={cat.value} className="mb-3">
-                        <Label className="text-xs uppercase tracking-wider text-slate-500 mb-1 block">{cat.label}</Label>
+                      <div key={cat.slug} className="mb-3">
+                        <Label className="text-xs uppercase tracking-wider text-slate-500 mb-1 block">{cat.name}</Label>
                         <Select onValueChange={(v) => addSelectedItem(v)}>
-                          <SelectTrigger data-testid={`select-${cat.value}`}>
-                            <SelectValue placeholder={`Add ${cat.label.toLowerCase()}...`} />
+                          <SelectTrigger className="h-11" data-testid={`select-${cat.slug}`}>
+                            <SelectValue placeholder={`Add ${cat.name.toLowerCase()}...`} />
                           </SelectTrigger>
                           <SelectContent>
                             {catItems.map(item => (
@@ -581,17 +562,17 @@ export default function SiteVisitForm() {
               </div>
             )}
 
-            {/* Navigation */}
-            <div className="flex justify-between mt-8 pt-6 border-t border-slate-200">
-              <Button type="button" variant="outline" onClick={prevStep} disabled={currentStep === 1} className="gap-2" data-testid="prev-step-btn">
+            {/* Navigation — Sticky on mobile */}
+            <div className="flex justify-between mt-8 pt-6 border-t border-slate-200 sticky bottom-0 bg-white pb-4 -mx-6 px-6 sm:static sm:bg-transparent sm:pb-0">
+              <Button type="button" variant="outline" onClick={prevStep} disabled={currentStep === 1} className="gap-2 h-12" data-testid="prev-step-btn">
                 <ArrowLeft className="h-4 w-4" /> Previous
               </Button>
               {currentStep < 4 ? (
-                <Button type="button" onClick={nextStep} className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white" data-testid="next-step-btn">
+                <Button type="button" onClick={nextStep} className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white h-12" data-testid="next-step-btn">
                   Next <ArrowRight className="h-4 w-4" />
                 </Button>
               ) : (
-                <Button type="button" onClick={handleSubmit} disabled={loading} className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white" data-testid="submit-project-btn">
+                <Button type="button" onClick={handleSubmit} disabled={loading} className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white h-12" data-testid="submit-project-btn">
                   {loading ? <><Loader2 className="h-4 w-4 animate-spin" />Creating...</> : <><CheckCircle2 className="h-4 w-4" />Create Project</>}
                 </Button>
               )}
