@@ -13,7 +13,6 @@ import SiteVisitForm from "./pages/SiteVisitForm";
 import UserManagement from "./pages/UserManagement";
 import TermsConditions from "./pages/TermsConditions";
 import InventoryManagement from "./pages/InventoryManagement";
-import DeletionApprovals from "./pages/DeletionApprovals";
 import AuditLogs from "./pages/AuditLogs";
 import CompanyProfile from "./pages/CompanyProfile";
 import ApprovalsPage from "./pages/ApprovalsPage";
@@ -183,15 +182,6 @@ function AppRoutes() {
           </ProtectedRoute>
         }
       />
-      <Route
-        path="/dashboard/deletion-approvals"
-        element={
-          <ProtectedRoute allowedRoles={["admin", "manager"]}>
-            <DeletionApprovals />
-          </ProtectedRoute>
-        }
-      />
-
       {/* Default Redirect */}
       <Route path="/" element={<Navigate to="/dashboard" replace />} />
       <Route path="*" element={<Navigate to="/dashboard" replace />} />

@@ -42,6 +42,9 @@ can_create_project, can_edit_project, can_delete_project, can_request_delete, ca
 - Permissions: GET /api/permissions, GET/PUT /api/permissions/{role}
 - Inventory, Company, Upload, Drive endpoints
 
+## P0 - In Progress
+- [ ] Wire staff actions to Approvals workflow (auto-create approval request on 403)
+
 ## P1 - Upcoming
 - [ ] Google Maps API for site location capture
 - [ ] Project-level notes/comments for manager review

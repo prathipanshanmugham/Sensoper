@@ -23,7 +23,6 @@ import {
   Trash2,
   History,
   ScrollText,
-  AlertTriangle,
   Building2,
   ClipboardCheck,
   Shield
@@ -139,7 +138,6 @@ export default function Dashboard() {
     { icon: FolderPlus, label: 'New Project', href: '/dashboard/projects/new', show: true },
     { icon: FileText, label: 'All Projects', href: '/dashboard/projects', show: true },
     { icon: ClipboardCheck, label: 'Approvals', href: '/dashboard/approvals', show: isAdmin || isManager, badge: stats?.pending_approvals },
-    { icon: Trash2, label: 'Deletion Approvals', href: '/dashboard/deletion-approvals', show: isAdmin || isManager, badge: stats?.pending_deletions },
     { icon: Package, label: 'Inventory', href: '/dashboard/inventory', show: isAdmin || isManager, badge: stats?.low_stock_alerts },
     { icon: ScrollText, label: 'Terms & Conditions', href: '/dashboard/terms', show: isAdmin || isManager },
     { icon: Users, label: 'User Management', href: '/dashboard/users', show: isAdmin },
@@ -263,7 +261,7 @@ export default function Dashboard() {
           ) : (
             <>
               {/* Alert Banners */}
-              {(stats?.pending_deletions > 0 || stats?.low_stock_alerts > 0 || stats?.pending_approvals > 0) && (isAdmin || isManager) && (
+              {(stats?.low_stock_alerts > 0 || stats?.pending_approvals > 0) && (isAdmin || isManager) && (
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
                   {stats?.pending_approvals > 0 && (
                     <Link to="/dashboard/approvals">
@@ -275,21 +273,6 @@ export default function Dashboard() {
                               {stats.pending_approvals} Approval{stats.pending_approvals > 1 ? 's' : ''} Pending
                             </p>
                             <p className="text-sm text-blue-600">Click to review</p>
-                          </div>
-                        </CardContent>
-                      </Card>
-                    </Link>
-                  )}
-                  {stats?.pending_deletions > 0 && (
-                    <Link to="/dashboard/deletion-approvals">
-                      <Card className="border-amber-300 bg-amber-50 hover:bg-amber-100 transition-colors cursor-pointer">
-                        <CardContent className="p-4 flex items-center gap-3">
-                          <AlertTriangle className="h-5 w-5 text-amber-600" />
-                          <div>
-                            <p className="font-medium text-amber-800">
-                              {stats.pending_deletions} Deletion Request{stats.pending_deletions > 1 ? 's' : ''} Pending
-                            </p>
-                            <p className="text-sm text-amber-600">Click to review</p>
                           </div>
                         </CardContent>
                       </Card>
