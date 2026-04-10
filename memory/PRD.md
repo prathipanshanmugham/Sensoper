@@ -1,85 +1,64 @@
 # Sensoper Controls & Renewables - Solar Project Cost Estimator
 
 ## Original Problem Statement
-Build a production-ready web app for Sensoper Controls & Renewables — a Solar Project Cost Estimator for field staff, managers, and admins to collect site data, estimate costs, and generate professional PDF quotations.
+Build a production-ready Solar Project Cost Estimator web application for "Sensoper Controls and Renewables" with role-based auth (Admin, Manager, Staff), multi-step site visit data collection, dynamic cost estimation engine, project tracking dashboard, and professional PDF quotation generation.
 
-## Architecture & Tech Stack
-- **Frontend**: React.js + Tailwind CSS + Shadcn UI (Light Theme)
-- **Backend**: FastAPI (Python) + MongoDB
-- **Auth**: JWT with role-based access (Admin, Manager, Staff)
-- **PDF**: jsPDF + jspdf-autotable (light theme, no margin, no signature)
-- **Storage**: Emergent Object Storage for images
-- **AI**: OpenAI GPT-5.2 via Emergent LLM Key
+## Tech Stack
+- Frontend: React, Tailwind CSS, Shadcn UI, jsPDF, jspdf-autotable
+- Backend: FastAPI, MongoDB, JWT Authentication
+- Storage: Emergent Object Storage, Google Drive (site images)
+- AI: Emergent LLM Key for recommendations
 
 ## User Personas
-1. **Admin** — Full access: users, inventory, terms, audit, company profile, margin control
-2. **Manager** — Projects review, approve/reject, inventory, terms, margin control
-3. **Staff** — Create site visits, view own projects, request deletions. NO margin visibility.
+- **Admin**: Full access, manage users, company branding, inventory, terms, margins, approvals
+- **Manager**: Project review, margin control, approvals, completion
+- **Staff**: Create projects, site visits, request deletions
 
-## Implemented Features (All Complete)
+## Core Features
 
-### Core
-- [x] JWT auth + brute force protection
-- [x] Multi-step site visit form (Customer, Location/What3Words, Electrical, Materials & Cost)
-- [x] Inventory-based cost estimation (dropdown item selection + manual costs)
-- [x] Project workflow (Draft > Submitted > Approved/Rejected > Completed)
-- [x] Dashboard with stats, alerts, and recent projects
-- [x] User management (Admin)
-- [x] AI solar recommendations
+### Implemented (Complete)
+- [x] Role-based JWT Authentication (Admin, Manager, Staff)
+- [x] Multi-step Site Visit Form (5 steps: Customer, Location, Electrical, Materials, Site Images)
+- [x] Dynamic Cost Estimation Engine with per-item margins
+- [x] Professional PDF Quotation with Sensoper logo
+- [x] Project Tracking Dashboard with status workflow (draft -> submitted -> approved/rejected -> completed)
+- [x] Company Branding (logo, colors, bank details)
+- [x] Terms & Conditions Management
+- [x] Inventory Management with categories and image uploads
+- [x] Per-product margin control (Admin/Manager only, never shown in PDF)
+- [x] Type of Service field in Electrical details (Single Phase, Three Phase, HT Service)
+- [x] Add Category on-the-fly from Materials step
+- [x] Mandatory completion photos/videos when marking project as Completed
+- [x] PDF includes uploaded Sensoper logo in header
+- [x] Google Drive OAuth integration for site image uploads
+- [x] Audit Logs
+- [x] Deletion Approvals workflow
+- [x] Mobile Responsive design
+- [x] AI-powered system recommendations
 
-### Enterprise
-- [x] Terms & Conditions with version control + HTML editor
-- [x] Inventory Management — dynamic categories, warehouse hierarchy (Zone/Aisle/Shelf/Rack/Bin), image upload
-- [x] Deletion approval workflow with manager approval
-- [x] Audit logging system
-- [x] Company Profile Management (Basic Info, Branding, Bank Details)
+### P1 - Upcoming
+- [ ] Google Maps API integration for site location capture
+- [ ] Project-level notes/comments for manager review feedback
 
-### Margin Control (NEW)
-- [x] Role-based: visible only to Manager/Admin, hidden from Staff
-- [x] Manager/Admin can set margin % per project
-- [x] Auto-recalculates total cost
-- [x] Margin NEVER appears in customer PDF
-
-### PDF & Branding
-- [x] Multi-page PDF with jspdf-autotable
-- [x] Light/white theme only (no dark backgrounds)
-- [x] Sensoper logo only — no signature, no seal
-- [x] Dynamic company branding, bank details
-- [x] Grid borders, right-aligned currency
-- [x] No margin displayed to customer
-
-### UI/UX (NEW)
-- [x] Light theme across entire app (login, register, sidebar, dashboard)
-- [x] Roof type as free text input (not dropdown)
-- [x] What3Words simple text input for site location
-- [x] Mobile responsive: card layouts, h-11 touch inputs, sticky navigation
-- [x] "Made with Emergent" badge hidden
-- [x] Image upload for inventory items via object storage
-
-### Database (MongoDB)
-Collections: users, projects, terms_conditions, inventory_items, inventory_categories, inventory_transactions, deletion_requests, audit_logs, company_profiles
-
-### Key API Endpoints
-- Auth: POST /api/auth/login, /api/auth/register
-- Projects: CRUD /api/projects, PUT /api/projects/{id}/margin
-- Inventory: CRUD /api/inventory/items, /api/inventory/categories
-- Upload: POST /api/upload/image, GET /api/files/{path}
-- Company: CRUD /api/company, GET /api/company/active
-- Others: /api/terms, /api/users, /api/audit-logs, /api/deletion-requests, /api/dashboard/stats
-
-## Test Credentials
-- Admin: admin@sensoper.com / Admin@123
-
-## Backlog
-
-### P1 — Pending (User Action Required)
-- [ ] Google Maps integration (requires user API key)
-- [ ] Google Drive for image uploads (requires user OAuth)
-
-### P2 — Future
+### P2 - Future/Backlog
 - [ ] Auto inventory deduction on project approval
 - [ ] Offline PWA mode for field staff
 - [ ] WhatsApp Business API for quote sharing
-- [ ] Email delivery of PDF quotes
+- [ ] Email PDF delivery
 - [ ] Advanced analytics dashboard
 - [ ] Export data to Excel
+
+## DB Schema (Key Collections)
+- **projects**: customer, location, electrical (incl. service_type), solar_system, mounting, additional, selected_items (incl. per-item margin_percentage), manual_costs, cost_estimation, site_images, completion_media, status
+- **inventory_items**: name, category, unit_price, gst_percentage, quantity, image_url
+- **inventory_categories**: name, slug, description
+- **company_profiles**: company_name, logo_url, colors, bank_details, contact info
+- **terms_conditions**: title, content, is_active
+
+## Key API Endpoints
+- Auth: POST /api/auth/login, /api/auth/register, GET /api/auth/me
+- Projects: CRUD + /api/projects/{id}/submit, /approve, /reject, /complete, /margin
+- Inventory: /api/inventory/items, /api/inventory/categories
+- Company: /api/company/active, /api/company/upload-logo
+- Upload: /api/upload/image, /api/upload/media
+- Drive: /api/drive/auth-url, /api/drive/callback, /api/drive/status, /api/drive/upload
