@@ -16,6 +16,8 @@ import InventoryManagement from "./pages/InventoryManagement";
 import DeletionApprovals from "./pages/DeletionApprovals";
 import AuditLogs from "./pages/AuditLogs";
 import CompanyProfile from "./pages/CompanyProfile";
+import ApprovalsPage from "./pages/ApprovalsPage";
+import PermissionsPage from "./pages/PermissionsPage";
 
 // Protected Route Component
 function ProtectedRoute({ children, allowedRoles = null }) {
@@ -147,8 +149,24 @@ function AppRoutes() {
           </ProtectedRoute>
         }
       />
+      <Route
+        path="/dashboard/permissions"
+        element={
+          <ProtectedRoute allowedRoles={["admin"]}>
+            <PermissionsPage />
+          </ProtectedRoute>
+        }
+      />
 
       {/* Admin & Manager Routes */}
+      <Route
+        path="/dashboard/approvals"
+        element={
+          <ProtectedRoute allowedRoles={["admin", "manager"]}>
+            <ApprovalsPage />
+          </ProtectedRoute>
+        }
+      />
       <Route
         path="/dashboard/terms"
         element={

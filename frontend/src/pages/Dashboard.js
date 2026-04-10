@@ -24,7 +24,9 @@ import {
   History,
   ScrollText,
   AlertTriangle,
-  Building2
+  Building2,
+  ClipboardCheck,
+  Shield
 } from 'lucide-react';
 
 const LOGO_URL = "https://customer-assets.emergentagent.com/job_solar-estimator-14/artifacts/2dpfr2zb_slg.png";
@@ -136,10 +138,12 @@ export default function Dashboard() {
     { icon: LayoutDashboard, label: 'Dashboard', href: '/dashboard', show: true },
     { icon: FolderPlus, label: 'New Project', href: '/dashboard/projects/new', show: true },
     { icon: FileText, label: 'All Projects', href: '/dashboard/projects', show: true },
+    { icon: ClipboardCheck, label: 'Approvals', href: '/dashboard/approvals', show: isAdmin || isManager, badge: stats?.pending_approvals },
     { icon: Trash2, label: 'Deletion Approvals', href: '/dashboard/deletion-approvals', show: isAdmin || isManager, badge: stats?.pending_deletions },
     { icon: Package, label: 'Inventory', href: '/dashboard/inventory', show: isAdmin || isManager, badge: stats?.low_stock_alerts },
     { icon: ScrollText, label: 'Terms & Conditions', href: '/dashboard/terms', show: isAdmin || isManager },
     { icon: Users, label: 'User Management', href: '/dashboard/users', show: isAdmin },
+    { icon: Shield, label: 'Permissions', href: '/dashboard/permissions', show: isAdmin },
     { icon: Building2, label: 'Company Profile', href: '/dashboard/company-profile', show: isAdmin },
     { icon: History, label: 'Audit Logs', href: '/dashboard/audit-logs', show: isAdmin },
   ].filter(item => item.show);
@@ -259,8 +263,23 @@ export default function Dashboard() {
           ) : (
             <>
               {/* Alert Banners */}
-              {(stats?.pending_deletions > 0 || stats?.low_stock_alerts > 0) && (isAdmin || isManager) && (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+              {(stats?.pending_deletions > 0 || stats?.low_stock_alerts > 0 || stats?.pending_approvals > 0) && (isAdmin || isManager) && (
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                  {stats?.pending_approvals > 0 && (
+                    <Link to="/dashboard/approvals">
+                      <Card className="border-blue-300 bg-blue-50 hover:bg-blue-100 transition-colors cursor-pointer">
+                        <CardContent className="p-4 flex items-center gap-3">
+                          <ClipboardCheck className="h-5 w-5 text-blue-600" />
+                          <div>
+                            <p className="font-medium text-blue-800" data-testid="pending-approvals-alert">
+                              {stats.pending_approvals} Approval{stats.pending_approvals > 1 ? 's' : ''} Pending
+                            </p>
+                            <p className="text-sm text-blue-600">Click to review</p>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    </Link>
+                  )}
                   {stats?.pending_deletions > 0 && (
                     <Link to="/dashboard/deletion-approvals">
                       <Card className="border-amber-300 bg-amber-50 hover:bg-amber-100 transition-colors cursor-pointer">

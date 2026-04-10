@@ -364,6 +364,61 @@ async def create_audit_log(user_id: str, user_name: str, action_type: str, entit
     }
     await db.audit_logs.insert_one(log_entry)
 
+# ================== DYNAMIC PERMISSIONS ==================
+
+DEFAULT_PERMISSIONS = {
+    "admin": {
+        "can_create_project": True, "can_edit_project": True, "can_delete_project": True,
+        "can_request_delete": True, "can_approve_deletion": True,
+        "can_approve_quotation": True, "can_set_margin": True, "can_approve_margin": True,
+        "can_edit_inventory": True, "can_approve_inventory": True,
+        "can_manage_users": True, "can_change_user_access": True,
+        "can_view_reports": True, "can_view_audit_logs": True,
+        "can_manage_company": True, "can_manage_terms": True
+    },
+    "manager": {
+        "can_create_project": True, "can_edit_project": True, "can_delete_project": False,
+        "can_request_delete": True, "can_approve_deletion": True,
+        "can_approve_quotation": True, "can_set_margin": True, "can_approve_margin": True,
+        "can_edit_inventory": True, "can_approve_inventory": True,
+        "can_manage_users": False, "can_change_user_access": False,
+        "can_view_reports": True, "can_view_audit_logs": True,
+        "can_manage_company": False, "can_manage_terms": True
+    },
+    "staff": {
+        "can_create_project": True, "can_edit_project": True, "can_delete_project": False,
+        "can_request_delete": True, "can_approve_deletion": False,
+        "can_approve_quotation": False, "can_set_margin": False, "can_approve_margin": False,
+        "can_edit_inventory": False, "can_approve_inventory": False,
+        "can_manage_users": False, "can_change_user_access": False,
+        "can_view_reports": False, "can_view_audit_logs": False,
+        "can_manage_company": False, "can_manage_terms": False
+    }
+}
+
+async def get_permissions(role: str) -> dict:
+    """Get permissions for a role from DB, falling back to defaults"""
+    perm = await db.role_permissions.find_one({"role_name": role})
+    if perm:
+        return perm.get("permissions", DEFAULT_PERMISSIONS.get(role, {}))
+    return DEFAULT_PERMISSIONS.get(role, {})
+
+async def check_permission(user: dict, permission: str) -> bool:
+    """Check if a user has a specific permission"""
+    if user["role"] == "admin":
+        admin_perms = await get_permissions("admin")
+        return admin_perms.get(permission, True)
+    perms = await get_permissions(user["role"])
+    return perms.get(permission, False)
+
+async def require_permission(request: Request, permission: str) -> dict:
+    """Middleware-like function to check permission"""
+    user = await get_current_user(request)
+    has_perm = await check_permission(user, permission)
+    if not has_perm:
+        raise HTTPException(status_code=403, detail=f"Permission denied: {permission}")
+    return user
+
 def calculate_cost_estimation(selected_items: list, manual_costs: list) -> dict:
     """Calculate cost estimation from selected inventory items and manual costs with per-item margins"""
     items_breakdown = []
@@ -2231,6 +2286,10 @@ async def get_dashboard_stats(request: Request):
         pending_deletions = await db.deletion_requests.count_documents({"status": "pending"})
         stats["pending_deletions"] = pending_deletions
         
+        # Pending approvals count
+        pending_approvals = await db.approvals.count_documents({"status": "pending"})
+        stats["pending_approvals"] = pending_approvals
+        
         # Low stock alerts count
         low_stock_pipeline = [
             {"$match": {"$expr": {"$lte": ["$quantity", "$reorder_level"]}}}
@@ -2301,6 +2360,263 @@ async def get_ai_recommendations(data: AIRecommendationRequest, request: Request
         logger.error(f"AI recommendation error: {e}")
         return {"recommendation": f"Could not generate AI recommendation. Basic estimate: {max(1, data.monthly_consumption_units / 120):.1f} kW system recommended."}
 
+# ================== APPROVALS ==================
+
+APPROVAL_TYPES = ["deletion", "margin_change", "quotation_approval", "inventory_edit", "user_access_change"]
+
+@api_router.get("/approvals")
+async def list_approvals(request: Request, status: str = None, type: str = None, requested_by: str = None):
+    user = await get_current_user(request)
+    query = {}
+    if status:
+        query["status"] = status
+    if type:
+        query["type"] = type
+    if requested_by:
+        query["requested_by"] = requested_by
+    # Staff can only see their own requests
+    if user["role"] == "staff":
+        query["requested_by"] = user["id"]
+    
+    approvals = await db.approvals.find(query).sort("timestamp", -1).to_list(200)
+    return [
+        {
+            "id": str(a["_id"]),
+            "type": a["type"],
+            "requested_by": a["requested_by"],
+            "requested_by_name": a.get("requested_by_name", "Unknown"),
+            "role": a.get("role", "staff"),
+            "description": a.get("description", ""),
+            "entity_type": a.get("entity_type", ""),
+            "entity_id": a.get("entity_id", ""),
+            "data_payload": a.get("data_payload", {}),
+            "status": a["status"],
+            "approved_by": a.get("approved_by"),
+            "approved_by_name": a.get("approved_by_name"),
+            "rejection_reason": a.get("rejection_reason"),
+            "timestamp": a["timestamp"],
+            "resolved_at": a.get("resolved_at")
+        }
+        for a in approvals
+    ]
+
+@api_router.get("/approvals/pending-count")
+async def get_pending_approvals_count(request: Request):
+    user = await get_current_user(request)
+    if user["role"] == "staff":
+        return {"count": 0}
+    count = await db.approvals.count_documents({"status": "pending"})
+    return {"count": count}
+
+@api_router.post("/approvals")
+async def create_approval(request: Request):
+    user = await get_current_user(request)
+    body = await request.json()
+    
+    approval_type = body.get("type")
+    if approval_type not in APPROVAL_TYPES:
+        raise HTTPException(status_code=400, detail=f"Invalid type. Must be: {', '.join(APPROVAL_TYPES)}")
+    
+    doc = {
+        "type": approval_type,
+        "requested_by": user["id"],
+        "requested_by_name": user["name"],
+        "role": user["role"],
+        "description": body.get("description", ""),
+        "entity_type": body.get("entity_type", ""),
+        "entity_id": body.get("entity_id", ""),
+        "data_payload": body.get("data_payload", {}),
+        "status": "pending",
+        "timestamp": datetime.now(timezone.utc).isoformat()
+    }
+    result = await db.approvals.insert_one(doc)
+    await create_audit_log(user["id"], user["name"], "create", "approval", str(result.inserted_id), None, {"type": approval_type})
+    return {"id": str(result.inserted_id), "message": "Approval request created"}
+
+@api_router.put("/approvals/{approval_id}/approve")
+async def approve_request(approval_id: str, request: Request):
+    user = await get_current_user(request)
+    
+    approval = await db.approvals.find_one({"_id": ObjectId(approval_id)})
+    if not approval:
+        raise HTTPException(status_code=404, detail="Approval not found")
+    if approval["status"] != "pending":
+        raise HTTPException(status_code=400, detail="Approval already resolved")
+    
+    # Check permission based on type
+    perm_map = {
+        "deletion": "can_approve_deletion",
+        "margin_change": "can_approve_margin",
+        "quotation_approval": "can_approve_quotation",
+        "inventory_edit": "can_approve_inventory",
+        "user_access_change": "can_change_user_access"
+    }
+    perm = perm_map.get(approval["type"])
+    if perm:
+        has_perm = await check_permission(user, perm)
+        if not has_perm:
+            raise HTTPException(status_code=403, detail="You don't have permission to approve this type")
+    
+    # Execute the approval action
+    executed = await execute_approval_action(approval)
+    
+    await db.approvals.update_one(
+        {"_id": ObjectId(approval_id)},
+        {"$set": {
+            "status": "approved",
+            "approved_by": user["id"],
+            "approved_by_name": user["name"],
+            "resolved_at": datetime.now(timezone.utc).isoformat(),
+            "execution_result": executed
+        }}
+    )
+    await create_audit_log(user["id"], user["name"], "approve", "approval", approval_id)
+    return {"message": "Request approved and executed", "execution_result": executed}
+
+@api_router.put("/approvals/{approval_id}/reject")
+async def reject_request(approval_id: str, request: Request):
+    user = await get_current_user(request)
+    body = await request.json()
+    reason = body.get("reason", "")
+    
+    approval = await db.approvals.find_one({"_id": ObjectId(approval_id)})
+    if not approval:
+        raise HTTPException(status_code=404, detail="Approval not found")
+    if approval["status"] != "pending":
+        raise HTTPException(status_code=400, detail="Approval already resolved")
+    
+    perm_map = {
+        "deletion": "can_approve_deletion",
+        "margin_change": "can_approve_margin",
+        "quotation_approval": "can_approve_quotation",
+        "inventory_edit": "can_approve_inventory",
+        "user_access_change": "can_change_user_access"
+    }
+    perm = perm_map.get(approval["type"])
+    if perm:
+        has_perm = await check_permission(user, perm)
+        if not has_perm:
+            raise HTTPException(status_code=403, detail="You don't have permission to reject this type")
+    
+    await db.approvals.update_one(
+        {"_id": ObjectId(approval_id)},
+        {"$set": {
+            "status": "rejected",
+            "approved_by": user["id"],
+            "approved_by_name": user["name"],
+            "rejection_reason": reason,
+            "resolved_at": datetime.now(timezone.utc).isoformat()
+        }}
+    )
+    await create_audit_log(user["id"], user["name"], "reject", "approval", approval_id)
+    return {"message": "Request rejected"}
+
+async def execute_approval_action(approval: dict) -> str:
+    """Execute the actual action when an approval is granted"""
+    atype = approval["type"]
+    payload = approval.get("data_payload", {})
+    entity_id = approval.get("entity_id", "")
+    
+    try:
+        if atype == "deletion":
+            entity_type = approval.get("entity_type", "")
+            if entity_type == "project" and entity_id:
+                await db.projects.update_one(
+                    {"_id": ObjectId(entity_id)},
+                    {"$set": {"deleted_at": datetime.now(timezone.utc).isoformat(), "status": "deleted"}}
+                )
+                return "Project deleted"
+            elif entity_type == "inventory_item" and entity_id:
+                await db.inventory_items.delete_one({"_id": ObjectId(entity_id)})
+                return "Inventory item deleted"
+        
+        elif atype == "margin_change":
+            if entity_id and "item_margins" in payload:
+                project = await db.projects.find_one({"_id": ObjectId(entity_id)})
+                if project:
+                    items = project.get("selected_items", [])
+                    for mu in payload["item_margins"]:
+                        idx = mu.get("index")
+                        if idx is not None and 0 <= idx < len(items):
+                            items[idx]["margin_percentage"] = float(mu.get("margin_percentage", 0))
+                    new_est = calculate_cost_estimation(items, project.get("manual_costs", []))
+                    await db.projects.update_one(
+                        {"_id": ObjectId(entity_id)},
+                        {"$set": {"selected_items": items, "cost_estimation": new_est, "updated_at": datetime.now(timezone.utc).isoformat()}}
+                    )
+                    return "Margins updated"
+        
+        elif atype == "quotation_approval":
+            if entity_id:
+                await db.projects.update_one(
+                    {"_id": ObjectId(entity_id)},
+                    {"$set": {"status": "approved", "approved_at": datetime.now(timezone.utc).isoformat(), "updated_at": datetime.now(timezone.utc).isoformat()}}
+                )
+                return "Quotation approved"
+        
+        elif atype == "inventory_edit":
+            if entity_id and payload:
+                update_fields = {}
+                for k in ["name", "unit_price", "gst_percentage", "quantity", "category", "description"]:
+                    if k in payload:
+                        update_fields[k] = payload[k]
+                if update_fields:
+                    update_fields["updated_at"] = datetime.now(timezone.utc).isoformat()
+                    await db.inventory_items.update_one(
+                        {"_id": ObjectId(entity_id)},
+                        {"$set": update_fields}
+                    )
+                    return "Inventory item updated"
+        
+        elif atype == "user_access_change":
+            user_id = payload.get("user_id")
+            new_role = payload.get("new_role")
+            if user_id and new_role:
+                await db.users.update_one(
+                    {"_id": ObjectId(user_id)},
+                    {"$set": {"role": new_role}}
+                )
+                return f"User role changed to {new_role}"
+        
+        return "No action taken"
+    except Exception as e:
+        logger.error(f"Approval execution error: {e}")
+        return f"Error: {str(e)}"
+
+# ================== PERMISSIONS MANAGEMENT ==================
+
+@api_router.get("/permissions")
+async def get_all_permissions(request: Request):
+    user = await require_role("admin")(request)
+    roles = ["admin", "manager", "staff"]
+    result = {}
+    for role in roles:
+        result[role] = await get_permissions(role)
+    return result
+
+@api_router.get("/permissions/{role_name}")
+async def get_role_permissions(role_name: str, request: Request):
+    user = await get_current_user(request)
+    perms = await get_permissions(role_name)
+    return {"role": role_name, "permissions": perms}
+
+@api_router.put("/permissions/{role_name}")
+async def update_role_permissions(role_name: str, request: Request):
+    user = await require_role("admin")(request)
+    body = await request.json()
+    permissions = body.get("permissions", {})
+    
+    if role_name not in ["admin", "manager", "staff"]:
+        raise HTTPException(status_code=400, detail="Invalid role")
+    
+    await db.role_permissions.update_one(
+        {"role_name": role_name},
+        {"$set": {"role_name": role_name, "permissions": permissions, "updated_at": datetime.now(timezone.utc).isoformat(), "updated_by": user["name"]}},
+        upsert=True
+    )
+    await create_audit_log(user["id"], user["name"], "update", "permissions", role_name, None, permissions)
+    return {"message": f"Permissions for {role_name} updated", "permissions": permissions}
+
 # ================== HEALTH CHECK ==================
 
 @api_router.get("/")
@@ -2328,6 +2644,11 @@ async def startup_event():
     await db.terms_conditions.create_index([("language", 1), ("is_active", 1)])
     await db.deletion_requests.create_index("project_id")
     await db.deletion_requests.create_index("status")
+    await db.approvals.create_index("status")
+    await db.approvals.create_index("type")
+    await db.approvals.create_index("requested_by")
+    await db.approvals.create_index("timestamp")
+    await db.role_permissions.create_index("role_name", unique=True)
     
     # Seed admin user
     admin_email = os.environ.get("ADMIN_EMAIL", "admin@sensoper.com")
@@ -2398,6 +2719,17 @@ async def startup_event():
         if not existing_cat:
             await db.inventory_categories.insert_one({**cat, "created_at": datetime.now(timezone.utc).isoformat()})
     logger.info("Inventory categories seeded")
+    
+    # Seed default permissions
+    for role_name, perms in DEFAULT_PERMISSIONS.items():
+        existing_perm = await db.role_permissions.find_one({"role_name": role_name})
+        if not existing_perm:
+            await db.role_permissions.insert_one({
+                "role_name": role_name,
+                "permissions": perms,
+                "created_at": datetime.now(timezone.utc).isoformat()
+            })
+    logger.info("Default permissions seeded")
     
     # Init object storage
     try:

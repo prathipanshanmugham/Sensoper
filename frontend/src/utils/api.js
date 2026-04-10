@@ -143,4 +143,20 @@ export const companyAPI = {
   }
 };
 
+// Approvals API
+export const approvalsAPI = {
+  getAll: (params = {}) => api.get('/approvals', { params }),
+  getPendingCount: () => api.get('/approvals/pending-count'),
+  create: (data) => api.post('/approvals', data),
+  approve: (id) => api.put(`/approvals/${id}/approve`),
+  reject: (id, reason) => api.put(`/approvals/${id}/reject`, { reason })
+};
+
+// Permissions API
+export const permissionsAPI = {
+  getAll: () => api.get('/permissions'),
+  getRole: (role) => api.get(`/permissions/${role}`),
+  updateRole: (role, permissions) => api.put(`/permissions/${role}`, { permissions })
+};
+
 export default api;
