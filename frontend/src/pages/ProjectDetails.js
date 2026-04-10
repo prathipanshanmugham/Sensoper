@@ -181,17 +181,31 @@ export default function ProjectDetails() {
     }
 
     const drawHeader = (d) => {
-      d.setFillColor(255, 255, 255); d.rect(0, 0, pageWidth, 36, 'F');
-      d.setDrawColor(...pRgb); d.setLineWidth(0.8); d.line(0, 36, pageWidth, 36);
-      let textStartX = m;
-      if (logoBase64) { try { d.addImage(logoBase64, 'PNG', m, 3, 30, 30); textStartX = m + 34; } catch (e) {} }
-      d.setFontSize(14); d.setFont('helvetica', 'bold'); d.setTextColor(...pRgb);
-      d.text(cp.company_name || 'Sensoper Controls & Renewables', textStartX, 14);
-      if (cp.tagline) { d.setFontSize(8); d.setFont('helvetica', 'normal'); d.setTextColor(120, 120, 120); d.text(cp.tagline, textStartX, 21); }
-      d.setFontSize(7); d.setTextColor(100, 100, 100); d.setFont('helvetica', 'normal');
+      // Dark header background for the logo (logo has black bg)
+      d.setFillColor(10, 10, 10);
+      d.rect(0, 0, pageWidth, 40, 'F');
+      d.setDrawColor(...pRgb);
+      d.setLineWidth(1);
+      d.line(0, 40, pageWidth, 40);
+
+      // Large logo - the logo contains the company name already
+      if (logoBase64) {
+        try {
+          // Logo aspect ratio is roughly 1:0.6 (wider than tall)
+          d.addImage(logoBase64, 'PNG', m, 3, 70, 34);
+        } catch (e) { console.error('Logo embed failed:', e); }
+      }
+
+      // Contact info on right side
+      d.setFontSize(7.5);
+      d.setTextColor(200, 200, 200);
+      d.setFont('helvetica', 'normal');
       const contact = [cp.phone, cp.email, cp.website].filter(Boolean);
-      contact.forEach((line, i) => { d.text(line, pageWidth - m, 12 + i * 3.5, { align: 'right' }); });
-      if (cp.gst_number) { d.setFontSize(7); d.text(`GSTIN: ${cp.gst_number}`, pageWidth - m, 12 + contact.length * 3.5, { align: 'right' }); }
+      contact.forEach((line, i) => { d.text(line, pageWidth - m, 14 + i * 4, { align: 'right' }); });
+      if (cp.gst_number) {
+        d.setFontSize(7);
+        d.text(`GSTIN: ${cp.gst_number}`, pageWidth - m, 14 + contact.length * 4, { align: 'right' });
+      }
     };
 
     const drawFooter = (d, pg, total) => {
@@ -202,7 +216,7 @@ export default function ProjectDetails() {
     };
 
     drawHeader(doc);
-    let y = 44;
+    let y = 48;
 
     // Quote ref box
     const refNum = project.reference_number || `SCR-${id.slice(0,8).toUpperCase()}`;
@@ -255,7 +269,7 @@ export default function ProjectDetails() {
     }); y = doc.lastAutoTable.finalY + 12;
 
     // Cost Breakdown
-    if (y > pageHeight - 80) { doc.addPage(); drawHeader(doc); y = 44; }
+    if (y > pageHeight - 80) { doc.addPage(); drawHeader(doc); y = 48; }
     doc.setFontSize(12); doc.setFont('helvetica', 'bold'); doc.setTextColor(...pRgb);
     doc.text('Cost Breakdown', m, y); doc.setDrawColor(...pRgb); doc.setLineWidth(0.5);
     doc.line(m, y + 1.5, m + doc.getTextWidth('Cost Breakdown'), y + 1.5); y += 8;
@@ -296,7 +310,7 @@ export default function ProjectDetails() {
     // Bank Details with UPI QR
     const bank = cp.bank_details;
     if (bank && bank.account_name) {
-      if (y > pageHeight - 70) { doc.addPage(); drawHeader(doc); y = 44; }
+      if (y > pageHeight - 70) { doc.addPage(); drawHeader(doc); y = 48; }
       y = sectionHead('Bank Details for Payment', y);
       const bankTableWidth = upiQR ? contentW * 0.6 : contentW;
       autoTable(doc, { startY: y, margin: { left: m, right: m }, theme: 'plain',
@@ -320,7 +334,7 @@ export default function ProjectDetails() {
     // Site Images QR
     const siteImages = project.site_images || [];
     if (siteImages.length > 0 && galleryQR) {
-      if (y > pageHeight - 60) { doc.addPage(); drawHeader(doc); y = 44; }
+      if (y > pageHeight - 60) { doc.addPage(); drawHeader(doc); y = 48; }
       y = sectionHead('Site Images', y);
       doc.setFontSize(9); doc.setFont('helvetica', 'normal'); doc.setTextColor(80, 80, 80);
       doc.text(`${siteImages.length} site photo(s) uploaded. Scan QR to view:`, m, y); y += 4;
@@ -329,7 +343,7 @@ export default function ProjectDetails() {
     }
 
     // Terms
-    if (y > pageHeight - 45) { doc.addPage(); drawHeader(doc); y = 44; }
+    if (y > pageHeight - 45) { doc.addPage(); drawHeader(doc); y = 48; }
     doc.setFontSize(10); doc.setFont('helvetica', 'bold'); doc.setTextColor(80, 80, 80);
     doc.text('Terms & Conditions', m, y); doc.setDrawColor(180, 180, 180); doc.setLineWidth(0.3); doc.line(m, y + 1.5, m + 48, y + 1.5); y += 7;
     const termsList = terms?.content ? parseTermsHtml(terms.content)

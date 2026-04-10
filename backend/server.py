@@ -728,7 +728,7 @@ async def get_active_company():
             "id": None,
             "company_name": "Sensoper Controls & Renewables",
             "tagline": "Solar Solutions Provider",
-            "logo_url": "https://customer-assets.emergentagent.com/job_8c20414a-b147-464e-9c68-aaa2fa40fdbf/artifacts/32se8qpu_snspr.png",
+            "logo_url": "https://customer-assets.emergentagent.com/job_8c20414a-b147-464e-9c68-aaa2fa40fdbf/artifacts/x3rj9e2a_slg.png",
             "primary_color": "#4ADE40",
             "secondary_color": "#2D9BF0",
             "address": "Tamil Nadu, India",
@@ -2674,8 +2674,8 @@ async def startup_event():
     
     # Update existing company profiles with new logo
     await db.company_profiles.update_many(
-        {"logo_url": {"$regex": "job_solar-estimator"}},
-        {"$set": {"logo_url": "https://customer-assets.emergentagent.com/job_8c20414a-b147-464e-9c68-aaa2fa40fdbf/artifacts/32se8qpu_snspr.png"}}
+        {"logo_url": {"$regex": "job_solar-estimator|32se8qpu_snspr"}},
+        {"$set": {"logo_url": "https://customer-assets.emergentagent.com/job_8c20414a-b147-464e-9c68-aaa2fa40fdbf/artifacts/x3rj9e2a_slg.png"}}
     )
     
     # Seed default company profile
@@ -2684,7 +2684,7 @@ async def startup_event():
         await db.company_profiles.insert_one({
             "company_name": "Sensoper Controls & Renewables",
             "tagline": "Solar Solutions Provider",
-            "logo_url": "https://customer-assets.emergentagent.com/job_8c20414a-b147-464e-9c68-aaa2fa40fdbf/artifacts/32se8qpu_snspr.png",
+            "logo_url": "https://customer-assets.emergentagent.com/job_8c20414a-b147-464e-9c68-aaa2fa40fdbf/artifacts/x3rj9e2a_slg.png",
             "primary_color": "#4ADE40",
             "secondary_color": "#2D9BF0",
             "address": "123 Solar Street, Erode\nTamil Nadu, India - 638001",
