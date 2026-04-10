@@ -164,8 +164,13 @@ export default function ProjectDetails() {
     const sRgb = hexToRgb(secondaryHex);
     const currency = (val) => `Rs ${(val || 0).toLocaleString('en-IN')}`;
 
+    // Fetch logo as base64 from backend (bypasses CORS)
     let logoBase64 = null;
-    if (cp.logo_url) logoBase64 = await loadImageAsBase64(cp.logo_url);
+    try {
+      const logoRes = await fetch(`${API_URL}/api/company/logo-base64`);
+      const logoData = await logoRes.json();
+      logoBase64 = logoData.logo_base64;
+    } catch (e) { console.error('Failed to fetch logo base64:', e); }
 
     // Generate QR codes
     let galleryQR = null;
@@ -181,25 +186,25 @@ export default function ProjectDetails() {
     }
 
     const drawHeader = (d) => {
-      // Dark header background for the logo (logo has black bg)
-      d.setFillColor(10, 10, 10);
-      d.rect(0, 0, pageWidth, 40, 'F');
+      d.setFillColor(255, 255, 255);
+      d.rect(0, 0, pageWidth, 42, 'F');
       d.setDrawColor(...pRgb);
       d.setLineWidth(1);
-      d.line(0, 40, pageWidth, 40);
+      d.line(0, 42, pageWidth, 42);
 
-      // Large logo - the logo contains the company name already
+      // Large prominent logo
       if (logoBase64) {
         try {
-          // Logo aspect ratio is roughly 1:0.6 (wider than tall)
-          d.addImage(logoBase64, 'PNG', m, 3, 70, 34);
+          d.addImage(logoBase64, 'PNG', m, 4, 55, 34);
         } catch (e) { console.error('Logo embed failed:', e); }
+      } else {
+        // Fallback: text company name if logo fails
+        d.setFontSize(16); d.setFont('helvetica', 'bold'); d.setTextColor(...pRgb);
+        d.text(cp.company_name || 'Sensoper Controls & Renewables', m, 20);
       }
 
       // Contact info on right side
-      d.setFontSize(7.5);
-      d.setTextColor(200, 200, 200);
-      d.setFont('helvetica', 'normal');
+      d.setFontSize(7.5); d.setTextColor(100, 100, 100); d.setFont('helvetica', 'normal');
       const contact = [cp.phone, cp.email, cp.website].filter(Boolean);
       contact.forEach((line, i) => { d.text(line, pageWidth - m, 14 + i * 4, { align: 'right' }); });
       if (cp.gst_number) {

@@ -17,6 +17,7 @@ import bcrypt
 import jwt
 import secrets
 import json
+import base64
 import requests as http_requests
 
 # Configure logging
@@ -728,7 +729,7 @@ async def get_active_company():
             "id": None,
             "company_name": "Sensoper Controls & Renewables",
             "tagline": "Solar Solutions Provider",
-            "logo_url": "https://customer-assets.emergentagent.com/job_8c20414a-b147-464e-9c68-aaa2fa40fdbf/artifacts/x3rj9e2a_slg.png",
+            "logo_url": "https://customer-assets.emergentagent.com/job_8c20414a-b147-464e-9c68-aaa2fa40fdbf/artifacts/q52gayft_snspr.png",
             "primary_color": "#4ADE40",
             "secondary_color": "#2D9BF0",
             "address": "Tamil Nadu, India",
@@ -2617,6 +2618,30 @@ async def update_role_permissions(role_name: str, request: Request):
     await create_audit_log(user["id"], user["name"], "update", "permissions", role_name, None, permissions)
     return {"message": f"Permissions for {role_name} updated", "permissions": permissions}
 
+@api_router.get("/company/logo-base64")
+async def get_logo_base64():
+    """Return company logo as base64 data URL to bypass CORS for PDF generation"""
+    company = await db.company_profiles.find_one({"is_active": True})
+    if not company:
+        company = await db.company_profiles.find_one({})
+    logo_url = company.get("logo_url") if company else None
+    if not logo_url:
+        return {"logo_base64": None}
+    # If already base64
+    if logo_url.startswith("data:"):
+        return {"logo_base64": logo_url}
+    try:
+        import httpx
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.get(logo_url)
+            if resp.status_code == 200:
+                ct = resp.headers.get("content-type", "image/png")
+                b64 = base64.b64encode(resp.content).decode("utf-8")
+                return {"logo_base64": f"data:{ct};base64,{b64}"}
+    except Exception as e:
+        logger.error(f"Failed to fetch logo for base64: {e}")
+    return {"logo_base64": None}
+
 # ================== HEALTH CHECK ==================
 
 @api_router.get("/")
@@ -2674,8 +2699,8 @@ async def startup_event():
     
     # Update existing company profiles with new logo
     await db.company_profiles.update_many(
-        {"logo_url": {"$regex": "job_solar-estimator|32se8qpu_snspr"}},
-        {"$set": {"logo_url": "https://customer-assets.emergentagent.com/job_8c20414a-b147-464e-9c68-aaa2fa40fdbf/artifacts/x3rj9e2a_slg.png"}}
+        {"logo_url": {"$regex": "job_solar-estimator|32se8qpu_snspr|x3rj9e2a_slg"}},
+        {"$set": {"logo_url": "https://customer-assets.emergentagent.com/job_8c20414a-b147-464e-9c68-aaa2fa40fdbf/artifacts/q52gayft_snspr.png"}}
     )
     
     # Seed default company profile
@@ -2684,7 +2709,7 @@ async def startup_event():
         await db.company_profiles.insert_one({
             "company_name": "Sensoper Controls & Renewables",
             "tagline": "Solar Solutions Provider",
-            "logo_url": "https://customer-assets.emergentagent.com/job_8c20414a-b147-464e-9c68-aaa2fa40fdbf/artifacts/x3rj9e2a_slg.png",
+            "logo_url": "https://customer-assets.emergentagent.com/job_8c20414a-b147-464e-9c68-aaa2fa40fdbf/artifacts/q52gayft_snspr.png",
             "primary_color": "#4ADE40",
             "secondary_color": "#2D9BF0",
             "address": "123 Solar Street, Erode\nTamil Nadu, India - 638001",
@@ -2771,7 +2796,7 @@ frontend_url = os.environ.get("FRONTEND_URL", "http://localhost:3000")
 app.add_middleware(
     CORSMiddleware,
     allow_credentials=True,
-    allow_origins=[frontend_url, "http://localhost:3000", "https://project-solar.preview.emergentagent.com"],
+    allow_origins=[frontend_url, "http://localhost:3000", "https://solar-project-hub-7.preview.emergentagent.com"],
     allow_methods=["*"],
     allow_headers=["*"],
 )
