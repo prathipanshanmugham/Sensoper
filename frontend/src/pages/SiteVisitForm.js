@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useAuth } from '../contexts/AuthContext';
 import { projectsAPI, aiAPI, inventoryAPI, driveAPI } from '../utils/api';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
@@ -11,7 +12,7 @@ import { Checkbox } from '../components/ui/checkbox';
 import { Progress } from '../components/ui/progress';
 import { 
   User, MapPin, Zap, ArrowRight, ArrowLeft, Loader2, CheckCircle2,
-  Sparkles, Plus, Trash2, Package, Camera, Cloud, CloudOff, X, Image
+  Sparkles, Plus, Trash2, Package, Camera, Cloud, CloudOff, X, Percent, FolderPlus
 } from 'lucide-react';
 
 const STEPS = [
@@ -32,10 +33,16 @@ const COMPLEXITY_LEVELS = [
   { value: 'moderate', label: 'Moderate' },
   { value: 'complex', label: 'Complex' }
 ];
+const SERVICE_TYPES = [
+  { value: 'single_phase', label: 'Single Phase' },
+  { value: 'three_phase', label: 'Three Phase' },
+  { value: 'ht_service', label: 'HT Service (High Tension)' }
+];
 
 export default function SiteVisitForm() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const { isAdmin, isManager } = useAuth();
   const [currentStep, setCurrentStep] = useState(1);
   const [loading, setLoading] = useState(false);
   const [aiLoading, setAiLoading] = useState(false);
@@ -46,11 +53,16 @@ export default function SiteVisitForm() {
   const [driveConnected, setDriveConnected] = useState(false);
   const [driveChecking, setDriveChecking] = useState(true);
   const [uploadingImage, setUploadingImage] = useState(false);
+  const [showAddCategory, setShowAddCategory] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState('');
+  const [creatingCategory, setCreatingCategory] = useState(false);
+
+  const canSetMargin = isAdmin || isManager;
 
   const [formData, setFormData] = useState({
     customer: { name: '', phone: '', address: '', email: '' },
     location: { latitude: null, longitude: null, address: '', site_location_words: '' },
-    electrical: { sanction_load_kw: '', connected_load_kw: '', monthly_consumption_units: '', eb_tariff: '' },
+    electrical: { sanction_load_kw: '', connected_load_kw: '', monthly_consumption_units: '', eb_tariff: '', service_type: '' },
     solar_system: { system_type: 'on-grid', inverter_model: '', panel_wattage: 540, battery_required: false, battery_capacity_ah: '' },
     mounting: { roof_type: '', tilt_angle: 15, structure_type: '' },
     additional: { cable_length_meters: 50, inverter_to_panel_distance: 10, installation_complexity: 'simple', shadow_analysis_notes: '' },
@@ -98,10 +110,8 @@ export default function SiteVisitForm() {
   const handleImageUpload = async (e) => {
     const files = Array.from(e.target.files || []);
     if (files.length === 0) return;
-    
     setUploadingImage(true);
     setError('');
-    
     for (const file of files) {
       try {
         const res = await driveAPI.upload(file);
@@ -124,10 +134,7 @@ export default function SiteVisitForm() {
   };
 
   const removeImage = (index) => {
-    setFormData(prev => ({
-      ...prev,
-      site_images: prev.site_images.filter((_, i) => i !== index)
-    }));
+    setFormData(prev => ({ ...prev, site_images: prev.site_images.filter((_, i) => i !== index) }));
   };
 
   const updateField = (section, field, value) => {
@@ -141,7 +148,8 @@ export default function SiteVisitForm() {
       ...prev,
       selected_items: [...prev.selected_items, {
         inventory_item_id: invItem.id, name: invItem.name, category: invItem.category,
-        unit_price: invItem.unit_price, gst_percentage: invItem.gst_percentage, quantity: 1
+        unit_price: invItem.unit_price, gst_percentage: invItem.gst_percentage, quantity: 1,
+        margin_percentage: 0
       }]
     }));
   };
@@ -170,6 +178,20 @@ export default function SiteVisitForm() {
     setFormData(prev => ({ ...prev, manual_costs: prev.manual_costs.filter((_, i) => i !== index) }));
   };
 
+  const handleAddCategory = async () => {
+    if (!newCategoryName.trim()) return;
+    setCreatingCategory(true);
+    try {
+      const slug = newCategoryName.trim().toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
+      await inventoryAPI.createCategory({ name: newCategoryName.trim(), slug, description: '' });
+      await fetchCategories();
+      setNewCategoryName('');
+      setShowAddCategory(false);
+    } catch (err) {
+      setError(err.response?.data?.detail || 'Failed to create category');
+    } finally { setCreatingCategory(false); }
+  };
+
   const getAIRecommendation = async () => {
     setAiLoading(true);
     try {
@@ -190,7 +212,8 @@ export default function SiteVisitForm() {
     const itemsTotal = formData.selected_items.reduce((sum, i) => sum + i.unit_price * i.quantity, 0);
     const manualTotal = formData.manual_costs.reduce((sum, c) => sum + (parseFloat(c.amount) || 0), 0);
     const gstTotal = formData.selected_items.reduce((sum, i) => sum + i.unit_price * i.quantity * (i.gst_percentage / 100), 0);
-    return { itemsTotal, manualTotal, gstTotal, total: itemsTotal + manualTotal + gstTotal };
+    const marginTotal = formData.selected_items.reduce((sum, i) => sum + i.unit_price * i.quantity * ((i.margin_percentage || 0) / 100), 0);
+    return { itemsTotal, manualTotal, gstTotal, marginTotal, total: itemsTotal + manualTotal + gstTotal + marginTotal };
   };
 
   const validateStep = () => {
@@ -211,6 +234,7 @@ export default function SiteVisitForm() {
       case 5:
         if (formData.site_images.length === 0) { setError('Upload at least one site image (mandatory)'); return false; }
         break;
+      default: break;
     }
     return true;
   };
@@ -234,7 +258,8 @@ export default function SiteVisitForm() {
           sanction_load_kw: parseFloat(formData.electrical.sanction_load_kw),
           connected_load_kw: parseFloat(formData.electrical.connected_load_kw) || 0,
           monthly_consumption_units: parseFloat(formData.electrical.monthly_consumption_units),
-          eb_tariff: parseFloat(formData.electrical.eb_tariff) || 0
+          eb_tariff: parseFloat(formData.electrical.eb_tariff) || 0,
+          service_type: formData.electrical.service_type || null
         },
         solar_system: {
           ...formData.solar_system, panel_wattage: parseInt(formData.solar_system.panel_wattage) || 540,
@@ -248,7 +273,8 @@ export default function SiteVisitForm() {
         },
         selected_items: formData.selected_items.map(si => ({
           inventory_item_id: si.inventory_item_id, name: si.name, category: si.category,
-          unit_price: si.unit_price, gst_percentage: si.gst_percentage, quantity: parseInt(si.quantity) || 1
+          unit_price: si.unit_price, gst_percentage: si.gst_percentage, quantity: parseInt(si.quantity) || 1,
+          margin_percentage: parseFloat(si.margin_percentage) || 0
         })),
         manual_costs: formData.manual_costs.filter(c => c.description && c.amount > 0).map(c => ({
           description: c.description, amount: parseFloat(c.amount) || 0
@@ -338,21 +364,27 @@ export default function SiteVisitForm() {
             {currentStep === 3 && (
               <div className="space-y-4">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div className="space-y-2"><Label>Sanction Load (kW) *</Label><Input type="number" step="0.1" value={formData.electrical.sanction_load_kw} onChange={(e) => updateField('electrical', 'sanction_load_kw', e.target.value)} placeholder="e.g., 5" className="h-11" data-testid="sanction-load-input" /></div>
-                  <div className="space-y-2"><Label>Connected Load (kW)</Label><Input type="number" step="0.1" value={formData.electrical.connected_load_kw} onChange={(e) => updateField('electrical', 'connected_load_kw', e.target.value)} placeholder="e.g., 4" className="h-11" data-testid="connected-load-input" /></div>
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div className="space-y-2"><Label>Monthly Consumption (units) *</Label><Input type="number" value={formData.electrical.monthly_consumption_units} onChange={(e) => updateField('electrical', 'monthly_consumption_units', e.target.value)} placeholder="e.g., 500" className="h-11" data-testid="monthly-consumption-input" /></div>
-                  <div className="space-y-2"><Label>EB Tariff (Rs/unit)</Label><Input type="number" step="0.1" value={formData.electrical.eb_tariff} onChange={(e) => updateField('electrical', 'eb_tariff', e.target.value)} placeholder="e.g., 7" className="h-11" data-testid="eb-tariff-input" /></div>
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div className="space-y-2"><Label>Cable Length (m)</Label><Input type="number" value={formData.additional.cable_length_meters} onChange={(e) => updateField('additional', 'cable_length_meters', e.target.value)} placeholder="50" className="h-11" data-testid="cable-length-input" /></div>
-                  <div className="space-y-2"><Label>Complexity</Label>
-                    <Select value={formData.additional.installation_complexity} onValueChange={(v) => updateField('additional', 'installation_complexity', v)}>
-                      <SelectTrigger className="h-11" data-testid="complexity-select"><SelectValue /></SelectTrigger>
-                      <SelectContent>{COMPLEXITY_LEVELS.map(l => <SelectItem key={l.value} value={l.value}>{l.label}</SelectItem>)}</SelectContent>
+                  <div className="space-y-2"><Label>Type of Service *</Label>
+                    <Select value={formData.electrical.service_type} onValueChange={(v) => updateField('electrical', 'service_type', v)}>
+                      <SelectTrigger className="h-11" data-testid="service-type-select"><SelectValue placeholder="Select service type" /></SelectTrigger>
+                      <SelectContent>{SERVICE_TYPES.map(t => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}</SelectContent>
                     </Select>
                   </div>
+                  <div className="space-y-2"><Label>Sanction Load (kW) *</Label><Input type="number" step="0.1" value={formData.electrical.sanction_load_kw} onChange={(e) => updateField('electrical', 'sanction_load_kw', e.target.value)} placeholder="e.g., 5" className="h-11" data-testid="sanction-load-input" /></div>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-2"><Label>Connected Load (kW)</Label><Input type="number" step="0.1" value={formData.electrical.connected_load_kw} onChange={(e) => updateField('electrical', 'connected_load_kw', e.target.value)} placeholder="e.g., 4" className="h-11" data-testid="connected-load-input" /></div>
+                  <div className="space-y-2"><Label>Monthly Consumption (units) *</Label><Input type="number" value={formData.electrical.monthly_consumption_units} onChange={(e) => updateField('electrical', 'monthly_consumption_units', e.target.value)} placeholder="e.g., 500" className="h-11" data-testid="monthly-consumption-input" /></div>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-2"><Label>EB Tariff (Rs/unit)</Label><Input type="number" step="0.1" value={formData.electrical.eb_tariff} onChange={(e) => updateField('electrical', 'eb_tariff', e.target.value)} placeholder="e.g., 7" className="h-11" data-testid="eb-tariff-input" /></div>
+                  <div className="space-y-2"><Label>Cable Length (m)</Label><Input type="number" value={formData.additional.cable_length_meters} onChange={(e) => updateField('additional', 'cable_length_meters', e.target.value)} placeholder="50" className="h-11" data-testid="cable-length-input" /></div>
+                </div>
+                <div className="space-y-2"><Label>Complexity</Label>
+                  <Select value={formData.additional.installation_complexity} onValueChange={(v) => updateField('additional', 'installation_complexity', v)}>
+                    <SelectTrigger className="h-11" data-testid="complexity-select"><SelectValue /></SelectTrigger>
+                    <SelectContent>{COMPLEXITY_LEVELS.map(l => <SelectItem key={l.value} value={l.value}>{l.label}</SelectItem>)}</SelectContent>
+                  </Select>
                 </div>
                 <div className="p-4 bg-sky-50 rounded-lg border border-sky-200">
                   <div className="flex items-center justify-between flex-wrap gap-2">
@@ -385,7 +417,26 @@ export default function SiteVisitForm() {
                 </div>
 
                 <div>
-                  <h3 className="font-semibold text-slate-900 mb-3 flex items-center gap-2"><Package className="h-4 w-4" />Select from Inventory</h3>
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="font-semibold text-slate-900 flex items-center gap-2"><Package className="h-4 w-4" />Select from Inventory</h3>
+                    <Button type="button" variant="outline" size="sm" onClick={() => setShowAddCategory(true)} className="h-9 text-xs gap-1" data-testid="add-category-btn">
+                      <FolderPlus className="h-3.5 w-3.5" />Add Category
+                    </Button>
+                  </div>
+
+                  {showAddCategory && (
+                    <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg" data-testid="add-category-form">
+                      <Label className="text-xs text-blue-800 mb-1 block">New Category Name</Label>
+                      <div className="flex gap-2">
+                        <Input value={newCategoryName} onChange={(e) => setNewCategoryName(e.target.value)} placeholder="e.g., Surge Protectors" className="h-10 flex-1" data-testid="new-category-name-input" />
+                        <Button type="button" size="sm" onClick={handleAddCategory} disabled={creatingCategory || !newCategoryName.trim()} className="h-10 bg-blue-600 hover:bg-blue-700 text-white" data-testid="save-category-btn">
+                          {creatingCategory ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'Create'}
+                        </Button>
+                        <Button type="button" variant="ghost" size="sm" onClick={() => { setShowAddCategory(false); setNewCategoryName(''); }} className="h-10">Cancel</Button>
+                      </div>
+                    </div>
+                  )}
+
                   {categories.map(cat => {
                     const catItems = getItemsByCategory(cat.slug);
                     if (catItems.length === 0) return null;
@@ -406,14 +457,33 @@ export default function SiteVisitForm() {
                     <h3 className="font-semibold text-slate-900 mb-2">Selected Items</h3>
                     <div className="space-y-2">
                       {formData.selected_items.map((item, idx) => (
-                        <div key={idx} className="flex items-center gap-2 p-3 bg-slate-50 rounded-lg border border-slate-200" data-testid={`selected-item-${idx}`}>
-                          <div className="flex-1 min-w-0">
-                            <p className="font-medium text-sm text-slate-900 truncate">{item.name}</p>
-                            <p className="text-xs text-slate-500">{getCategoryLabel(item.category)} - Rs {item.unit_price.toLocaleString('en-IN')} x</p>
+                        <div key={idx} className="p-3 bg-slate-50 rounded-lg border border-slate-200" data-testid={`selected-item-${idx}`}>
+                          <div className="flex items-center gap-2">
+                            <div className="flex-1 min-w-0">
+                              <p className="font-medium text-sm text-slate-900 truncate">{item.name}</p>
+                              <p className="text-xs text-slate-500">{getCategoryLabel(item.category)} - Rs {item.unit_price.toLocaleString('en-IN')} x</p>
+                            </div>
+                            <Input type="number" min="1" value={item.quantity} onChange={(e) => updateSelectedItem(idx, 'quantity', parseInt(e.target.value) || 1)} className="w-16 h-9 text-center text-sm" data-testid={`item-qty-${idx}`} />
+                            <span className="text-sm font-medium text-slate-900 w-24 text-right">Rs {(item.unit_price * item.quantity).toLocaleString('en-IN')}</span>
+                            <Button variant="ghost" size="icon" className="h-8 w-8 text-red-500 shrink-0" onClick={() => removeSelectedItem(idx)}><Trash2 className="h-3.5 w-3.5" /></Button>
                           </div>
-                          <Input type="number" min="1" value={item.quantity} onChange={(e) => updateSelectedItem(idx, 'quantity', parseInt(e.target.value) || 1)} className="w-16 h-9 text-center text-sm" data-testid={`item-qty-${idx}`} />
-                          <span className="text-sm font-medium text-slate-900 w-24 text-right">Rs {(item.unit_price * item.quantity).toLocaleString('en-IN')}</span>
-                          <Button variant="ghost" size="icon" className="h-8 w-8 text-red-500 shrink-0" onClick={() => removeSelectedItem(idx)}><Trash2 className="h-3.5 w-3.5" /></Button>
+                          {canSetMargin && (
+                            <div className="flex items-center gap-2 mt-2 pt-2 border-t border-slate-200">
+                              <Percent className="h-3.5 w-3.5 text-amber-600" />
+                              <span className="text-xs text-amber-700 font-medium">Margin</span>
+                              <Input
+                                type="number" min="0" max="100" step="0.5"
+                                value={item.margin_percentage}
+                                onChange={(e) => updateSelectedItem(idx, 'margin_percentage', parseFloat(e.target.value) || 0)}
+                                className="w-20 h-7 text-xs text-center"
+                                data-testid={`item-margin-${idx}`}
+                              />
+                              <span className="text-xs text-slate-500">%</span>
+                              {item.margin_percentage > 0 && (
+                                <span className="text-xs text-amber-600 ml-auto">+Rs {(item.unit_price * item.quantity * item.margin_percentage / 100).toLocaleString('en-IN')}</span>
+                              )}
+                            </div>
+                          )}
                         </div>
                       ))}
                     </div>
@@ -441,6 +511,9 @@ export default function SiteVisitForm() {
                       <div className="flex justify-between"><span className="text-slate-600">Items</span><span className="font-medium">Rs {totals.itemsTotal.toLocaleString('en-IN')}</span></div>
                       <div className="flex justify-between"><span className="text-slate-600">Manual</span><span className="font-medium">Rs {totals.manualTotal.toLocaleString('en-IN')}</span></div>
                       <div className="flex justify-between"><span className="text-slate-600">GST</span><span className="font-medium">Rs {totals.gstTotal.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span></div>
+                      {canSetMargin && totals.marginTotal > 0 && (
+                        <div className="flex justify-between text-amber-700"><span>Margin</span><span className="font-medium">Rs {totals.marginTotal.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span></div>
+                      )}
                       <div className="flex justify-between pt-2 border-t border-emerald-300"><span className="font-bold">Estimated Total</span><span className="font-bold text-emerald-700">Rs {totals.total.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span></div>
                     </div>
                   </CardContent>
@@ -472,8 +545,6 @@ export default function SiteVisitForm() {
                       <Cloud className="h-5 w-5 text-emerald-600" />
                       <span className="text-sm font-medium text-emerald-800">Google Drive Connected</span>
                     </div>
-
-                    {/* Upload Area */}
                     <label className="block cursor-pointer">
                       <div className="border-2 border-dashed border-slate-300 rounded-xl p-8 text-center hover:border-emerald-400 hover:bg-emerald-50/50 transition-colors">
                         {uploadingImage ? (
@@ -484,8 +555,6 @@ export default function SiteVisitForm() {
                       </div>
                       <input type="file" accept="image/*" multiple className="hidden" onChange={handleImageUpload} disabled={uploadingImage} data-testid="site-image-input" />
                     </label>
-
-                    {/* Image Grid */}
                     {formData.site_images.length > 0 && (
                       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                         {formData.site_images.map((img, idx) => (
@@ -501,7 +570,6 @@ export default function SiteVisitForm() {
                         ))}
                       </div>
                     )}
-
                     <div className="space-y-2">
                       <Label>Shadow Analysis Notes (Optional)</Label>
                       <Textarea rows={2} value={formData.additional.shadow_analysis_notes} onChange={(e) => updateField('additional', 'shadow_analysis_notes', e.target.value)} placeholder="Observations about shadows, obstructions..." data-testid="shadow-notes-input" />
@@ -511,7 +579,7 @@ export default function SiteVisitForm() {
               </div>
             )}
 
-            {/* Navigation — Sticky on mobile */}
+            {/* Navigation */}
             <div className="flex justify-between mt-6 pt-4 border-t border-slate-200 sticky bottom-0 bg-white pb-4 -mx-4 px-4 sm:-mx-6 sm:px-6 sm:static sm:bg-transparent sm:pb-0">
               <Button type="button" variant="outline" onClick={prevStep} disabled={currentStep === 1} className="gap-2 h-12" data-testid="prev-step-btn">
                 <ArrowLeft className="h-4 w-4" /><span className="hidden sm:inline">Previous</span><span className="sm:hidden">Back</span>

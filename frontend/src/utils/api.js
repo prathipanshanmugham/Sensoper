@@ -29,7 +29,7 @@ export const projectsAPI = {
   submit: (id) => api.post(`/projects/${id}/submit`),
   approve: (id) => api.post(`/projects/${id}/approve`),
   reject: (id, reason) => api.post(`/projects/${id}/reject`, { reason }),
-  complete: (id) => api.post(`/projects/${id}/complete`),
+  complete: (id, completionMedia) => api.post(`/projects/${id}/complete`, { completion_media: completionMedia }),
   requestDeletion: (id, reason) => api.post(`/projects/${id}/request-deletion`, { reason }),
   forceDelete: (id) => api.delete(`/projects/${id}/force`)
 };
@@ -88,12 +88,17 @@ export const uploadAPI = {
     formData.append('file', file);
     return api.post('/upload/image', formData, { headers: { 'Content-Type': 'multipart/form-data' } });
   },
-  getFileUrl: (path) => `${API_URL}/files/${path}`
+  uploadMedia: (file) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return api.post('/upload/media', formData, { headers: { 'Content-Type': 'multipart/form-data' }, timeout: 120000 });
+  },
+  getFileUrl: (path) => `${API_URL}/api/files/${path}`
 };
 
 // Margin API
 export const marginAPI = {
-  update: (projectId, marginPercentage) => api.put(`/projects/${projectId}/margin`, { margin_percentage: marginPercentage })
+  update: (projectId, itemMargins) => api.put(`/projects/${projectId}/margin`, { item_margins: itemMargins })
 };
 
 // Google Drive API

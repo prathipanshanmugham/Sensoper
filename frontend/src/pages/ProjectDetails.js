@@ -1,7 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { projectsAPI, termsAPI, companyAPI, marginAPI } from '../utils/api';
+import { projectsAPI, termsAPI, companyAPI, marginAPI, uploadAPI } from '../utils/api';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
@@ -11,10 +11,12 @@ import { Label } from '../components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../components/ui/dialog';
 import { 
   ArrowLeft, Loader2, User, MapPin, Zap, Sun, Clock, CheckCircle2, XCircle, 
-  AlertCircle, Download, Share2, Trash2, Send, AlertTriangle, Package, Percent, Camera
+  AlertCircle, Download, Share2, Trash2, Send, AlertTriangle, Package, Percent, Camera, Video, Upload, Film
 } from 'lucide-react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+
+const API_URL = process.env.REACT_APP_BACKEND_URL;
 
 const statusConfig = {
   draft: { label: 'Draft', color: 'bg-amber-100 text-amber-800', icon: Clock },
@@ -23,6 +25,12 @@ const statusConfig = {
   rejected: { label: 'Rejected', color: 'bg-red-100 text-red-800', icon: XCircle },
   completed: { label: 'Completed', color: 'bg-emerald-100 text-emerald-800', icon: CheckCircle2 },
   deletion_requested: { label: 'Deletion Requested', color: 'bg-orange-100 text-orange-800', icon: Trash2 }
+};
+
+const SERVICE_TYPE_LABELS = {
+  single_phase: 'Single Phase',
+  three_phase: 'Three Phase',
+  ht_service: 'HT Service (High Tension)'
 };
 
 function InfoRow({ label, value }) {
@@ -66,26 +74,34 @@ export default function ProjectDetails() {
   const [deletionReason, setDeletionReason] = useState('');
   const [terms, setTerms] = useState(null);
   const [companyProfile, setCompanyProfile] = useState(null);
-  const [marginPct, setMarginPct] = useState('');
+  const [itemMargins, setItemMargins] = useState({});
   const [marginLoading, setMarginLoading] = useState(false);
+  const [showCompleteDialog, setShowCompleteDialog] = useState(false);
+  const [completionMedia, setCompletionMedia] = useState([]);
+  const [uploadingMedia, setUploadingMedia] = useState(false);
 
-  useEffect(() => {
-    fetchProject();
-    fetchTerms();
-    fetchCompanyProfile();
-  }, [id]);
-
-  const fetchProject = async () => {
+  const fetchProject = useCallback(async () => {
     try {
       const res = await projectsAPI.getOne(id);
       setProject(res.data);
+      const margins = {};
+      (res.data.selected_items || []).forEach((item, idx) => {
+        margins[idx] = item.margin_percentage || 0;
+      });
+      setItemMargins(margins);
     } catch (error) {
       console.error('Failed to fetch project:', error);
       navigate('/dashboard/projects');
     } finally {
       setLoading(false);
     }
-  };
+  }, [id, navigate]);
+
+  useEffect(() => {
+    fetchProject();
+    fetchTerms();
+    fetchCompanyProfile();
+  }, [fetchProject]);
 
   const fetchTerms = async () => {
     try { const res = await termsAPI.getActive(); setTerms(res.data); } catch (e) { console.error(e); }
@@ -110,9 +126,52 @@ export default function ProjectDetails() {
     try { await projectsAPI.reject(id, rejectReason); setShowRejectDialog(false); setRejectReason(''); fetchProject(); } catch (e) { alert(e.response?.data?.detail || 'Failed'); } finally { setActionLoading(false); }
   };
 
+  const handleMediaUpload = async (e) => {
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0) return;
+    setUploadingMedia(true);
+    for (const file of files) {
+      try {
+        const res = await uploadAPI.uploadMedia(file);
+        setCompletionMedia(prev => [...prev, {
+          storage_path: res.data.storage_path,
+          media_type: res.data.media_type,
+          filename: res.data.filename,
+          content_type: res.data.content_type
+        }]);
+      } catch (err) {
+        alert(err.response?.data?.detail || `Failed to upload ${file.name}`);
+        break;
+      }
+    }
+    setUploadingMedia(false);
+    e.target.value = '';
+  };
+
+  const removeCompletionMedia = (index) => {
+    setCompletionMedia(prev => prev.filter((_, i) => i !== index));
+  };
+
   const handleComplete = async () => {
+    if (completionMedia.length === 0) {
+      alert('Please upload at least one photo or video before marking as completed.');
+      return;
+    }
     setActionLoading(true);
-    try { await projectsAPI.complete(id); fetchProject(); } catch (e) { alert(e.response?.data?.detail || 'Failed'); } finally { setActionLoading(false); }
+    try {
+      const mediaData = completionMedia.map(m => ({
+        storage_path: m.storage_path,
+        media_type: m.media_type,
+        filename: m.filename,
+        content_type: m.content_type
+      }));
+      await projectsAPI.complete(id, mediaData);
+      setShowCompleteDialog(false);
+      setCompletionMedia([]);
+      fetchProject();
+    } catch (e) {
+      alert(e.response?.data?.detail || 'Failed');
+    } finally { setActionLoading(false); }
   };
 
   const handleRequestDeletion = async () => {
@@ -127,20 +186,42 @@ export default function ProjectDetails() {
   };
 
   const handleMarginUpdate = async () => {
-    const val = parseFloat(marginPct);
-    if (isNaN(val) || val < 0) return;
+    const updates = Object.entries(itemMargins).map(([idx, pct]) => ({
+      index: parseInt(idx),
+      margin_percentage: parseFloat(pct) || 0
+    }));
+    if (updates.length === 0) return;
     setMarginLoading(true);
     try {
-      const res = await marginAPI.update(id, val);
-      setProject(prev => ({ ...prev, cost_estimation: res.data.cost_estimation }));
+      const res = await marginAPI.update(id, updates);
+      setProject(prev => ({
+        ...prev,
+        cost_estimation: res.data.cost_estimation,
+        selected_items: res.data.selected_items
+      }));
     } catch (e) {
-      alert(e.response?.data?.detail || 'Failed to update margin');
+      alert(e.response?.data?.detail || 'Failed to update margins');
     } finally { setMarginLoading(false); }
   };
 
-  // ════════════════════════════════════════════════
-  // PDF GENERATION — Light theme, no margin display
-  // ════════════════════════════════════════════════
+  const loadImageAsBase64 = (url) => {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = img.naturalWidth;
+        canvas.height = img.naturalHeight;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0);
+        resolve(canvas.toDataURL('image/png'));
+      };
+      img.onerror = () => resolve(null);
+      img.src = url;
+    });
+  };
+
+  // PDF GENERATION
   const generatePDF = async () => {
     const cp = companyProfile || {};
     const doc = new jsPDF();
@@ -154,9 +235,13 @@ export default function ProjectDetails() {
     const hexToRgb = (hex) => [parseInt(hex.slice(1,3),16), parseInt(hex.slice(3,5),16), parseInt(hex.slice(5,7),16)];
     const pRgb = hexToRgb(primaryHex);
     const sRgb = hexToRgb(secondaryHex);
-
-    // Use "Rs" as a reliable currency prefix (Helvetica doesn't support ₹ well)
     const currency = (val) => `Rs ${(val || 0).toLocaleString('en-IN')}`;
+
+    // Load logo
+    let logoBase64 = null;
+    if (cp.logo_url) {
+      logoBase64 = await loadImageAsBase64(cp.logo_url);
+    }
 
     const drawHeader = (d) => {
       d.setFillColor(255, 255, 255);
@@ -165,16 +250,26 @@ export default function ProjectDetails() {
       d.setLineWidth(0.8);
       d.line(0, 36, pageWidth, 36);
 
-      d.setFontSize(16);
+      let textStartX = m;
+      if (logoBase64) {
+        try {
+          d.addImage(logoBase64, 'PNG', m, 3, 30, 30);
+          textStartX = m + 34;
+        } catch (e) {
+          console.error('Logo embed failed:', e);
+        }
+      }
+
+      d.setFontSize(14);
       d.setFont('helvetica', 'bold');
       d.setTextColor(...pRgb);
-      d.text(cp.company_name || 'Sensoper Controls & Renewables', m, 14);
+      d.text(cp.company_name || 'Sensoper Controls & Renewables', textStartX, 14);
 
       if (cp.tagline) {
         d.setFontSize(8);
         d.setFont('helvetica', 'normal');
         d.setTextColor(120, 120, 120);
-        d.text(cp.tagline, m, 21);
+        d.text(cp.tagline, textStartX, 21);
       }
 
       d.setFontSize(7);
@@ -198,7 +293,6 @@ export default function ProjectDetails() {
       d.text(`Page ${pg} of ${total}`, pageWidth - m, pageHeight - 6, { align: 'right' });
     };
 
-    // ── PAGE 1: Header ──
     drawHeader(doc);
     let y = 44;
 
@@ -219,7 +313,6 @@ export default function ProjectDetails() {
     doc.text(`Status: ${(project.status || 'draft').toUpperCase()}`, pageWidth - m - 4, y + 12, { align: 'right' });
     y += 24;
 
-    // ── Customer ──
     const sectionHead = (title, yPos) => {
       doc.setFontSize(11);
       doc.setFont('helvetica', 'bold');
@@ -231,6 +324,7 @@ export default function ProjectDetails() {
       return yPos + 7;
     };
 
+    // Customer
     y = sectionHead('Customer Details', y);
     autoTable(doc, {
       startY: y, margin: { left: m, right: m }, theme: 'plain',
@@ -245,7 +339,7 @@ export default function ProjectDetails() {
     });
     y = doc.lastAutoTable.finalY + 8;
 
-    // ── Site Location ──
+    // Site Location
     y = sectionHead('Site Location', y);
     const locationRows = [];
     if (project.location?.site_location_words) locationRows.push(['What3Words', project.location.site_location_words]);
@@ -253,7 +347,6 @@ export default function ProjectDetails() {
     locationRows.push(['Roof Type', (project.mounting?.roof_type || '-').toUpperCase()]);
     locationRows.push(['Structure', project.mounting?.structure_type || '-']);
     locationRows.push(['Tilt Angle', `${project.mounting?.tilt_angle || 0}\u00B0`]);
-
     autoTable(doc, {
       startY: y, margin: { left: m, right: m }, theme: 'plain',
       styles: { fontSize: 9, cellPadding: 2, textColor: [50, 50, 50] },
@@ -262,26 +355,27 @@ export default function ProjectDetails() {
     });
     y = doc.lastAutoTable.finalY + 8;
 
-    // ── Electrical ──
+    // Electrical
     y = sectionHead('Electrical Details', y);
+    const electricalRows = [
+      ['Service Type', SERVICE_TYPE_LABELS[project.electrical?.service_type] || project.electrical?.service_type || '-'],
+      ['Sanction Load', `${project.electrical?.sanction_load_kw || 0} kW`],
+      ['Connected Load', `${project.electrical?.connected_load_kw || 0} kW`],
+      ['Monthly Consumption', `${project.electrical?.monthly_consumption_units || 0} units`],
+      ['EB Tariff', `Rs ${project.electrical?.eb_tariff || 0}/unit`],
+      ['System Type', (project.solar_system?.system_type || '-').toUpperCase()],
+      ['Cable Length', `${project.additional?.cable_length_meters || 0} m`],
+    ];
     autoTable(doc, {
       startY: y, margin: { left: m, right: m }, theme: 'plain',
       styles: { fontSize: 9, cellPadding: 2, textColor: [50, 50, 50] },
       columnStyles: { 0: { fontStyle: 'bold', cellWidth: 50, textColor: [100, 100, 100] } },
-      body: [
-        ['Sanction Load', `${project.electrical?.sanction_load_kw || 0} kW`],
-        ['Connected Load', `${project.electrical?.connected_load_kw || 0} kW`],
-        ['Monthly Consumption', `${project.electrical?.monthly_consumption_units || 0} units`],
-        ['EB Tariff', `Rs ${project.electrical?.eb_tariff || 0}/unit`],
-        ['System Type', (project.solar_system?.system_type || '-').toUpperCase()],
-        ['Cable Length', `${project.additional?.cable_length_meters || 0} m`],
-      ],
+      body: electricalRows,
     });
     y = doc.lastAutoTable.finalY + 12;
 
-    // ── COST BREAKDOWN TABLE ──
+    // Cost Breakdown
     if (y > pageHeight - 80) { doc.addPage(); drawHeader(doc); y = 44; }
-
     doc.setFontSize(12);
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(...pRgb);
@@ -291,10 +385,8 @@ export default function ProjectDetails() {
     doc.line(m, y + 1.5, m + doc.getTextWidth('Cost Breakdown'), y + 1.5);
     y += 8;
 
-    // Items from inventory
     const items = project.cost_estimation?.items_breakdown || project.selected_items || [];
     const manualCosts = project.cost_estimation?.manual_costs || project.manual_costs || [];
-
     const costRows = items.map(item => [
       item.name,
       CATEGORY_LABELS[item.category] || item.category,
@@ -307,39 +399,31 @@ export default function ProjectDetails() {
     autoTable(doc, {
       startY: y, margin: { left: m, right: m },
       head: [['Item', 'Category', 'Qty', 'Unit Price', 'GST', 'Amount']],
-      body: costRows,
-      theme: 'grid',
+      body: costRows, theme: 'grid',
       headStyles: { fillColor: pRgb, textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 8.5 },
       styles: { fontSize: 8.5, cellPadding: 3, textColor: [40, 40, 40], lineColor: [220, 220, 230], lineWidth: 0.3 },
       columnStyles: {
-        0: { cellWidth: contentW * 0.28 },
-        1: { cellWidth: contentW * 0.18 },
-        2: { halign: 'center', cellWidth: contentW * 0.08 },
-        3: { halign: 'right', cellWidth: contentW * 0.16 },
-        4: { halign: 'center', cellWidth: contentW * 0.1 },
-        5: { halign: 'right', cellWidth: contentW * 0.2, fontStyle: 'bold' }
+        0: { cellWidth: contentW * 0.28 }, 1: { cellWidth: contentW * 0.18 },
+        2: { halign: 'center', cellWidth: contentW * 0.08 }, 3: { halign: 'right', cellWidth: contentW * 0.16 },
+        4: { halign: 'center', cellWidth: contentW * 0.1 }, 5: { halign: 'right', cellWidth: contentW * 0.2, fontStyle: 'bold' }
       },
       alternateRowStyles: { fillColor: [250, 251, 252] },
       didDrawPage: (data) => { if (data.pageNumber > 1) drawHeader(data.doc); },
     });
     y = doc.lastAutoTable.finalY + 2;
 
-    // Manual costs
     if (manualCosts.length > 0) {
       const manualRows = manualCosts.map(c => [c.description, '', '', '', '', currency(c.amount)]);
       autoTable(doc, {
         startY: y, margin: { left: m, right: m }, theme: 'grid',
         styles: { fontSize: 8.5, cellPadding: 3, textColor: [40, 40, 40], lineColor: [220, 220, 230], lineWidth: 0.3 },
-        columnStyles: {
-          0: { cellWidth: contentW * 0.28, fontStyle: 'italic' },
-          5: { halign: 'right', cellWidth: contentW * 0.2, fontStyle: 'bold' }
-        },
+        columnStyles: { 0: { cellWidth: contentW * 0.28, fontStyle: 'italic' }, 5: { halign: 'right', cellWidth: contentW * 0.2, fontStyle: 'bold' } },
         body: manualRows,
       });
       y = doc.lastAutoTable.finalY + 2;
     }
 
-    // Totals — NO MARGIN shown
+    // Totals - NO MARGIN shown to customer
     const ce = project.cost_estimation || {};
     autoTable(doc, {
       startY: y, margin: { left: m, right: m }, theme: 'plain',
@@ -348,14 +432,10 @@ export default function ProjectDetails() {
         0: { cellWidth: contentW * 0.7, fontStyle: 'bold', textColor: [80, 80, 80] },
         1: { halign: 'right', cellWidth: contentW * 0.3 }
       },
-      body: [
-        ['Subtotal', currency(ce.subtotal)],
-        ['Total GST', currency(ce.total_gst)],
-      ],
+      body: [['Subtotal', currency(ce.subtotal)], ['Total GST', currency(ce.total_gst)]],
     });
     y = doc.lastAutoTable.finalY;
 
-    // Grand Total
     autoTable(doc, {
       startY: y, margin: { left: m, right: m }, theme: 'plain',
       styles: { fontSize: 13, cellPadding: 5, fontStyle: 'bold' },
@@ -374,7 +454,7 @@ export default function ProjectDetails() {
     });
     y = doc.lastAutoTable.finalY + 12;
 
-    // ── Bank Details ──
+    // Bank Details
     const bank = cp.bank_details;
     if (bank && bank.account_name) {
       if (y > pageHeight - 55) { doc.addPage(); drawHeader(doc); y = 44; }
@@ -384,17 +464,14 @@ export default function ProjectDetails() {
         styles: { fontSize: 9, cellPadding: 2, textColor: [50, 50, 50] },
         columnStyles: { 0: { fontStyle: 'bold', cellWidth: 45, textColor: [100, 100, 100] } },
         body: [
-          ['Account Name', bank.account_name],
-          ['Account No.', bank.account_number],
-          ['IFSC Code', bank.ifsc_code],
-          ['Bank Name', bank.bank_name],
-          ['Branch', bank.branch],
+          ['Account Name', bank.account_name], ['Account No.', bank.account_number],
+          ['IFSC Code', bank.ifsc_code], ['Bank Name', bank.bank_name], ['Branch', bank.branch],
         ],
       });
       y = doc.lastAutoTable.finalY + 12;
     }
 
-    // ── Site Images ──
+    // Site Images
     const siteImages = project.site_images || [];
     if (siteImages.length > 0) {
       if (y > pageHeight - 60) { doc.addPage(); drawHeader(doc); y = 44; }
@@ -402,20 +479,19 @@ export default function ProjectDetails() {
       doc.setFontSize(8);
       doc.setFont('helvetica', 'normal');
       doc.setTextColor(100, 100, 100);
-      doc.text(`${siteImages.length} photo(s) uploaded to Google Drive. View links below:`, m, y);
+      doc.text(`${siteImages.length} photo(s) uploaded. View links below:`, m, y);
       y += 6;
       siteImages.forEach((url, i) => {
         if (y > pageHeight - 20) { doc.addPage(); drawHeader(doc); y = 44; }
         doc.setFontSize(7);
         doc.setTextColor(...sRgb);
-        const displayUrl = typeof url === 'string' ? url : url;
-        doc.textWithLink(`Photo ${i + 1}: View Image`, m, y, { url: displayUrl });
+        doc.textWithLink(`Photo ${i + 1}: View Image`, m, y, { url: typeof url === 'string' ? url : '' });
         y += 5;
       });
       y += 8;
     }
 
-    // ── Terms & Conditions ──
+    // Terms
     if (y > pageHeight - 45) { doc.addPage(); drawHeader(doc); y = 44; }
     doc.setFontSize(10);
     doc.setFont('helvetica', 'bold');
@@ -425,28 +501,23 @@ export default function ProjectDetails() {
     doc.setLineWidth(0.3);
     doc.line(m, y + 1.5, m + 48, y + 1.5);
     y += 7;
-
     const termsList = terms?.content
       ? parseTermsHtml(terms.content)
       : ['This quotation is valid for 30 days.', '50% advance payment required.', 'Balance on installation completion.',
          'Installation: 7-14 working days after delivery.', '5-year workmanship warranty.', 'Panel warranty per manufacturer.'];
-    const termsBody = termsList.map((t, i) => [`${i + 1}. ${t}`]);
     autoTable(doc, {
       startY: y, margin: { left: m, right: m }, theme: 'plain',
       styles: { fontSize: 7.5, cellPadding: { top: 1.5, bottom: 1.5, left: 2, right: 2 }, textColor: [80, 80, 80] },
-      body: termsBody,
+      body: termsList.map((t, i) => [`${i + 1}. ${t}`]),
       didDrawPage: (data) => { drawHeader(data.doc); },
     });
-    y = doc.lastAutoTable.finalY + 12;
 
-    // Apply headers/footers to all pages
     const totalPages = doc.internal.getNumberOfPages();
     for (let i = 1; i <= totalPages; i++) {
       doc.setPage(i);
       if (i > 1) drawHeader(doc);
       drawFooter(doc, i, totalPages);
     }
-
     doc.save(`Quotation-${project.customer?.name || 'Customer'}-${new Date().toISOString().split('T')[0]}.pdf`);
   };
 
@@ -472,11 +543,6 @@ export default function ProjectDetails() {
   const selectedItems = project.cost_estimation?.items_breakdown || project.selected_items || [];
   const manualCosts = project.cost_estimation?.manual_costs || project.manual_costs || [];
   const ce = project.cost_estimation || {};
-
-  // Initialize margin input
-  if (marginPct === '' && ce.margin_percentage !== undefined) {
-    setMarginPct(String(ce.margin_percentage));
-  }
 
   return (
     <div className="min-h-screen bg-slate-50 py-8 px-4">
@@ -545,6 +611,7 @@ export default function ProjectDetails() {
             <Card className="border-slate-200">
               <CardHeader className="pb-3"><CardTitle className="text-lg font-['Outfit'] flex items-center gap-2"><Zap className="h-5 w-5 text-emerald-600" />Electrical Details</CardTitle></CardHeader>
               <CardContent>
+                <InfoRow label="Type of Service" value={SERVICE_TYPE_LABELS[project.electrical?.service_type] || project.electrical?.service_type} />
                 <InfoRow label="Sanction Load" value={`${project.electrical?.sanction_load_kw} kW`} />
                 <InfoRow label="Connected Load" value={`${project.electrical?.connected_load_kw} kW`} />
                 <InfoRow label="Monthly Consumption" value={`${project.electrical?.monthly_consumption_units} units`} />
@@ -576,6 +643,32 @@ export default function ProjectDetails() {
                       <a key={i} href={url} target="_blank" rel="noopener noreferrer" className="block aspect-square rounded-xl overflow-hidden border border-slate-200 bg-slate-100 hover:ring-2 hover:ring-emerald-400 transition-all" data-testid={`view-image-${i}`}>
                         <img src={url} alt={`Site photo ${i + 1}`} className="w-full h-full object-cover" loading="lazy" />
                       </a>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Completion Media */}
+            {project.completion_media && project.completion_media.length > 0 && (
+              <Card className="border-slate-200">
+                <CardHeader className="pb-3"><CardTitle className="text-lg font-['Outfit'] flex items-center gap-2"><Film className="h-5 w-5 text-emerald-600" />Completion Media ({project.completion_media.length})</CardTitle></CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                    {project.completion_media.map((media, i) => (
+                      <div key={i} className="rounded-xl overflow-hidden border border-slate-200 bg-slate-100" data-testid={`completion-media-${i}`}>
+                        {media.content_type?.startsWith('video/') ? (
+                          <div className="aspect-square flex flex-col items-center justify-center bg-slate-200">
+                            <Video className="h-8 w-8 text-slate-500 mb-1" />
+                            <p className="text-xs text-slate-500 px-2 text-center truncate w-full">{media.filename}</p>
+                            <a href={`${API_URL}/api/files/${media.storage_path}`} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-600 mt-1">View</a>
+                          </div>
+                        ) : (
+                          <a href={`${API_URL}/api/files/${media.storage_path}`} target="_blank" rel="noopener noreferrer" className="block aspect-square">
+                            <img src={`${API_URL}/api/files/${media.storage_path}`} alt={media.filename} className="w-full h-full object-cover" loading="lazy" />
+                          </a>
+                        )}
+                      </div>
                     ))}
                   </div>
                 </CardContent>
@@ -616,7 +709,7 @@ export default function ProjectDetails() {
             )}
           </div>
 
-          {/* Sidebar — Cost Summary */}
+          {/* Sidebar */}
           <div className="space-y-6">
             <Card className="border-slate-200 sticky top-6">
               <CardHeader className="pb-3 border-b border-slate-200"><CardTitle className="text-lg font-['Outfit']">Cost Summary</CardTitle></CardHeader>
@@ -638,38 +731,38 @@ export default function ProjectDetails() {
                   <div className="flex justify-between text-sm"><span className="text-slate-500">Subtotal</span><span className="font-medium">Rs {(ce.subtotal || 0).toLocaleString('en-IN')}</span></div>
                   <div className="flex justify-between text-sm"><span className="text-slate-500">GST</span><span className="font-medium">Rs {(ce.total_gst || 0).toLocaleString('en-IN')}</span></div>
                   
-                  {/* Margin Control — Manager/Admin Only */}
+                  {/* Per-Item Margin Control */}
                   {(isAdmin || isManager) && (
                     <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg mt-2">
                       <div className="flex items-center gap-2 mb-2">
                         <Percent className="h-4 w-4 text-amber-600" />
-                        <span className="text-sm font-medium text-amber-800">Internal Margin</span>
+                        <span className="text-sm font-medium text-amber-800">Per-Item Margin</span>
                       </div>
-                      <div className="flex gap-2 items-center">
-                        <Input
-                          type="number"
-                          min="0"
-                          max="100"
-                          step="0.5"
-                          value={marginPct}
-                          onChange={(e) => setMarginPct(e.target.value)}
-                          className="h-9 w-24 text-sm"
-                          data-testid="margin-input"
-                        />
-                        <span className="text-sm text-slate-500">%</span>
-                        <Button 
-                          size="sm" 
-                          onClick={handleMarginUpdate}
-                          disabled={marginLoading}
-                          className="bg-amber-600 hover:bg-amber-700 text-white h-9"
-                          data-testid="update-margin-btn"
-                        >
-                          {marginLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Apply'}
-                        </Button>
+                      <div className="space-y-2 max-h-48 overflow-y-auto">
+                        {selectedItems.map((item, idx) => (
+                          <div key={idx} className="flex items-center gap-2">
+                            <span className="text-xs text-slate-600 truncate flex-1" title={item.name}>{item.name}</span>
+                            <Input
+                              type="number" min="0" max="100" step="0.5"
+                              value={itemMargins[idx] ?? item.margin_percentage ?? 0}
+                              onChange={(e) => setItemMargins(prev => ({ ...prev, [idx]: parseFloat(e.target.value) || 0 }))}
+                              className="h-7 w-16 text-xs text-center"
+                              data-testid={`margin-item-${idx}`}
+                            />
+                            <span className="text-xs text-slate-500">%</span>
+                          </div>
+                        ))}
                       </div>
+                      <Button 
+                        size="sm" onClick={handleMarginUpdate} disabled={marginLoading}
+                        className="w-full mt-2 bg-amber-600 hover:bg-amber-700 text-white h-8 text-xs"
+                        data-testid="update-margins-btn"
+                      >
+                        {marginLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Apply Margins'}
+                      </Button>
                       <div className="flex justify-between text-xs mt-2">
-                        <span className="text-amber-600">Margin Amount</span>
-                        <span className="font-medium text-amber-800">Rs {(ce.margin || 0).toLocaleString('en-IN')}</span>
+                        <span className="text-amber-600">Total Margin</span>
+                        <span className="font-medium text-amber-800">Rs {(ce.total_margin || 0).toLocaleString('en-IN')}</span>
                       </div>
                       {project.margin_added_by && (
                         <p className="text-xs text-amber-500 mt-1">Last updated by {project.margin_added_by}</p>
@@ -698,8 +791,8 @@ export default function ProjectDetails() {
                     </>
                   )}
                   {canComplete && (
-                    <Button onClick={handleComplete} disabled={actionLoading} className="w-full gap-2 bg-emerald-600 hover:bg-emerald-700" data-testid="complete-btn">
-                      {actionLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}Mark as Completed
+                    <Button onClick={() => setShowCompleteDialog(true)} disabled={actionLoading} className="w-full gap-2 bg-emerald-600 hover:bg-emerald-700" data-testid="complete-btn">
+                      <CheckCircle2 className="h-4 w-4" />Mark as Completed
                     </Button>
                   )}
                   {canRequestDeletion && !isDeletionPending && (
@@ -715,6 +808,7 @@ export default function ProjectDetails() {
         </div>
       </div>
 
+      {/* Reject Dialog */}
       <Dialog open={showRejectDialog} onOpenChange={setShowRejectDialog}>
         <DialogContent>
           <DialogHeader><DialogTitle>Reject Project</DialogTitle></DialogHeader>
@@ -731,6 +825,7 @@ export default function ProjectDetails() {
         </DialogContent>
       </Dialog>
 
+      {/* Delete Dialog */}
       <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
         <DialogContent>
           <DialogHeader><DialogTitle>Request Project Deletion</DialogTitle></DialogHeader>
@@ -743,6 +838,53 @@ export default function ProjectDetails() {
             <Button variant="outline" onClick={() => setShowDeleteDialog(false)}>Cancel</Button>
             <Button variant="destructive" onClick={handleRequestDeletion} disabled={actionLoading || !deletionReason.trim()} data-testid="confirm-deletion-request-btn">
               {actionLoading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}Submit Request
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Complete Dialog - Requires photos/videos */}
+      <Dialog open={showCompleteDialog} onOpenChange={setShowCompleteDialog}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Complete Project</DialogTitle>
+          </DialogHeader>
+          <div className="py-4 space-y-4">
+            <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg">
+              <p className="text-sm font-medium text-amber-800">Upload mandatory completion photos and/or videos as proof of work.</p>
+            </div>
+
+            <label className="block cursor-pointer" data-testid="completion-media-upload-area">
+              <div className="border-2 border-dashed border-slate-300 rounded-xl p-6 text-center hover:border-emerald-400 hover:bg-emerald-50/50 transition-colors">
+                {uploadingMedia ? (
+                  <><Loader2 className="h-8 w-8 animate-spin mx-auto text-emerald-600 mb-2" /><p className="text-sm text-slate-600">Uploading...</p></>
+                ) : (
+                  <><Upload className="h-8 w-8 mx-auto text-slate-400 mb-2" /><p className="font-medium text-slate-700">Upload photos & videos</p><p className="text-xs text-slate-500">JPG, PNG, MP4, MOV (max 50MB each)</p></>
+                )}
+              </div>
+              <input type="file" accept="image/*,video/*" multiple className="hidden" onChange={handleMediaUpload} disabled={uploadingMedia} data-testid="completion-media-input" />
+            </label>
+
+            {completionMedia.length > 0 && (
+              <div className="space-y-2">
+                <p className="text-sm font-medium text-slate-700">{completionMedia.length} file(s) uploaded</p>
+                {completionMedia.map((media, idx) => (
+                  <div key={idx} className="flex items-center gap-2 p-2 bg-slate-50 rounded-lg border border-slate-200" data-testid={`completion-file-${idx}`}>
+                    {media.media_type === 'videos' ? <Video className="h-4 w-4 text-blue-500 shrink-0" /> : <Camera className="h-4 w-4 text-emerald-500 shrink-0" />}
+                    <span className="text-sm text-slate-700 truncate flex-1">{media.filename}</span>
+                    <Button variant="ghost" size="icon" className="h-7 w-7 text-red-500 shrink-0" onClick={() => removeCompletionMedia(idx)}>
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setShowCompleteDialog(false); setCompletionMedia([]); }}>Cancel</Button>
+            <Button onClick={handleComplete} disabled={actionLoading || completionMedia.length === 0} className="bg-emerald-600 hover:bg-emerald-700 text-white gap-2" data-testid="confirm-complete-btn">
+              {actionLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+              Complete Project
             </Button>
           </DialogFooter>
         </DialogContent>

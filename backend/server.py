@@ -116,6 +116,7 @@ class ElectricalDetails(BaseModel):
     connected_load_kw: float
     monthly_consumption_units: float
     eb_tariff: float
+    service_type: Optional[str] = None
 
 class SolarSystemInputs(BaseModel):
     system_type: Literal["on-grid", "off-grid", "hybrid"]
@@ -142,6 +143,7 @@ class SelectedItem(BaseModel):
     unit_price: float
     gst_percentage: float = 18.0
     quantity: int = 1
+    margin_percentage: float = 0
 
 class ManualCost(BaseModel):
     description: str
@@ -361,31 +363,36 @@ async def create_audit_log(user_id: str, user_name: str, action_type: str, entit
     }
     await db.audit_logs.insert_one(log_entry)
 
-def calculate_cost_estimation(selected_items: list, manual_costs: list, margin_percentage: float = 15.0) -> dict:
-    """Calculate cost estimation from selected inventory items and manual costs"""
+def calculate_cost_estimation(selected_items: list, manual_costs: list) -> dict:
+    """Calculate cost estimation from selected inventory items and manual costs with per-item margins"""
     items_breakdown = []
     total_items_cost = 0
     total_gst = 0
+    total_margin = 0
 
     for item in selected_items:
         item_cost = item["unit_price"] * item["quantity"]
+        item_margin_pct = item.get("margin_percentage", 0)
+        item_margin = item_cost * (item_margin_pct / 100)
         item_gst = item_cost * (item["gst_percentage"] / 100)
         total_items_cost += item_cost
         total_gst += item_gst
+        total_margin += item_margin
         items_breakdown.append({
             "name": item["name"],
             "category": item["category"],
             "unit_price": item["unit_price"],
             "quantity": item["quantity"],
             "gst_percentage": item["gst_percentage"],
+            "margin_percentage": item_margin_pct,
             "amount": round(item_cost, 2),
-            "gst_amount": round(item_gst, 2)
+            "gst_amount": round(item_gst, 2),
+            "margin_amount": round(item_margin, 2)
         })
 
     manual_total = sum(c["amount"] for c in manual_costs)
     subtotal = total_items_cost + manual_total
-    margin = subtotal * (margin_percentage / 100)
-    total_cost = subtotal + margin + total_gst
+    total_cost = subtotal + total_margin + total_gst
 
     return {
         "items_breakdown": items_breakdown,
@@ -393,8 +400,7 @@ def calculate_cost_estimation(selected_items: list, manual_costs: list, margin_p
         "items_subtotal": round(total_items_cost, 2),
         "manual_subtotal": round(manual_total, 2),
         "subtotal": round(subtotal, 2),
-        "margin": round(margin, 2),
-        "margin_percentage": margin_percentage,
+        "total_margin": round(total_margin, 2),
         "total_gst": round(total_gst, 2),
         "total_cost": round(total_cost, 2)
     }
@@ -666,7 +672,7 @@ async def get_active_company():
             "id": None,
             "company_name": "Sensoper Controls & Renewables",
             "tagline": "Solar Solutions Provider",
-            "logo_url": "https://customer-assets.emergentagent.com/job_solar-estimator-14/artifacts/y3yo3sfo_snspr.png",
+            "logo_url": "https://customer-assets.emergentagent.com/job_8c20414a-b147-464e-9c68-aaa2fa40fdbf/artifacts/32se8qpu_snspr.png",
             "primary_color": "#4ADE40",
             "secondary_color": "#2D9BF0",
             "address": "Tamil Nadu, India",
@@ -1208,12 +1214,38 @@ async def upload_image(request: Request, file: UploadFile = File(...)):
         logger.error(f"Upload failed: {e}")
         raise HTTPException(status_code=500, detail="Image upload failed")
 
+@api_router.post("/upload/media")
+async def upload_media(request: Request, file: UploadFile = File(...)):
+    """Upload photos or videos for project completion"""
+    current_user = await get_current_user(request)
+    allowed_prefixes = ["image/", "video/"]
+    if not file.content_type or not any(file.content_type.startswith(t) for t in allowed_prefixes):
+        raise HTTPException(status_code=400, detail="Only image and video files are allowed")
+    contents = await file.read()
+    if len(contents) > 50 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="File size must be under 50MB")
+    ext = file.filename.split(".")[-1] if "." in file.filename else "bin"
+    media_type = "images" if file.content_type.startswith("image/") else "videos"
+    path = f"{APP_NAME}/completion/{media_type}/{uuid.uuid4()}.{ext}"
+    try:
+        result = put_object(path, contents, file.content_type)
+        return {
+            "storage_path": result["path"],
+            "media_type": media_type,
+            "filename": file.filename,
+            "content_type": file.content_type,
+            "size": result.get("size", len(contents))
+        }
+    except Exception as e:
+        logger.error(f"Media upload failed: {e}")
+        raise HTTPException(status_code=500, detail="Media upload failed")
+
 @api_router.get("/files/{path:path}")
 async def serve_file(path: str, request: Request):
     try:
         data, content_type = get_object(path)
         return Response(content=data, media_type=content_type)
-    except Exception as e:
+    except Exception:
         raise HTTPException(status_code=404, detail="File not found")
 
 # ================== MARGIN UPDATE ==================
@@ -1222,21 +1254,30 @@ async def serve_file(path: str, request: Request):
 async def update_project_margin(project_id: str, request: Request):
     current_user = await require_role("admin", "manager")(request)
     body = await request.json()
-    margin_pct = body.get("margin_percentage")
-    if margin_pct is None or margin_pct < 0:
-        raise HTTPException(status_code=400, detail="Invalid margin percentage")
+    item_margins = body.get("item_margins", [])
+    
+    if not item_margins:
+        raise HTTPException(status_code=400, detail="No margin updates provided")
     
     project = await db.projects.find_one({"_id": ObjectId(project_id)})
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
     
     selected_items = project.get("selected_items", [])
+    
+    for margin_update in item_margins:
+        idx = margin_update.get("index")
+        pct = margin_update.get("margin_percentage", 0)
+        if idx is not None and 0 <= idx < len(selected_items):
+            selected_items[idx]["margin_percentage"] = float(pct)
+    
     manual_costs = project.get("manual_costs", [])
-    new_estimation = calculate_cost_estimation(selected_items, manual_costs, float(margin_pct))
+    new_estimation = calculate_cost_estimation(selected_items, manual_costs)
     
     await db.projects.update_one(
         {"_id": ObjectId(project_id)},
         {"$set": {
+            "selected_items": selected_items,
             "cost_estimation": new_estimation,
             "margin_added_by": current_user["name"],
             "updated_at": datetime.now(timezone.utc).isoformat()
@@ -1245,11 +1286,10 @@ async def update_project_margin(project_id: str, request: Request):
     
     await create_audit_log(
         current_user["id"], current_user["name"], "update", "project_margin",
-        project_id, {"margin_percentage": project.get("cost_estimation", {}).get("margin_percentage")},
-        {"margin_percentage": margin_pct}
+        project_id, None, {"item_margins": item_margins}
     )
     
-    return {"message": "Margin updated", "cost_estimation": new_estimation}
+    return {"message": "Margins updated", "cost_estimation": new_estimation, "selected_items": selected_items}
 
 # ================== INVENTORY MANAGEMENT ==================
 
@@ -1610,6 +1650,7 @@ async def get_project(project_id: str, request: Request):
         "selected_items": project.get("selected_items", []),
         "manual_costs": project.get("manual_costs", []),
         "site_images": project.get("site_images", []),
+        "completion_media": project.get("completion_media", []),
         "status": project["status"],
         "cost_estimation": project.get("cost_estimation", {}),
         "created_by": project["created_by"],
@@ -1773,6 +1814,16 @@ async def reject_project(project_id: str, request: Request):
 async def complete_project(project_id: str, request: Request):
     user = await require_role("admin", "manager")(request)
     
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    
+    completion_media = body.get("completion_media", [])
+    
+    if not completion_media or len(completion_media) == 0:
+        raise HTTPException(status_code=400, detail="At least one photo or video is required for project completion")
+    
     project = await db.projects.find_one({"_id": ObjectId(project_id), "deleted_at": {"$exists": False}})
     
     if not project:
@@ -1785,6 +1836,7 @@ async def complete_project(project_id: str, request: Request):
         {"_id": ObjectId(project_id)},
         {"$set": {
             "status": "completed",
+            "completion_media": completion_media,
             "completed_at": datetime.now(timezone.utc).isoformat(),
             "updated_at": datetime.now(timezone.utc).isoformat()
         }}
@@ -2194,13 +2246,19 @@ async def startup_event():
         )
         logger.info(f"Admin password updated: {admin_email}")
     
+    # Update existing company profiles with new logo
+    await db.company_profiles.update_many(
+        {"logo_url": {"$regex": "job_solar-estimator"}},
+        {"$set": {"logo_url": "https://customer-assets.emergentagent.com/job_8c20414a-b147-464e-9c68-aaa2fa40fdbf/artifacts/32se8qpu_snspr.png"}}
+    )
+    
     # Seed default company profile
     company = await db.company_profiles.find_one({})
     if not company:
         await db.company_profiles.insert_one({
             "company_name": "Sensoper Controls & Renewables",
             "tagline": "Solar Solutions Provider",
-            "logo_url": "https://customer-assets.emergentagent.com/job_solar-estimator-14/artifacts/y3yo3sfo_snspr.png",
+            "logo_url": "https://customer-assets.emergentagent.com/job_8c20414a-b147-464e-9c68-aaa2fa40fdbf/artifacts/32se8qpu_snspr.png",
             "primary_color": "#4ADE40",
             "secondary_color": "#2D9BF0",
             "address": "123 Solar Street, Erode\nTamil Nadu, India - 638001",
