@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams, useParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { projectsAPI, aiAPI, inventoryAPI, driveAPI } from '../utils/api';
 import { Button } from '../components/ui/button';
@@ -10,6 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../co
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Checkbox } from '../components/ui/checkbox';
 import { Progress } from '../components/ui/progress';
+import { ComboInput } from '../components/ui/combo-input';
 import { 
   User, MapPin, Zap, ArrowRight, ArrowLeft, Loader2, CheckCircle2,
   Sparkles, Plus, Trash2, Package, Camera, Cloud, CloudOff, X, Percent, FolderPlus
@@ -23,28 +24,32 @@ const STEPS = [
   { id: 5, title: 'Site Images', icon: Camera }
 ];
 
-const SYSTEM_TYPES = [
+const SYSTEM_TYPE_OPTIONS = [
   { value: 'on-grid', label: 'On-Grid (Grid-Tied)' },
   { value: 'off-grid', label: 'Off-Grid (Standalone)' },
   { value: 'hybrid', label: 'Hybrid' }
 ];
-const COMPLEXITY_LEVELS = [
+const COMPLEXITY_OPTIONS = [
   { value: 'simple', label: 'Simple' },
   { value: 'moderate', label: 'Moderate' },
   { value: 'complex', label: 'Complex' }
 ];
-const SERVICE_TYPES = [
-  { value: 'single_phase', label: 'Single Phase' },
-  { value: 'three_phase', label: 'Three Phase' },
-  { value: 'ht_service', label: 'HT Service (High Tension)' }
+const SERVICE_TYPE_OPTIONS = [
+  { value: 'Single Phase', label: 'Single Phase' },
+  { value: 'Three Phase', label: 'Three Phase' },
+  { value: 'HT Service', label: 'HT Service (High Tension)' }
 ];
 
 export default function SiteVisitForm() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const { editId } = useParams();
   const { isAdmin, isManager } = useAuth();
+  const isEditMode = !!editId;
+
   const [currentStep, setCurrentStep] = useState(1);
   const [loading, setLoading] = useState(false);
+  const [loadingProject, setLoadingProject] = useState(!!editId);
   const [aiLoading, setAiLoading] = useState(false);
   const [aiRecommendation, setAiRecommendation] = useState('');
   const [error, setError] = useState('');
@@ -75,7 +80,9 @@ export default function SiteVisitForm() {
     fetchInventory();
     fetchCategories();
     checkDriveStatus();
-  }, []);
+    if (editId) loadProject();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editId]);
 
   useEffect(() => {
     if (searchParams.get('drive_connected') === 'true') {
@@ -84,6 +91,44 @@ export default function SiteVisitForm() {
     }
   }, [searchParams]);
 
+  const loadProject = async () => {
+    try {
+      const res = await projectsAPI.getOne(editId);
+      const p = res.data;
+      setFormData({
+        customer: p.customer || { name: '', phone: '', address: '', email: '' },
+        location: p.location || { latitude: null, longitude: null, address: '', site_location_words: '' },
+        electrical: {
+          sanction_load_kw: p.electrical?.sanction_load_kw || '',
+          connected_load_kw: p.electrical?.connected_load_kw || '',
+          monthly_consumption_units: p.electrical?.monthly_consumption_units || '',
+          eb_tariff: p.electrical?.eb_tariff || '',
+          service_type: p.electrical?.service_type || ''
+        },
+        solar_system: p.solar_system || { system_type: 'on-grid', inverter_model: '', panel_wattage: 540, battery_required: false, battery_capacity_ah: '' },
+        mounting: p.mounting || { roof_type: '', tilt_angle: 15, structure_type: '' },
+        additional: {
+          cable_length_meters: p.additional?.cable_length_meters || 50,
+          inverter_to_panel_distance: p.additional?.inverter_to_panel_distance || 10,
+          installation_complexity: p.additional?.installation_complexity || 'simple',
+          shadow_analysis_notes: p.additional?.shadow_analysis_notes || ''
+        },
+        selected_items: (p.selected_items || []).map(si => ({
+          inventory_item_id: si.inventory_item_id, name: si.name, category: si.category,
+          unit_price: si.unit_price, gst_percentage: si.gst_percentage || 18, quantity: si.quantity || 1,
+          margin_percentage: si.margin_percentage || 0
+        })),
+        manual_costs: p.manual_costs || [],
+        site_images: (p.site_images || []).map(url => typeof url === 'string' ? { image_url: url, filename: url.split('/').pop() || 'image' } : url)
+      });
+    } catch (err) {
+      setError('Failed to load project for editing');
+      console.error(err);
+    } finally {
+      setLoadingProject(false);
+    }
+  };
+
   const fetchInventory = async () => {
     try { const res = await inventoryAPI.getItems(); setInventoryItems(res.data); } catch (err) { console.error(err); }
   };
@@ -91,20 +136,14 @@ export default function SiteVisitForm() {
     try { const res = await inventoryAPI.getCategories(); setCategories(res.data); } catch (err) { console.error(err); }
   };
   const checkDriveStatus = async () => {
-    try {
-      const res = await driveAPI.status();
-      setDriveConnected(res.data.connected);
-    } catch (err) { console.error(err); }
+    try { const res = await driveAPI.status(); setDriveConnected(res.data.connected); }
+    catch (err) { console.error(err); }
     finally { setDriveChecking(false); }
   };
 
   const connectDrive = async () => {
-    try {
-      const res = await driveAPI.connect();
-      window.location.href = res.data.authorization_url;
-    } catch (err) {
-      setError('Failed to connect Google Drive');
-    }
+    try { const res = await driveAPI.connect(); window.location.href = res.data.authorization_url; }
+    catch (err) { setError('Failed to connect Google Drive'); }
   };
 
   const handleImageUpload = async (e) => {
@@ -117,12 +156,7 @@ export default function SiteVisitForm() {
         const res = await driveAPI.upload(file);
         setFormData(prev => ({
           ...prev,
-          site_images: [...prev.site_images, {
-            file_id: res.data.file_id,
-            image_url: res.data.image_url,
-            view_url: res.data.view_url,
-            filename: res.data.filename
-          }]
+          site_images: [...prev.site_images, { file_id: res.data.file_id, image_url: res.data.image_url, view_url: res.data.view_url, filename: res.data.filename }]
         }));
       } catch (err) {
         setError(err.response?.data?.detail || `Failed to upload ${file.name}`);
@@ -148,8 +182,7 @@ export default function SiteVisitForm() {
       ...prev,
       selected_items: [...prev.selected_items, {
         inventory_item_id: invItem.id, name: invItem.name, category: invItem.category,
-        unit_price: invItem.unit_price, gst_percentage: invItem.gst_percentage, quantity: 1,
-        margin_percentage: 0
+        unit_price: invItem.unit_price, gst_percentage: invItem.gst_percentage, quantity: 1, margin_percentage: 0
       }]
     }));
   };
@@ -161,12 +194,8 @@ export default function SiteVisitForm() {
       return { ...prev, selected_items: items };
     });
   };
-  const removeSelectedItem = (index) => {
-    setFormData(prev => ({ ...prev, selected_items: prev.selected_items.filter((_, i) => i !== index) }));
-  };
-  const addManualCost = () => {
-    setFormData(prev => ({ ...prev, manual_costs: [...prev.manual_costs, { description: '', amount: 0 }] }));
-  };
+  const removeSelectedItem = (index) => setFormData(prev => ({ ...prev, selected_items: prev.selected_items.filter((_, i) => i !== index) }));
+  const addManualCost = () => setFormData(prev => ({ ...prev, manual_costs: [...prev.manual_costs, { description: '', amount: 0 }] }));
   const updateManualCost = (index, field, value) => {
     setFormData(prev => {
       const costs = [...prev.manual_costs];
@@ -174,9 +203,7 @@ export default function SiteVisitForm() {
       return { ...prev, manual_costs: costs };
     });
   };
-  const removeManualCost = (index) => {
-    setFormData(prev => ({ ...prev, manual_costs: prev.manual_costs.filter((_, i) => i !== index) }));
-  };
+  const removeManualCost = (index) => setFormData(prev => ({ ...prev, manual_costs: prev.manual_costs.filter((_, i) => i !== index) }));
 
   const handleAddCategory = async () => {
     if (!newCategoryName.trim()) return;
@@ -187,9 +214,8 @@ export default function SiteVisitForm() {
       await fetchCategories();
       setNewCategoryName('');
       setShowAddCategory(false);
-    } catch (err) {
-      setError(err.response?.data?.detail || 'Failed to create category');
-    } finally { setCreatingCategory(false); }
+    } catch (err) { setError(err.response?.data?.detail || 'Failed to create category'); }
+    finally { setCreatingCategory(false); }
   };
 
   const getAIRecommendation = async () => {
@@ -219,21 +245,11 @@ export default function SiteVisitForm() {
   const validateStep = () => {
     setError('');
     switch (currentStep) {
-      case 1:
-        if (!formData.customer.name || !formData.customer.phone || !formData.customer.address) { setError('Please fill all required fields'); return false; }
-        break;
-      case 2:
-        if (!formData.location.site_location_words && !formData.location.address) { setError('Enter What3Words or site address'); return false; }
-        break;
-      case 3:
-        if (!formData.electrical.sanction_load_kw || !formData.electrical.monthly_consumption_units) { setError('Fill in required electrical details'); return false; }
-        break;
-      case 4:
-        if (formData.selected_items.length === 0) { setError('Add at least one inventory item'); return false; }
-        break;
-      case 5:
-        if (formData.site_images.length === 0) { setError('Upload at least one site image (mandatory)'); return false; }
-        break;
+      case 1: if (!formData.customer.name || !formData.customer.phone || !formData.customer.address) { setError('Please fill all required fields'); return false; } break;
+      case 2: if (!formData.location.site_location_words && !formData.location.address) { setError('Enter What3Words or site address'); return false; } break;
+      case 3: if (!formData.electrical.sanction_load_kw || !formData.electrical.monthly_consumption_units) { setError('Fill in required electrical details'); return false; } break;
+      case 4: if (formData.selected_items.length === 0) { setError('Add at least one inventory item'); return false; } break;
+      case 5: if (formData.site_images.length === 0) { setError('Upload at least one site image (mandatory)'); return false; } break;
       default: break;
     }
     return true;
@@ -279,14 +295,22 @@ export default function SiteVisitForm() {
         manual_costs: formData.manual_costs.filter(c => c.description && c.amount > 0).map(c => ({
           description: c.description, amount: parseFloat(c.amount) || 0
         })),
-        site_images: formData.site_images.map(img => img.image_url)
+        site_images: formData.site_images.map(img => typeof img === 'string' ? img : img.image_url)
       };
-      const res = await projectsAPI.create(payload);
-      navigate(`/dashboard/projects/${res.data.id}`);
+
+      if (isEditMode) {
+        await projectsAPI.update(editId, payload);
+        navigate(`/dashboard/projects/${editId}`);
+      } else {
+        const res = await projectsAPI.create(payload);
+        navigate(`/dashboard/projects/${res.data.id}`);
+      }
     } catch (err) {
-      setError(err.response?.data?.detail || 'Failed to create project');
+      setError(err.response?.data?.detail || `Failed to ${isEditMode ? 'update' : 'create'} project`);
     } finally { setLoading(false); }
   };
+
+  if (loadingProject) return <div className="min-h-screen bg-slate-50 flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-emerald-600" /></div>;
 
   const progress = (currentStep / 5) * 100;
   const totals = calculateTotal();
@@ -295,11 +319,10 @@ export default function SiteVisitForm() {
     <div className="min-h-screen bg-slate-50 py-6 px-4 pb-24 sm:pb-8">
       <div className="max-w-3xl mx-auto">
         <div className="mb-6">
-          <h1 className="text-2xl sm:text-3xl font-bold font-['Outfit'] text-slate-900 mb-1">New Site Visit</h1>
-          <p className="text-sm text-slate-500">Collect site data for an accurate solar project estimate</p>
+          <h1 className="text-2xl sm:text-3xl font-bold font-['Outfit'] text-slate-900 mb-1">{isEditMode ? 'Edit Project' : 'New Site Visit'}</h1>
+          <p className="text-sm text-slate-500">{isEditMode ? 'Update project details' : 'Collect site data for an accurate solar project estimate'}</p>
         </div>
 
-        {/* Progress Steps */}
         <div className="mb-6">
           <Progress value={progress} className="h-2 mb-3" />
           <div className="flex justify-between overflow-x-auto gap-1">
@@ -360,15 +383,12 @@ export default function SiteVisitForm() {
               </div>
             )}
 
-            {/* Step 3: Electrical */}
+            {/* Step 3: Electrical - Typeable dropdowns */}
             {currentStep === 3 && (
               <div className="space-y-4">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div className="space-y-2"><Label>Type of Service *</Label>
-                    <Select value={formData.electrical.service_type} onValueChange={(v) => updateField('electrical', 'service_type', v)}>
-                      <SelectTrigger className="h-11" data-testid="service-type-select"><SelectValue placeholder="Select service type" /></SelectTrigger>
-                      <SelectContent>{SERVICE_TYPES.map(t => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}</SelectContent>
-                    </Select>
+                  <div className="space-y-2"><Label>Type of Service</Label>
+                    <ComboInput value={formData.electrical.service_type} onChange={(v) => updateField('electrical', 'service_type', v)} options={SERVICE_TYPE_OPTIONS} placeholder="Type or select service type" data-testid="service-type-input" />
                   </div>
                   <div className="space-y-2"><Label>Sanction Load (kW) *</Label><Input type="number" step="0.1" value={formData.electrical.sanction_load_kw} onChange={(e) => updateField('electrical', 'sanction_load_kw', e.target.value)} placeholder="e.g., 5" className="h-11" data-testid="sanction-load-input" /></div>
                 </div>
@@ -381,14 +401,11 @@ export default function SiteVisitForm() {
                   <div className="space-y-2"><Label>Cable Length (m)</Label><Input type="number" value={formData.additional.cable_length_meters} onChange={(e) => updateField('additional', 'cable_length_meters', e.target.value)} placeholder="50" className="h-11" data-testid="cable-length-input" /></div>
                 </div>
                 <div className="space-y-2"><Label>Complexity</Label>
-                  <Select value={formData.additional.installation_complexity} onValueChange={(v) => updateField('additional', 'installation_complexity', v)}>
-                    <SelectTrigger className="h-11" data-testid="complexity-select"><SelectValue /></SelectTrigger>
-                    <SelectContent>{COMPLEXITY_LEVELS.map(l => <SelectItem key={l.value} value={l.value}>{l.label}</SelectItem>)}</SelectContent>
-                  </Select>
+                  <ComboInput value={formData.additional.installation_complexity} onChange={(v) => updateField('additional', 'installation_complexity', v)} options={COMPLEXITY_OPTIONS} placeholder="Type or select complexity" data-testid="complexity-input" />
                 </div>
                 <div className="p-4 bg-sky-50 rounded-lg border border-sky-200">
                   <div className="flex items-center justify-between flex-wrap gap-2">
-                    <div><h3 className="font-semibold text-sky-800 flex items-center gap-2"><Sparkles className="h-4 w-4" />AI Recommendation</h3></div>
+                    <h3 className="font-semibold text-sky-800 flex items-center gap-2"><Sparkles className="h-4 w-4" />AI Recommendation</h3>
                     <Button type="button" onClick={getAIRecommendation} disabled={aiLoading || !formData.electrical.monthly_consumption_units} variant="outline" className="border-sky-300 text-sky-700 hover:bg-sky-100 h-10" data-testid="ai-recommendation-btn">
                       {aiLoading ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Sparkles className="h-4 w-4 mr-1" />}Advice
                     </Button>
@@ -403,10 +420,7 @@ export default function SiteVisitForm() {
               <div className="space-y-5">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-2"><Label>System Type</Label>
-                    <Select value={formData.solar_system.system_type} onValueChange={(v) => updateField('solar_system', 'system_type', v)}>
-                      <SelectTrigger className="h-11" data-testid="system-type-select"><SelectValue /></SelectTrigger>
-                      <SelectContent>{SYSTEM_TYPES.map(t => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}</SelectContent>
-                    </Select>
+                    <ComboInput value={formData.solar_system.system_type} onChange={(v) => updateField('solar_system', 'system_type', v)} options={SYSTEM_TYPE_OPTIONS} placeholder="Type or select system type" data-testid="system-type-input" />
                   </div>
                   <div className="flex items-end pb-2">
                     <div className="flex items-center space-x-3">
@@ -419,9 +433,7 @@ export default function SiteVisitForm() {
                 <div>
                   <div className="flex items-center justify-between mb-3">
                     <h3 className="font-semibold text-slate-900 flex items-center gap-2"><Package className="h-4 w-4" />Select from Inventory</h3>
-                    <Button type="button" variant="outline" size="sm" onClick={() => setShowAddCategory(true)} className="h-9 text-xs gap-1" data-testid="add-category-btn">
-                      <FolderPlus className="h-3.5 w-3.5" />Add Category
-                    </Button>
+                    <Button type="button" variant="outline" size="sm" onClick={() => setShowAddCategory(true)} className="h-9 text-xs gap-1" data-testid="add-category-btn"><FolderPlus className="h-3.5 w-3.5" />Add Category</Button>
                   </div>
 
                   {showAddCategory && (
@@ -471,17 +483,9 @@ export default function SiteVisitForm() {
                             <div className="flex items-center gap-2 mt-2 pt-2 border-t border-slate-200">
                               <Percent className="h-3.5 w-3.5 text-amber-600" />
                               <span className="text-xs text-amber-700 font-medium">Margin</span>
-                              <Input
-                                type="number" min="0" max="100" step="0.5"
-                                value={item.margin_percentage}
-                                onChange={(e) => updateSelectedItem(idx, 'margin_percentage', parseFloat(e.target.value) || 0)}
-                                className="w-20 h-7 text-xs text-center"
-                                data-testid={`item-margin-${idx}`}
-                              />
+                              <Input type="number" min="0" max="100" step="0.5" value={item.margin_percentage} onChange={(e) => updateSelectedItem(idx, 'margin_percentage', parseFloat(e.target.value) || 0)} className="w-20 h-7 text-xs text-center" data-testid={`item-margin-${idx}`} />
                               <span className="text-xs text-slate-500">%</span>
-                              {item.margin_percentage > 0 && (
-                                <span className="text-xs text-amber-600 ml-auto">+Rs {(item.unit_price * item.quantity * item.margin_percentage / 100).toLocaleString('en-IN')}</span>
-                              )}
+                              {item.margin_percentage > 0 && <span className="text-xs text-amber-600 ml-auto">+Rs {(item.unit_price * item.quantity * item.margin_percentage / 100).toLocaleString('en-IN')}</span>}
                             </div>
                           )}
                         </div>
@@ -511,9 +515,7 @@ export default function SiteVisitForm() {
                       <div className="flex justify-between"><span className="text-slate-600">Items</span><span className="font-medium">Rs {totals.itemsTotal.toLocaleString('en-IN')}</span></div>
                       <div className="flex justify-between"><span className="text-slate-600">Manual</span><span className="font-medium">Rs {totals.manualTotal.toLocaleString('en-IN')}</span></div>
                       <div className="flex justify-between"><span className="text-slate-600">GST</span><span className="font-medium">Rs {totals.gstTotal.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span></div>
-                      {canSetMargin && totals.marginTotal > 0 && (
-                        <div className="flex justify-between text-amber-700"><span>Margin</span><span className="font-medium">Rs {totals.marginTotal.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span></div>
-                      )}
+                      {canSetMargin && totals.marginTotal > 0 && <div className="flex justify-between text-amber-700"><span>Margin</span><span className="font-medium">Rs {totals.marginTotal.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span></div>}
                       <div className="flex justify-between pt-2 border-t border-emerald-300"><span className="font-bold">Estimated Total</span><span className="font-bold text-emerald-700">Rs {totals.total.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span></div>
                     </div>
                   </CardContent>
@@ -533,25 +535,19 @@ export default function SiteVisitForm() {
                     <CloudOff className="h-12 w-12 mx-auto mb-4 text-slate-400" />
                     <h3 className="font-semibold text-slate-900 mb-2">Connect Google Drive</h3>
                     <p className="text-sm text-slate-500 mb-4">Site images are stored in your Google Drive for safe keeping.</p>
-                    <Button onClick={connectDrive} className="bg-blue-600 hover:bg-blue-700 text-white h-12 px-6" data-testid="connect-drive-btn">
-                      <Cloud className="h-5 w-5 mr-2" />Connect Google Drive
-                    </Button>
+                    <Button onClick={connectDrive} className="bg-blue-600 hover:bg-blue-700 text-white h-12 px-6" data-testid="connect-drive-btn"><Cloud className="h-5 w-5 mr-2" />Connect Google Drive</Button>
                   </div>
                 ) : driveChecking ? (
                   <div className="text-center py-8"><Loader2 className="h-8 w-8 animate-spin mx-auto text-emerald-600" /><p className="text-sm text-slate-500 mt-2">Checking Drive connection...</p></div>
                 ) : (
                   <>
                     <div className="flex items-center gap-2 p-3 bg-emerald-50 rounded-lg border border-emerald-200">
-                      <Cloud className="h-5 w-5 text-emerald-600" />
-                      <span className="text-sm font-medium text-emerald-800">Google Drive Connected</span>
+                      <Cloud className="h-5 w-5 text-emerald-600" /><span className="text-sm font-medium text-emerald-800">Google Drive Connected</span>
                     </div>
                     <label className="block cursor-pointer">
                       <div className="border-2 border-dashed border-slate-300 rounded-xl p-8 text-center hover:border-emerald-400 hover:bg-emerald-50/50 transition-colors">
-                        {uploadingImage ? (
-                          <><Loader2 className="h-10 w-10 animate-spin mx-auto text-emerald-600 mb-2" /><p className="text-sm text-slate-600">Uploading to Google Drive...</p></>
-                        ) : (
-                          <><Camera className="h-10 w-10 mx-auto text-slate-400 mb-2" /><p className="font-medium text-slate-700">Tap to upload site photos</p><p className="text-sm text-slate-500">Supports JPG, PNG (max 10MB each)</p></>
-                        )}
+                        {uploadingImage ? (<><Loader2 className="h-10 w-10 animate-spin mx-auto text-emerald-600 mb-2" /><p className="text-sm text-slate-600">Uploading to Google Drive...</p></>) :
+                        (<><Camera className="h-10 w-10 mx-auto text-slate-400 mb-2" /><p className="font-medium text-slate-700">Tap to upload site photos</p><p className="text-sm text-slate-500">Supports JPG, PNG (max 10MB each)</p></>)}
                       </div>
                       <input type="file" accept="image/*" multiple className="hidden" onChange={handleImageUpload} disabled={uploadingImage} data-testid="site-image-input" />
                     </label>
@@ -559,13 +555,9 @@ export default function SiteVisitForm() {
                       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                         {formData.site_images.map((img, idx) => (
                           <div key={idx} className="relative group rounded-xl overflow-hidden border border-slate-200 aspect-square bg-slate-100" data-testid={`site-image-${idx}`}>
-                            <img src={img.image_url} alt={img.filename} className="w-full h-full object-cover" loading="lazy" />
-                            <button onClick={() => removeImage(idx)} className="absolute top-2 right-2 bg-red-500 text-white rounded-full p-1.5 opacity-80 hover:opacity-100 transition-opacity" data-testid={`remove-image-${idx}`}>
-                              <X className="h-3.5 w-3.5" />
-                            </button>
-                            <div className="absolute bottom-0 left-0 right-0 bg-black/50 p-1.5">
-                              <p className="text-[10px] text-white truncate">{img.filename}</p>
-                            </div>
+                            <img src={img.image_url || img} alt={img.filename || `Photo ${idx + 1}`} className="w-full h-full object-cover" loading="lazy" />
+                            <button onClick={() => removeImage(idx)} className="absolute top-2 right-2 bg-red-500 text-white rounded-full p-1.5 opacity-80 hover:opacity-100 transition-opacity" data-testid={`remove-image-${idx}`}><X className="h-3.5 w-3.5" /></button>
+                            <div className="absolute bottom-0 left-0 right-0 bg-black/50 p-1.5"><p className="text-[10px] text-white truncate">{img.filename || `Photo ${idx + 1}`}</p></div>
                           </div>
                         ))}
                       </div>
@@ -581,16 +573,12 @@ export default function SiteVisitForm() {
 
             {/* Navigation */}
             <div className="flex justify-between mt-6 pt-4 border-t border-slate-200 sticky bottom-0 bg-white pb-4 -mx-4 px-4 sm:-mx-6 sm:px-6 sm:static sm:bg-transparent sm:pb-0">
-              <Button type="button" variant="outline" onClick={prevStep} disabled={currentStep === 1} className="gap-2 h-12" data-testid="prev-step-btn">
-                <ArrowLeft className="h-4 w-4" /><span className="hidden sm:inline">Previous</span><span className="sm:hidden">Back</span>
-              </Button>
+              <Button type="button" variant="outline" onClick={prevStep} disabled={currentStep === 1} className="gap-2 h-12" data-testid="prev-step-btn"><ArrowLeft className="h-4 w-4" /><span className="hidden sm:inline">Previous</span><span className="sm:hidden">Back</span></Button>
               {currentStep < 5 ? (
-                <Button type="button" onClick={nextStep} className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white h-12" data-testid="next-step-btn">
-                  Next <ArrowRight className="h-4 w-4" />
-                </Button>
+                <Button type="button" onClick={nextStep} className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white h-12" data-testid="next-step-btn">Next <ArrowRight className="h-4 w-4" /></Button>
               ) : (
                 <Button type="button" onClick={handleSubmit} disabled={loading || formData.site_images.length === 0} className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white h-12" data-testid="submit-project-btn">
-                  {loading ? <><Loader2 className="h-4 w-4 animate-spin" />Creating...</> : <><CheckCircle2 className="h-4 w-4" />Create Project</>}
+                  {loading ? <><Loader2 className="h-4 w-4 animate-spin" />{isEditMode ? 'Saving...' : 'Creating...'}</> : <><CheckCircle2 className="h-4 w-4" />{isEditMode ? 'Save Changes' : 'Create Project'}</>}
                 </Button>
               )}
             </div>

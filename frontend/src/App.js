@@ -106,6 +106,14 @@ function AppRoutes() {
         }
       />
       <Route
+        path="/dashboard/projects/:editId/edit"
+        element={
+          <ProtectedRoute>
+            <SiteVisitForm />
+          </ProtectedRoute>
+        }
+      />
+      <Route
         path="/dashboard/projects/:id"
         element={
           <ProtectedRoute>

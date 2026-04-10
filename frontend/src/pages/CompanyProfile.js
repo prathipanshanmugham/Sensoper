@@ -51,7 +51,8 @@ export default function CompanyProfile() {
       account_number: '',
       ifsc_code: '',
       bank_name: '',
-      branch: ''
+      branch: '',
+      upi_id: ''
     },
     authorized_signatory: '',
     designation: ''
@@ -120,7 +121,8 @@ export default function CompanyProfile() {
         account_number: '',
         ifsc_code: '',
         bank_name: '',
-        branch: ''
+        branch: '',
+        upi_id: ''
       },
       authorized_signatory: profile.authorized_signatory || '',
       designation: profile.designation || ''
@@ -653,6 +655,15 @@ export default function CompanyProfile() {
                     onChange={(e) => updateBankField('branch', e.target.value)}
                     placeholder="Main Branch"
                     data-testid="branch-input"
+                  />
+                </div>
+                <div className="space-y-2 sm:col-span-2">
+                  <Label>UPI ID</Label>
+                  <Input
+                    value={formData.bank_details.upi_id || ''}
+                    onChange={(e) => updateBankField('upi_id', e.target.value)}
+                    placeholder="company@upi"
+                    data-testid="upi-id-input"
                   />
                 </div>
               </div>

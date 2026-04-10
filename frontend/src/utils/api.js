@@ -29,9 +29,12 @@ export const projectsAPI = {
   submit: (id) => api.post(`/projects/${id}/submit`),
   approve: (id) => api.post(`/projects/${id}/approve`),
   reject: (id, reason) => api.post(`/projects/${id}/reject`, { reason }),
-  complete: (id, completionMedia) => api.post(`/projects/${id}/complete`, { completion_media: completionMedia }),
+  complete: (id, completionMedia, customerFeedback) => api.post(`/projects/${id}/complete`, { completion_media: completionMedia, customer_feedback: customerFeedback }),
   requestDeletion: (id, reason) => api.post(`/projects/${id}/request-deletion`, { reason }),
-  forceDelete: (id) => api.delete(`/projects/${id}/force`)
+  forceDelete: (id) => api.delete(`/projects/${id}/force`),
+  updateReference: (id, refNumber) => api.put(`/projects/${id}/reference`, { reference_number: refNumber }),
+  updateStatus: (id, status) => api.put(`/projects/${id}/status`, { status }),
+  galleryUrl: (id) => `${API_URL}/api/projects/${id}/gallery`
 };
 
 // Users API (Admin only)

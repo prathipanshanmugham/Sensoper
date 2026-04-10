@@ -2,7 +2,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from fastapi import FastAPI, APIRouter, HTTPException, Depends, Request, Response, UploadFile, File, Form
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, HTMLResponse
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 from bson import ObjectId
@@ -119,7 +119,7 @@ class ElectricalDetails(BaseModel):
     service_type: Optional[str] = None
 
 class SolarSystemInputs(BaseModel):
-    system_type: Literal["on-grid", "off-grid", "hybrid"]
+    system_type: str = "on-grid"
     inverter_model: Optional[str] = None
     panel_wattage: Optional[int] = 540
     battery_required: bool = False
@@ -133,7 +133,7 @@ class MountingStructure(BaseModel):
 class AdditionalInputs(BaseModel):
     cable_length_meters: float
     inverter_to_panel_distance: float
-    installation_complexity: Literal["simple", "moderate", "complex"]
+    installation_complexity: str = "simple"
     shadow_analysis_notes: Optional[str] = None
 
 class SelectedItem(BaseModel):
@@ -238,6 +238,7 @@ class BankDetails(BaseModel):
     ifsc_code: Optional[str] = None
     bank_name: Optional[str] = None
     branch: Optional[str] = None
+    upi_id: Optional[str] = None
 
 class CompanyProfileCreate(BaseModel):
     company_name: str
@@ -1575,6 +1576,13 @@ async def create_project(project: ProjectCreate, request: Request):
     
     result = await db.projects.insert_one(project_doc)
     
+    # Auto-generate reference number
+    ref_number = f"SCR-{str(result.inserted_id)[-6:].upper()}"
+    await db.projects.update_one(
+        {"_id": result.inserted_id},
+        {"$set": {"reference_number": ref_number}}
+    )
+    
     await create_audit_log(
         user["id"], user["name"], "create", "project",
         str(result.inserted_id), None, {"customer": project.customer.name, "status": "draft"}
@@ -1603,6 +1611,7 @@ async def get_projects(request: Request, status: Optional[str] = None):
     return [
         {
             "id": str(p["_id"]),
+            "reference_number": p.get("reference_number", f"SCR-{str(p['_id'])[-6:].upper()}"),
             "customer": p["customer"],
             "location": p["location"],
             "status": p["status"],
@@ -1641,6 +1650,7 @@ async def get_project(project_id: str, request: Request):
     
     return {
         "id": str(project["_id"]),
+        "reference_number": project.get("reference_number", f"SCR-{str(project['_id'])[-6:].upper()}"),
         "customer": project["customer"],
         "location": project["location"],
         "electrical": project["electrical"],
@@ -1651,6 +1661,7 @@ async def get_project(project_id: str, request: Request):
         "manual_costs": project.get("manual_costs", []),
         "site_images": project.get("site_images", []),
         "completion_media": project.get("completion_media", []),
+        "customer_feedback": project.get("customer_feedback"),
         "status": project["status"],
         "cost_estimation": project.get("cost_estimation", {}),
         "created_by": project["created_by"],
@@ -1673,12 +1684,17 @@ async def update_project(project_id: str, updates: ProjectUpdate, request: Reque
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
     
+    editable_statuses = ["draft", "approved"]
+    
     # Staff can only edit their own draft projects
     if user["role"] == "staff":
         if project["created_by"] != user["id"]:
             raise HTTPException(status_code=403, detail="Access denied")
         if project["status"] != "draft":
             raise HTTPException(status_code=400, detail="Can only edit draft projects")
+    elif user["role"] in ["admin", "manager"]:
+        if project["status"] not in editable_statuses:
+            raise HTTPException(status_code=400, detail=f"Can only edit projects in: {', '.join(editable_statuses)}")
     
     update_data = {"updated_at": datetime.now(timezone.utc).isoformat()}
     
@@ -1702,6 +1718,12 @@ async def update_project(project_id: str, updates: ProjectUpdate, request: Reque
         update_data["manual_costs"] = [mc.model_dump() for mc in updates.manual_costs]
     if updates.status and user["role"] in ["admin", "manager"]:
         update_data["status"] = updates.status
+    
+    # If editing an approved project, revert to submitted for re-approval
+    if project["status"] == "approved" and user["role"] in ["admin", "manager"]:
+        has_content_changes = any(k in update_data for k in ["customer", "location", "electrical", "solar_system", "mounting", "additional", "site_images", "selected_items", "manual_costs"])
+        if has_content_changes and "status" not in update_data:
+            update_data["status"] = "submitted"
     
     # Recalculate cost if items changed
     if "selected_items" in update_data or "manual_costs" in update_data:
@@ -1820,6 +1842,7 @@ async def complete_project(project_id: str, request: Request):
         body = {}
     
     completion_media = body.get("completion_media", [])
+    customer_feedback = body.get("customer_feedback", "")
     
     if not completion_media or len(completion_media) == 0:
         raise HTTPException(status_code=400, detail="At least one photo or video is required for project completion")
@@ -1837,6 +1860,7 @@ async def complete_project(project_id: str, request: Request):
         {"$set": {
             "status": "completed",
             "completion_media": completion_media,
+            "customer_feedback": customer_feedback,
             "completed_at": datetime.now(timezone.utc).isoformat(),
             "updated_at": datetime.now(timezone.utc).isoformat()
         }}
@@ -1847,6 +1871,87 @@ async def complete_project(project_id: str, request: Request):
     )
     
     return {"message": "Project marked as completed"}
+
+@api_router.put("/projects/{project_id}/reference")
+async def update_reference_number(project_id: str, request: Request):
+    """Update project reference number (Admin/Manager only)"""
+    current_user = await require_role("admin", "manager")(request)
+    body = await request.json()
+    ref = body.get("reference_number", "").strip()
+    if not ref:
+        raise HTTPException(status_code=400, detail="Reference number is required")
+    project = await db.projects.find_one({"_id": ObjectId(project_id), "deleted_at": {"$exists": False}})
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    await db.projects.update_one(
+        {"_id": ObjectId(project_id)},
+        {"$set": {"reference_number": ref, "updated_at": datetime.now(timezone.utc).isoformat()}}
+    )
+    await create_audit_log(current_user["id"], current_user["name"], "update", "project_reference", project_id, None, {"reference_number": ref})
+    return {"message": "Reference number updated", "reference_number": ref}
+
+@api_router.put("/projects/{project_id}/status")
+async def update_project_status(project_id: str, request: Request):
+    """Manually change project status (Admin/Manager only)"""
+    current_user = await require_role("admin", "manager")(request)
+    body = await request.json()
+    new_status = body.get("status", "").strip()
+    valid_statuses = ["draft", "submitted", "approved", "rejected", "completed"]
+    if new_status not in valid_statuses:
+        raise HTTPException(status_code=400, detail=f"Invalid status. Must be one of: {', '.join(valid_statuses)}")
+    project = await db.projects.find_one({"_id": ObjectId(project_id), "deleted_at": {"$exists": False}})
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    old_status = project["status"]
+    await db.projects.update_one(
+        {"_id": ObjectId(project_id)},
+        {"$set": {"status": new_status, "updated_at": datetime.now(timezone.utc).isoformat()}}
+    )
+    await create_audit_log(current_user["id"], current_user["name"], "update", "project_status", project_id, {"status": old_status}, {"status": new_status})
+    return {"message": f"Status changed to {new_status}", "status": new_status}
+
+@api_router.get("/projects/{project_id}/gallery")
+async def project_gallery(project_id: str):
+    """Public gallery page for site images - used for QR code in PDF"""
+    project = await db.projects.find_one({"_id": ObjectId(project_id), "deleted_at": {"$exists": False}})
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    
+    site_images = project.get("site_images", [])
+    completion_media = project.get("completion_media", [])
+    customer_name = project.get("customer", {}).get("name", "Project")
+    ref = project.get("reference_number", f"SCR-{str(project['_id'])[-6:].upper()}")
+    
+    img_tags = ""
+    for i, url in enumerate(site_images):
+        img_tags += f'<div style="break-inside:avoid;margin-bottom:12px;"><img src="{url}" alt="Site Photo {i+1}" style="width:100%;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,.1);" loading="lazy"/><p style="text-align:center;color:#666;font-size:13px;margin:6px 0;">Site Photo {i+1}</p></div>'
+    
+    media_tags = ""
+    for m in completion_media:
+        sp = m.get("storage_path", "") if isinstance(m, dict) else ""
+        ct = m.get("content_type", "") if isinstance(m, dict) else ""
+        fn = m.get("filename", "File") if isinstance(m, dict) else ""
+        file_url = f"/api/files/{sp}"
+        if ct.startswith("video/"):
+            media_tags += f'<div style="break-inside:avoid;margin-bottom:12px;"><video controls style="width:100%;border-radius:8px;" preload="metadata"><source src="{file_url}" type="{ct}"/></video><p style="text-align:center;color:#666;font-size:13px;">{fn}</p></div>'
+        elif ct.startswith("image/"):
+            media_tags += f'<div style="break-inside:avoid;margin-bottom:12px;"><img src="{file_url}" alt="{fn}" style="width:100%;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,.1);" loading="lazy"/><p style="text-align:center;color:#666;font-size:13px;">{fn}</p></div>'
+    
+    html = f"""<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{customer_name} - Site Gallery</title>
+    <style>*{{margin:0;padding:0;box-sizing:border-box}}body{{font-family:system-ui,sans-serif;background:#f8fafc;color:#1e293b;padding:24px;max-width:900px;margin:0 auto}}
+    h1{{font-size:1.5rem;margin-bottom:4px}}h2{{font-size:1.1rem;color:#475569;margin:24px 0 12px;border-bottom:2px solid #e2e8f0;padding-bottom:6px}}
+    .ref{{color:#64748b;font-size:.9rem;margin-bottom:20px}}.grid{{columns:2;column-gap:16px}}@media(max-width:600px){{.grid{{columns:1}}}}</style></head>
+    <body><h1>{customer_name}</h1><p class="ref">{ref} &bull; Sensoper Controls &amp; Renewables</p>"""
+    
+    if img_tags:
+        html += f'<h2>Site Images ({len(site_images)})</h2><div class="grid">{img_tags}</div>'
+    if media_tags:
+        html += f'<h2>Completion Media</h2><div class="grid">{media_tags}</div>'
+    if not img_tags and not media_tags:
+        html += '<p style="text-align:center;padding:40px;color:#94a3b8;">No images available for this project.</p>'
+    
+    html += '</body></html>'
+    return HTMLResponse(content=html)
 
 # ================== PROJECT DELETION WORKFLOW ==================
 
