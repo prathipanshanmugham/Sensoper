@@ -11,7 +11,7 @@ import { Label } from '../components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../components/ui/dialog';
 import { 
   ArrowLeft, Loader2, User, MapPin, Zap, Sun, Clock, CheckCircle2, XCircle, 
-  AlertCircle, Download, Share2, Trash2, Send, AlertTriangle, Package, Percent
+  AlertCircle, Download, Share2, Trash2, Send, AlertTriangle, Package, Percent, Camera
 } from 'lucide-react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -394,6 +394,27 @@ export default function ProjectDetails() {
       y = doc.lastAutoTable.finalY + 12;
     }
 
+    // ── Site Images ──
+    const siteImages = project.site_images || [];
+    if (siteImages.length > 0) {
+      if (y > pageHeight - 60) { doc.addPage(); drawHeader(doc); y = 44; }
+      y = sectionHead('Site Images', y);
+      doc.setFontSize(8);
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(100, 100, 100);
+      doc.text(`${siteImages.length} photo(s) uploaded to Google Drive. View links below:`, m, y);
+      y += 6;
+      siteImages.forEach((url, i) => {
+        if (y > pageHeight - 20) { doc.addPage(); drawHeader(doc); y = 44; }
+        doc.setFontSize(7);
+        doc.setTextColor(...sRgb);
+        const displayUrl = typeof url === 'string' ? url : url;
+        doc.textWithLink(`Photo ${i + 1}: View Image`, m, y, { url: displayUrl });
+        y += 5;
+      });
+      y += 8;
+    }
+
     // ── Terms & Conditions ──
     if (y > pageHeight - 45) { doc.addPage(); drawHeader(doc); y = 44; }
     doc.setFontSize(10);
@@ -544,6 +565,22 @@ export default function ProjectDetails() {
                 )}
               </CardContent>
             </Card>
+
+            {/* Site Images */}
+            {project.site_images && project.site_images.length > 0 && (
+              <Card className="border-slate-200">
+                <CardHeader className="pb-3"><CardTitle className="text-lg font-['Outfit'] flex items-center gap-2"><Camera className="h-5 w-5 text-emerald-600" />Site Images ({project.site_images.length})</CardTitle></CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                    {project.site_images.map((url, i) => (
+                      <a key={i} href={url} target="_blank" rel="noopener noreferrer" className="block aspect-square rounded-xl overflow-hidden border border-slate-200 bg-slate-100 hover:ring-2 hover:ring-emerald-400 transition-all" data-testid={`view-image-${i}`}>
+                        <img src={url} alt={`Site photo ${i + 1}`} className="w-full h-full object-cover" loading="lazy" />
+                      </a>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
 
             {/* Selected Items */}
             {selectedItems.length > 0 && (

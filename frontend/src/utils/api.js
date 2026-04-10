@@ -96,6 +96,17 @@ export const marginAPI = {
   update: (projectId, marginPercentage) => api.put(`/projects/${projectId}/margin`, { margin_percentage: marginPercentage })
 };
 
+// Google Drive API
+export const driveAPI = {
+  connect: () => api.get('/drive/connect'),
+  status: () => api.get('/drive/status'),
+  upload: (file) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return api.post('/drive/upload', formData, { headers: { 'Content-Type': 'multipart/form-data' }, timeout: 60000 });
+  }
+};
+
 // Deletion Requests API
 export const deletionRequestsAPI = {
   getAll: (status = null) => api.get('/deletion-requests', { params: status ? { status } : {} }),
