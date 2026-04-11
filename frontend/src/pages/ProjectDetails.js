@@ -13,7 +13,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { 
   ArrowLeft, Loader2, User, MapPin, Zap, Sun, Clock, CheckCircle2, XCircle, 
   AlertCircle, Download, Share2, Trash2, Send, AlertTriangle, Package, Percent, 
-  Video, Upload, Film, Pencil, Save, X, MessageSquare, QrCode, FolderOpen, 
+  Video, Upload, Film, Pencil, Save, X, MessageSquare, QrCode, FolderOpen, Camera,
   ExternalLink, Copy, Link2
 } from 'lucide-react';
 import jsPDF from 'jspdf';
@@ -42,8 +42,10 @@ function InfoRow({ label, value }) {
   );
 }
 
-function stripHtml(html) { const tmp = document.createElement('div'); tmp.innerHTML = html; return tmp.textContent || tmp.innerText || ''; }
-function parseTermsHtml(html) { const tmp = document.createElement('div'); tmp.innerHTML = html; const items = tmp.querySelectorAll('li'); if (items.length > 0) return Array.from(items).map(li => stripHtml(li.innerHTML)); return stripHtml(html).split('\n').filter(line => line.trim()); }
+import DOMPurify from 'dompurify';
+
+function stripHtml(html) { const tmp = document.createElement('div'); tmp.innerHTML = DOMPurify.sanitize(html); return tmp.textContent || tmp.innerText || ''; }
+function parseTermsHtml(html) { const tmp = document.createElement('div'); tmp.innerHTML = DOMPurify.sanitize(html); const items = tmp.querySelectorAll('li'); if (items.length > 0) return Array.from(items).map(li => stripHtml(li.innerHTML)); return stripHtml(html).split('\n').filter(line => line.trim()); }
 
 const CATEGORY_LABELS = { solar_panels: 'Solar Panels', inverters: 'Inverters', batteries: 'Batteries', mounting_structures: 'Mounting Structures', cables_accessories: 'Cables & Accessories' };
 
@@ -89,8 +91,8 @@ export default function ProjectDetails() {
 
   useEffect(() => { fetchProject(); fetchTerms(); fetchCompanyProfile(); }, [fetchProject]);
 
-  const fetchTerms = async () => { try { const res = await termsAPI.getActive(); setTerms(res.data); } catch (e) {} };
-  const fetchCompanyProfile = async () => { try { const res = await companyAPI.getActive(); setCompanyProfile(res.data); } catch (e) {} };
+  const fetchTerms = async () => { try { const res = await termsAPI.getActive(); setTerms(res.data); } catch (e) { console.error('Failed to fetch terms:', e); } };
+  const fetchCompanyProfile = async () => { try { const res = await companyAPI.getActive(); setCompanyProfile(res.data); } catch (e) { console.error('Failed to fetch company profile:', e); } };
 
   const handleSubmit = async () => { setActionLoading(true); try { await projectsAPI.submit(id); fetchProject(); } catch (e) { alert(e.response?.data?.detail || 'Failed'); } finally { setActionLoading(false); } };
   const handleApprove = async () => { setActionLoading(true); try { await projectsAPI.approve(id); fetchProject(); } catch (e) { alert(e.response?.data?.detail || 'Failed'); } finally { setActionLoading(false); } };
@@ -179,7 +181,7 @@ export default function ProjectDetails() {
     let driveQR = null;
     const driveLink = project.drive_folder_link;
     if (driveLink) {
-      try { driveQR = await QRCode.toDataURL(driveLink, { width: 150, margin: 1 }); } catch (e) {}
+      try { driveQR = await QRCode.toDataURL(driveLink, { width: 150, margin: 1 }); } catch (e) { console.error('Drive QR generation failed:', e); }
     }
 
     let upiQR = null;
@@ -187,7 +189,7 @@ export default function ProjectDetails() {
     if (upiId) {
       const totalAmt = project.cost_estimation?.total_cost || 0;
       const upiString = `upi://pay?pa=${upiId}&pn=${encodeURIComponent(cp.company_name || 'Sensoper')}&am=${totalAmt}&cu=INR&tn=${encodeURIComponent(`Payment for ${project.reference_number || ''}`)}`;
-      try { upiQR = await QRCode.toDataURL(upiString, { width: 150, margin: 1 }); } catch (e) {}
+      try { upiQR = await QRCode.toDataURL(upiString, { width: 150, margin: 1 }); } catch (e) { console.error('Failed to generate UPI QR:', e); }
     }
 
     const drawHeader = (d) => {
@@ -336,7 +338,7 @@ export default function ProjectDetails() {
           doc.addImage(upiQR, 'PNG', qrX, qrY, 35, 35);
           doc.setFontSize(7); doc.setTextColor(100, 100, 100); doc.setFont('helvetica', 'normal');
           doc.text('Scan to Pay (UPI)', qrX + 17.5, qrY + 39, { align: 'center' });
-        } catch (e) {}
+        } catch (e) { console.error('UPI QR PDF render failed:', e); }
       }
       y = doc.lastAutoTable.finalY + 12;
     }
@@ -350,7 +352,7 @@ export default function ProjectDetails() {
         doc.text(`Folder: ${project.drive_folder_name}`, m, y); y += 5;
       }
       doc.text('Scan QR to access all site images and documents:', m, y); y += 5;
-      try { doc.addImage(driveQR, 'PNG', m, y, 32, 32); } catch (e) {}
+      try { doc.addImage(driveQR, 'PNG', m, y, 32, 32); } catch (e) { console.error('Drive QR PDF render failed:', e); }
       doc.setFontSize(7); doc.setTextColor(100, 100, 100);
       doc.text(driveLink, m + 36, y + 16, { maxWidth: contentW - 40 });
       y += 38;
@@ -606,7 +608,7 @@ export default function ProjectDetails() {
                         <th className="text-right py-2 px-4 font-semibold text-slate-600">GST</th><th className="text-right py-2 px-4 font-semibold text-slate-600">Amount</th>
                       </tr></thead>
                       <tbody>{selectedItems.map((item, i) => (
-                        <tr key={i} className="border-b border-slate-100">
+                        <tr key={item.inventory_item_id || `row-${i}`} className="border-b border-slate-100">
                           <td className="py-2 px-4 font-medium">{item.name}</td><td className="py-2 px-4 text-slate-500">{CATEGORY_LABELS[item.category] || item.category}</td>
                           <td className="py-2 px-4 text-center">{item.quantity}</td><td className="py-2 px-4 text-right">Rs {(item.unit_price || 0).toLocaleString('en-IN')}</td>
                           <td className="py-2 px-4 text-right text-slate-500">{item.gst_percentage}%</td><td className="py-2 px-4 text-right font-medium">Rs {(item.amount || item.unit_price * item.quantity).toLocaleString('en-IN')}</td>
@@ -625,7 +627,7 @@ export default function ProjectDetails() {
               <CardHeader className="pb-3 border-b border-slate-200"><CardTitle className="text-lg font-['Outfit']">Cost Summary</CardTitle></CardHeader>
               <CardContent className="pt-4">
                 {selectedItems.map((item, i) => (
-                  <div key={i} className="flex justify-between py-1.5 border-b border-slate-100 last:border-0">
+                  <div key={item.inventory_item_id || `cost-${i}`} className="flex justify-between py-1.5 border-b border-slate-100 last:border-0">
                     <span className="text-sm text-slate-500 truncate mr-2">{item.name} x{item.quantity}</span>
                     <span className="text-sm font-medium text-slate-900">Rs {(item.amount || item.unit_price * item.quantity).toLocaleString('en-IN')}</span>
                   </div>
@@ -644,7 +646,7 @@ export default function ProjectDetails() {
                       <div className="flex items-center gap-2 mb-2"><Percent className="h-4 w-4 text-amber-600" /><span className="text-sm font-medium text-amber-800">Per-Item Margin</span></div>
                       <div className="space-y-2 max-h-48 overflow-y-auto">
                         {selectedItems.map((item, idx) => (
-                          <div key={idx} className="flex items-center gap-2">
+                          <div key={item.inventory_item_id || `margin-${idx}`} className="flex items-center gap-2">
                             <span className="text-xs text-slate-600 truncate flex-1" title={item.name}>{item.name}</span>
                             <Input type="number" min="0" max="100" step="0.5" value={itemMargins[idx] ?? item.margin_percentage ?? 0} onChange={(e) => setItemMargins(prev => ({ ...prev, [idx]: parseFloat(e.target.value) || 0 }))} className="h-7 w-16 text-xs text-center" data-testid={`margin-item-${idx}`} />
                             <span className="text-xs text-slate-500">%</span>
@@ -716,7 +718,7 @@ export default function ProjectDetails() {
               <div className="space-y-2">
                 <p className="text-sm font-medium text-slate-700">{completionMedia.length} file(s) uploaded</p>
                 {completionMedia.map((media, idx) => (
-                  <div key={idx} className="flex items-center gap-2 p-2 bg-slate-50 rounded-lg border border-slate-200" data-testid={`completion-file-${idx}`}>
+                  <div key={media.filename || `upload-${idx}`} className="flex items-center gap-2 p-2 bg-slate-50 rounded-lg border border-slate-200" data-testid={`completion-file-${idx}`}>
                     {media.media_type === 'videos' ? <Video className="h-4 w-4 text-blue-500 shrink-0" /> : <Camera className="h-4 w-4 text-emerald-500 shrink-0" />}
                     <span className="text-sm text-slate-700 truncate flex-1">{media.filename}</span>
                     <Button variant="ghost" size="icon" className="h-7 w-7 text-red-500 shrink-0" onClick={() => removeCompletionMedia(idx)}><Trash2 className="h-3.5 w-3.5" /></Button>

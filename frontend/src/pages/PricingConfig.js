@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { pricingAPI } from '../utils/api';
 import { Button } from '../components/ui/button';
@@ -44,11 +44,7 @@ export default function PricingConfig() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
-  useEffect(() => {
-    fetchPricing();
-  }, []);
-
-  const fetchPricing = async () => {
+  const fetchPricing = useCallback(async () => {
     try {
       const res = await pricingAPI.get();
       setPricing(res.data);
@@ -57,7 +53,11 @@ export default function PricingConfig() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    fetchPricing();
+  }, [fetchPricing]);
 
   const handleChange = (key, value) => {
     setPricing(prev => ({

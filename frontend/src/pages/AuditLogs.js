@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { auditLogsAPI } from '../utils/api';
 import { Button } from '../components/ui/button';
@@ -50,11 +50,7 @@ export default function AuditLogs() {
   const [filterEntity, setFilterEntity] = useState('all');
   const [filterAction, setFilterAction] = useState('all');
 
-  useEffect(() => {
-    fetchLogs();
-  }, [filterEntity, filterAction]);
-
-  const fetchLogs = async () => {
+  const fetchLogs = useCallback(async () => {
     setLoading(true);
     try {
       const params = {};
@@ -68,7 +64,11 @@ export default function AuditLogs() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [filterEntity, filterAction]);
+
+  useEffect(() => {
+    fetchLogs();
+  }, [filterEntity, filterAction, fetchLogs]);
 
   const formatTimestamp = (timestamp) => {
     const date = new Date(timestamp);

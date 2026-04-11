@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { approvalsAPI } from '../utils/api';
 import { Button } from '../components/ui/button';
@@ -39,9 +39,7 @@ export default function ApprovalsPage() {
   const [rejectTarget, setRejectTarget] = useState(null);
   const [rejectReason, setRejectReason] = useState('');
 
-  useEffect(() => { fetchApprovals(); }, [activeTab, typeFilter]);
-
-  const fetchApprovals = async () => {
+  const fetchApprovals = useCallback(async () => {
     setLoading(true);
     try {
       const params = { status: activeTab };
@@ -50,7 +48,9 @@ export default function ApprovalsPage() {
       setApprovals(res.data);
     } catch (err) { console.error(err); }
     finally { setLoading(false); }
-  };
+  }, [activeTab, typeFilter]);
+
+  useEffect(() => { fetchApprovals(); }, [activeTab, typeFilter, fetchApprovals]);
 
   const handleApprove = async (id) => {
     setActionLoading(id);

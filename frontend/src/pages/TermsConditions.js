@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { termsAPI } from '../utils/api';
+import DOMPurify from 'dompurify';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
@@ -36,11 +37,7 @@ export default function TermsConditions() {
   const [actionLoading, setActionLoading] = useState(false);
   const [error, setError] = useState('');
 
-  useEffect(() => {
-    fetchTerms();
-  }, []);
-
-  const fetchTerms = async () => {
+  const fetchTerms = useCallback(async () => {
     try {
       const res = await termsAPI.getAll();
       setTerms(res.data);
@@ -49,7 +46,11 @@ export default function TermsConditions() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    fetchTerms();
+  }, [fetchTerms]);
 
   const openCreateDialog = () => {
     setEditingTerm(null);
@@ -324,7 +325,7 @@ export default function TermsConditions() {
               <Label className="text-sm text-slate-500 mb-2 block">Preview:</Label>
               <div 
                 className="prose prose-sm max-w-none"
-                dangerouslySetInnerHTML={{ __html: formData.content }}
+                dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(formData.content) }}
               />
             </div>
           </div>
@@ -354,7 +355,7 @@ export default function TermsConditions() {
           <div className="py-4">
             <div 
               className="prose prose-sm max-w-none"
-              dangerouslySetInnerHTML={{ __html: previewContent }}
+              dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(previewContent) }}
             />
           </div>
           <DialogFooter>

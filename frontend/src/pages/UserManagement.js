@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { usersAPI } from '../utils/api';
 import { Button } from '../components/ui/button';
@@ -41,11 +41,7 @@ export default function UserManagement() {
   const [actionLoading, setActionLoading] = useState(false);
   const [error, setError] = useState('');
 
-  useEffect(() => {
-    fetchUsers();
-  }, []);
-
-  const fetchUsers = async () => {
+  const fetchUsers = useCallback(async () => {
     try {
       const res = await usersAPI.getAll();
       setUsers(res.data);
@@ -54,7 +50,11 @@ export default function UserManagement() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    fetchUsers();
+  }, [fetchUsers]);
 
   const openCreateDialog = () => {
     setEditingUser(null);

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { projectsAPI } from '../utils/api';
@@ -36,11 +36,7 @@ export default function ProjectList() {
   const [filter, setFilter] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
 
-  useEffect(() => {
-    fetchProjects();
-  }, [filter]);
-
-  const fetchProjects = async () => {
+  const fetchProjects = useCallback(async () => {
     setLoading(true);
     try {
       const res = await projectsAPI.getAll(filter === 'all' ? null : filter);
@@ -50,7 +46,11 @@ export default function ProjectList() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [filter]);
+
+  useEffect(() => {
+    fetchProjects();
+  }, [filter, fetchProjects]);
 
   const filteredProjects = projects.filter(project => {
     if (!searchQuery) return true;

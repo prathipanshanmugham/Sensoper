@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { deletionRequestsAPI } from '../utils/api';
 import { Button } from '../components/ui/button';
@@ -27,11 +27,7 @@ export default function DeletionApprovals() {
   const [filter, setFilter] = useState('pending');
   const [actionLoading, setActionLoading] = useState(null);
 
-  useEffect(() => {
-    fetchRequests();
-  }, [filter]);
-
-  const fetchRequests = async () => {
+  const fetchRequests = useCallback(async () => {
     setLoading(true);
     try {
       const res = await deletionRequestsAPI.getAll(filter === 'all' ? null : filter);
@@ -41,7 +37,11 @@ export default function DeletionApprovals() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [filter]);
+
+  useEffect(() => {
+    fetchRequests();
+  }, [filter, fetchRequests]);
 
   const handleApprove = async (id) => {
     if (!window.confirm('Approve this deletion request? The project will be soft-deleted.')) return;

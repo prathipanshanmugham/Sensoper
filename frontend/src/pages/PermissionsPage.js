@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { permissionsAPI } from '../utils/api';
 import { Button } from '../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card';
@@ -58,15 +58,15 @@ export default function PermissionsPage() {
   const [saving, setSaving] = useState(null);
   const [dirty, setDirty] = useState({});
 
-  useEffect(() => { fetchPermissions(); }, []);
-
-  const fetchPermissions = async () => {
+  const fetchPermissions = useCallback(async () => {
     try {
       const res = await permissionsAPI.getAll();
       setAllPerms(res.data);
     } catch (err) { console.error(err); }
     finally { setLoading(false); }
-  };
+  }, []);
+
+  useEffect(() => { fetchPermissions(); }, [fetchPermissions]);
 
   const togglePermission = (role, key) => {
     setAllPerms(prev => ({

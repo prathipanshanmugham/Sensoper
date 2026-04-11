@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { dashboardAPI, projectsAPI } from '../utils/api';
@@ -109,11 +109,7 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
-  useEffect(() => {
-    fetchData();
-  }, []);
-
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     try {
       const [statsRes, projectsRes] = await Promise.all([
         dashboardAPI.getStats(),
@@ -126,7 +122,11 @@ export default function Dashboard() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
 
   const handleLogout = async () => {
     await logout();
@@ -251,7 +251,7 @@ export default function Dashboard() {
           {loading ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
               {[...Array(4)].map((_, i) => (
-                <Card key={i} className="animate-pulse">
+                <Card key={`skeleton-${i}`} className="animate-pulse">
                   <CardContent className="p-6">
                     <div className="h-20 bg-slate-200 rounded" />
                   </CardContent>

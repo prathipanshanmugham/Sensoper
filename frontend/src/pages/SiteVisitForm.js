@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { projectsAPI, aiAPI, inventoryAPI } from '../utils/api';
@@ -74,14 +74,7 @@ export default function SiteVisitForm() {
     drive_folder_link: ''
   });
 
-  useEffect(() => {
-    fetchInventory();
-    fetchCategories();
-    if (editId) loadProject();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [editId]);
-
-  const loadProject = async () => {
+  const loadProject = useCallback(async () => {
     try {
       const res = await projectsAPI.getOne(editId);
       const p = res.data;
@@ -118,14 +111,20 @@ export default function SiteVisitForm() {
     } finally {
       setLoadingProject(false);
     }
-  };
+  }, [editId]);
 
-  const fetchInventory = async () => {
+  const fetchInventory = useCallback(async () => {
     try { const res = await inventoryAPI.getItems(); setInventoryItems(res.data); } catch (err) { console.error(err); }
-  };
-  const fetchCategories = async () => {
+  }, []);
+  const fetchCategories = useCallback(async () => {
     try { const res = await inventoryAPI.getCategories(); setCategories(res.data); } catch (err) { console.error(err); }
-  };
+  }, []);
+
+  useEffect(() => {
+    fetchInventory();
+    fetchCategories();
+    if (editId) loadProject();
+  }, [editId, fetchInventory, fetchCategories, loadProject]);
 
   const validateDriveLink = (link) => {
     if (!link) { setDriveLinkValid(null); return false; }
@@ -445,7 +444,7 @@ export default function SiteVisitForm() {
                     <h3 className="font-semibold text-slate-900 mb-2">Selected Items</h3>
                     <div className="space-y-2">
                       {formData.selected_items.map((item, idx) => (
-                        <div key={idx} className="p-3 bg-slate-50 rounded-lg border border-slate-200" data-testid={`selected-item-${idx}`}>
+                        <div key={item.inventory_item_id || `item-${idx}`} className="p-3 bg-slate-50 rounded-lg border border-slate-200" data-testid={`selected-item-${idx}`}>
                           <div className="flex items-center gap-2">
                             <div className="flex-1 min-w-0">
                               <p className="font-medium text-sm text-slate-900 truncate">{item.name}</p>
@@ -476,7 +475,7 @@ export default function SiteVisitForm() {
                     <Button type="button" variant="outline" size="sm" onClick={addManualCost} className="h-9" data-testid="add-manual-cost-btn"><Plus className="h-3.5 w-3.5 mr-1" />Add</Button>
                   </div>
                   {formData.manual_costs.map((cost, idx) => (
-                    <div key={idx} className="flex gap-2 mb-2" data-testid={`manual-cost-${idx}`}>
+                    <div key={`manual-${idx}`} className="flex gap-2 mb-2" data-testid={`manual-cost-${idx}`}>
                       <Input value={cost.description} onChange={(e) => updateManualCost(idx, 'description', e.target.value)} placeholder="e.g., Labor" className="flex-1 h-10" />
                       <Input type="number" min="0" value={cost.amount} onChange={(e) => updateManualCost(idx, 'amount', parseFloat(e.target.value) || 0)} placeholder="Amount" className="w-28 h-10" />
                       <Button variant="ghost" size="icon" className="text-red-500 shrink-0 h-10 w-10" onClick={() => removeManualCost(idx)}><Trash2 className="h-4 w-4" /></Button>

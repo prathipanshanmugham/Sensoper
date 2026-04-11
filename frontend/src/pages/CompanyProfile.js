@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { companyAPI } from '../utils/api';
 import { Button } from '../components/ui/button';
@@ -34,9 +34,20 @@ export default function CompanyProfile() {
   const [error, setError] = useState('');
   const [uploading, setUploading] = useState(false);
 
+  const fetchProfiles = useCallback(async () => {
+    try {
+      const res = await companyAPI.getAll();
+      setProfiles(res.data);
+    } catch (error) {
+      console.error('Failed to fetch company profiles:', error);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     fetchProfiles();
-  }, []);
+  }, [fetchProfiles]);
 
   const [formData, setFormData] = useState({
     company_name: '',
@@ -61,17 +72,6 @@ export default function CompanyProfile() {
     authorized_signatory: '',
     designation: ''
   });
-
-  const fetchProfiles = async () => {
-    try {
-      const res = await companyAPI.getAll();
-      setProfiles(res.data);
-    } catch (error) {
-      console.error('Failed to fetch company profiles:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const openCreateDialog = () => {
     setEditingProfile(null);
