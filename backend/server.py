@@ -2615,17 +2615,17 @@ async def update_form_tab(tab_id: str, updates: FormTabUpdate, request: Request)
     tab = await db.form_tabs.find_one({"_id": ObjectId(tab_id)})
     if not tab:
         raise HTTPException(status_code=404, detail="Tab not found")
-    if tab.get("system"):
-        raise HTTPException(status_code=403, detail="System tabs cannot be edited")
     update_data = {"updated_at": datetime.now(timezone.utc).isoformat()}
     if updates.name is not None:
         update_data["name"] = updates.name.strip()
-        new_slug = updates.name.strip().lower().replace(" ", "_")
-        new_slug = "".join(c for c in new_slug if c.isalnum() or c == "_")
-        existing = await db.form_tabs.find_one({"slug": new_slug, "_id": {"$ne": ObjectId(tab_id)}})
-        if existing:
-            raise HTTPException(status_code=400, detail="A tab with this name already exists")
-        update_data["slug"] = new_slug
+        # System tabs keep their original slug (used to identify hardcoded content)
+        if not tab.get("system"):
+            new_slug = updates.name.strip().lower().replace(" ", "_")
+            new_slug = "".join(c for c in new_slug if c.isalnum() or c == "_")
+            existing = await db.form_tabs.find_one({"slug": new_slug, "_id": {"$ne": ObjectId(tab_id)}})
+            if existing:
+                raise HTTPException(status_code=400, detail="A tab with this name already exists")
+            update_data["slug"] = new_slug
     if updates.fields is not None:
         update_data["fields"] = [f.model_dump() for f in updates.fields]
     if updates.roles_visible is not None:
@@ -2642,8 +2642,6 @@ async def delete_form_tab(tab_id: str, request: Request):
     tab = await db.form_tabs.find_one({"_id": ObjectId(tab_id)})
     if not tab:
         raise HTTPException(status_code=404, detail="Tab not found")
-    if tab.get("system"):
-        raise HTTPException(status_code=403, detail="System tabs cannot be deleted")
     await db.form_tabs.delete_one({"_id": ObjectId(tab_id)})
     await create_audit_log(user["id"], user["name"], "delete", "form_tab", tab_id, {"name": tab.get("name")})
     return {"message": "Tab deleted"}

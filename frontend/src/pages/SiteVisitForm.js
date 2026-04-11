@@ -306,28 +306,27 @@ export default function SiteVisitForm() {
   const validateStep = () => {
     setError('');
     const slug = getStepSlug(currentStep);
-    switch (slug) {
-      case 'customer': if (!formData.customer.name || !formData.customer.phone || !formData.customer.address) { setError('Please fill all required fields'); return false; } break;
-      case 'location': if (!formData.location.site_location_words && !formData.location.address) { setError('Enter What3Words or site address'); return false; } break;
-      case 'site_electrical': if (!formData.electrical.sanction_load_kw || !formData.electrical.monthly_consumption_units) { setError('Fill in Sanction Load and Monthly Consumption (in Grid & Load section)'); return false; } break;
-      case 'materials': if (formData.selected_items.length === 0) { setError('Add at least one inventory item'); return false; } break;
-      case 'site_docs': if (!formData.drive_folder_link || !formData.drive_folder_link.includes('drive.google.com/drive/folders/')) { setError('Please enter a valid Google Drive folder link'); return false; } break;
-      default:
-        // Custom tab validation
-        if (!SYSTEM_SLUGS.includes(slug)) {
-          const tab = allTabs[currentStep - 1];
-          if (tab) {
-            const tabData = formData.custom_fields?.[slug] || {};
-            for (const f of (tab.fields || [])) {
-              if (f.required && !tabData[f.name] && tabData[f.name] !== 0 && tabData[f.name] !== false) {
-                setError(`"${f.label}" is required`); return false;
-              }
-            }
+    // Validate extra/custom fields for any tab (system or custom)
+    const validateExtraFields = () => {
+      const tab = allTabs[currentStep - 1];
+      if (tab && tab.fields && tab.fields.length > 0) {
+        const tabData = formData.custom_fields?.[slug] || {};
+        for (const f of tab.fields) {
+          if (f.required && !tabData[f.name] && tabData[f.name] !== 0 && tabData[f.name] !== false) {
+            setError(`"${f.label}" is required`); return false;
           }
         }
-        break;
+      }
+      return true;
+    };
+    switch (slug) {
+      case 'customer': if (!formData.customer.name || !formData.customer.phone || !formData.customer.address) { setError('Please fill all required fields'); return false; } return validateExtraFields();
+      case 'location': if (!formData.location.site_location_words && !formData.location.address) { setError('Enter What3Words or site address'); return false; } return validateExtraFields();
+      case 'site_electrical': if (!formData.electrical.sanction_load_kw || !formData.electrical.monthly_consumption_units) { setError('Fill in Sanction Load and Monthly Consumption (in Grid & Load section)'); return false; } return validateExtraFields();
+      case 'materials': if (formData.selected_items.length === 0) { setError('Add at least one inventory item'); return false; } return validateExtraFields();
+      case 'site_docs': if (!formData.drive_folder_link || !formData.drive_folder_link.includes('drive.google.com/drive/folders/')) { setError('Please enter a valid Google Drive folder link'); return false; } return validateExtraFields();
+      default: return validateExtraFields();
     }
-    return true;
   };
 
   const nextStep = () => { if (validateStep()) setCurrentStep(prev => Math.min(prev + 1, getTotalSteps())); };
@@ -416,6 +415,35 @@ export default function SiteVisitForm() {
   }));
   const totalSteps = STEPS.length || 1;
 
+  const renderExtraFields = (slug) => {
+    const step = STEPS.find(s => s.slug === slug);
+    const extraFields = (step?.fields || []);
+    if (extraFields.length === 0) return null;
+    const tabData = formData.custom_fields?.[slug] || {};
+    const updateCustomField = (fieldName, value) => {
+      setFormData(prev => ({
+        ...prev,
+        custom_fields: { ...prev.custom_fields, [slug]: { ...(prev.custom_fields?.[slug] || {}), [fieldName]: value } }
+      }));
+    };
+    return (
+      <div className="mt-4 pt-4 border-t border-slate-200 space-y-4" data-testid={`extra-fields-${slug}`}>
+        <p className="text-xs font-medium uppercase tracking-wider text-slate-400">Additional Fields</p>
+        {extraFields.map((field, fIdx) => (
+          <div key={field.name || fIdx} className="space-y-1.5">
+            <Label className="text-sm">{field.label}{field.required && ' *'}</Label>
+            {field.type === 'text' && <Input value={tabData[field.name] || ''} onChange={(e) => updateCustomField(field.name, e.target.value)} placeholder={field.placeholder} className="h-11" data-testid={`custom-field-${field.name}`} />}
+            {field.type === 'number' && <Input type="number" value={tabData[field.name] || ''} onChange={(e) => updateCustomField(field.name, e.target.value)} placeholder={field.placeholder} className="h-11" data-testid={`custom-field-${field.name}`} />}
+            {field.type === 'textarea' && <Textarea rows={3} value={tabData[field.name] || ''} onChange={(e) => updateCustomField(field.name, e.target.value)} placeholder={field.placeholder} className="min-h-[80px]" data-testid={`custom-field-${field.name}`} />}
+            {field.type === 'select' && <Select value={tabData[field.name] || ''} onValueChange={(v) => updateCustomField(field.name, v)}><SelectTrigger className="h-11" data-testid={`custom-field-${field.name}`}><SelectValue placeholder={field.placeholder || 'Select...'} /></SelectTrigger><SelectContent>{(field.options || []).map(opt => <SelectItem key={opt} value={opt}>{opt}</SelectItem>)}</SelectContent></Select>}
+            {field.type === 'checkbox' && <div className="flex items-center gap-2 pt-1"><Checkbox id={`cf-${field.name}`} checked={!!tabData[field.name]} onCheckedChange={(c) => updateCustomField(field.name, !!c)} data-testid={`custom-field-${field.name}`} /><Label htmlFor={`cf-${field.name}`} className="text-sm">{field.placeholder || field.label}</Label></div>}
+            {field.type === 'date' && <Input type="date" value={tabData[field.name] || ''} onChange={(e) => updateCustomField(field.name, e.target.value)} className="h-11" data-testid={`custom-field-${field.name}`} />}
+          </div>
+        ))}
+      </div>
+    );
+  };
+
   const progress = (currentStep / totalSteps) * 100;
   const totals = calculateTotal();
 
@@ -471,6 +499,7 @@ export default function SiteVisitForm() {
                 </div>
                 <div className="space-y-2"><Label>Email</Label><Input type="email" value={formData.customer.email} onChange={(e) => updateField('customer', 'email', e.target.value)} placeholder="Email (optional)" className="h-11" data-testid="customer-email-input" /></div>
                 <div className="space-y-2"><Label>Address *</Label><Textarea rows={3} value={formData.customer.address} onChange={(e) => updateField('customer', 'address', e.target.value)} placeholder="Full address" className="min-h-[80px]" data-testid="customer-address-input" /></div>
+                {renderExtraFields('customer')}
               </div>
             )}
 
@@ -488,6 +517,7 @@ export default function SiteVisitForm() {
                   <div className="space-y-2"><Label>Tilt Angle (degrees)</Label><Input type="number" min="0" max="90" value={formData.mounting.tilt_angle} onChange={(e) => updateField('mounting', 'tilt_angle', e.target.value)} className="h-11" data-testid="tilt-angle-input" /></div>
                 </div>
                 <div className="space-y-2"><Label>Structure Type</Label><Input value={formData.mounting.structure_type} onChange={(e) => updateField('mounting', 'structure_type', e.target.value)} placeholder="e.g., Galvanized Iron" className="h-11" data-testid="structure-type-input" /></div>
+                {renderExtraFields('location')}
               </div>
             )}
 
@@ -731,6 +761,8 @@ export default function SiteVisitForm() {
                   )}
                 </div>
 
+                {renderExtraFields('site_electrical')}
+
               </div>
             )}
 
@@ -876,6 +908,7 @@ export default function SiteVisitForm() {
                     </div>
                   </CardContent>
                 </Card>
+                {renderExtraFields('materials')}
               </div>
             )}
 
@@ -1004,6 +1037,7 @@ export default function SiteVisitForm() {
                   <Label>Shadow Analysis Notes (Optional)</Label>
                   <Textarea rows={2} value={formData.additional.shadow_analysis_notes} onChange={(e) => updateField('additional', 'shadow_analysis_notes', e.target.value)} placeholder="Observations about shadows, obstructions..." data-testid="shadow-notes-input" />
                 </div>
+                {renderExtraFields('site_docs')}
               </div>
             )}
 

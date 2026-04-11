@@ -299,15 +299,11 @@ export default function FormTabsManager() {
                       </div>
                     </div>
                     <div className="flex items-center gap-1 shrink-0">
-                      {!tab.system && (
-                        <>
-                          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleToggleActive(tab)} title={tab.active ? 'Deactivate' : 'Activate'} data-testid={`toggle-${tab.slug}`}>
-                            {tab.active ? <ToggleRight className="h-4 w-4 text-emerald-600" /> : <ToggleLeft className="h-4 w-4 text-slate-400" />}
-                          </Button>
-                          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleEdit(tab)} data-testid={`edit-${tab.slug}`}><Pencil className="h-3.5 w-3.5 text-blue-600" /></Button>
-                          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleDelete(tab)} data-testid={`delete-${tab.slug}`}><Trash2 className="h-3.5 w-3.5 text-red-500" /></Button>
-                        </>
-                      )}
+                      <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleToggleActive(tab)} title={tab.active ? 'Deactivate' : 'Activate'} data-testid={`toggle-${tab.slug}`}>
+                        {tab.active ? <ToggleRight className="h-4 w-4 text-emerald-600" /> : <ToggleLeft className="h-4 w-4 text-slate-400" />}
+                      </Button>
+                      <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleEdit(tab)} data-testid={`edit-${tab.slug}`}><Pencil className="h-3.5 w-3.5 text-blue-600" /></Button>
+                      <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleDelete(tab)} data-testid={`delete-${tab.slug}`}><Trash2 className="h-3.5 w-3.5 text-red-500" /></Button>
                     </div>
                   </div>
                 </CardContent>
