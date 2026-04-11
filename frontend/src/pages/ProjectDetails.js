@@ -44,8 +44,14 @@ function InfoRow({ label, value }) {
 
 import DOMPurify from 'dompurify';
 
-function stripHtml(html) { const tmp = document.createElement('div'); tmp.innerHTML = DOMPurify.sanitize(html); return tmp.textContent || tmp.innerText || ''; }
-function parseTermsHtml(html) { const tmp = document.createElement('div'); tmp.innerHTML = DOMPurify.sanitize(html); const items = tmp.querySelectorAll('li'); if (items.length > 0) return Array.from(items).map(li => stripHtml(li.innerHTML)); return stripHtml(html).split('\n').filter(line => line.trim()); }
+function stripHtml(html) { return DOMPurify.sanitize(html, { ALLOWED_TAGS: [] }); }
+function parseTermsHtml(html) {
+  const clean = DOMPurify.sanitize(html);
+  const liRegex = /<li[^>]*>(.*?)<\/li>/gi;
+  const matches = [...clean.matchAll(liRegex)];
+  if (matches.length > 0) return matches.map(m => stripHtml(m[1]));
+  return stripHtml(html).split('\n').filter(line => line.trim());
+}
 
 const CATEGORY_LABELS = { solar_panels: 'Solar Panels', inverters: 'Inverters', batteries: 'Batteries', mounting_structures: 'Mounting Structures', cables_accessories: 'Cables & Accessories' };
 
@@ -659,7 +665,7 @@ export default function ProjectDetails() {
                 <CardContent>
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                     {project.completion_media.map((media, i) => (
-                      <div key={i} className="rounded-xl overflow-hidden border border-slate-200 bg-slate-100" data-testid={`completion-media-${i}`}>
+                      <div key={media.storage_path || `media-${i}`} className="rounded-xl overflow-hidden border border-slate-200 bg-slate-100" data-testid={`completion-media-${i}`}>
                         {media.content_type?.startsWith('video/') ? (
                           <div className="aspect-square flex flex-col items-center justify-center bg-slate-200"><Video className="h-8 w-8 text-slate-500 mb-1" /><p className="text-xs text-slate-500 px-2 text-center truncate w-full">{media.filename}</p><a href={`${API_URL}/api/files/${media.storage_path}`} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-600 mt-1">View</a></div>
                         ) : (
