@@ -13,7 +13,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { 
   ArrowLeft, Loader2, User, MapPin, Zap, Sun, Clock, CheckCircle2, XCircle, 
   AlertCircle, Download, Share2, Trash2, Send, AlertTriangle, Package, Percent, 
-  Camera, Video, Upload, Film, Pencil, Save, X, MessageSquare, QrCode
+  Video, Upload, Film, Pencil, Save, X, MessageSquare, QrCode, FolderOpen, 
+  ExternalLink, Copy, Link2
 } from 'lucide-react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -70,6 +71,8 @@ export default function ProjectDetails() {
   const [refValue, setRefValue] = useState('');
   const [editingStatus, setEditingStatus] = useState(false);
   const [statusValue, setStatusValue] = useState('');
+  const [linkCopied, setLinkCopied] = useState(false);
+  const [showDriveQR, setShowDriveQR] = useState(false);
 
   const fetchProject = useCallback(async () => {
     try {
@@ -173,9 +176,11 @@ export default function ProjectDetails() {
     } catch (e) { console.error('Failed to fetch logo base64:', e); }
 
     // Generate QR codes
-    let galleryQR = null;
-    const galleryUrl = projectsAPI.galleryUrl(id);
-    try { galleryQR = await QRCode.toDataURL(galleryUrl, { width: 150, margin: 1 }); } catch (e) {}
+    let driveQR = null;
+    const driveLink = project.drive_folder_link;
+    if (driveLink) {
+      try { driveQR = await QRCode.toDataURL(driveLink, { width: 150, margin: 1 }); } catch (e) {}
+    }
 
     let upiQR = null;
     const upiId = cp.bank_details?.upi_id;
@@ -336,14 +341,18 @@ export default function ProjectDetails() {
       y = doc.lastAutoTable.finalY + 12;
     }
 
-    // Site Images QR
-    const siteImages = project.site_images || [];
-    if (siteImages.length > 0 && galleryQR) {
-      if (y > pageHeight - 60) { doc.addPage(); drawHeader(doc); y = 48; }
-      y = sectionHead('Site Images', y);
+    // Site Documentation QR
+    if (driveLink && driveQR) {
+      if (y > pageHeight - 70) { doc.addPage(); drawHeader(doc); y = 48; }
+      y = sectionHead('Site Documentation', y);
       doc.setFontSize(9); doc.setFont('helvetica', 'normal'); doc.setTextColor(80, 80, 80);
-      doc.text(`${siteImages.length} site photo(s) uploaded. Scan QR to view:`, m, y); y += 4;
-      try { doc.addImage(galleryQR, 'PNG', m, y, 32, 32); } catch (e) {}
+      if (project.drive_folder_name) {
+        doc.text(`Folder: ${project.drive_folder_name}`, m, y); y += 5;
+      }
+      doc.text('Scan QR to access all site images and documents:', m, y); y += 5;
+      try { doc.addImage(driveQR, 'PNG', m, y, 32, 32); } catch (e) {}
+      doc.setFontSize(7); doc.setTextColor(100, 100, 100);
+      doc.text(driveLink, m + 36, y + 16, { maxWidth: contentW - 40 });
       y += 38;
     }
 
@@ -496,18 +505,62 @@ export default function ProjectDetails() {
               </CardContent>
             </Card>
 
-            {/* Site Images */}
-            {project.site_images && project.site_images.length > 0 && (
+            {/* Site Documentation */}
+            {project.drive_folder_link && (
               <Card className="border-slate-200">
-                <CardHeader className="pb-3"><CardTitle className="text-lg font-['Outfit'] flex items-center gap-2"><Camera className="h-5 w-5 text-emerald-600" />Site Images ({project.site_images.length})</CardTitle></CardHeader>
-                <CardContent>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                    {project.site_images.map((url, i) => (
-                      <a key={i} href={url} target="_blank" rel="noopener noreferrer" className="block aspect-square rounded-xl overflow-hidden border border-slate-200 bg-slate-100 hover:ring-2 hover:ring-emerald-400 transition-all" data-testid={`view-image-${i}`}>
-                        <img src={url} alt={`Site photo ${i + 1}`} className="w-full h-full object-cover" loading="lazy" />
-                      </a>
-                    ))}
+                <CardHeader className="pb-3"><CardTitle className="text-lg font-['Outfit'] flex items-center gap-2"><FolderOpen className="h-5 w-5 text-blue-600" />Site Documentation</CardTitle></CardHeader>
+                <CardContent className="space-y-4">
+                  {project.drive_folder_name && (
+                    <div className="flex items-center gap-2 text-sm">
+                      <span className="text-slate-500">Folder:</span>
+                      <span className="font-medium text-slate-800" data-testid="drive-folder-name">{project.drive_folder_name}</span>
+                    </div>
+                  )}
+                  <div className="flex flex-wrap gap-2">
+                    <a href={project.drive_folder_link} target="_blank" rel="noopener noreferrer">
+                      <Button variant="outline" className="gap-2 text-blue-600 hover:text-blue-700 hover:bg-blue-50" data-testid="open-drive-folder-btn">
+                        <ExternalLink className="h-4 w-4" /> Open Folder
+                      </Button>
+                    </a>
+                    <Button
+                      variant="outline"
+                      className={`gap-2 ${linkCopied ? 'text-emerald-600 border-emerald-300 bg-emerald-50' : ''}`}
+                      onClick={() => {
+                        navigator.clipboard.writeText(project.drive_folder_link);
+                        setLinkCopied(true);
+                        setTimeout(() => setLinkCopied(false), 2000);
+                      }}
+                      data-testid="copy-drive-link-btn"
+                    >
+                      <Copy className="h-4 w-4" /> {linkCopied ? 'Copied!' : 'Copy Link'}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      className={`gap-2 ${showDriveQR ? 'text-emerald-600 border-emerald-300 bg-emerald-50' : ''}`}
+                      onClick={() => setShowDriveQR(!showDriveQR)}
+                      data-testid="toggle-qr-preview-btn"
+                    >
+                      <QrCode className="h-4 w-4" /> {showDriveQR ? 'Hide QR' : 'QR Preview'}
+                    </Button>
                   </div>
+                  {showDriveQR && (
+                    <div className="flex flex-col items-center p-4 bg-white border border-slate-200 rounded-lg w-fit">
+                      <img
+                        id="drive-qr-preview"
+                        alt="Drive folder QR code"
+                        className="w-40 h-40"
+                        data-testid="drive-qr-preview"
+                        ref={(el) => {
+                          if (el && project.drive_folder_link) {
+                            QRCode.toDataURL(project.drive_folder_link, { width: 300, margin: 1 })
+                              .then(url => { el.src = url; })
+                              .catch(() => {});
+                          }
+                        }}
+                      />
+                      <p className="text-xs text-slate-500 mt-2 text-center max-w-[200px] break-all">{project.drive_folder_link}</p>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             )}

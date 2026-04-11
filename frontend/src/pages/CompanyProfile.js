@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { companyAPI, driveSettingsAPI } from '../utils/api';
+import { companyAPI } from '../utils/api';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
@@ -21,9 +21,7 @@ import {
   Palette,
   CreditCard,
   Globe,
-  Upload,
-  HardDrive,
-  ExternalLink
+  Upload
 } from 'lucide-react';
 
 export default function CompanyProfile() {
@@ -35,37 +33,10 @@ export default function CompanyProfile() {
   const [actionLoading, setActionLoading] = useState(false);
   const [error, setError] = useState('');
   const [uploading, setUploading] = useState(false);
-  const [driveSettings, setDriveSettings] = useState({ folder_name: '', folder_link: '' });
-  const [driveSaving, setDriveSaving] = useState(false);
-  const [driveSuccess, setDriveSuccess] = useState(false);
 
   useEffect(() => {
     fetchProfiles();
-    fetchDriveSettings();
   }, []);
-
-  const fetchDriveSettings = async () => {
-    try {
-      const res = await driveSettingsAPI.get();
-      setDriveSettings(res.data);
-    } catch (err) {
-      console.error('Failed to fetch drive settings:', err);
-    }
-  };
-
-  const handleSaveDriveSettings = async () => {
-    setDriveSaving(true);
-    setDriveSuccess(false);
-    try {
-      await driveSettingsAPI.update(driveSettings);
-      setDriveSuccess(true);
-      setTimeout(() => setDriveSuccess(false), 3000);
-    } catch (err) {
-      setError(err.response?.data?.detail || 'Failed to save drive settings');
-    } finally {
-      setDriveSaving(false);
-    }
-  };
 
   const [formData, setFormData] = useState({
     company_name: '',
@@ -378,72 +349,6 @@ export default function CompanyProfile() {
             ))}
           </div>
         )}
-
-        {/* Google Drive Integration */}
-        <Card className="border-slate-200 mt-8" data-testid="drive-settings-card">
-          <CardHeader>
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-blue-100 rounded-lg">
-                <HardDrive className="h-5 w-5 text-blue-600" />
-              </div>
-              <div>
-                <CardTitle className="text-lg">Google Drive Integration</CardTitle>
-                <CardDescription>Link your Google Drive folder for storing site images and quotations</CardDescription>
-              </div>
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="drive-folder-name">Google Drive Folder Name</Label>
-                <Input
-                  id="drive-folder-name"
-                  value={driveSettings.folder_name}
-                  onChange={(e) => setDriveSettings(prev => ({ ...prev, folder_name: e.target.value }))}
-                  placeholder="Solar Quotations 2026"
-                  data-testid="drive-folder-name-input"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="drive-folder-link">Google Drive Folder Link</Label>
-                <div className="flex gap-2">
-                  <Input
-                    id="drive-folder-link"
-                    value={driveSettings.folder_link}
-                    onChange={(e) => setDriveSettings(prev => ({ ...prev, folder_link: e.target.value }))}
-                    placeholder="https://drive.google.com/drive/folders/xxxxx"
-                    className="flex-1"
-                    data-testid="drive-folder-link-input"
-                  />
-                  {driveSettings.folder_link && (
-                    <a href={driveSettings.folder_link} target="_blank" rel="noopener noreferrer">
-                      <Button variant="outline" size="icon" type="button" title="Open in Google Drive">
-                        <ExternalLink className="h-4 w-4" />
-                      </Button>
-                    </a>
-                  )}
-                </div>
-                <p className="text-xs text-slate-400">Paste the full Google Drive folder URL</p>
-              </div>
-            </div>
-            <div className="flex items-center gap-3">
-              <Button
-                onClick={handleSaveDriveSettings}
-                disabled={driveSaving}
-                className="bg-[#4ADE40] hover:bg-[#3dba35] text-black"
-                data-testid="save-drive-settings-btn"
-              >
-                {driveSaving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-                Save Settings
-              </Button>
-              {driveSuccess && (
-                <span className="text-sm text-emerald-600 flex items-center gap-1">
-                  <Check className="h-4 w-4" /> Saved successfully
-                </span>
-              )}
-            </div>
-          </CardContent>
-        </Card>
       </div>
 
       {/* Create/Edit Dialog */}

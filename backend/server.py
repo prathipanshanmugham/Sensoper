@@ -160,6 +160,9 @@ class ProjectCreate(BaseModel):
     selected_items: List[SelectedItem] = []
     manual_costs: List[ManualCost] = []
     site_images: List[str] = []
+    drive_folder_name: Optional[str] = None
+    drive_folder_link: Optional[str] = None
+    drive_folder_id: Optional[str] = None
 
 class ProjectUpdate(BaseModel):
     customer: Optional[CustomerDetails] = None
@@ -171,6 +174,9 @@ class ProjectUpdate(BaseModel):
     selected_items: Optional[List[SelectedItem]] = None
     manual_costs: Optional[List[ManualCost]] = None
     site_images: Optional[List[str]] = None
+    drive_folder_name: Optional[str] = None
+    drive_folder_link: Optional[str] = None
+    drive_folder_id: Optional[str] = None
     status: Optional[Literal["draft", "submitted", "approved", "rejected", "completed", "deletion_requested"]] = None
 
 class AIRecommendationRequest(BaseModel):
@@ -1469,9 +1475,6 @@ async def get_inventory_alerts(request: Request):
 async def create_project(project: ProjectCreate, request: Request):
     user = await get_current_user(request)
     
-    if not project.site_images or len(project.site_images) == 0:
-        raise HTTPException(status_code=400, detail="At least one site image is required")
-    
     # Build selected items list for cost calculation
     selected_items_data = [si.model_dump() for si in project.selected_items]
     manual_costs_data = [mc.model_dump() for mc in project.manual_costs]
@@ -1486,6 +1489,9 @@ async def create_project(project: ProjectCreate, request: Request):
         "selected_items": selected_items_data,
         "manual_costs": manual_costs_data,
         "site_images": project.site_images,
+        "drive_folder_name": project.drive_folder_name or "",
+        "drive_folder_link": project.drive_folder_link or "",
+        "drive_folder_id": project.drive_folder_id or "",
         "status": "draft",
         "created_by": user["id"],
         "created_by_name": user["name"],
@@ -1582,6 +1588,9 @@ async def get_project(project_id: str, request: Request):
         "selected_items": project.get("selected_items", []),
         "manual_costs": project.get("manual_costs", []),
         "site_images": project.get("site_images", []),
+        "drive_folder_name": project.get("drive_folder_name", ""),
+        "drive_folder_link": project.get("drive_folder_link", ""),
+        "drive_folder_id": project.get("drive_folder_id", ""),
         "completion_media": project.get("completion_media", []),
         "customer_feedback": project.get("customer_feedback"),
         "status": project["status"],
@@ -1634,6 +1643,12 @@ async def update_project(project_id: str, updates: ProjectUpdate, request: Reque
         update_data["additional"] = updates.additional.model_dump()
     if updates.site_images is not None:
         update_data["site_images"] = updates.site_images
+    if updates.drive_folder_name is not None:
+        update_data["drive_folder_name"] = updates.drive_folder_name
+    if updates.drive_folder_link is not None:
+        update_data["drive_folder_link"] = updates.drive_folder_link
+    if updates.drive_folder_id is not None:
+        update_data["drive_folder_id"] = updates.drive_folder_id
     if updates.selected_items is not None:
         update_data["selected_items"] = [si.model_dump() for si in updates.selected_items]
     if updates.manual_costs is not None:

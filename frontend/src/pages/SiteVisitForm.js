@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { projectsAPI, aiAPI, inventoryAPI, siteImageAPI } from '../utils/api';
+import { projectsAPI, aiAPI, inventoryAPI } from '../utils/api';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
@@ -13,7 +13,7 @@ import { Progress } from '../components/ui/progress';
 import { ComboInput } from '../components/ui/combo-input';
 import { 
   User, MapPin, Zap, ArrowRight, ArrowLeft, Loader2, CheckCircle2,
-  Sparkles, Plus, Trash2, Package, Camera, X, Percent, FolderPlus
+  Sparkles, Plus, Trash2, Package, FolderOpen, X, Percent, FolderPlus, ExternalLink, CheckCircle, Link2
 } from 'lucide-react';
 
 const STEPS = [
@@ -21,7 +21,7 @@ const STEPS = [
   { id: 2, title: 'Location', icon: MapPin },
   { id: 3, title: 'Electrical', icon: Zap },
   { id: 4, title: 'Materials', icon: Package },
-  { id: 5, title: 'Site Images', icon: Camera }
+  { id: 5, title: 'Site Docs', icon: FolderOpen }
 ];
 
 const SYSTEM_TYPE_OPTIONS = [
@@ -54,10 +54,10 @@ export default function SiteVisitForm() {
   const [error, setError] = useState('');
   const [inventoryItems, setInventoryItems] = useState([]);
   const [categories, setCategories] = useState([]);
-  const [uploadingImage, setUploadingImage] = useState(false);
   const [showAddCategory, setShowAddCategory] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState('');
   const [creatingCategory, setCreatingCategory] = useState(false);
+  const [driveLinkValid, setDriveLinkValid] = useState(null);
 
   const canSetMargin = isAdmin || isManager;
 
@@ -70,7 +70,8 @@ export default function SiteVisitForm() {
     additional: { cable_length_meters: 50, inverter_to_panel_distance: 10, installation_complexity: 'simple', shadow_analysis_notes: '' },
     selected_items: [],
     manual_costs: [],
-    site_images: []
+    drive_folder_name: '',
+    drive_folder_link: ''
   });
 
   useEffect(() => {
@@ -108,7 +109,8 @@ export default function SiteVisitForm() {
           margin_percentage: si.margin_percentage || 0
         })),
         manual_costs: p.manual_costs || [],
-        site_images: (p.site_images || []).map(url => typeof url === 'string' ? { image_url: url, filename: url.split('/').pop() || 'image' } : url)
+        drive_folder_name: p.drive_folder_name || '',
+        drive_folder_link: p.drive_folder_link || ''
       });
     } catch (err) {
       setError('Failed to load project for editing');
@@ -125,29 +127,22 @@ export default function SiteVisitForm() {
     try { const res = await inventoryAPI.getCategories(); setCategories(res.data); } catch (err) { console.error(err); }
   };
 
-  const handleImageUpload = async (e) => {
-    const files = Array.from(e.target.files || []);
-    if (files.length === 0) return;
-    setUploadingImage(true);
-    setError('');
-    for (const file of files) {
-      try {
-        const res = await driveAPI.upload(file);
-        setFormData(prev => ({
-          ...prev,
-          site_images: [...prev.site_images, { file_id: res.data.file_id, image_url: res.data.image_url, view_url: res.data.view_url, filename: res.data.filename }]
-        }));
-      } catch (err) {
-        setError(err.response?.data?.detail || `Failed to upload ${file.name}`);
-        break;
-      }
-    }
-    setUploadingImage(false);
-    e.target.value = '';
+  const validateDriveLink = (link) => {
+    if (!link) { setDriveLinkValid(null); return false; }
+    const valid = link.includes('drive.google.com/drive/folders/');
+    setDriveLinkValid(valid);
+    return valid;
   };
 
-  const removeImage = (index) => {
-    setFormData(prev => ({ ...prev, site_images: prev.site_images.filter((_, i) => i !== index) }));
+  const extractFolderId = (link) => {
+    const match = link.match(/folders\/([a-zA-Z0-9_-]+)/);
+    return match ? match[1] : '';
+  };
+
+  const autoSuggestFolderName = () => {
+    const name = formData.customer.name || 'Project';
+    const date = new Date().toLocaleDateString('en-IN', { month: 'short', year: 'numeric' }).replace(' ', '_');
+    return `${name.replace(/\s+/g, '_')}_SiteVisit_${date}`;
   };
 
   const updateField = (section, field, value) => {
@@ -228,7 +223,7 @@ export default function SiteVisitForm() {
       case 2: if (!formData.location.site_location_words && !formData.location.address) { setError('Enter What3Words or site address'); return false; } break;
       case 3: if (!formData.electrical.sanction_load_kw || !formData.electrical.monthly_consumption_units) { setError('Fill in required electrical details'); return false; } break;
       case 4: if (formData.selected_items.length === 0) { setError('Add at least one inventory item'); return false; } break;
-      case 5: if (formData.site_images.length === 0) { setError('Upload at least one site image (mandatory)'); return false; } break;
+      case 5: if (!formData.drive_folder_link || !formData.drive_folder_link.includes('drive.google.com/drive/folders/')) { setError('Please enter a valid Google Drive folder link'); return false; } break;
       default: break;
     }
     return true;
@@ -274,7 +269,9 @@ export default function SiteVisitForm() {
         manual_costs: formData.manual_costs.filter(c => c.description && c.amount > 0).map(c => ({
           description: c.description, amount: parseFloat(c.amount) || 0
         })),
-        site_images: formData.site_images.map(img => typeof img === 'string' ? img : img.image_url)
+        drive_folder_name: formData.drive_folder_name,
+        drive_folder_link: formData.drive_folder_link,
+        drive_folder_id: extractFolderId(formData.drive_folder_link)
       };
 
       if (isEditMode) {
@@ -327,7 +324,7 @@ export default function SiteVisitForm() {
               {currentStep === 2 && 'Site location and roof details'}
               {currentStep === 3 && 'Electrical load information'}
               {currentStep === 4 && 'Select materials & add costs'}
-              {currentStep === 5 && 'Upload site photos (mandatory)'}
+              {currentStep === 5 && 'Link your Google Drive folder for site documentation'}
             </CardDescription>
           </CardHeader>
           <CardContent className="p-4 sm:p-6">
@@ -502,31 +499,78 @@ export default function SiteVisitForm() {
               </div>
             )}
 
-            {/* Step 5: Site Images */}
+            {/* Step 5: Site Documentation */}
             {currentStep === 5 && (
-              <div className="space-y-4">
-                <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg">
-                  <p className="text-sm font-medium text-amber-800">Site images are mandatory. Upload at least one photo of the installation site.</p>
+              <div className="space-y-5">
+                <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                  <p className="text-sm font-medium text-blue-800">Link your Google Drive folder containing site images and documentation for this project.</p>
                 </div>
 
-                <label className="block cursor-pointer">
-                  <div className="border-2 border-dashed border-slate-300 rounded-xl p-8 text-center hover:border-emerald-400 hover:bg-emerald-50/50 transition-colors">
-                    {uploadingImage ? (<><Loader2 className="h-10 w-10 animate-spin mx-auto text-emerald-600 mb-2" /><p className="text-sm text-slate-600">Uploading site photos...</p></>) :
-                    (<><Camera className="h-10 w-10 mx-auto text-slate-400 mb-2" /><p className="font-medium text-slate-700">Tap to upload site photos</p><p className="text-sm text-slate-500">Supports JPG, PNG (max 10MB each)</p></>)}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label>Folder Name *</Label>
+                    {formData.customer.name && !formData.drive_folder_name && (
+                      <button
+                        type="button"
+                        onClick={() => setFormData(prev => ({ ...prev, drive_folder_name: autoSuggestFolderName() }))}
+                        className="text-xs text-emerald-600 hover:text-emerald-700 font-medium flex items-center gap-1"
+                        data-testid="auto-suggest-folder-name"
+                      >
+                        <Sparkles className="h-3 w-3" /> Auto-suggest
+                      </button>
+                    )}
                   </div>
-                  <input type="file" accept="image/*" multiple className="hidden" onChange={handleImageUpload} disabled={uploadingImage} data-testid="site-image-input" />
-                </label>
-                {formData.site_images.length > 0 && (
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                    {formData.site_images.map((img, idx) => (
-                      <div key={idx} className="relative group rounded-xl overflow-hidden border border-slate-200 aspect-square bg-slate-100" data-testid={`site-image-${idx}`}>
-                        <img src={img.image_url || img} alt={img.filename || `Photo ${idx + 1}`} className="w-full h-full object-cover" loading="lazy" />
-                        <button onClick={() => removeImage(idx)} className="absolute top-2 right-2 bg-red-500 text-white rounded-full p-1.5 opacity-80 hover:opacity-100 transition-opacity" data-testid={`remove-image-${idx}`}><X className="h-3.5 w-3.5" /></button>
-                        <div className="absolute bottom-0 left-0 right-0 bg-black/50 p-1.5"><p className="text-[10px] text-white truncate">{img.filename || `Photo ${idx + 1}`}</p></div>
-                      </div>
-                    ))}
+                  <Input
+                    value={formData.drive_folder_name}
+                    onChange={(e) => setFormData(prev => ({ ...prev, drive_folder_name: e.target.value }))}
+                    placeholder="Site_Visit_ClientName_April"
+                    data-testid="drive-folder-name-input"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Google Drive Folder Link *</Label>
+                  <div className="flex gap-2">
+                    <Input
+                      value={formData.drive_folder_link}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setFormData(prev => ({ ...prev, drive_folder_link: val }));
+                        if (val) validateDriveLink(val);
+                        else setDriveLinkValid(null);
+                      }}
+                      placeholder="https://drive.google.com/drive/folders/xxxxx"
+                      className={`flex-1 ${driveLinkValid === true ? 'border-emerald-400 ring-1 ring-emerald-200' : driveLinkValid === false ? 'border-red-400 ring-1 ring-red-200' : ''}`}
+                      data-testid="drive-folder-link-input"
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => validateDriveLink(formData.drive_folder_link)}
+                      className={`shrink-0 gap-1.5 ${driveLinkValid === true ? 'text-emerald-600 border-emerald-300 bg-emerald-50' : ''}`}
+                      data-testid="validate-drive-link-btn"
+                    >
+                      {driveLinkValid === true ? <><CheckCircle className="h-4 w-4" /> Valid</> : <><Link2 className="h-4 w-4" /> Validate</>}
+                    </Button>
+                  </div>
+                  {driveLinkValid === false && (
+                    <p className="text-xs text-red-500">Link must contain: drive.google.com/drive/folders/</p>
+                  )}
+                  {driveLinkValid === true && (
+                    <p className="text-xs text-emerald-600">Folder ID: {extractFolderId(formData.drive_folder_link)}</p>
+                  )}
+                </div>
+
+                {formData.drive_folder_link && driveLinkValid && (
+                  <div className="flex gap-2">
+                    <a href={formData.drive_folder_link} target="_blank" rel="noopener noreferrer" className="flex-1">
+                      <Button type="button" variant="outline" className="w-full gap-2 text-blue-600 hover:text-blue-700 hover:bg-blue-50" data-testid="open-drive-folder-btn">
+                        <ExternalLink className="h-4 w-4" /> Open Folder in Google Drive
+                      </Button>
+                    </a>
                   </div>
                 )}
+
                 <div className="space-y-2">
                   <Label>Shadow Analysis Notes (Optional)</Label>
                   <Textarea rows={2} value={formData.additional.shadow_analysis_notes} onChange={(e) => updateField('additional', 'shadow_analysis_notes', e.target.value)} placeholder="Observations about shadows, obstructions..." data-testid="shadow-notes-input" />
@@ -540,7 +584,7 @@ export default function SiteVisitForm() {
               {currentStep < 5 ? (
                 <Button type="button" onClick={nextStep} className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white h-12" data-testid="next-step-btn">Next <ArrowRight className="h-4 w-4" /></Button>
               ) : (
-                <Button type="button" onClick={handleSubmit} disabled={loading || formData.site_images.length === 0} className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white h-12" data-testid="submit-project-btn">
+                <Button type="button" onClick={handleSubmit} disabled={loading || !formData.drive_folder_link} className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white h-12" data-testid="submit-project-btn">
                   {loading ? <><Loader2 className="h-4 w-4 animate-spin" />{isEditMode ? 'Saving...' : 'Creating...'}</> : <><CheckCircle2 className="h-4 w-4" />{isEditMode ? 'Save Changes' : 'Create Project'}</>}
                 </Button>
               )}
