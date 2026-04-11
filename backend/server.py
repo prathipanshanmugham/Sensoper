@@ -1043,179 +1043,45 @@ async def delete_terms(terms_id: str, request: Request):
     
     return {"message": "Terms deleted successfully"}
 
-# ================== GOOGLE DRIVE INTEGRATION ==================
+# ================== GOOGLE DRIVE SETTINGS ==================
 
-from google_auth_oauthlib.flow import Flow
-from google.oauth2.credentials import Credentials
-from google.auth.transport.requests import Request as GoogleRequest
-from googleapiclient.discovery import build
-from googleapiclient.http import MediaFileUpload
-import tempfile
+@api_router.get("/drive/settings")
+async def get_drive_settings(request: Request):
+    await get_current_user(request)
+    settings = await db.drive_settings.find_one({}, {"_id": 0})
+    if not settings:
+        return {"folder_name": "", "folder_link": ""}
+    return {"folder_name": settings.get("folder_name", ""), "folder_link": settings.get("folder_link", "")}
 
-GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID")
-GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET")
-GOOGLE_DRIVE_REDIRECT_URI = os.environ.get("GOOGLE_DRIVE_REDIRECT_URI")
-DRIVE_SCOPES = ['https://www.googleapis.com/auth/drive.file']
-
-def get_drive_flow(state=None):
-    flow = Flow.from_client_config(
-        {"web": {
-            "client_id": GOOGLE_CLIENT_ID,
-            "client_secret": GOOGLE_CLIENT_SECRET,
-            "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-            "token_uri": "https://oauth2.googleapis.com/token",
-            "redirect_uris": [GOOGLE_DRIVE_REDIRECT_URI]
-        }},
-        scopes=DRIVE_SCOPES,
-        redirect_uri=GOOGLE_DRIVE_REDIRECT_URI
+@api_router.put("/drive/settings")
+async def update_drive_settings(request: Request):
+    await require_role("admin", "manager")(request)
+    body = await request.json()
+    folder_name = body.get("folder_name", "").strip()
+    folder_link = body.get("folder_link", "").strip()
+    await db.drive_settings.update_one(
+        {},
+        {"$set": {"folder_name": folder_name, "folder_link": folder_link, "updated_at": datetime.now(timezone.utc).isoformat()}},
+        upsert=True
     )
-    return flow
+    return {"folder_name": folder_name, "folder_link": folder_link}
 
-@api_router.get("/drive/connect")
-async def connect_drive(request: Request):
-    user = await get_current_user(request)
-    flow = get_drive_flow()
-    authorization_url, state = flow.authorization_url(
-        access_type='offline',
-        include_granted_scopes='true',
-        prompt='consent',
-        state=user["id"]
-    )
-    return {"authorization_url": authorization_url}
-
-@api_router.get("/drive/callback")
-async def drive_callback(code: str, state: str):
-    try:
-        flow = Flow.from_client_config(
-            {"web": {
-                "client_id": GOOGLE_CLIENT_ID,
-                "client_secret": GOOGLE_CLIENT_SECRET,
-                "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-                "token_uri": "https://oauth2.googleapis.com/token",
-                "redirect_uris": [GOOGLE_DRIVE_REDIRECT_URI]
-            }},
-            scopes=None,
-            redirect_uri=GOOGLE_DRIVE_REDIRECT_URI
-        )
-        flow.fetch_token(code=code)
-        creds = flow.credentials
-
-        await db.drive_credentials.update_one(
-            {"user_id": state},
-            {"$set": {
-                "user_id": state,
-                "access_token": creds.token,
-                "refresh_token": creds.refresh_token,
-                "token_uri": creds.token_uri,
-                "client_id": creds.client_id,
-                "client_secret": creds.client_secret,
-                "scopes": list(creds.scopes) if creds.scopes else [],
-                "expiry": creds.expiry.isoformat() if creds.expiry else None,
-                "updated_at": datetime.now(timezone.utc).isoformat()
-            }},
-            upsert=True
-        )
-
-        frontend_url = os.environ.get("REACT_APP_BACKEND_URL", "").replace("/api", "")
-        if not frontend_url:
-            frontend_url = GOOGLE_DRIVE_REDIRECT_URI.rsplit("/api", 1)[0]
-        
-        from fastapi.responses import RedirectResponse
-        return RedirectResponse(url=f"{frontend_url}/dashboard/projects/new?drive_connected=true")
-    except Exception as e:
-        logger.error(f"Drive OAuth callback failed: {e}")
-        raise HTTPException(status_code=400, detail=f"OAuth failed: {str(e)}")
-
-@api_router.get("/drive/status")
-async def drive_status(request: Request):
-    user = await get_current_user(request)
-    cred = await db.drive_credentials.find_one({"user_id": user["id"]})
-    return {"connected": cred is not None}
-
-async def get_user_drive_service(user_id: str):
-    cred = await db.drive_credentials.find_one({"user_id": user_id})
-    if not cred:
-        return None
-    
-    credentials = Credentials(
-        token=cred["access_token"],
-        refresh_token=cred.get("refresh_token"),
-        token_uri=cred["token_uri"],
-        client_id=cred["client_id"],
-        client_secret=cred["client_secret"],
-        scopes=cred.get("scopes")
-    )
-    
-    if credentials.expired and credentials.refresh_token:
-        credentials.refresh(GoogleRequest())
-        await db.drive_credentials.update_one(
-            {"user_id": user_id},
-            {"$set": {
-                "access_token": credentials.token,
-                "expiry": credentials.expiry.isoformat() if credentials.expiry else None,
-                "updated_at": datetime.now(timezone.utc).isoformat()
-            }}
-        )
-    
-    return build('drive', 'v3', credentials=credentials)
-
-@api_router.post("/drive/upload")
-async def upload_to_drive(request: Request, file: UploadFile = File(...)):
-    user = await get_current_user(request)
-    service = await get_user_drive_service(user["id"])
-    if not service:
-        raise HTTPException(status_code=400, detail="Google Drive not connected. Please connect first.")
-    
+@api_router.post("/upload/site-image")
+async def upload_site_image(request: Request, file: UploadFile = File(...)):
+    await get_current_user(request)
     if not file.content_type or not file.content_type.startswith("image/"):
         raise HTTPException(status_code=400, detail="Only image files are allowed")
-    
     contents = await file.read()
     if len(contents) > 10 * 1024 * 1024:
         raise HTTPException(status_code=400, detail="File size must be under 10MB")
-    
+    ext = file.filename.split(".")[-1] if "." in file.filename else "png"
+    path = f"{APP_NAME}/site-images/{uuid.uuid4()}.{ext}"
     try:
-        # Find or create Sensoper folder
-        folder_query = "name='Sensoper Site Images' and mimeType='application/vnd.google-apps.folder' and trashed=false"
-        folders = service.files().list(q=folder_query, spaces='drive', fields='files(id)').execute()
-        
-        if folders.get('files'):
-            folder_id = folders['files'][0]['id']
-        else:
-            folder_meta = {'name': 'Sensoper Site Images', 'mimeType': 'application/vnd.google-apps.folder'}
-            folder = service.files().create(body=folder_meta, fields='id').execute()
-            folder_id = folder['id']
-        
-        # Upload file
-        with tempfile.NamedTemporaryFile(delete=False, suffix=f".{file.filename.split('.')[-1]}") as tmp:
-            tmp.write(contents)
-            tmp_path = tmp.name
-        
-        file_metadata = {'name': f"site_{uuid.uuid4().hex[:8]}_{file.filename}", 'parents': [folder_id]}
-        media = MediaFileUpload(tmp_path, mimetype=file.content_type)
-        uploaded = service.files().create(body=file_metadata, media_body=media, fields='id,webViewLink,webContentLink').execute()
-        
-        os.unlink(tmp_path)
-        
-        # Make viewable
-        service.permissions().create(
-            fileId=uploaded['id'],
-            body={'type': 'anyone', 'role': 'reader'}
-        ).execute()
-        
-        # Get direct thumbnail link
-        file_id = uploaded['id']
-        image_url = f"https://drive.google.com/thumbnail?id={file_id}&sz=w800"
-        view_url = uploaded.get('webViewLink', '')
-        
-        return {
-            "file_id": file_id,
-            "image_url": image_url,
-            "view_url": view_url,
-            "filename": file.filename
-        }
+        result = put_object(path, contents, file.content_type or "image/png")
+        return {"storage_path": result["path"], "filename": file.filename, "size": result.get("size", len(contents))}
     except Exception as e:
-        logger.error(f"Drive upload failed: {e}")
-        raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
+        logger.error(f"Site image upload failed: {e}")
+        raise HTTPException(status_code=500, detail="Image upload failed")
 
 # ================== INVENTORY CATEGORIES ==================
 

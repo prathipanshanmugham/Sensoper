@@ -104,14 +104,18 @@ export const marginAPI = {
   update: (projectId, itemMargins) => api.put(`/projects/${projectId}/margin`, { item_margins: itemMargins })
 };
 
-// Google Drive API
-export const driveAPI = {
-  connect: () => api.get('/drive/connect'),
-  status: () => api.get('/drive/status'),
+// Google Drive Settings API
+export const driveSettingsAPI = {
+  get: () => api.get('/drive/settings'),
+  update: (data) => api.put('/drive/settings', data),
+};
+
+// Site Image Upload API
+export const siteImageAPI = {
   upload: (file) => {
     const formData = new FormData();
     formData.append('file', file);
-    return api.post('/drive/upload', formData, { headers: { 'Content-Type': 'multipart/form-data' }, timeout: 60000 });
+    return api.post('/upload/site-image', formData, { headers: { 'Content-Type': 'multipart/form-data' }, timeout: 60000 });
   }
 };
 

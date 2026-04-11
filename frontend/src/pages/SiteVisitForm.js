@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
-import { useNavigate, useSearchParams, useParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { projectsAPI, aiAPI, inventoryAPI, driveAPI } from '../utils/api';
+import { projectsAPI, aiAPI, inventoryAPI, siteImageAPI } from '../utils/api';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
@@ -13,7 +13,7 @@ import { Progress } from '../components/ui/progress';
 import { ComboInput } from '../components/ui/combo-input';
 import { 
   User, MapPin, Zap, ArrowRight, ArrowLeft, Loader2, CheckCircle2,
-  Sparkles, Plus, Trash2, Package, Camera, Cloud, CloudOff, X, Percent, FolderPlus
+  Sparkles, Plus, Trash2, Package, Camera, X, Percent, FolderPlus
 } from 'lucide-react';
 
 const STEPS = [
@@ -42,7 +42,6 @@ const SERVICE_TYPE_OPTIONS = [
 
 export default function SiteVisitForm() {
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
   const { editId } = useParams();
   const { isAdmin, isManager } = useAuth();
   const isEditMode = !!editId;
@@ -55,8 +54,6 @@ export default function SiteVisitForm() {
   const [error, setError] = useState('');
   const [inventoryItems, setInventoryItems] = useState([]);
   const [categories, setCategories] = useState([]);
-  const [driveConnected, setDriveConnected] = useState(false);
-  const [driveChecking, setDriveChecking] = useState(true);
   const [uploadingImage, setUploadingImage] = useState(false);
   const [showAddCategory, setShowAddCategory] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState('');
@@ -79,17 +76,9 @@ export default function SiteVisitForm() {
   useEffect(() => {
     fetchInventory();
     fetchCategories();
-    checkDriveStatus();
     if (editId) loadProject();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editId]);
-
-  useEffect(() => {
-    if (searchParams.get('drive_connected') === 'true') {
-      setDriveConnected(true);
-      setDriveChecking(false);
-    }
-  }, [searchParams]);
 
   const loadProject = async () => {
     try {
@@ -134,16 +123,6 @@ export default function SiteVisitForm() {
   };
   const fetchCategories = async () => {
     try { const res = await inventoryAPI.getCategories(); setCategories(res.data); } catch (err) { console.error(err); }
-  };
-  const checkDriveStatus = async () => {
-    try { const res = await driveAPI.status(); setDriveConnected(res.data.connected); }
-    catch (err) { console.error(err); }
-    finally { setDriveChecking(false); }
-  };
-
-  const connectDrive = async () => {
-    try { const res = await driveAPI.connect(); window.location.href = res.data.authorization_url; }
-    catch (err) { setError('Failed to connect Google Drive'); }
   };
 
   const handleImageUpload = async (e) => {
@@ -530,44 +509,28 @@ export default function SiteVisitForm() {
                   <p className="text-sm font-medium text-amber-800">Site images are mandatory. Upload at least one photo of the installation site.</p>
                 </div>
 
-                {!driveChecking && !driveConnected ? (
-                  <div className="text-center py-8">
-                    <CloudOff className="h-12 w-12 mx-auto mb-4 text-slate-400" />
-                    <h3 className="font-semibold text-slate-900 mb-2">Connect Google Drive</h3>
-                    <p className="text-sm text-slate-500 mb-4">Site images are stored in your Google Drive for safe keeping.</p>
-                    <Button onClick={connectDrive} className="bg-blue-600 hover:bg-blue-700 text-white h-12 px-6" data-testid="connect-drive-btn"><Cloud className="h-5 w-5 mr-2" />Connect Google Drive</Button>
+                <label className="block cursor-pointer">
+                  <div className="border-2 border-dashed border-slate-300 rounded-xl p-8 text-center hover:border-emerald-400 hover:bg-emerald-50/50 transition-colors">
+                    {uploadingImage ? (<><Loader2 className="h-10 w-10 animate-spin mx-auto text-emerald-600 mb-2" /><p className="text-sm text-slate-600">Uploading site photos...</p></>) :
+                    (<><Camera className="h-10 w-10 mx-auto text-slate-400 mb-2" /><p className="font-medium text-slate-700">Tap to upload site photos</p><p className="text-sm text-slate-500">Supports JPG, PNG (max 10MB each)</p></>)}
                   </div>
-                ) : driveChecking ? (
-                  <div className="text-center py-8"><Loader2 className="h-8 w-8 animate-spin mx-auto text-emerald-600" /><p className="text-sm text-slate-500 mt-2">Checking Drive connection...</p></div>
-                ) : (
-                  <>
-                    <div className="flex items-center gap-2 p-3 bg-emerald-50 rounded-lg border border-emerald-200">
-                      <Cloud className="h-5 w-5 text-emerald-600" /><span className="text-sm font-medium text-emerald-800">Google Drive Connected</span>
-                    </div>
-                    <label className="block cursor-pointer">
-                      <div className="border-2 border-dashed border-slate-300 rounded-xl p-8 text-center hover:border-emerald-400 hover:bg-emerald-50/50 transition-colors">
-                        {uploadingImage ? (<><Loader2 className="h-10 w-10 animate-spin mx-auto text-emerald-600 mb-2" /><p className="text-sm text-slate-600">Uploading to Google Drive...</p></>) :
-                        (<><Camera className="h-10 w-10 mx-auto text-slate-400 mb-2" /><p className="font-medium text-slate-700">Tap to upload site photos</p><p className="text-sm text-slate-500">Supports JPG, PNG (max 10MB each)</p></>)}
+                  <input type="file" accept="image/*" multiple className="hidden" onChange={handleImageUpload} disabled={uploadingImage} data-testid="site-image-input" />
+                </label>
+                {formData.site_images.length > 0 && (
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                    {formData.site_images.map((img, idx) => (
+                      <div key={idx} className="relative group rounded-xl overflow-hidden border border-slate-200 aspect-square bg-slate-100" data-testid={`site-image-${idx}`}>
+                        <img src={img.image_url || img} alt={img.filename || `Photo ${idx + 1}`} className="w-full h-full object-cover" loading="lazy" />
+                        <button onClick={() => removeImage(idx)} className="absolute top-2 right-2 bg-red-500 text-white rounded-full p-1.5 opacity-80 hover:opacity-100 transition-opacity" data-testid={`remove-image-${idx}`}><X className="h-3.5 w-3.5" /></button>
+                        <div className="absolute bottom-0 left-0 right-0 bg-black/50 p-1.5"><p className="text-[10px] text-white truncate">{img.filename || `Photo ${idx + 1}`}</p></div>
                       </div>
-                      <input type="file" accept="image/*" multiple className="hidden" onChange={handleImageUpload} disabled={uploadingImage} data-testid="site-image-input" />
-                    </label>
-                    {formData.site_images.length > 0 && (
-                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                        {formData.site_images.map((img, idx) => (
-                          <div key={idx} className="relative group rounded-xl overflow-hidden border border-slate-200 aspect-square bg-slate-100" data-testid={`site-image-${idx}`}>
-                            <img src={img.image_url || img} alt={img.filename || `Photo ${idx + 1}`} className="w-full h-full object-cover" loading="lazy" />
-                            <button onClick={() => removeImage(idx)} className="absolute top-2 right-2 bg-red-500 text-white rounded-full p-1.5 opacity-80 hover:opacity-100 transition-opacity" data-testid={`remove-image-${idx}`}><X className="h-3.5 w-3.5" /></button>
-                            <div className="absolute bottom-0 left-0 right-0 bg-black/50 p-1.5"><p className="text-[10px] text-white truncate">{img.filename || `Photo ${idx + 1}`}</p></div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                    <div className="space-y-2">
-                      <Label>Shadow Analysis Notes (Optional)</Label>
-                      <Textarea rows={2} value={formData.additional.shadow_analysis_notes} onChange={(e) => updateField('additional', 'shadow_analysis_notes', e.target.value)} placeholder="Observations about shadows, obstructions..." data-testid="shadow-notes-input" />
-                    </div>
-                  </>
+                    ))}
+                  </div>
                 )}
+                <div className="space-y-2">
+                  <Label>Shadow Analysis Notes (Optional)</Label>
+                  <Textarea rows={2} value={formData.additional.shadow_analysis_notes} onChange={(e) => updateField('additional', 'shadow_analysis_notes', e.target.value)} placeholder="Observations about shadows, obstructions..." data-testid="shadow-notes-input" />
+                </div>
               </div>
             )}
 
