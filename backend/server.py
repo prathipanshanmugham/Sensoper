@@ -2567,10 +2567,10 @@ async def get_form_tabs(request: Request):
         query["roles_visible"] = user["role"]
     tabs = await db.form_tabs.find(query, {"_id": 0}).sort("order", 1).to_list(100)
     for t in tabs:
-        if "id" not in t:
-            doc = await db.form_tabs.find_one({"slug": t.get("slug")})
-            if doc:
-                t["id"] = str(doc["_id"])
+        doc = await db.form_tabs.find_one({"slug": t.get("slug")})
+        if doc:
+            t["id"] = str(doc["_id"])
+        t.setdefault("system", False)
     return tabs
 
 @api_router.post("/form-tabs")
@@ -2581,8 +2581,11 @@ async def create_form_tab(tab: FormTabCreate, request: Request):
     existing = await db.form_tabs.find_one({"slug": slug})
     if existing:
         raise HTTPException(status_code=400, detail="A tab with this name already exists")
-    max_order = await db.form_tabs.find_one(sort=[("order", -1)])
-    next_order = (max_order["order"] + 1) if max_order else 1
+    # Insert before site_docs: find max order among non-site_docs tabs
+    non_docs = await db.form_tabs.find({"slug": {"$ne": "site_docs"}}).sort("order", -1).to_list(1)
+    next_order = (non_docs[0]["order"] + 1) if non_docs else 1
+    # Push site_docs order up
+    await db.form_tabs.update_one({"slug": "site_docs"}, {"$set": {"order": next_order + 1}})
     doc = {
         "name": tab.name.strip(),
         "slug": slug,
@@ -2612,6 +2615,8 @@ async def update_form_tab(tab_id: str, updates: FormTabUpdate, request: Request)
     tab = await db.form_tabs.find_one({"_id": ObjectId(tab_id)})
     if not tab:
         raise HTTPException(status_code=404, detail="Tab not found")
+    if tab.get("system"):
+        raise HTTPException(status_code=403, detail="System tabs cannot be edited")
     update_data = {"updated_at": datetime.now(timezone.utc).isoformat()}
     if updates.name is not None:
         update_data["name"] = updates.name.strip()
@@ -2637,6 +2642,8 @@ async def delete_form_tab(tab_id: str, request: Request):
     tab = await db.form_tabs.find_one({"_id": ObjectId(tab_id)})
     if not tab:
         raise HTTPException(status_code=404, detail="Tab not found")
+    if tab.get("system"):
+        raise HTTPException(status_code=403, detail="System tabs cannot be deleted")
     await db.form_tabs.delete_one({"_id": ObjectId(tab_id)})
     await create_audit_log(user["id"], user["name"], "delete", "form_tab", tab_id, {"name": tab.get("name")})
     return {"message": "Tab deleted"}
@@ -2756,6 +2763,35 @@ async def startup_event():
                 "created_at": datetime.now(timezone.utc).isoformat()
             })
     logger.info("Default permissions seeded")
+    
+    # Seed system form tabs
+    system_tabs = [
+        {"name": "Customer", "slug": "customer", "system": True, "active": True, "icon": "User", "fields": [], "roles_visible": ["admin", "manager", "staff"]},
+        {"name": "Location", "slug": "location", "system": True, "active": True, "icon": "MapPin", "fields": [], "roles_visible": ["admin", "manager", "staff"]},
+        {"name": "Site & Electrical", "slug": "site_electrical", "system": True, "active": True, "icon": "Zap", "fields": [], "roles_visible": ["admin", "manager", "staff"]},
+        {"name": "Materials", "slug": "materials", "system": True, "active": True, "icon": "Package", "fields": [], "roles_visible": ["admin", "manager", "staff"]},
+        {"name": "Site Docs", "slug": "site_docs", "system": True, "active": True, "icon": "FolderOpen", "fields": [], "roles_visible": ["admin", "manager", "staff"]},
+    ]
+    for st in system_tabs:
+        existing_tab = await db.form_tabs.find_one({"slug": st["slug"]})
+        if not existing_tab:
+            await db.form_tabs.insert_one({**st, "order": 0, "created_at": datetime.now(timezone.utc).isoformat(), "updated_at": datetime.now(timezone.utc).isoformat()})
+    # Normalize ordering: system tabs first (in defined order), custom tabs next, site_docs last
+    system_order = ["customer", "location", "site_electrical", "materials"]
+    all_tabs_list = await db.form_tabs.find().to_list(200)
+    ordered = []
+    for slug in system_order:
+        tab = next((t for t in all_tabs_list if t.get("slug") == slug), None)
+        if tab:
+            ordered.append(tab)
+    custom_tabs_sorted = sorted([t for t in all_tabs_list if not t.get("system")], key=lambda x: x.get("order", 999))
+    ordered.extend(custom_tabs_sorted)
+    site_docs = next((t for t in all_tabs_list if t.get("slug") == "site_docs"), None)
+    if site_docs:
+        ordered.append(site_docs)
+    for idx, tab in enumerate(ordered):
+        await db.form_tabs.update_one({"_id": tab["_id"]}, {"$set": {"order": idx + 1}})
+    logger.info("System form tabs seeded")
     
     # Init object storage
     try:

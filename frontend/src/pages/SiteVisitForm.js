@@ -17,13 +17,8 @@ import {
   Ruler, ChevronDown, ChevronRight, Home, Compass, Eye, PlugZap, Gauge, Settings2, HardHat, Shield, Layers
 } from 'lucide-react';
 
-const BASE_STEPS = [
-  { id: 1, title: 'Customer', icon: User },
-  { id: 2, title: 'Location', icon: MapPin },
-  { id: 3, title: 'Site & Electrical', icon: Zap },
-  { id: 4, title: 'Materials', icon: Package }
-];
-const FINAL_STEP = { title: 'Site Docs', icon: FolderOpen };
+const SYSTEM_SLUGS = ['customer', 'location', 'site_electrical', 'materials', 'site_docs'];
+const SLUG_ICON_MAP = { customer: User, location: MapPin, site_electrical: Zap, materials: Package, site_docs: FolderOpen };
 
 const SYSTEM_TYPE_OPTIONS = [
   { value: 'on-grid', label: 'On-Grid (Grid-Tied)' },
@@ -60,7 +55,7 @@ export default function SiteVisitForm() {
   const [creatingCategory, setCreatingCategory] = useState(false);
   const [driveLinkValid, setDriveLinkValid] = useState(null);
   const [openSections, setOpenSections] = useState({ grid_electrical: true, roof: true, orientation: false, shadow: false, obstructions: false, electrical_m: false, load_m: false, inverter: false, access: false });
-  const [dynamicTabs, setDynamicTabs] = useState([]);
+  const [allTabs, setAllTabs] = useState([]);
 
   const canSetMargin = isAdmin || isManager;
 
@@ -145,7 +140,7 @@ export default function SiteVisitForm() {
     try { const res = await inventoryAPI.getCategories(); setCategories(res.data); } catch (err) { console.error(err); }
   }, []);
   const fetchDynamicTabs = useCallback(async () => {
-    try { const res = await formTabsAPI.getAll(); setDynamicTabs((res.data || []).filter(t => t.active !== false)); } catch (err) { console.error(err); }
+    try { const res = await formTabsAPI.getAll(); setAllTabs((res.data || []).filter(t => t.active !== false)); } catch (err) { console.error(err); }
   }, []);
 
   useEffect(() => {
@@ -305,25 +300,24 @@ export default function SiteVisitForm() {
     return { systemKw, panelCount, panelArea, inverterKw, fitsRoof, roofArea };
   };
 
-  const getTotalSteps = () => BASE_STEPS.length + dynamicTabs.length + 1;
-  const getSiteDocsStep = () => getTotalSteps();
+  const getTotalSteps = () => allTabs.length || 5;
+  const getStepSlug = (step) => allTabs[step - 1]?.slug || '';
 
   const validateStep = () => {
     setError('');
-    const docsStep = getSiteDocsStep();
-    switch (currentStep) {
-      case 1: if (!formData.customer.name || !formData.customer.phone || !formData.customer.address) { setError('Please fill all required fields'); return false; } break;
-      case 2: if (!formData.location.site_location_words && !formData.location.address) { setError('Enter What3Words or site address'); return false; } break;
-      case 3: if (!formData.electrical.sanction_load_kw || !formData.electrical.monthly_consumption_units) { setError('Fill in Sanction Load and Monthly Consumption (in Grid & Load section)'); return false; } break;
-      case 4: if (formData.selected_items.length === 0) { setError('Add at least one inventory item'); return false; } break;
+    const slug = getStepSlug(currentStep);
+    switch (slug) {
+      case 'customer': if (!formData.customer.name || !formData.customer.phone || !formData.customer.address) { setError('Please fill all required fields'); return false; } break;
+      case 'location': if (!formData.location.site_location_words && !formData.location.address) { setError('Enter What3Words or site address'); return false; } break;
+      case 'site_electrical': if (!formData.electrical.sanction_load_kw || !formData.electrical.monthly_consumption_units) { setError('Fill in Sanction Load and Monthly Consumption (in Grid & Load section)'); return false; } break;
+      case 'materials': if (formData.selected_items.length === 0) { setError('Add at least one inventory item'); return false; } break;
+      case 'site_docs': if (!formData.drive_folder_link || !formData.drive_folder_link.includes('drive.google.com/drive/folders/')) { setError('Please enter a valid Google Drive folder link'); return false; } break;
       default:
-        if (currentStep === docsStep) {
-          if (!formData.drive_folder_link || !formData.drive_folder_link.includes('drive.google.com/drive/folders/')) { setError('Please enter a valid Google Drive folder link'); return false; }
-        } else if (currentStep > 4 && currentStep < docsStep) {
-          const tabIdx = currentStep - BASE_STEPS.length - 1;
-          const tab = dynamicTabs[tabIdx];
+        // Custom tab validation
+        if (!SYSTEM_SLUGS.includes(slug)) {
+          const tab = allTabs[currentStep - 1];
           if (tab) {
-            const tabData = formData.custom_fields?.[tab.slug] || {};
+            const tabData = formData.custom_fields?.[slug] || {};
             for (const f of (tab.fields || [])) {
               if (f.required && !tabData[f.name] && tabData[f.name] !== 0 && tabData[f.name] !== false) {
                 setError(`"${f.label}" is required`); return false;
@@ -412,10 +406,15 @@ export default function SiteVisitForm() {
 
   if (loadingProject) return <div className="min-h-screen bg-slate-50 flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-emerald-600" /></div>;
 
-  const dynamicSteps = dynamicTabs.map((tab, idx) => ({ id: BASE_STEPS.length + 1 + idx, title: tab.name, icon: Layers, slug: tab.slug, fields: tab.fields }));
-  const STEPS = [...BASE_STEPS, ...dynamicSteps, { id: BASE_STEPS.length + dynamicTabs.length + 1, ...FINAL_STEP }];
-  const totalSteps = STEPS.length;
-  const siteDocsStep = totalSteps;
+  const STEPS = allTabs.map((tab, idx) => ({
+    id: idx + 1,
+    title: tab.name,
+    icon: SLUG_ICON_MAP[tab.slug] || Layers,
+    slug: tab.slug,
+    fields: tab.fields,
+    system: !!tab.system
+  }));
+  const totalSteps = STEPS.length || 1;
 
   const progress = (currentStep / totalSteps) * 100;
   const totals = calculateTotal();
@@ -447,21 +446,24 @@ export default function SiteVisitForm() {
 
         <Card className="border-slate-200 shadow-lg">
           <CardHeader className="border-b border-slate-200 py-4">
-            <CardTitle className="font-['Outfit'] text-lg">{STEPS[currentStep - 1].title}</CardTitle>
+            <CardTitle className="font-['Outfit'] text-lg">{STEPS[currentStep - 1]?.title || ''}</CardTitle>
             <CardDescription className="text-sm">
-              {currentStep === 1 && 'Customer contact details'}
-              {currentStep === 2 && 'Site location and roof details'}
-              {currentStep === 3 && 'Site measurements, electrical & load information'}
-              {currentStep === 4 && 'Select materials & add costs'}
-              {currentStep === siteDocsStep && 'Link your Google Drive folder for site documentation'}
-              {currentStep > 4 && currentStep < siteDocsStep && STEPS[currentStep - 1]?.slug && `Fill in ${STEPS[currentStep - 1].title} details`}
+              {(() => {
+                const slug = STEPS[currentStep - 1]?.slug;
+                if (slug === 'customer') return 'Customer contact details';
+                if (slug === 'location') return 'Site location and roof details';
+                if (slug === 'site_electrical') return 'Site measurements, electrical & load information';
+                if (slug === 'materials') return 'Select materials & add costs';
+                if (slug === 'site_docs') return 'Link your Google Drive folder for site documentation';
+                return `Fill in ${STEPS[currentStep - 1]?.title || ''} details`;
+              })()}
             </CardDescription>
           </CardHeader>
           <CardContent className="p-4 sm:p-6">
             {error && <div className="mb-4 p-3 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg" data-testid="form-error">{error}</div>}
 
-            {/* Step 1: Customer */}
-            {currentStep === 1 && (
+            {/* Step: Customer */}
+            {STEPS[currentStep - 1]?.slug === 'customer' && (
               <div className="space-y-4">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-2"><Label>Customer Name *</Label><Input value={formData.customer.name} onChange={(e) => updateField('customer', 'name', e.target.value)} placeholder="Customer name" className="h-11" data-testid="customer-name-input" /></div>
@@ -472,8 +474,8 @@ export default function SiteVisitForm() {
               </div>
             )}
 
-            {/* Step 2: Location */}
-            {currentStep === 2 && (
+            {/* Step: Location */}
+            {STEPS[currentStep - 1]?.slug === 'location' && (
               <div className="space-y-4">
                 <div className="p-4 bg-emerald-50 rounded-lg border border-emerald-200">
                   <h3 className="font-semibold text-emerald-800 mb-1">What3Words Address</h3>
@@ -489,8 +491,8 @@ export default function SiteVisitForm() {
               </div>
             )}
 
-            {/* Step 3: Site & Electrical (Merged) */}
-            {currentStep === 3 && (
+            {/* Step: Site & Electrical (Merged) */}
+            {STEPS[currentStep - 1]?.slug === 'site_electrical' && (
               <div className="space-y-3">
 
                 {/* Grid & Load (from old Electrical step) */}
@@ -732,8 +734,8 @@ export default function SiteVisitForm() {
               </div>
             )}
 
-            {/* Step 4: Materials */}
-            {currentStep === 4 && (
+            {/* Step: Materials */}
+            {STEPS[currentStep - 1]?.slug === 'materials' && (
               <div className="space-y-5">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-2"><Label>System Type</Label>
@@ -878,7 +880,7 @@ export default function SiteVisitForm() {
             )}
 
             {/* Dynamic Custom Tabs */}
-            {currentStep > 4 && currentStep < siteDocsStep && (() => {
+            {STEPS[currentStep - 1] && !SYSTEM_SLUGS.includes(STEPS[currentStep - 1].slug) && (() => {
               const stepInfo = STEPS[currentStep - 1];
               if (!stepInfo?.slug) return null;
               const tabSlug = stepInfo.slug;
@@ -926,8 +928,8 @@ export default function SiteVisitForm() {
               );
             })()}
 
-            {/* Site Documentation (final step) */}
-            {currentStep === siteDocsStep && (
+            {/* Site Documentation */}
+            {STEPS[currentStep - 1]?.slug === 'site_docs' && (
               <div className="space-y-5">
                 <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
                   <p className="text-sm font-medium text-blue-800">Link your Google Drive folder containing site images and documentation for this project.</p>
