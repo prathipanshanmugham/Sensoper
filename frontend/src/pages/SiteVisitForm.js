@@ -13,13 +13,14 @@ import { Progress } from '../components/ui/progress';
 import { ComboInput } from '../components/ui/combo-input';
 import { 
   User, MapPin, Zap, ArrowRight, ArrowLeft, Loader2, CheckCircle2,
-  Sparkles, Plus, Trash2, Package, FolderOpen, X, Percent, FolderPlus, ExternalLink, CheckCircle, Link2
+  Sparkles, Plus, Trash2, Package, FolderOpen, X, Percent, FolderPlus, ExternalLink, CheckCircle, Link2,
+  Ruler, ChevronDown, ChevronRight, Home, Compass, Eye, PlugZap, Gauge, Settings2, HardHat, Shield
 } from 'lucide-react';
 
 const STEPS = [
   { id: 1, title: 'Customer', icon: User },
   { id: 2, title: 'Location', icon: MapPin },
-  { id: 3, title: 'Electrical', icon: Zap },
+  { id: 3, title: 'Site & Electrical', icon: Zap },
   { id: 4, title: 'Materials', icon: Package },
   { id: 5, title: 'Site Docs', icon: FolderOpen }
 ];
@@ -58,6 +59,7 @@ export default function SiteVisitForm() {
   const [newCategoryName, setNewCategoryName] = useState('');
   const [creatingCategory, setCreatingCategory] = useState(false);
   const [driveLinkValid, setDriveLinkValid] = useState(null);
+  const [openSections, setOpenSections] = useState({ grid_electrical: true, roof: true, orientation: false, shadow: false, obstructions: false, electrical_m: false, load_m: false, inverter: false, access: false });
 
   const canSetMargin = isAdmin || isManager;
 
@@ -71,7 +73,17 @@ export default function SiteVisitForm() {
     selected_items: [],
     manual_costs: [],
     drive_folder_name: '',
-    drive_folder_link: ''
+    drive_folder_link: '',
+    site_measurements: {
+      roof: { length: '', width: '', area: '', type: '', height: '' },
+      orientation: { direction: '', tilt_angle: '' },
+      shadow: { present: false, sources: [], obstruction_height: '', distance: '' },
+      obstructions: [],
+      electrical: { meter_location: '', db_distance: '', cable_length: '' },
+      load: { monthly_units: '', connected_load: '', connection_type: '' },
+      inverter: { location: '', wall_space: '', earthing_available: '', earthing_distance: '' },
+      access: { type: '', working_space: '', notes: '' }
+    }
   });
 
   const loadProject = useCallback(async () => {
@@ -103,7 +115,17 @@ export default function SiteVisitForm() {
         })),
         manual_costs: p.manual_costs || [],
         drive_folder_name: p.drive_folder_name || '',
-        drive_folder_link: p.drive_folder_link || ''
+        drive_folder_link: p.drive_folder_link || '',
+        site_measurements: {
+          roof: { length: '', width: '', area: '', type: '', height: '', ...(p.site_measurements?.roof || {}) },
+          orientation: { direction: '', tilt_angle: '', ...(p.site_measurements?.orientation || {}) },
+          shadow: { present: false, sources: [], obstruction_height: '', distance: '', ...(p.site_measurements?.shadow || {}) },
+          obstructions: p.site_measurements?.obstructions || [],
+          electrical: { meter_location: '', db_distance: '', cable_length: '', ...(p.site_measurements?.electrical || {}) },
+          load: { monthly_units: '', connected_load: '', connection_type: '', ...(p.site_measurements?.load || {}) },
+          inverter: { location: '', wall_space: '', earthing_available: '', earthing_distance: '', ...(p.site_measurements?.inverter || {}) },
+          access: { type: '', working_space: '', notes: '', ...(p.site_measurements?.access || {}) }
+        }
       });
     } catch (err) {
       setError('Failed to load project for editing');
@@ -146,6 +168,54 @@ export default function SiteVisitForm() {
 
   const updateField = (section, field, value) => {
     setFormData(prev => ({ ...prev, [section]: { ...prev[section], [field]: value } }));
+  };
+
+  const updateMeasurement = (section, field, value) => {
+    setFormData(prev => ({
+      ...prev,
+      site_measurements: {
+        ...prev.site_measurements,
+        [section]: { ...prev.site_measurements[section], [field]: value }
+      }
+    }));
+  };
+
+  const toggleSection = (key) => setOpenSections(prev => ({ ...prev, [key]: !prev[key] }));
+
+  const addObstruction = () => {
+    setFormData(prev => ({
+      ...prev,
+      site_measurements: {
+        ...prev.site_measurements,
+        obstructions: [...prev.site_measurements.obstructions, { name: '', notes: '' }]
+      }
+    }));
+  };
+
+  const updateObstruction = (idx, field, value) => {
+    setFormData(prev => {
+      const obs = [...prev.site_measurements.obstructions];
+      obs[idx] = { ...obs[idx], [field]: value };
+      return { ...prev, site_measurements: { ...prev.site_measurements, obstructions: obs } };
+    });
+  };
+
+  const removeObstruction = (idx) => {
+    setFormData(prev => ({
+      ...prev,
+      site_measurements: {
+        ...prev.site_measurements,
+        obstructions: prev.site_measurements.obstructions.filter((_, i) => i !== idx)
+      }
+    }));
+  };
+
+  const toggleShadowSource = (source) => {
+    setFormData(prev => {
+      const current = prev.site_measurements.shadow.sources || [];
+      const updated = current.includes(source) ? current.filter(s => s !== source) : [...current, source];
+      return { ...prev, site_measurements: { ...prev.site_measurements, shadow: { ...prev.site_measurements.shadow, sources: updated } } };
+    });
   };
 
   const addSelectedItem = (itemId) => {
@@ -215,12 +285,25 @@ export default function SiteVisitForm() {
     return { itemsTotal, manualTotal, gstTotal, marginTotal, total: itemsTotal + manualTotal + gstTotal + marginTotal };
   };
 
+  const getSmartSuggestions = () => {
+    const monthly = parseFloat(formData.electrical.monthly_consumption_units) || 0;
+    const roofArea = parseFloat(formData.site_measurements.roof.area) || 0;
+    const panelW = parseInt(formData.solar_system.panel_wattage) || 540;
+    if (!monthly) return null;
+    const systemKw = Math.round((monthly / 120) * 10) / 10;
+    const panelCount = Math.ceil((systemKw * 1000) / panelW);
+    const panelArea = panelCount * 21.5;
+    const inverterKw = [1, 2, 3, 4, 5, 6, 8, 10, 15, 20, 25, 50].find(s => s >= systemKw) || systemKw;
+    const fitsRoof = roofArea ? panelArea <= roofArea * 0.7 : null;
+    return { systemKw, panelCount, panelArea, inverterKw, fitsRoof, roofArea };
+  };
+
   const validateStep = () => {
     setError('');
     switch (currentStep) {
       case 1: if (!formData.customer.name || !formData.customer.phone || !formData.customer.address) { setError('Please fill all required fields'); return false; } break;
       case 2: if (!formData.location.site_location_words && !formData.location.address) { setError('Enter What3Words or site address'); return false; } break;
-      case 3: if (!formData.electrical.sanction_load_kw || !formData.electrical.monthly_consumption_units) { setError('Fill in required electrical details'); return false; } break;
+      case 3: if (!formData.electrical.sanction_load_kw || !formData.electrical.monthly_consumption_units) { setError('Fill in Sanction Load and Monthly Consumption (in Grid & Load section)'); return false; } break;
       case 4: if (formData.selected_items.length === 0) { setError('Add at least one inventory item'); return false; } break;
       case 5: if (!formData.drive_folder_link || !formData.drive_folder_link.includes('drive.google.com/drive/folders/')) { setError('Please enter a valid Google Drive folder link'); return false; } break;
       default: break;
@@ -270,7 +353,23 @@ export default function SiteVisitForm() {
         })),
         drive_folder_name: formData.drive_folder_name,
         drive_folder_link: formData.drive_folder_link,
-        drive_folder_id: extractFolderId(formData.drive_folder_link)
+        drive_folder_id: extractFolderId(formData.drive_folder_link),
+        site_measurements: {
+          roof: {
+            length: parseFloat(formData.site_measurements.roof.length) || '',
+            width: parseFloat(formData.site_measurements.roof.width) || '',
+            area: parseFloat(formData.site_measurements.roof.area) || '',
+            type: formData.site_measurements.roof.type,
+            height: parseFloat(formData.site_measurements.roof.height) || ''
+          },
+          orientation: formData.site_measurements.orientation,
+          shadow: formData.site_measurements.shadow,
+          obstructions: formData.site_measurements.obstructions.filter(o => o.name),
+          electrical: formData.site_measurements.electrical,
+          load: formData.site_measurements.load,
+          inverter: formData.site_measurements.inverter,
+          access: formData.site_measurements.access
+        }
       };
 
       if (isEditMode) {
@@ -321,7 +420,7 @@ export default function SiteVisitForm() {
             <CardDescription className="text-sm">
               {currentStep === 1 && 'Customer contact details'}
               {currentStep === 2 && 'Site location and roof details'}
-              {currentStep === 3 && 'Electrical load information'}
+              {currentStep === 3 && 'Site measurements, electrical & load information'}
               {currentStep === 4 && 'Select materials & add costs'}
               {currentStep === 5 && 'Link your Google Drive folder for site documentation'}
             </CardDescription>
@@ -358,35 +457,246 @@ export default function SiteVisitForm() {
               </div>
             )}
 
-            {/* Step 3: Electrical - Typeable dropdowns */}
+            {/* Step 3: Site & Electrical (Merged) */}
             {currentStep === 3 && (
-              <div className="space-y-4">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div className="space-y-2"><Label>Type of Service</Label>
-                    <ComboInput value={formData.electrical.service_type} onChange={(v) => updateField('electrical', 'service_type', v)} options={SERVICE_TYPE_OPTIONS} placeholder="Type or select service type" data-testid="service-type-input" />
-                  </div>
-                  <div className="space-y-2"><Label>Sanction Load (kW) *</Label><Input type="number" step="0.1" value={formData.electrical.sanction_load_kw} onChange={(e) => updateField('electrical', 'sanction_load_kw', e.target.value)} placeholder="e.g., 5" className="h-11" data-testid="sanction-load-input" /></div>
+              <div className="space-y-3">
+
+                {/* Grid & Load (from old Electrical step) */}
+                <div className="border border-slate-200 rounded-lg overflow-hidden" data-testid="section-grid-electrical">
+                  <button type="button" onClick={() => toggleSection('grid_electrical')} className="w-full flex items-center justify-between p-3 bg-slate-50 hover:bg-slate-100 transition-colors">
+                    <span className="flex items-center gap-2 font-semibold text-sm text-slate-800"><Zap className="h-4 w-4 text-yellow-500" />Grid & Load <span className="text-[10px] font-normal text-red-400 ml-1">Required</span></span>
+                    {openSections.grid_electrical ? <ChevronDown className="h-4 w-4 text-slate-400" /> : <ChevronRight className="h-4 w-4 text-slate-400" />}
+                  </button>
+                  {openSections.grid_electrical && (
+                    <div className="p-4 space-y-3">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div className="space-y-1"><Label className="text-xs">Service Type</Label>
+                          <ComboInput value={formData.electrical.service_type} onChange={(v) => updateField('electrical', 'service_type', v)} options={SERVICE_TYPE_OPTIONS} placeholder="Type or select" data-testid="service-type-input" />
+                        </div>
+                        <div className="space-y-1"><Label className="text-xs">Sanction Load (kW) *</Label><Input type="number" step="0.1" value={formData.electrical.sanction_load_kw} onChange={(e) => updateField('electrical', 'sanction_load_kw', e.target.value)} placeholder="e.g., 5" className="h-10" data-testid="sanction-load-input" /></div>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div className="space-y-1"><Label className="text-xs">Connected Load (kW)</Label><Input type="number" step="0.1" value={formData.electrical.connected_load_kw} onChange={(e) => updateField('electrical', 'connected_load_kw', e.target.value)} placeholder="e.g., 4" className="h-10" data-testid="connected-load-input" /></div>
+                        <div className="space-y-1"><Label className="text-xs">Monthly Consumption (units) *</Label><Input type="number" value={formData.electrical.monthly_consumption_units} onChange={(e) => updateField('electrical', 'monthly_consumption_units', e.target.value)} placeholder="e.g., 500" className="h-10" data-testid="monthly-consumption-input" /></div>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div className="space-y-1"><Label className="text-xs">EB Tariff (Rs/unit)</Label><Input type="number" step="0.1" value={formData.electrical.eb_tariff} onChange={(e) => updateField('electrical', 'eb_tariff', e.target.value)} placeholder="e.g., 7" className="h-10" data-testid="eb-tariff-input" /></div>
+                        <div className="space-y-1"><Label className="text-xs">Complexity</Label>
+                          <ComboInput value={formData.additional.installation_complexity} onChange={(v) => updateField('additional', 'installation_complexity', v)} options={COMPLEXITY_OPTIONS} placeholder="Select" data-testid="complexity-input" />
+                        </div>
+                      </div>
+                      <div className="p-3 bg-sky-50 rounded-lg border border-sky-200">
+                        <div className="flex items-center justify-between flex-wrap gap-2">
+                          <h3 className="font-semibold text-sky-800 flex items-center gap-2 text-sm"><Sparkles className="h-4 w-4" />AI Recommendation</h3>
+                          <Button type="button" onClick={getAIRecommendation} disabled={aiLoading || !formData.electrical.monthly_consumption_units} variant="outline" size="sm" className="border-sky-300 text-sky-700 hover:bg-sky-100 h-8 text-xs" data-testid="ai-recommendation-btn">
+                            {aiLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : <Sparkles className="h-3.5 w-3.5 mr-1" />}Advice
+                          </Button>
+                        </div>
+                        {aiRecommendation && <div className="mt-2 p-2 bg-white rounded border border-sky-200"><pre className="text-xs text-slate-700 whitespace-pre-wrap font-sans">{aiRecommendation}</pre></div>}
+                      </div>
+                    </div>
+                  )}
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div className="space-y-2"><Label>Connected Load (kW)</Label><Input type="number" step="0.1" value={formData.electrical.connected_load_kw} onChange={(e) => updateField('electrical', 'connected_load_kw', e.target.value)} placeholder="e.g., 4" className="h-11" data-testid="connected-load-input" /></div>
-                  <div className="space-y-2"><Label>Monthly Consumption (units) *</Label><Input type="number" value={formData.electrical.monthly_consumption_units} onChange={(e) => updateField('electrical', 'monthly_consumption_units', e.target.value)} placeholder="e.g., 500" className="h-11" data-testid="monthly-consumption-input" /></div>
+
+                {/* Roof Details */}
+                <div className="border border-slate-200 rounded-lg overflow-hidden" data-testid="section-roof">
+                  <button type="button" onClick={() => toggleSection('roof')} className="w-full flex items-center justify-between p-3 bg-slate-50 hover:bg-slate-100 transition-colors">
+                    <span className="flex items-center gap-2 font-semibold text-sm text-slate-800"><Home className="h-4 w-4 text-orange-500" />Roof Details</span>
+                    {openSections.roof ? <ChevronDown className="h-4 w-4 text-slate-400" /> : <ChevronRight className="h-4 w-4 text-slate-400" />}
+                  </button>
+                  {openSections.roof && (
+                    <div className="p-4 space-y-3">
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        <div className="space-y-1"><Label className="text-xs">Roof Length (ft)</Label><Input type="number" step="0.1" min="0" value={formData.site_measurements.roof.length} onChange={(e) => { updateMeasurement('roof', 'length', e.target.value); const w = formData.site_measurements.roof.width; if (e.target.value && w) updateMeasurement('roof', 'area', (parseFloat(e.target.value) * parseFloat(w)).toFixed(1)); }} placeholder="e.g., 30" className="h-10" data-testid="roof-length-input" /></div>
+                        <div className="space-y-1"><Label className="text-xs">Roof Width (ft)</Label><Input type="number" step="0.1" min="0" value={formData.site_measurements.roof.width} onChange={(e) => { updateMeasurement('roof', 'width', e.target.value); const l = formData.site_measurements.roof.length; if (e.target.value && l) updateMeasurement('roof', 'area', (parseFloat(e.target.value) * parseFloat(l)).toFixed(1)); }} placeholder="e.g., 20" className="h-10" data-testid="roof-width-input" /></div>
+                        <div className="space-y-1"><Label className="text-xs">Total Area (sq ft)</Label><Input value={formData.site_measurements.roof.area} readOnly className="h-10 bg-slate-50 font-medium" data-testid="roof-area-input" /></div>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div className="space-y-1"><Label className="text-xs">Roof Type</Label>
+                          <Select value={formData.site_measurements.roof.type} onValueChange={(v) => updateMeasurement('roof', 'type', v)}>
+                            <SelectTrigger className="h-10" data-testid="roof-type-select"><SelectValue placeholder="Select type" /></SelectTrigger>
+                            <SelectContent><SelectItem value="RCC">RCC</SelectItem><SelectItem value="Sheet">Sheet</SelectItem><SelectItem value="Tile">Tile</SelectItem><SelectItem value="Other">Other</SelectItem></SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-1"><Label className="text-xs">Roof Height from Ground (ft)</Label><Input type="number" step="0.1" min="0" value={formData.site_measurements.roof.height} onChange={(e) => updateMeasurement('roof', 'height', e.target.value)} placeholder="e.g., 12" className="h-10" data-testid="roof-height-input" /></div>
+                      </div>
+                    </div>
+                  )}
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div className="space-y-2"><Label>EB Tariff (Rs/unit)</Label><Input type="number" step="0.1" value={formData.electrical.eb_tariff} onChange={(e) => updateField('electrical', 'eb_tariff', e.target.value)} placeholder="e.g., 7" className="h-11" data-testid="eb-tariff-input" /></div>
-                  <div className="space-y-2"><Label>Cable Length (m)</Label><Input type="number" value={formData.additional.cable_length_meters} onChange={(e) => updateField('additional', 'cable_length_meters', e.target.value)} placeholder="50" className="h-11" data-testid="cable-length-input" /></div>
+
+                {/* Orientation & Tilt */}
+                <div className="border border-slate-200 rounded-lg overflow-hidden" data-testid="section-orientation">
+                  <button type="button" onClick={() => toggleSection('orientation')} className="w-full flex items-center justify-between p-3 bg-slate-50 hover:bg-slate-100 transition-colors">
+                    <span className="flex items-center gap-2 font-semibold text-sm text-slate-800"><Compass className="h-4 w-4 text-blue-500" />Orientation & Tilt</span>
+                    {openSections.orientation ? <ChevronDown className="h-4 w-4 text-slate-400" /> : <ChevronRight className="h-4 w-4 text-slate-400" />}
+                  </button>
+                  {openSections.orientation && (
+                    <div className="p-4 space-y-3">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div className="space-y-1"><Label className="text-xs">Roof Direction</Label>
+                          <Select value={formData.site_measurements.orientation.direction} onValueChange={(v) => updateMeasurement('orientation', 'direction', v)}>
+                            <SelectTrigger className="h-10" data-testid="roof-direction-select"><SelectValue placeholder="Select direction" /></SelectTrigger>
+                            <SelectContent><SelectItem value="North">North</SelectItem><SelectItem value="South">South</SelectItem><SelectItem value="East">East</SelectItem><SelectItem value="West">West</SelectItem><SelectItem value="North-East">North-East</SelectItem><SelectItem value="North-West">North-West</SelectItem><SelectItem value="South-East">South-East</SelectItem><SelectItem value="South-West">South-West</SelectItem></SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-1"><Label className="text-xs">Tilt Angle (degrees)</Label><Input type="number" min="0" max="90" value={formData.site_measurements.orientation.tilt_angle} onChange={(e) => updateMeasurement('orientation', 'tilt_angle', e.target.value)} placeholder="e.g., 12" className="h-10" data-testid="meas-tilt-angle-input" />
+                          <p className="text-[10px] text-slate-400">Optimal: 10-15 degrees for South India</p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
-                <div className="space-y-2"><Label>Complexity</Label>
-                  <ComboInput value={formData.additional.installation_complexity} onChange={(v) => updateField('additional', 'installation_complexity', v)} options={COMPLEXITY_OPTIONS} placeholder="Type or select complexity" data-testid="complexity-input" />
+
+                {/* Shadow Analysis */}
+                <div className="border border-slate-200 rounded-lg overflow-hidden" data-testid="section-shadow">
+                  <button type="button" onClick={() => toggleSection('shadow')} className="w-full flex items-center justify-between p-3 bg-slate-50 hover:bg-slate-100 transition-colors">
+                    <span className="flex items-center gap-2 font-semibold text-sm text-slate-800"><Eye className="h-4 w-4 text-amber-500" />Shadow Analysis</span>
+                    {openSections.shadow ? <ChevronDown className="h-4 w-4 text-slate-400" /> : <ChevronRight className="h-4 w-4 text-slate-400" />}
+                  </button>
+                  {openSections.shadow && (
+                    <div className="p-4 space-y-3">
+                      <div className="flex items-center space-x-3">
+                        <Checkbox id="shadowPresent" checked={formData.site_measurements.shadow.present} onCheckedChange={(c) => updateMeasurement('shadow', 'present', !!c)} data-testid="shadow-present-checkbox" />
+                        <Label htmlFor="shadowPresent" className="text-sm">Shadow Present</Label>
+                      </div>
+                      {formData.site_measurements.shadow.present && (
+                        <>
+                          <div className="space-y-1"><Label className="text-xs">Shadow Sources</Label>
+                            <div className="flex flex-wrap gap-2">
+                              {['Trees', 'Buildings', 'Poles', 'Tanks', 'Other'].map(src => (
+                                <button key={src} type="button" onClick={() => toggleShadowSource(src)}
+                                  className={`px-3 py-1.5 text-xs rounded-full border transition-colors ${formData.site_measurements.shadow.sources.includes(src) ? 'bg-amber-100 border-amber-300 text-amber-800 font-medium' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}
+                                  data-testid={`shadow-source-${src.toLowerCase()}`}>{src}</button>
+                              ))}
+                            </div>
+                          </div>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <div className="space-y-1"><Label className="text-xs">Obstruction Height (ft)</Label><Input type="number" step="0.1" min="0" value={formData.site_measurements.shadow.obstruction_height} onChange={(e) => updateMeasurement('shadow', 'obstruction_height', e.target.value)} placeholder="e.g., 15" className="h-10" data-testid="obstruction-height-input" /></div>
+                            <div className="space-y-1"><Label className="text-xs">Distance from Panel Area (ft)</Label><Input type="number" step="0.1" min="0" value={formData.site_measurements.shadow.distance} onChange={(e) => updateMeasurement('shadow', 'distance', e.target.value)} placeholder="e.g., 20" className="h-10" data-testid="shadow-distance-input" /></div>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  )}
                 </div>
-                <div className="p-4 bg-sky-50 rounded-lg border border-sky-200">
-                  <div className="flex items-center justify-between flex-wrap gap-2">
-                    <h3 className="font-semibold text-sky-800 flex items-center gap-2"><Sparkles className="h-4 w-4" />AI Recommendation</h3>
-                    <Button type="button" onClick={getAIRecommendation} disabled={aiLoading || !formData.electrical.monthly_consumption_units} variant="outline" className="border-sky-300 text-sky-700 hover:bg-sky-100 h-10" data-testid="ai-recommendation-btn">
-                      {aiLoading ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Sparkles className="h-4 w-4 mr-1" />}Advice
-                    </Button>
-                  </div>
-                  {aiRecommendation && <div className="mt-3 p-3 bg-white rounded border border-sky-200"><pre className="text-sm text-slate-700 whitespace-pre-wrap font-sans">{aiRecommendation}</pre></div>}
+
+                {/* Obstructions */}
+                <div className="border border-slate-200 rounded-lg overflow-hidden" data-testid="section-obstructions">
+                  <button type="button" onClick={() => toggleSection('obstructions')} className="w-full flex items-center justify-between p-3 bg-slate-50 hover:bg-slate-100 transition-colors">
+                    <span className="flex items-center gap-2 font-semibold text-sm text-slate-800"><Shield className="h-4 w-4 text-red-500" />Obstructions</span>
+                    {openSections.obstructions ? <ChevronDown className="h-4 w-4 text-slate-400" /> : <ChevronRight className="h-4 w-4 text-slate-400" />}
+                  </button>
+                  {openSections.obstructions && (
+                    <div className="p-4 space-y-3">
+                      {formData.site_measurements.obstructions.map((obs, idx) => (
+                        <div key={`obs-${idx}`} className="flex gap-2 items-start">
+                          <Input value={obs.name} onChange={(e) => updateObstruction(idx, 'name', e.target.value)} placeholder="e.g., Water Tank" className="flex-1 h-10" data-testid={`obstruction-name-${idx}`} />
+                          <Input value={obs.notes} onChange={(e) => updateObstruction(idx, 'notes', e.target.value)} placeholder="Position / Notes" className="flex-1 h-10" data-testid={`obstruction-notes-${idx}`} />
+                          <Button type="button" variant="ghost" size="icon" className="h-10 w-10 text-red-500 shrink-0" onClick={() => removeObstruction(idx)}><X className="h-4 w-4" /></Button>
+                        </div>
+                      ))}
+                      <Button type="button" variant="outline" size="sm" onClick={addObstruction} className="h-9 gap-1.5 text-xs" data-testid="add-obstruction-btn"><Plus className="h-3.5 w-3.5" />Add Obstruction</Button>
+                    </div>
+                  )}
                 </div>
+
+                {/* Electrical Wiring & Metering */}
+                <div className="border border-slate-200 rounded-lg overflow-hidden" data-testid="section-electrical-m">
+                  <button type="button" onClick={() => toggleSection('electrical_m')} className="w-full flex items-center justify-between p-3 bg-slate-50 hover:bg-slate-100 transition-colors">
+                    <span className="flex items-center gap-2 font-semibold text-sm text-slate-800"><PlugZap className="h-4 w-4 text-yellow-500" />Wiring & Metering</span>
+                    {openSections.electrical_m ? <ChevronDown className="h-4 w-4 text-slate-400" /> : <ChevronRight className="h-4 w-4 text-slate-400" />}
+                  </button>
+                  {openSections.electrical_m && (
+                    <div className="p-4 space-y-3">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div className="space-y-1"><Label className="text-xs">EB Meter Location</Label><Input value={formData.site_measurements.electrical.meter_location} onChange={(e) => updateMeasurement('electrical', 'meter_location', e.target.value)} placeholder="e.g., Ground floor, left wall" className="h-10" data-testid="meter-location-input" /></div>
+                        <div className="space-y-1"><Label className="text-xs">Main DB Location</Label><Input value={formData.site_measurements.electrical.main_db_location || ''} onChange={(e) => updateMeasurement('electrical', 'main_db_location', e.target.value)} placeholder="e.g., First floor hallway" className="h-10" data-testid="main-db-location-input" /></div>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div className="space-y-1"><Label className="text-xs">Distance Roof to DB (ft)</Label><Input type="number" step="0.1" min="0" value={formData.site_measurements.electrical.db_distance} onChange={(e) => updateMeasurement('electrical', 'db_distance', e.target.value)} placeholder="e.g., 25" className="h-10" data-testid="db-distance-input" /></div>
+                        <div className="space-y-1"><Label className="text-xs">Estimated Cable Length (ft)</Label><Input type="number" step="0.1" min="0" value={formData.site_measurements.electrical.cable_length} onChange={(e) => updateMeasurement('electrical', 'cable_length', e.target.value)} placeholder="e.g., 50" className="h-10" data-testid="meas-cable-length-input" /></div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Load Details */}
+                <div className="border border-slate-200 rounded-lg overflow-hidden" data-testid="section-load-m">
+                  <button type="button" onClick={() => toggleSection('load_m')} className="w-full flex items-center justify-between p-3 bg-slate-50 hover:bg-slate-100 transition-colors">
+                    <span className="flex items-center gap-2 font-semibold text-sm text-slate-800"><Gauge className="h-4 w-4 text-emerald-500" />Load Details</span>
+                    {openSections.load_m ? <ChevronDown className="h-4 w-4 text-slate-400" /> : <ChevronRight className="h-4 w-4 text-slate-400" />}
+                  </button>
+                  {openSections.load_m && (
+                    <div className="p-4 space-y-3">
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        <div className="space-y-1"><Label className="text-xs">Monthly EB Units</Label><Input type="number" min="0" value={formData.site_measurements.load.monthly_units} onChange={(e) => updateMeasurement('load', 'monthly_units', e.target.value)} placeholder="e.g., 500" className="h-10" data-testid="meas-monthly-units-input" /></div>
+                        <div className="space-y-1"><Label className="text-xs">Connected Load (kW)</Label><Input type="number" step="0.1" min="0" value={formData.site_measurements.load.connected_load} onChange={(e) => updateMeasurement('load', 'connected_load', e.target.value)} placeholder="e.g., 5" className="h-10" data-testid="meas-connected-load-input" /></div>
+                        <div className="space-y-1"><Label className="text-xs">Connection Type</Label>
+                          <Select value={formData.site_measurements.load.connection_type} onValueChange={(v) => updateMeasurement('load', 'connection_type', v)}>
+                            <SelectTrigger className="h-10" data-testid="connection-type-select"><SelectValue placeholder="Select" /></SelectTrigger>
+                            <SelectContent><SelectItem value="Residential">Residential</SelectItem><SelectItem value="Commercial">Commercial</SelectItem><SelectItem value="Industrial">Industrial</SelectItem></SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Inverter & Earthing */}
+                <div className="border border-slate-200 rounded-lg overflow-hidden" data-testid="section-inverter">
+                  <button type="button" onClick={() => toggleSection('inverter')} className="w-full flex items-center justify-between p-3 bg-slate-50 hover:bg-slate-100 transition-colors">
+                    <span className="flex items-center gap-2 font-semibold text-sm text-slate-800"><Settings2 className="h-4 w-4 text-purple-500" />Inverter & Earthing</span>
+                    {openSections.inverter ? <ChevronDown className="h-4 w-4 text-slate-400" /> : <ChevronRight className="h-4 w-4 text-slate-400" />}
+                  </button>
+                  {openSections.inverter && (
+                    <div className="p-4 space-y-3">
+                      <div className="space-y-1"><Label className="text-xs">Inverter Installation Location</Label><Input value={formData.site_measurements.inverter.location} onChange={(e) => updateMeasurement('inverter', 'location', e.target.value)} placeholder="e.g., Near main DB, ground floor" className="h-10" data-testid="inverter-location-input" /></div>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        <div className="space-y-1"><Label className="text-xs">Wall Space Available?</Label>
+                          <Select value={formData.site_measurements.inverter.wall_space} onValueChange={(v) => updateMeasurement('inverter', 'wall_space', v)}>
+                            <SelectTrigger className="h-10" data-testid="wall-space-select"><SelectValue placeholder="Select" /></SelectTrigger>
+                            <SelectContent><SelectItem value="Yes">Yes</SelectItem><SelectItem value="No">No</SelectItem></SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-1"><Label className="text-xs">Existing Earthing?</Label>
+                          <Select value={formData.site_measurements.inverter.earthing_available} onValueChange={(v) => updateMeasurement('inverter', 'earthing_available', v)}>
+                            <SelectTrigger className="h-10" data-testid="earthing-available-select"><SelectValue placeholder="Select" /></SelectTrigger>
+                            <SelectContent><SelectItem value="Yes">Yes</SelectItem><SelectItem value="No">No</SelectItem></SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-1"><Label className="text-xs">Distance to Earthing (ft)</Label><Input type="number" step="0.1" min="0" value={formData.site_measurements.inverter.earthing_distance} onChange={(e) => updateMeasurement('inverter', 'earthing_distance', e.target.value)} placeholder="e.g., 15" className="h-10" data-testid="earthing-distance-input" /></div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Access & Safety */}
+                <div className="border border-slate-200 rounded-lg overflow-hidden" data-testid="section-access">
+                  <button type="button" onClick={() => toggleSection('access')} className="w-full flex items-center justify-between p-3 bg-slate-50 hover:bg-slate-100 transition-colors">
+                    <span className="flex items-center gap-2 font-semibold text-sm text-slate-800"><HardHat className="h-4 w-4 text-teal-500" />Access & Safety</span>
+                    {openSections.access ? <ChevronDown className="h-4 w-4 text-slate-400" /> : <ChevronRight className="h-4 w-4 text-slate-400" />}
+                  </button>
+                  {openSections.access && (
+                    <div className="p-4 space-y-3">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div className="space-y-1"><Label className="text-xs">Roof Access Type</Label>
+                          <Select value={formData.site_measurements.access.type} onValueChange={(v) => updateMeasurement('access', 'type', v)}>
+                            <SelectTrigger className="h-10" data-testid="access-type-select"><SelectValue placeholder="Select" /></SelectTrigger>
+                            <SelectContent><SelectItem value="Stairs">Stairs</SelectItem><SelectItem value="Ladder">Ladder</SelectItem><SelectItem value="Direct">Direct Access</SelectItem></SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-1"><Label className="text-xs">Working Space Available?</Label>
+                          <Select value={formData.site_measurements.access.working_space} onValueChange={(v) => updateMeasurement('access', 'working_space', v)}>
+                            <SelectTrigger className="h-10" data-testid="working-space-select"><SelectValue placeholder="Select" /></SelectTrigger>
+                            <SelectContent><SelectItem value="Yes">Yes</SelectItem><SelectItem value="No">No</SelectItem></SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+                      <div className="space-y-1"><Label className="text-xs">Safety Notes</Label><Textarea rows={2} value={formData.site_measurements.access.notes} onChange={(e) => updateMeasurement('access', 'notes', e.target.value)} placeholder="Any safety observations..." className="min-h-[60px]" data-testid="safety-notes-input" /></div>
+                    </div>
+                  )}
+                </div>
+
               </div>
             )}
 
@@ -498,8 +808,212 @@ export default function SiteVisitForm() {
               </div>
             )}
 
-            {/* Step 5: Site Documentation */}
+            {/* Step 5: Site Measurements */}
             {currentStep === 5 && (
+              <div className="space-y-3">
+
+                {/* Roof Details */}
+                <div className="border border-slate-200 rounded-lg overflow-hidden" data-testid="section-roof">
+                  <button type="button" onClick={() => toggleSection('roof')} className="w-full flex items-center justify-between p-3 bg-slate-50 hover:bg-slate-100 transition-colors">
+                    <span className="flex items-center gap-2 font-semibold text-sm text-slate-800"><Home className="h-4 w-4 text-orange-500" />Roof Details</span>
+                    {openSections.roof ? <ChevronDown className="h-4 w-4 text-slate-400" /> : <ChevronRight className="h-4 w-4 text-slate-400" />}
+                  </button>
+                  {openSections.roof && (
+                    <div className="p-4 space-y-3">
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        <div className="space-y-1"><Label className="text-xs">Roof Length (ft)</Label><Input type="number" step="0.1" min="0" value={formData.site_measurements.roof.length} onChange={(e) => { updateMeasurement('roof', 'length', e.target.value); const w = formData.site_measurements.roof.width; if (e.target.value && w) updateMeasurement('roof', 'area', (parseFloat(e.target.value) * parseFloat(w)).toFixed(1)); }} placeholder="e.g., 30" className="h-10" data-testid="roof-length-input" /></div>
+                        <div className="space-y-1"><Label className="text-xs">Roof Width (ft)</Label><Input type="number" step="0.1" min="0" value={formData.site_measurements.roof.width} onChange={(e) => { updateMeasurement('roof', 'width', e.target.value); const l = formData.site_measurements.roof.length; if (e.target.value && l) updateMeasurement('roof', 'area', (parseFloat(e.target.value) * parseFloat(l)).toFixed(1)); }} placeholder="e.g., 20" className="h-10" data-testid="roof-width-input" /></div>
+                        <div className="space-y-1"><Label className="text-xs">Total Area (sq ft)</Label><Input value={formData.site_measurements.roof.area} readOnly className="h-10 bg-slate-50 font-medium" data-testid="roof-area-input" /></div>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div className="space-y-1"><Label className="text-xs">Roof Type</Label>
+                          <Select value={formData.site_measurements.roof.type} onValueChange={(v) => updateMeasurement('roof', 'type', v)}>
+                            <SelectTrigger className="h-10" data-testid="roof-type-select"><SelectValue placeholder="Select type" /></SelectTrigger>
+                            <SelectContent><SelectItem value="RCC">RCC</SelectItem><SelectItem value="Sheet">Sheet</SelectItem><SelectItem value="Tile">Tile</SelectItem><SelectItem value="Other">Other</SelectItem></SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-1"><Label className="text-xs">Roof Height from Ground (ft)</Label><Input type="number" step="0.1" min="0" value={formData.site_measurements.roof.height} onChange={(e) => updateMeasurement('roof', 'height', e.target.value)} placeholder="e.g., 12" className="h-10" data-testid="roof-height-input" /></div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Orientation & Tilt */}
+                <div className="border border-slate-200 rounded-lg overflow-hidden" data-testid="section-orientation">
+                  <button type="button" onClick={() => toggleSection('orientation')} className="w-full flex items-center justify-between p-3 bg-slate-50 hover:bg-slate-100 transition-colors">
+                    <span className="flex items-center gap-2 font-semibold text-sm text-slate-800"><Compass className="h-4 w-4 text-blue-500" />Orientation & Tilt</span>
+                    {openSections.orientation ? <ChevronDown className="h-4 w-4 text-slate-400" /> : <ChevronRight className="h-4 w-4 text-slate-400" />}
+                  </button>
+                  {openSections.orientation && (
+                    <div className="p-4 space-y-3">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div className="space-y-1"><Label className="text-xs">Roof Direction</Label>
+                          <Select value={formData.site_measurements.orientation.direction} onValueChange={(v) => updateMeasurement('orientation', 'direction', v)}>
+                            <SelectTrigger className="h-10" data-testid="roof-direction-select"><SelectValue placeholder="Select direction" /></SelectTrigger>
+                            <SelectContent><SelectItem value="North">North</SelectItem><SelectItem value="South">South</SelectItem><SelectItem value="East">East</SelectItem><SelectItem value="West">West</SelectItem><SelectItem value="North-East">North-East</SelectItem><SelectItem value="North-West">North-West</SelectItem><SelectItem value="South-East">South-East</SelectItem><SelectItem value="South-West">South-West</SelectItem></SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-1"><Label className="text-xs">Tilt Angle (degrees)</Label><Input type="number" min="0" max="90" value={formData.site_measurements.orientation.tilt_angle} onChange={(e) => updateMeasurement('orientation', 'tilt_angle', e.target.value)} placeholder="e.g., 12" className="h-10" data-testid="meas-tilt-angle-input" />
+                          <p className="text-[10px] text-slate-400">Optimal: 10-15 degrees for South India</p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Shadow Analysis */}
+                <div className="border border-slate-200 rounded-lg overflow-hidden" data-testid="section-shadow">
+                  <button type="button" onClick={() => toggleSection('shadow')} className="w-full flex items-center justify-between p-3 bg-slate-50 hover:bg-slate-100 transition-colors">
+                    <span className="flex items-center gap-2 font-semibold text-sm text-slate-800"><Eye className="h-4 w-4 text-amber-500" />Shadow Analysis</span>
+                    {openSections.shadow ? <ChevronDown className="h-4 w-4 text-slate-400" /> : <ChevronRight className="h-4 w-4 text-slate-400" />}
+                  </button>
+                  {openSections.shadow && (
+                    <div className="p-4 space-y-3">
+                      <div className="flex items-center space-x-3">
+                        <Checkbox id="shadowPresent" checked={formData.site_measurements.shadow.present} onCheckedChange={(c) => updateMeasurement('shadow', 'present', !!c)} data-testid="shadow-present-checkbox" />
+                        <Label htmlFor="shadowPresent" className="text-sm">Shadow Present</Label>
+                      </div>
+                      {formData.site_measurements.shadow.present && (
+                        <>
+                          <div className="space-y-1">
+                            <Label className="text-xs">Shadow Sources</Label>
+                            <div className="flex flex-wrap gap-2">
+                              {['Trees', 'Buildings', 'Poles', 'Tanks', 'Other'].map(src => (
+                                <button key={src} type="button" onClick={() => toggleShadowSource(src)}
+                                  className={`px-3 py-1.5 text-xs rounded-full border transition-colors ${formData.site_measurements.shadow.sources.includes(src) ? 'bg-amber-100 border-amber-300 text-amber-800 font-medium' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}
+                                  data-testid={`shadow-source-${src.toLowerCase()}`}>{src}</button>
+                              ))}
+                            </div>
+                          </div>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <div className="space-y-1"><Label className="text-xs">Obstruction Height (ft)</Label><Input type="number" step="0.1" min="0" value={formData.site_measurements.shadow.obstruction_height} onChange={(e) => updateMeasurement('shadow', 'obstruction_height', e.target.value)} placeholder="e.g., 15" className="h-10" data-testid="obstruction-height-input" /></div>
+                            <div className="space-y-1"><Label className="text-xs">Distance from Panel Area (ft)</Label><Input type="number" step="0.1" min="0" value={formData.site_measurements.shadow.distance} onChange={(e) => updateMeasurement('shadow', 'distance', e.target.value)} placeholder="e.g., 20" className="h-10" data-testid="shadow-distance-input" /></div>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* Obstructions */}
+                <div className="border border-slate-200 rounded-lg overflow-hidden" data-testid="section-obstructions">
+                  <button type="button" onClick={() => toggleSection('obstructions')} className="w-full flex items-center justify-between p-3 bg-slate-50 hover:bg-slate-100 transition-colors">
+                    <span className="flex items-center gap-2 font-semibold text-sm text-slate-800"><Shield className="h-4 w-4 text-red-500" />Obstructions</span>
+                    {openSections.obstructions ? <ChevronDown className="h-4 w-4 text-slate-400" /> : <ChevronRight className="h-4 w-4 text-slate-400" />}
+                  </button>
+                  {openSections.obstructions && (
+                    <div className="p-4 space-y-3">
+                      {formData.site_measurements.obstructions.map((obs, idx) => (
+                        <div key={`obs-${idx}`} className="flex gap-2 items-start">
+                          <Input value={obs.name} onChange={(e) => updateObstruction(idx, 'name', e.target.value)} placeholder="e.g., Water Tank" className="flex-1 h-10" data-testid={`obstruction-name-${idx}`} />
+                          <Input value={obs.notes} onChange={(e) => updateObstruction(idx, 'notes', e.target.value)} placeholder="Position / Notes" className="flex-1 h-10" data-testid={`obstruction-notes-${idx}`} />
+                          <Button type="button" variant="ghost" size="icon" className="h-10 w-10 text-red-500 shrink-0" onClick={() => removeObstruction(idx)}><X className="h-4 w-4" /></Button>
+                        </div>
+                      ))}
+                      <Button type="button" variant="outline" size="sm" onClick={addObstruction} className="h-9 gap-1.5 text-xs" data-testid="add-obstruction-btn"><Plus className="h-3.5 w-3.5" />Add Obstruction</Button>
+                    </div>
+                  )}
+                </div>
+
+                {/* Electrical Details */}
+                <div className="border border-slate-200 rounded-lg overflow-hidden" data-testid="section-electrical-m">
+                  <button type="button" onClick={() => toggleSection('electrical_m')} className="w-full flex items-center justify-between p-3 bg-slate-50 hover:bg-slate-100 transition-colors">
+                    <span className="flex items-center gap-2 font-semibold text-sm text-slate-800"><PlugZap className="h-4 w-4 text-yellow-500" />Electrical Details</span>
+                    {openSections.electrical_m ? <ChevronDown className="h-4 w-4 text-slate-400" /> : <ChevronRight className="h-4 w-4 text-slate-400" />}
+                  </button>
+                  {openSections.electrical_m && (
+                    <div className="p-4 space-y-3">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div className="space-y-1"><Label className="text-xs">EB Meter Location</Label><Input value={formData.site_measurements.electrical.meter_location} onChange={(e) => updateMeasurement('electrical', 'meter_location', e.target.value)} placeholder="e.g., Ground floor, left wall" className="h-10" data-testid="meter-location-input" /></div>
+                        <div className="space-y-1"><Label className="text-xs">Distance from Roof to DB (ft)</Label><Input type="number" step="0.1" min="0" value={formData.site_measurements.electrical.db_distance} onChange={(e) => updateMeasurement('electrical', 'db_distance', e.target.value)} placeholder="e.g., 25" className="h-10" data-testid="db-distance-input" /></div>
+                      </div>
+                      <div className="space-y-1"><Label className="text-xs">Estimated Cable Length (ft)</Label><Input type="number" step="0.1" min="0" value={formData.site_measurements.electrical.cable_length} onChange={(e) => updateMeasurement('electrical', 'cable_length', e.target.value)} placeholder="e.g., 50" className="h-10" data-testid="meas-cable-length-input" /></div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Load Details */}
+                <div className="border border-slate-200 rounded-lg overflow-hidden" data-testid="section-load-m">
+                  <button type="button" onClick={() => toggleSection('load_m')} className="w-full flex items-center justify-between p-3 bg-slate-50 hover:bg-slate-100 transition-colors">
+                    <span className="flex items-center gap-2 font-semibold text-sm text-slate-800"><Gauge className="h-4 w-4 text-emerald-500" />Load Details</span>
+                    {openSections.load_m ? <ChevronDown className="h-4 w-4 text-slate-400" /> : <ChevronRight className="h-4 w-4 text-slate-400" />}
+                  </button>
+                  {openSections.load_m && (
+                    <div className="p-4 space-y-3">
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        <div className="space-y-1"><Label className="text-xs">Monthly EB Units</Label><Input type="number" min="0" value={formData.site_measurements.load.monthly_units} onChange={(e) => updateMeasurement('load', 'monthly_units', e.target.value)} placeholder="e.g., 500" className="h-10" data-testid="meas-monthly-units-input" /></div>
+                        <div className="space-y-1"><Label className="text-xs">Connected Load (kW)</Label><Input type="number" step="0.1" min="0" value={formData.site_measurements.load.connected_load} onChange={(e) => updateMeasurement('load', 'connected_load', e.target.value)} placeholder="e.g., 5" className="h-10" data-testid="meas-connected-load-input" /></div>
+                        <div className="space-y-1"><Label className="text-xs">Connection Type</Label>
+                          <Select value={formData.site_measurements.load.connection_type} onValueChange={(v) => updateMeasurement('load', 'connection_type', v)}>
+                            <SelectTrigger className="h-10" data-testid="connection-type-select"><SelectValue placeholder="Select" /></SelectTrigger>
+                            <SelectContent><SelectItem value="Residential">Residential</SelectItem><SelectItem value="Commercial">Commercial</SelectItem><SelectItem value="Industrial">Industrial</SelectItem></SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Inverter & Earthing */}
+                <div className="border border-slate-200 rounded-lg overflow-hidden" data-testid="section-inverter">
+                  <button type="button" onClick={() => toggleSection('inverter')} className="w-full flex items-center justify-between p-3 bg-slate-50 hover:bg-slate-100 transition-colors">
+                    <span className="flex items-center gap-2 font-semibold text-sm text-slate-800"><Settings2 className="h-4 w-4 text-purple-500" />Inverter & Earthing</span>
+                    {openSections.inverter ? <ChevronDown className="h-4 w-4 text-slate-400" /> : <ChevronRight className="h-4 w-4 text-slate-400" />}
+                  </button>
+                  {openSections.inverter && (
+                    <div className="p-4 space-y-3">
+                      <div className="space-y-1"><Label className="text-xs">Inverter Installation Location</Label><Input value={formData.site_measurements.inverter.location} onChange={(e) => updateMeasurement('inverter', 'location', e.target.value)} placeholder="e.g., Near main DB, ground floor" className="h-10" data-testid="inverter-location-input" /></div>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        <div className="space-y-1"><Label className="text-xs">Wall Space Available?</Label>
+                          <Select value={formData.site_measurements.inverter.wall_space} onValueChange={(v) => updateMeasurement('inverter', 'wall_space', v)}>
+                            <SelectTrigger className="h-10" data-testid="wall-space-select"><SelectValue placeholder="Select" /></SelectTrigger>
+                            <SelectContent><SelectItem value="Yes">Yes</SelectItem><SelectItem value="No">No</SelectItem></SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-1"><Label className="text-xs">Existing Earthing?</Label>
+                          <Select value={formData.site_measurements.inverter.earthing_available} onValueChange={(v) => updateMeasurement('inverter', 'earthing_available', v)}>
+                            <SelectTrigger className="h-10" data-testid="earthing-available-select"><SelectValue placeholder="Select" /></SelectTrigger>
+                            <SelectContent><SelectItem value="Yes">Yes</SelectItem><SelectItem value="No">No</SelectItem></SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-1"><Label className="text-xs">Distance to Earthing (ft)</Label><Input type="number" step="0.1" min="0" value={formData.site_measurements.inverter.earthing_distance} onChange={(e) => updateMeasurement('inverter', 'earthing_distance', e.target.value)} placeholder="e.g., 15" className="h-10" data-testid="earthing-distance-input" /></div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Access & Safety */}
+                <div className="border border-slate-200 rounded-lg overflow-hidden" data-testid="section-access">
+                  <button type="button" onClick={() => toggleSection('access')} className="w-full flex items-center justify-between p-3 bg-slate-50 hover:bg-slate-100 transition-colors">
+                    <span className="flex items-center gap-2 font-semibold text-sm text-slate-800"><HardHat className="h-4 w-4 text-teal-500" />Access & Safety</span>
+                    {openSections.access ? <ChevronDown className="h-4 w-4 text-slate-400" /> : <ChevronRight className="h-4 w-4 text-slate-400" />}
+                  </button>
+                  {openSections.access && (
+                    <div className="p-4 space-y-3">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div className="space-y-1"><Label className="text-xs">Roof Access Type</Label>
+                          <Select value={formData.site_measurements.access.type} onValueChange={(v) => updateMeasurement('access', 'type', v)}>
+                            <SelectTrigger className="h-10" data-testid="access-type-select"><SelectValue placeholder="Select" /></SelectTrigger>
+                            <SelectContent><SelectItem value="Stairs">Stairs</SelectItem><SelectItem value="Ladder">Ladder</SelectItem><SelectItem value="Direct">Direct Access</SelectItem></SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-1"><Label className="text-xs">Working Space Available?</Label>
+                          <Select value={formData.site_measurements.access.working_space} onValueChange={(v) => updateMeasurement('access', 'working_space', v)}>
+                            <SelectTrigger className="h-10" data-testid="working-space-select"><SelectValue placeholder="Select" /></SelectTrigger>
+                            <SelectContent><SelectItem value="Yes">Yes</SelectItem><SelectItem value="No">No</SelectItem></SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+                      <div className="space-y-1"><Label className="text-xs">Safety Notes</Label><Textarea rows={2} value={formData.site_measurements.access.notes} onChange={(e) => updateMeasurement('access', 'notes', e.target.value)} placeholder="Any safety observations..." className="min-h-[60px]" data-testid="safety-notes-input" /></div>
+                    </div>
+                  )}
+                </div>
+
+              </div>
+            )}
+
+            {/* Step 6: Site Documentation */}
+            {currentStep === 6 && (
               <div className="space-y-5">
                 <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
                   <p className="text-sm font-medium text-blue-800">Link your Google Drive folder containing site images and documentation for this project.</p>
@@ -580,7 +1094,7 @@ export default function SiteVisitForm() {
             {/* Navigation */}
             <div className="flex justify-between mt-6 pt-4 border-t border-slate-200 sticky bottom-0 bg-white pb-4 -mx-4 px-4 sm:-mx-6 sm:px-6 sm:static sm:bg-transparent sm:pb-0">
               <Button type="button" variant="outline" onClick={prevStep} disabled={currentStep === 1} className="gap-2 h-12" data-testid="prev-step-btn"><ArrowLeft className="h-4 w-4" /><span className="hidden sm:inline">Previous</span><span className="sm:hidden">Back</span></Button>
-              {currentStep < 5 ? (
+              {currentStep < 6 ? (
                 <Button type="button" onClick={nextStep} className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white h-12" data-testid="next-step-btn">Next <ArrowRight className="h-4 w-4" /></Button>
               ) : (
                 <Button type="button" onClick={handleSubmit} disabled={loading || !formData.drive_folder_link} className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white h-12" data-testid="submit-project-btn">

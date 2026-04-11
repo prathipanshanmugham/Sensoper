@@ -8,7 +8,7 @@ import pytest
 import requests
 import os
 
-BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', 'https://solar-project-hub-7.preview.emergentagent.com')
+BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', 'https://admin-tabs-studio.preview.emergentagent.com')
 
 class TestCompanyProfileAPI:
     """Company Profile API endpoint tests"""

@@ -13,7 +13,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { 
   ArrowLeft, Loader2, User, MapPin, Zap, Sun, Clock, CheckCircle2, XCircle, 
   AlertCircle, Download, Share2, Trash2, Send, AlertTriangle, Package, Percent, 
-  Video, Upload, Film, Pencil, Save, X, MessageSquare, QrCode, FolderOpen, Camera,
+  Video, Upload, Film, Pencil, Save, X, MessageSquare, QrCode, FolderOpen, Camera, Ruler,
   ExternalLink, Copy, Link2
 } from 'lucide-react';
 import jsPDF from 'jspdf';
@@ -561,6 +561,91 @@ export default function ProjectDetails() {
                         }}
                       />
                       <p className="text-xs text-slate-500 mt-2 text-center max-w-[200px] break-all">{project.drive_folder_link}</p>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Site Measurements */}
+            {project.site_measurements && Object.keys(project.site_measurements).length > 0 && (
+              <Card className="border-slate-200" data-testid="site-measurements-card">
+                <CardHeader className="pb-3"><CardTitle className="text-lg font-['Outfit'] flex items-center gap-2"><Ruler className="h-5 w-5 text-orange-500" />Site Measurements</CardTitle></CardHeader>
+                <CardContent className="space-y-4 text-sm">
+                  {project.site_measurements.roof && (project.site_measurements.roof.length || project.site_measurements.roof.type) && (
+                    <div><p className="font-semibold text-slate-700 mb-1.5">Roof Details</p>
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-1 text-slate-600">
+                        {project.site_measurements.roof.length && <p>Length: <span className="font-medium text-slate-800">{project.site_measurements.roof.length} ft</span></p>}
+                        {project.site_measurements.roof.width && <p>Width: <span className="font-medium text-slate-800">{project.site_measurements.roof.width} ft</span></p>}
+                        {project.site_measurements.roof.area && <p>Area: <span className="font-medium text-slate-800">{project.site_measurements.roof.area} sq ft</span></p>}
+                        {project.site_measurements.roof.type && <p>Type: <span className="font-medium text-slate-800">{project.site_measurements.roof.type}</span></p>}
+                        {project.site_measurements.roof.height && <p>Height: <span className="font-medium text-slate-800">{project.site_measurements.roof.height} ft</span></p>}
+                      </div>
+                    </div>
+                  )}
+                  {project.site_measurements.orientation && (project.site_measurements.orientation.direction || project.site_measurements.orientation.tilt_angle) && (
+                    <div><p className="font-semibold text-slate-700 mb-1.5">Orientation & Tilt</p>
+                      <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-slate-600">
+                        {project.site_measurements.orientation.direction && <p>Direction: <span className="font-medium text-slate-800">{project.site_measurements.orientation.direction}</span></p>}
+                        {project.site_measurements.orientation.tilt_angle && <p>Tilt: <span className="font-medium text-slate-800">{project.site_measurements.orientation.tilt_angle} deg</span></p>}
+                      </div>
+                    </div>
+                  )}
+                  {project.site_measurements.shadow && project.site_measurements.shadow.present && (
+                    <div><p className="font-semibold text-slate-700 mb-1.5">Shadow Analysis</p>
+                      <div className="text-slate-600 space-y-0.5">
+                        {project.site_measurements.shadow.sources?.length > 0 && <p>Sources: <span className="font-medium text-slate-800">{project.site_measurements.shadow.sources.join(', ')}</span></p>}
+                        <div className="flex gap-4">
+                          {project.site_measurements.shadow.obstruction_height && <p>Height: <span className="font-medium text-slate-800">{project.site_measurements.shadow.obstruction_height} ft</span></p>}
+                          {project.site_measurements.shadow.distance && <p>Distance: <span className="font-medium text-slate-800">{project.site_measurements.shadow.distance} ft</span></p>}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  {project.site_measurements.obstructions?.length > 0 && (
+                    <div><p className="font-semibold text-slate-700 mb-1.5">Obstructions</p>
+                      <div className="flex flex-wrap gap-2">
+                        {project.site_measurements.obstructions.map((o, i) => (
+                          <span key={o.name || `obs-${i}`} className="px-2.5 py-1 bg-red-50 text-red-700 rounded-md text-xs border border-red-200">{o.name}{o.notes ? ` (${o.notes})` : ''}</span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {project.site_measurements.electrical && (project.site_measurements.electrical.meter_location || project.site_measurements.electrical.db_distance) && (
+                    <div><p className="font-semibold text-slate-700 mb-1.5">Electrical</p>
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-1 text-slate-600">
+                        {project.site_measurements.electrical.meter_location && <p>Meter: <span className="font-medium text-slate-800">{project.site_measurements.electrical.meter_location}</span></p>}
+                        {project.site_measurements.electrical.db_distance && <p>DB Dist: <span className="font-medium text-slate-800">{project.site_measurements.electrical.db_distance} ft</span></p>}
+                        {project.site_measurements.electrical.cable_length && <p>Cable: <span className="font-medium text-slate-800">{project.site_measurements.electrical.cable_length} ft</span></p>}
+                      </div>
+                    </div>
+                  )}
+                  {project.site_measurements.load && (project.site_measurements.load.monthly_units || project.site_measurements.load.connection_type) && (
+                    <div><p className="font-semibold text-slate-700 mb-1.5">Load</p>
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-1 text-slate-600">
+                        {project.site_measurements.load.monthly_units && <p>Monthly: <span className="font-medium text-slate-800">{project.site_measurements.load.monthly_units} units</span></p>}
+                        {project.site_measurements.load.connected_load && <p>Load: <span className="font-medium text-slate-800">{project.site_measurements.load.connected_load} kW</span></p>}
+                        {project.site_measurements.load.connection_type && <p>Type: <span className="font-medium text-slate-800">{project.site_measurements.load.connection_type}</span></p>}
+                      </div>
+                    </div>
+                  )}
+                  {project.site_measurements.inverter && (project.site_measurements.inverter.location || project.site_measurements.inverter.wall_space) && (
+                    <div><p className="font-semibold text-slate-700 mb-1.5">Inverter & Earthing</p>
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-1 text-slate-600">
+                        {project.site_measurements.inverter.location && <p>Location: <span className="font-medium text-slate-800">{project.site_measurements.inverter.location}</span></p>}
+                        {project.site_measurements.inverter.wall_space && <p>Wall Space: <span className="font-medium text-slate-800">{project.site_measurements.inverter.wall_space}</span></p>}
+                        {project.site_measurements.inverter.earthing_available && <p>Earthing: <span className="font-medium text-slate-800">{project.site_measurements.inverter.earthing_available}</span></p>}
+                        {project.site_measurements.inverter.earthing_distance && <p>Earthing Dist: <span className="font-medium text-slate-800">{project.site_measurements.inverter.earthing_distance} ft</span></p>}
+                      </div>
+                    </div>
+                  )}
+                  {project.site_measurements.access && (project.site_measurements.access.type || project.site_measurements.access.working_space) && (
+                    <div><p className="font-semibold text-slate-700 mb-1.5">Access & Safety</p>
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-1 text-slate-600">
+                        {project.site_measurements.access.type && <p>Access: <span className="font-medium text-slate-800">{project.site_measurements.access.type}</span></p>}
+                        {project.site_measurements.access.working_space && <p>Work Space: <span className="font-medium text-slate-800">{project.site_measurements.access.working_space}</span></p>}
+                        {project.site_measurements.access.notes && <p className="col-span-2">Notes: <span className="font-medium text-slate-800">{project.site_measurements.access.notes}</span></p>}
+                      </div>
                     </div>
                   )}
                 </CardContent>

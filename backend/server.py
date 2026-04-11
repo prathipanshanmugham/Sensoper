@@ -163,6 +163,7 @@ class ProjectCreate(BaseModel):
     drive_folder_name: Optional[str] = None
     drive_folder_link: Optional[str] = None
     drive_folder_id: Optional[str] = None
+    site_measurements: Optional[dict] = None
 
 class ProjectUpdate(BaseModel):
     customer: Optional[CustomerDetails] = None
@@ -177,6 +178,7 @@ class ProjectUpdate(BaseModel):
     drive_folder_name: Optional[str] = None
     drive_folder_link: Optional[str] = None
     drive_folder_id: Optional[str] = None
+    site_measurements: Optional[dict] = None
     status: Optional[Literal["draft", "submitted", "approved", "rejected", "completed", "deletion_requested"]] = None
 
 class AIRecommendationRequest(BaseModel):
@@ -1492,6 +1494,7 @@ async def create_project(project: ProjectCreate, request: Request):
         "drive_folder_name": project.drive_folder_name or "",
         "drive_folder_link": project.drive_folder_link or "",
         "drive_folder_id": project.drive_folder_id or "",
+        "site_measurements": project.site_measurements or {},
         "status": "draft",
         "created_by": user["id"],
         "created_by_name": user["name"],
@@ -1591,6 +1594,7 @@ async def get_project(project_id: str, request: Request):
         "drive_folder_name": project.get("drive_folder_name", ""),
         "drive_folder_link": project.get("drive_folder_link", ""),
         "drive_folder_id": project.get("drive_folder_id", ""),
+        "site_measurements": project.get("site_measurements", {}),
         "completion_media": project.get("completion_media", []),
         "customer_feedback": project.get("customer_feedback"),
         "status": project["status"],
@@ -1649,6 +1653,8 @@ async def update_project(project_id: str, updates: ProjectUpdate, request: Reque
         update_data["drive_folder_link"] = updates.drive_folder_link
     if updates.drive_folder_id is not None:
         update_data["drive_folder_id"] = updates.drive_folder_id
+    if updates.site_measurements is not None:
+        update_data["site_measurements"] = updates.site_measurements
     if updates.selected_items is not None:
         update_data["selected_items"] = [si.model_dump() for si in updates.selected_items]
     if updates.manual_costs is not None:
@@ -2677,7 +2683,7 @@ frontend_url = os.environ.get("FRONTEND_URL", "http://localhost:3000")
 app.add_middleware(
     CORSMiddleware,
     allow_credentials=True,
-    allow_origins=[frontend_url, "http://localhost:3000", "https://solar-project-hub-7.preview.emergentagent.com"],
+    allow_origins=[frontend_url, "http://localhost:3000", "https://admin-tabs-studio.preview.emergentagent.com"],
     allow_methods=["*"],
     allow_headers=["*"],
 )
