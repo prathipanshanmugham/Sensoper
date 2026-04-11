@@ -164,6 +164,7 @@ class ProjectCreate(BaseModel):
     drive_folder_link: Optional[str] = None
     drive_folder_id: Optional[str] = None
     site_measurements: Optional[dict] = None
+    custom_fields: Optional[dict] = None
 
 class ProjectUpdate(BaseModel):
     customer: Optional[CustomerDetails] = None
@@ -179,6 +180,7 @@ class ProjectUpdate(BaseModel):
     drive_folder_link: Optional[str] = None
     drive_folder_id: Optional[str] = None
     site_measurements: Optional[dict] = None
+    custom_fields: Optional[dict] = None
     status: Optional[Literal["draft", "submitted", "approved", "rejected", "completed", "deletion_requested"]] = None
 
 class AIRecommendationRequest(BaseModel):
@@ -281,6 +283,27 @@ class CompanyProfileUpdate(BaseModel):
     authorized_signatory: Optional[str] = None
     designation: Optional[str] = None
     is_active: Optional[bool] = None
+
+# ================== FORM TABS (Dynamic Form Engine) MODELS ==================
+
+class FormFieldDefinition(BaseModel):
+    name: str
+    label: str
+    type: str  # text, number, select, textarea, checkbox, date
+    required: bool = False
+    placeholder: str = ""
+    options: List[str] = []
+
+class FormTabCreate(BaseModel):
+    name: str
+    fields: List[FormFieldDefinition]
+    roles_visible: List[str] = ["admin", "manager", "staff"]
+
+class FormTabUpdate(BaseModel):
+    name: Optional[str] = None
+    fields: Optional[List[FormFieldDefinition]] = None
+    roles_visible: Optional[List[str]] = None
+    active: Optional[bool] = None
 
 # ================== HELPER FUNCTIONS ==================
 
@@ -1495,6 +1518,7 @@ async def create_project(project: ProjectCreate, request: Request):
         "drive_folder_link": project.drive_folder_link or "",
         "drive_folder_id": project.drive_folder_id or "",
         "site_measurements": project.site_measurements or {},
+        "custom_fields": project.custom_fields or {},
         "status": "draft",
         "created_by": user["id"],
         "created_by_name": user["name"],
@@ -1595,6 +1619,7 @@ async def get_project(project_id: str, request: Request):
         "drive_folder_link": project.get("drive_folder_link", ""),
         "drive_folder_id": project.get("drive_folder_id", ""),
         "site_measurements": project.get("site_measurements", {}),
+        "custom_fields": project.get("custom_fields", {}),
         "completion_media": project.get("completion_media", []),
         "customer_feedback": project.get("customer_feedback"),
         "status": project["status"],
@@ -1655,6 +1680,8 @@ async def update_project(project_id: str, updates: ProjectUpdate, request: Reque
         update_data["drive_folder_id"] = updates.drive_folder_id
     if updates.site_measurements is not None:
         update_data["site_measurements"] = updates.site_measurements
+    if updates.custom_fields is not None:
+        update_data["custom_fields"] = updates.custom_fields
     if updates.selected_items is not None:
         update_data["selected_items"] = [si.model_dump() for si in updates.selected_items]
     if updates.manual_costs is not None:
@@ -2529,6 +2556,91 @@ async def get_logo_base64():
         logger.error(f"Failed to fetch logo for base64: {e}")
     return {"logo_base64": None}
 
+# ================== FORM TABS (Dynamic Form Engine) ==================
+
+@api_router.get("/form-tabs")
+async def get_form_tabs(request: Request):
+    user = await get_current_user(request)
+    query = {}
+    if user["role"] != "admin":
+        query["active"] = True
+        query["roles_visible"] = user["role"]
+    tabs = await db.form_tabs.find(query, {"_id": 0}).sort("order", 1).to_list(100)
+    for t in tabs:
+        if "id" not in t:
+            doc = await db.form_tabs.find_one({"slug": t.get("slug")})
+            if doc:
+                t["id"] = str(doc["_id"])
+    return tabs
+
+@api_router.post("/form-tabs")
+async def create_form_tab(tab: FormTabCreate, request: Request):
+    user = await require_permission(request, "can_manage_company")
+    slug = tab.name.strip().lower().replace(" ", "_")
+    slug = "".join(c for c in slug if c.isalnum() or c == "_")
+    existing = await db.form_tabs.find_one({"slug": slug})
+    if existing:
+        raise HTTPException(status_code=400, detail="A tab with this name already exists")
+    max_order = await db.form_tabs.find_one(sort=[("order", -1)])
+    next_order = (max_order["order"] + 1) if max_order else 1
+    doc = {
+        "name": tab.name.strip(),
+        "slug": slug,
+        "fields": [f.model_dump() for f in tab.fields],
+        "roles_visible": tab.roles_visible,
+        "order": next_order,
+        "active": True,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "updated_at": datetime.now(timezone.utc).isoformat()
+    }
+    result = await db.form_tabs.insert_one(doc)
+    await create_audit_log(user["id"], user["name"], "create", "form_tab", str(result.inserted_id), None, {"name": tab.name})
+    return {"id": str(result.inserted_id), "message": "Form tab created"}
+
+@api_router.put("/form-tabs/reorder")
+async def reorder_form_tabs(request: Request):
+    await require_permission(request, "can_manage_company")
+    body = await request.json()
+    order_list = body.get("order", [])
+    for idx, tab_id in enumerate(order_list):
+        await db.form_tabs.update_one({"_id": ObjectId(tab_id)}, {"$set": {"order": idx + 1, "updated_at": datetime.now(timezone.utc).isoformat()}})
+    return {"message": "Tabs reordered"}
+
+@api_router.put("/form-tabs/{tab_id}")
+async def update_form_tab(tab_id: str, updates: FormTabUpdate, request: Request):
+    user = await require_permission(request, "can_manage_company")
+    tab = await db.form_tabs.find_one({"_id": ObjectId(tab_id)})
+    if not tab:
+        raise HTTPException(status_code=404, detail="Tab not found")
+    update_data = {"updated_at": datetime.now(timezone.utc).isoformat()}
+    if updates.name is not None:
+        update_data["name"] = updates.name.strip()
+        new_slug = updates.name.strip().lower().replace(" ", "_")
+        new_slug = "".join(c for c in new_slug if c.isalnum() or c == "_")
+        existing = await db.form_tabs.find_one({"slug": new_slug, "_id": {"$ne": ObjectId(tab_id)}})
+        if existing:
+            raise HTTPException(status_code=400, detail="A tab with this name already exists")
+        update_data["slug"] = new_slug
+    if updates.fields is not None:
+        update_data["fields"] = [f.model_dump() for f in updates.fields]
+    if updates.roles_visible is not None:
+        update_data["roles_visible"] = updates.roles_visible
+    if updates.active is not None:
+        update_data["active"] = updates.active
+    await db.form_tabs.update_one({"_id": ObjectId(tab_id)}, {"$set": update_data})
+    await create_audit_log(user["id"], user["name"], "update", "form_tab", tab_id)
+    return {"message": "Tab updated"}
+
+@api_router.delete("/form-tabs/{tab_id}")
+async def delete_form_tab(tab_id: str, request: Request):
+    user = await require_permission(request, "can_manage_company")
+    tab = await db.form_tabs.find_one({"_id": ObjectId(tab_id)})
+    if not tab:
+        raise HTTPException(status_code=404, detail="Tab not found")
+    await db.form_tabs.delete_one({"_id": ObjectId(tab_id)})
+    await create_audit_log(user["id"], user["name"], "delete", "form_tab", tab_id, {"name": tab.get("name")})
+    return {"message": "Tab deleted"}
+
 # ================== HEALTH CHECK ==================
 
 @api_router.get("/")
@@ -2558,6 +2670,8 @@ async def startup_event():
     await db.deletion_requests.create_index("status")
     await db.approvals.create_index("status")
     await db.approvals.create_index("type")
+    await db.form_tabs.create_index("slug", unique=True)
+    await db.form_tabs.create_index("order")
     await db.approvals.create_index("requested_by")
     await db.approvals.create_index("timestamp")
     await db.role_permissions.create_index("role_name", unique=True)

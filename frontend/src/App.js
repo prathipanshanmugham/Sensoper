@@ -17,6 +17,7 @@ import AuditLogs from "./pages/AuditLogs";
 import CompanyProfile from "./pages/CompanyProfile";
 import ApprovalsPage from "./pages/ApprovalsPage";
 import PermissionsPage from "./pages/PermissionsPage";
+import FormTabsManager from "./pages/FormTabsManager";
 
 // Protected Route Component
 function ProtectedRoute({ children, allowedRoles = null }) {
@@ -153,6 +154,14 @@ function AppRoutes() {
         element={
           <ProtectedRoute allowedRoles={["admin"]}>
             <PermissionsPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/dashboard/form-tabs"
+        element={
+          <ProtectedRoute allowedRoles={["admin"]}>
+            <FormTabsManager />
           </ProtectedRoute>
         }
       />

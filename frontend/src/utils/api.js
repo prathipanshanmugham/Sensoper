@@ -148,4 +148,13 @@ export const permissionsAPI = {
   updateRole: (role, permissions) => api.put(`/permissions/${role}`, { permissions })
 };
 
+// Form Tabs API (Dynamic Form Engine)
+export const formTabsAPI = {
+  getAll: () => api.get('/form-tabs'),
+  create: (data) => api.post('/form-tabs', data),
+  update: (id, data) => api.put(`/form-tabs/${id}`, data),
+  delete: (id) => api.delete(`/form-tabs/${id}`),
+  reorder: (order) => api.put('/form-tabs/reorder', { order })
+};
+
 export default api;
