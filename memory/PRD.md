@@ -29,7 +29,9 @@ Build a production-ready Solar Project Cost Estimator web application for "Senso
 - [x] Editable reference number and project status
 - [x] Site images as QR code in PDF
 - [x] Edit projects (draft/approved)
-- [x] Google Drive Integration (simple folder name/link settings, no OAuth)
+- [x] Google Drive Integration (simple folder name/link per project, no OAuth)
+- [x] Site Documentation with QR code in PDF (drive folder link)
+- [x] QR Preview, Copy Link, Open Folder in project details
 - [x] Audit Logs, Deletion Approvals, Mobile Responsive, AI recommendations
 
 ## Permissions (16 per role)
