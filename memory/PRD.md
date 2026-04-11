@@ -15,7 +15,7 @@ Build a production-ready Solar Project Cost Estimator web application for "Senso
 - [x] Merged Site Measurements & Electrical into "Site & Electrical" tab
 - [x] Smart System Suggestions in Materials step (auto-calculates kW, panels, inverter, area)
 - [x] **Admin-Controlled Dynamic Tabs (Form Tab Builder)** — Admin can create/edit/delete/reorder custom tabs with 6 field types, mandatory rules, and role-based visibility
-- [x] **System Tabs in Form Builder** — Base tabs (Customer, Location, Site & Electrical, Materials, Site Docs) appear in builder as non-editable "System" entries, fully reorderable alongside custom tabs
+- [x] **System Tabs in Form Builder** — All tabs (system + custom) fully editable: rename, add fields, toggle active/inactive, delete, reorder. System tabs preserve slug on rename so hardcoded content still renders correctly.
 - [x] Dynamic Cost Estimation Engine with per-item margins
 - [x] Professional PDF Quotation with logo, QR codes, UPI QR
 - [x] Project Tracking Dashboard with status workflow
