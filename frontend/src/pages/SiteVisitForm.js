@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { projectsAPI, aiAPI, inventoryAPI, formTabsAPI } from '../utils/api';
@@ -56,6 +56,9 @@ export default function SiteVisitForm() {
   const [driveLinkValid, setDriveLinkValid] = useState(null);
   const [openSections, setOpenSections] = useState({ grid_electrical: true, roof: true, orientation: false, shadow: false, obstructions: false, electrical_m: false, load_m: false, inverter: false, access: false });
   const [allTabs, setAllTabs] = useState([]);
+  const [draftId, setDraftId] = useState(null);
+  const autoSaveTimer = useRef(null);
+  const lastSaved = useRef('');
 
   const canSetMargin = isAdmin || isManager;
 
@@ -149,6 +152,74 @@ export default function SiteVisitForm() {
     fetchDynamicTabs();
     if (editId) loadProject();
   }, [editId, fetchInventory, fetchCategories, fetchDynamicTabs, loadProject]);
+
+  // Auto-save as draft when form has customer name
+  useEffect(() => {
+    if (editId) return; // Don't auto-save when editing existing project
+    const hasData = formData.customer.name.trim().length >= 2;
+    if (!hasData) return;
+    
+    const dataStr = JSON.stringify(formData);
+    if (dataStr === lastSaved.current) return;
+    
+    if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
+    autoSaveTimer.current = setTimeout(async () => {
+      try {
+        // Convert empty strings to appropriate defaults for auto-save
+        const payload = {
+          customer: {
+            name: formData.customer.name,
+            phone: formData.customer.phone || '0000000000',
+            address: formData.customer.address || 'Draft - Address TBD',
+            email: formData.customer.email || null
+          },
+          location: formData.location,
+          electrical: {
+            sanction_load_kw: parseFloat(formData.electrical.sanction_load_kw) || 0,
+            connected_load_kw: parseFloat(formData.electrical.connected_load_kw) || 0,
+            monthly_consumption_units: parseFloat(formData.electrical.monthly_consumption_units) || 0,
+            eb_tariff: parseFloat(formData.electrical.eb_tariff) || 0,
+            service_type: formData.electrical.service_type || null
+          },
+          solar_system: {
+            system_type: formData.solar_system.system_type || 'on-grid',
+            inverter_model: formData.solar_system.inverter_model || null,
+            panel_wattage: parseInt(formData.solar_system.panel_wattage) || 540,
+            battery_required: formData.solar_system.battery_required || false,
+            battery_capacity_ah: formData.solar_system.battery_capacity_ah ? parseInt(formData.solar_system.battery_capacity_ah) : null
+          },
+          mounting: {
+            roof_type: formData.mounting.roof_type || 'TBD',
+            tilt_angle: parseInt(formData.mounting.tilt_angle) || 15,
+            structure_type: formData.mounting.structure_type || 'TBD'
+          },
+          additional: {
+            cable_length_meters: parseFloat(formData.additional.cable_length_meters) || 50,
+            inverter_to_panel_distance: parseFloat(formData.additional.inverter_to_panel_distance) || 10,
+            installation_complexity: formData.additional.installation_complexity || 'simple',
+            shadow_analysis_notes: formData.additional.shadow_analysis_notes || ''
+          },
+          selected_items: formData.selected_items,
+          manual_costs: formData.manual_costs,
+          drive_folder_name: formData.drive_folder_name,
+          drive_folder_link: formData.drive_folder_link || 'https://drive.google.com/drive/folders/draft',
+          site_measurements: formData.site_measurements,
+          custom_fields: formData.custom_fields
+        };
+        if (draftId) {
+          await projectsAPI.update(draftId, payload);
+        } else {
+          const res = await projectsAPI.create(payload);
+          if (res.data?.id) setDraftId(res.data.id);
+        }
+        lastSaved.current = dataStr;
+      } catch (err) {
+        console.error('Auto-save failed:', err);
+      }
+    }, 5000);
+    
+    return () => { if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current); };
+  }, [formData, editId, draftId]);
 
   const validateDriveLink = (link) => {
     if (!link) { setDriveLinkValid(null); return false; }
@@ -394,6 +465,9 @@ export default function SiteVisitForm() {
       if (isEditMode) {
         await projectsAPI.update(editId, payload);
         navigate(`/dashboard/projects/${editId}`);
+      } else if (draftId) {
+        await projectsAPI.update(draftId, payload);
+        navigate(`/dashboard/projects/${draftId}`);
       } else {
         const res = await projectsAPI.create(payload);
         navigate(`/dashboard/projects/${res.data.id}`);

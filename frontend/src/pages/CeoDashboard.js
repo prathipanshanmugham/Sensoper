@@ -70,7 +70,6 @@ export default function CeoDashboard() {
     <div className="min-h-screen bg-slate-50 py-6 px-4">
       <div className="max-w-7xl mx-auto">
         <div className="flex items-center gap-4 mb-6">
-          <Button variant="ghost" size="icon" onClick={() => navigate('/dashboard')} data-testid="back-btn"><ArrowLeft className="h-5 w-5" /></Button>
           <div className="flex-1">
             <h1 className="text-2xl font-bold font-['Outfit'] text-slate-900" data-testid="ceo-title">CEO Dashboard</h1>
             <p className="text-sm text-slate-500">High-level business overview</p>

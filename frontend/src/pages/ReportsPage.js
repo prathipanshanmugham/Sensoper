@@ -9,23 +9,33 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Badge } from '../components/ui/badge';
 import {
   ArrowLeft, Loader2, Download, FileSpreadsheet, FileText,
-  BarChart3, DollarSign, Briefcase, Package, Zap, Wrench, Receipt, Users, Megaphone, Star
+  BarChart3, DollarSign, Briefcase, Package, Zap, Wrench, Receipt, Users, Megaphone, Star,
+  TrendingDown, ArrowDownToLine, ArrowUpFromLine, AlertTriangle, Trash2, Activity
 } from 'lucide-react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import * as XLSX from 'xlsx';
 import { saveAs } from 'file-saver';
+import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
+
+const PIE_COLORS = ['#10b981', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#84cc16'];
 
 const REPORT_TYPES = [
-  { id: 'sales', label: 'Sales Report', icon: DollarSign, color: 'emerald' },
-  { id: 'profit', label: 'Profit Report', icon: BarChart3, color: 'blue' },
-  { id: 'execution', label: 'Project Execution', icon: Briefcase, color: 'violet' },
-  { id: 'inventory', label: 'Inventory Report', icon: Package, color: 'amber' },
-  { id: 'technical', label: 'Technical Report', icon: Zap, color: 'yellow' },
-  { id: 'om', label: 'O&M Report', icon: Wrench, color: 'teal' },
+  { id: 'sales', label: 'Sales', icon: DollarSign, color: 'emerald' },
+  { id: 'profit', label: 'Profit', icon: BarChart3, color: 'blue' },
+  { id: 'expense', label: 'Expense', icon: TrendingDown, color: 'red' },
+  { id: 'execution', label: 'Execution', icon: Briefcase, color: 'violet' },
+  { id: 'inventory', label: 'Inventory', icon: Package, color: 'amber' },
+  { id: 'inbound', label: 'Inbound', icon: ArrowDownToLine, color: 'teal' },
+  { id: 'outbound', label: 'Outbound', icon: ArrowUpFromLine, color: 'indigo' },
+  { id: 'low_stock', label: 'Low Stock', icon: AlertTriangle, color: 'orange' },
+  { id: 'excess', label: 'Excess Materials', icon: Package, color: 'cyan' },
+  { id: 'scrap', label: 'Scrap', icon: Trash2, color: 'slate' },
+  { id: 'price_fluctuation', label: 'Price Fluctuation', icon: Activity, color: 'pink' },
+  { id: 'technical_om', label: 'Technical & O&M', icon: Zap, color: 'yellow' },
   { id: 'compliance', label: 'Compliance & Tax', icon: Receipt, color: 'red' },
   { id: 'hr', label: 'HR & Productivity', icon: Users, color: 'indigo' },
-  { id: 'marketing', label: 'Marketing Report', icon: Megaphone, color: 'pink' },
+  { id: 'marketing', label: 'Marketing', icon: Megaphone, color: 'pink' },
   { id: 'customer', label: 'Customer Satisfaction', icon: Star, color: 'orange' }
 ];
 
@@ -141,7 +151,6 @@ export default function ReportsPage() {
     <div className="min-h-screen bg-slate-50 py-6 px-4">
       <div className="max-w-7xl mx-auto">
         <div className="flex items-center gap-4 mb-6">
-          <Button variant="ghost" size="icon" onClick={() => navigate('/dashboard')} data-testid="back-btn"><ArrowLeft className="h-5 w-5" /></Button>
           <div className="flex-1">
             <h1 className="text-2xl font-bold font-['Outfit'] text-slate-900" data-testid="reports-title">Reports</h1>
             <p className="text-sm text-slate-500">Generate and export business reports</p>
@@ -223,6 +232,32 @@ export default function ReportsPage() {
                   {Object.entries(reportData.summary).map(([k, v]) => (
                     <SummaryCard key={k} label={formatHeader(k)} value={typeof v === 'number' && v > 999 ? `Rs ${v.toLocaleString('en-IN')}` : v} />
                   ))}
+                </div>
+              )}
+
+              {/* Pie Chart Visualization */}
+              {reportData.chart_data && reportData.chart_data.length > 0 && (
+                <div className="mb-4 p-4 bg-white rounded-lg border border-slate-200" data-testid="report-chart">
+                  <p className="text-xs font-medium uppercase tracking-wider text-slate-400 mb-2">Visual Breakdown</p>
+                  <div className="flex items-center gap-6">
+                    <ResponsiveContainer width="50%" height={200}>
+                      <PieChart>
+                        <Pie data={reportData.chart_data} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`} labelLine={{ stroke: '#94a3b8' }} fontSize={11}>
+                          {reportData.chart_data.map((_, idx) => <Cell key={idx} fill={PIE_COLORS[idx % PIE_COLORS.length]} />)}
+                        </Pie>
+                        <Tooltip formatter={(v) => [typeof v === 'number' && v > 999 ? v.toLocaleString('en-IN') : v, 'Value']} />
+                      </PieChart>
+                    </ResponsiveContainer>
+                    <div className="flex-1 space-y-1.5">
+                      {reportData.chart_data.map((item, idx) => (
+                        <div key={item.name} className="flex items-center gap-2">
+                          <div className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: PIE_COLORS[idx % PIE_COLORS.length] }} />
+                          <span className="text-xs text-slate-600 flex-1 truncate">{item.name}</span>
+                          <span className="text-xs font-medium text-slate-900">{typeof item.value === 'number' && item.value > 999 ? item.value.toLocaleString('en-IN') : item.value}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
                 </div>
               )}
 

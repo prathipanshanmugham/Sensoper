@@ -20,6 +20,7 @@ import PermissionsPage from "./pages/PermissionsPage";
 import FormTabsManager from "./pages/FormTabsManager";
 import CeoDashboard from "./pages/CeoDashboard";
 import ReportsPage from "./pages/ReportsPage";
+import DashboardLayout from "./components/DashboardLayout";
 
 // Protected Route Component
 function ProtectedRoute({ children, allowedRoles = null }) {
@@ -84,131 +85,22 @@ function AppRoutes() {
         }
       />
 
-      {/* Protected Routes */}
-      <Route
-        path="/dashboard"
-        element={
-          <ProtectedRoute>
-            <Dashboard />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/dashboard/projects"
-        element={
-          <ProtectedRoute>
-            <ProjectList />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/dashboard/projects/new"
-        element={
-          <ProtectedRoute>
-            <SiteVisitForm />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/dashboard/projects/:editId/edit"
-        element={
-          <ProtectedRoute>
-            <SiteVisitForm />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/dashboard/projects/:id"
-        element={
-          <ProtectedRoute>
-            <ProjectDetails />
-          </ProtectedRoute>
-        }
-      />
-
-      {/* Admin Only Routes */}
-      <Route
-        path="/dashboard/users"
-        element={
-          <ProtectedRoute allowedRoles={["admin"]}>
-            <UserManagement />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/dashboard/audit-logs"
-        element={
-          <ProtectedRoute allowedRoles={["admin"]}>
-            <AuditLogs />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/dashboard/company-profile"
-        element={
-          <ProtectedRoute allowedRoles={["admin"]}>
-            <CompanyProfile />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/dashboard/permissions"
-        element={
-          <ProtectedRoute allowedRoles={["admin"]}>
-            <PermissionsPage />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/dashboard/form-tabs"
-        element={
-          <ProtectedRoute allowedRoles={["admin"]}>
-            <FormTabsManager />
-          </ProtectedRoute>
-        }
-      />
-
-      {/* Admin & Manager Routes */}
-      <Route
-        path="/dashboard/ceo"
-        element={
-          <ProtectedRoute allowedRoles={["admin", "manager"]}>
-            <CeoDashboard />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/dashboard/reports"
-        element={
-          <ProtectedRoute allowedRoles={["admin", "manager"]}>
-            <ReportsPage />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/dashboard/approvals"
-        element={
-          <ProtectedRoute allowedRoles={["admin", "manager"]}>
-            <ApprovalsPage />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/dashboard/terms"
-        element={
-          <ProtectedRoute allowedRoles={["admin", "manager"]}>
-            <TermsConditions />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/dashboard/inventory"
-        element={
-          <ProtectedRoute allowedRoles={["admin", "manager"]}>
-            <InventoryManagement />
-          </ProtectedRoute>
-        }
-      />
+      {/* Protected Routes - wrapped in DashboardLayout */}
+      <Route path="/dashboard" element={<ProtectedRoute><DashboardLayout><Dashboard /></DashboardLayout></ProtectedRoute>} />
+      <Route path="/dashboard/projects" element={<ProtectedRoute><DashboardLayout><ProjectList /></DashboardLayout></ProtectedRoute>} />
+      <Route path="/dashboard/projects/new" element={<ProtectedRoute><DashboardLayout><SiteVisitForm /></DashboardLayout></ProtectedRoute>} />
+      <Route path="/dashboard/projects/:editId/edit" element={<ProtectedRoute><DashboardLayout><SiteVisitForm /></DashboardLayout></ProtectedRoute>} />
+      <Route path="/dashboard/projects/:id" element={<ProtectedRoute><DashboardLayout><ProjectDetails /></DashboardLayout></ProtectedRoute>} />
+      <Route path="/dashboard/users" element={<ProtectedRoute allowedRoles={["admin"]}><DashboardLayout><UserManagement /></DashboardLayout></ProtectedRoute>} />
+      <Route path="/dashboard/audit-logs" element={<ProtectedRoute allowedRoles={["admin"]}><DashboardLayout><AuditLogs /></DashboardLayout></ProtectedRoute>} />
+      <Route path="/dashboard/company-profile" element={<ProtectedRoute allowedRoles={["admin"]}><DashboardLayout><CompanyProfile /></DashboardLayout></ProtectedRoute>} />
+      <Route path="/dashboard/permissions" element={<ProtectedRoute allowedRoles={["admin"]}><DashboardLayout><PermissionsPage /></DashboardLayout></ProtectedRoute>} />
+      <Route path="/dashboard/form-tabs" element={<ProtectedRoute allowedRoles={["admin"]}><DashboardLayout><FormTabsManager /></DashboardLayout></ProtectedRoute>} />
+      <Route path="/dashboard/ceo" element={<ProtectedRoute allowedRoles={["admin", "manager"]}><DashboardLayout><CeoDashboard /></DashboardLayout></ProtectedRoute>} />
+      <Route path="/dashboard/reports" element={<ProtectedRoute allowedRoles={["admin", "manager"]}><DashboardLayout><ReportsPage /></DashboardLayout></ProtectedRoute>} />
+      <Route path="/dashboard/approvals" element={<ProtectedRoute allowedRoles={["admin", "manager"]}><DashboardLayout><ApprovalsPage /></DashboardLayout></ProtectedRoute>} />
+      <Route path="/dashboard/terms" element={<ProtectedRoute allowedRoles={["admin", "manager"]}><DashboardLayout><TermsConditions /></DashboardLayout></ProtectedRoute>} />
+      <Route path="/dashboard/inventory" element={<ProtectedRoute allowedRoles={["admin", "manager"]}><DashboardLayout><InventoryManagement /></DashboardLayout></ProtectedRoute>} />
       {/* Default Redirect */}
       <Route path="/" element={<Navigate to="/dashboard" replace />} />
       <Route path="*" element={<Navigate to="/dashboard" replace />} />

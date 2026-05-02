@@ -2330,11 +2330,15 @@ async def get_report(report_type: str, request: Request, date_from: str = None, 
     if report_type == "sales":
         total_quotes = len(projects)
         approved = sum(1 for p in projects if p.get("status") in ["approved", "completed"])
+        rejected = sum(1 for p in projects if p.get("status") == "rejected")
+        draft = sum(1 for p in projects if p.get("status") == "draft")
         revenue = sum(p.get("cost_estimation", {}).get("total_cost", 0) for p in projects if p.get("status") in ["approved", "completed"])
+        chart_data = [{"name": "Approved/Won", "value": approved}, {"name": "Rejected", "value": rejected}, {"name": "Draft/Pending", "value": total_quotes - approved - rejected}]
         return {
             "title": "Sales Report",
             "summary": {"total_quotes": total_quotes, "approved_projects": approved, "conversion_rate": round((approved / total_quotes) * 100, 1) if total_quotes else 0, "revenue": round(revenue)},
-            "rows": [{"customer": p.get("customer", {}).get("name", ""), "ref": p.get("reference_number", ""), "status": p.get("status", ""), "total": round(p.get("cost_estimation", {}).get("total_cost", 0)), "date": p.get("created_at", "")[:10]} for p in projects]
+            "rows": [{"customer": p.get("customer", {}).get("name", ""), "ref": p.get("reference_number", ""), "status": p.get("status", ""), "total": round(p.get("cost_estimation", {}).get("total_cost", 0)), "date": p.get("created_at", "")[:10]} for p in projects],
+            "chart_data": [c for c in chart_data if c["value"] > 0]
         }
     
     elif report_type == "profit":
@@ -2351,7 +2355,7 @@ async def get_report(report_type: str, request: Request, date_from: str = None, 
             total_cost += base
             total_selling += selling
             total_margin += margin
-        return {"title": "Profit Report", "summary": {"total_base_cost": round(total_cost), "total_selling": round(total_selling), "total_margin": round(total_margin), "avg_margin_pct": round((total_margin / total_selling) * 100, 1) if total_selling else 0}, "rows": rows}
+        return {"title": "Profit Report", "summary": {"total_base_cost": round(total_cost), "total_selling": round(total_selling), "total_margin": round(total_margin), "avg_margin_pct": round((total_margin / total_selling) * 100, 1) if total_selling else 0}, "rows": rows, "chart_data": [{"name": "Base Cost", "value": round(total_cost)}, {"name": "Margin", "value": round(total_margin)}, {"name": "GST", "value": round(total_selling - total_cost - total_margin)}]}
     
     elif report_type == "execution":
         rows = []
@@ -2359,29 +2363,115 @@ async def get_report(report_type: str, request: Request, date_from: str = None, 
             created = p.get("created_at", "")[:10]
             updated = p.get("updated_at", "")[:10]
             rows.append({"customer": p.get("customer", {}).get("name", ""), "ref": p.get("reference_number", ""), "status": p.get("status", ""), "created": created, "updated": updated, "staff": p.get("created_by_name", ""), "system_kw": p.get("electrical", {}).get("sanction_load_kw", 0)})
-        return {"title": "Project Execution Report", "summary": {"total": len(rows), "completed": sum(1 for r in rows if r["status"] == "completed"), "in_progress": sum(1 for r in rows if r["status"] in ["submitted", "approved"])}, "rows": rows}
+        from collections import Counter
+        status_dist = Counter(r["status"] for r in rows)
+        return {"title": "Project Execution Report", "summary": {"total": len(rows), "completed": sum(1 for r in rows if r["status"] == "completed"), "in_progress": sum(1 for r in rows if r["status"] in ["submitted", "approved"])}, "rows": rows, "chart_data": [{"name": k, "value": v} for k, v in status_dist.items()]}
     
     elif report_type == "inventory":
         rows = [{"name": i.get("name", ""), "sku": i.get("sku_code", ""), "category": i.get("category", ""), "quantity": i.get("quantity", 0), "unit_price": round(i.get("unit_price", 0)), "total_value": round(i.get("unit_price", 0) * i.get("quantity", 0)), "reorder_level": i.get("reorder_level", 5), "low_stock": i.get("quantity", 0) <= i.get("reorder_level", 5)} for i in inv_items]
-        return {"title": "Procurement & Inventory Report", "summary": {"total_items": len(rows), "total_value": sum(r["total_value"] for r in rows), "low_stock_count": sum(1 for r in rows if r["low_stock"])}, "rows": rows}
+        from collections import defaultdict as dd_inv
+        cat_val = dd_inv(float)
+        for r in rows:
+            cat_val[r["category"]] += r["total_value"]
+        return {"title": "Procurement & Inventory Report", "summary": {"total_items": len(rows), "total_value": sum(r["total_value"] for r in rows), "low_stock_count": sum(1 for r in rows if r["low_stock"])}, "rows": rows, "chart_data": [{"name": k, "value": round(v)} for k, v in cat_val.items() if v > 0]}
     
-    elif report_type == "technical":
+    elif report_type == "technical_om":
         rows = []
         for p in projects:
             el = p.get("electrical", {})
             ss = p.get("solar_system", {})
-            rows.append({"customer": p.get("customer", {}).get("name", ""), "ref": p.get("reference_number", ""), "system_type": ss.get("system_type", ""), "sanction_kw": el.get("sanction_load_kw", 0), "monthly_units": el.get("monthly_consumption_units", 0), "panel_wattage": ss.get("panel_wattage", 0), "expected_gen_kwh": round(el.get("sanction_load_kw", 0) * 4 * 30, 1)})
-        return {"title": "Technical & Performance Report", "summary": {"total_capacity_kw": round(sum(r["sanction_kw"] for r in rows), 1), "avg_monthly_consumption": round(sum(r["monthly_units"] for r in rows) / len(rows)) if rows else 0}, "rows": rows}
+            is_complete = p.get("status") == "completed"
+            rows.append({"customer": p.get("customer", {}).get("name", ""), "ref": p.get("reference_number", ""), "system_type": ss.get("system_type", ""), "sanction_kw": el.get("sanction_load_kw", 0), "monthly_units": el.get("monthly_consumption_units", 0), "panel_wattage": ss.get("panel_wattage", 0), "expected_gen_kwh": round(el.get("sanction_load_kw", 0) * 4 * 30, 1), "status": p.get("status", ""), "om_status": "Active" if is_complete else "N/A"})
+        completed_count = sum(1 for r in rows if r["om_status"] == "Active")
+        total_kw = round(sum(r["sanction_kw"] for r in rows), 1)
+        return {"title": "Technical & O&M Report", "summary": {"total_capacity_kw": total_kw, "avg_monthly_consumption": round(sum(r["monthly_units"] for r in rows) / len(rows)) if rows else 0, "active_installations": completed_count, "total_projects": len(rows)}, "rows": rows, "chart_data": [{"name": "Active O&M", "value": completed_count}, {"name": "Not Installed", "value": len(rows) - completed_count}]}
+    
+    elif report_type == "expense":
+        from collections import defaultdict
+        rows = []
+        cat_totals = defaultdict(float)
+        for p in projects:
+            ce = p.get("cost_estimation", {})
+            items_total = ce.get("items_total", 0)
+            manual_total = ce.get("manual_total", 0)
+            gst = ce.get("gst_total", 0)
+            total = items_total + manual_total + gst
+            rows.append({"customer": p.get("customer", {}).get("name", ""), "ref": p.get("reference_number", ""), "materials": round(items_total), "labor_misc": round(manual_total), "gst": round(gst), "total_expense": round(total), "date": p.get("created_at", "")[:10]})
+            cat_totals["Materials"] += items_total
+            cat_totals["Labor & Misc"] += manual_total
+            cat_totals["GST"] += gst
+        chart_data = [{"name": k, "value": round(v)} for k, v in cat_totals.items() if v > 0]
+        return {"title": "Expense Report", "summary": {"total_expenses": round(sum(r["total_expense"] for r in rows)), "total_materials": round(cat_totals["Materials"]), "total_labor": round(cat_totals["Labor & Misc"]), "total_gst": round(cat_totals["GST"])}, "rows": rows, "chart_data": chart_data}
+    
+    elif report_type == "inbound":
+        rows = [{"name": i.get("name", ""), "sku": i.get("sku_code", ""), "category": i.get("category", ""), "current_stock": i.get("quantity", 0), "unit_price": round(i.get("unit_price", 0)), "total_value": round(i.get("unit_price", 0) * i.get("quantity", 0))} for i in inv_items if i.get("quantity", 0) > 0]
+        from collections import defaultdict
+        cat_stock = defaultdict(int)
+        for i in inv_items:
+            cat_stock[i.get("category", "other")] += i.get("quantity", 0)
+        chart_data = [{"name": k, "value": v} for k, v in cat_stock.items() if v > 0]
+        return {"title": "Inbound Report (Current Stock)", "summary": {"total_items_in_stock": sum(r["current_stock"] for r in rows), "total_stock_value": sum(r["total_value"] for r in rows), "categories": len(cat_stock)}, "rows": rows, "chart_data": chart_data}
+    
+    elif report_type == "outbound":
+        from collections import defaultdict
+        material_usage = defaultdict(lambda: {"name": "", "qty_used": 0, "revenue": 0})
+        for p in projects:
+            for si in p.get("selected_items", []):
+                key = si.get("name", "Unknown")
+                material_usage[key]["name"] = key
+                material_usage[key]["qty_used"] += si.get("quantity", 0)
+                material_usage[key]["revenue"] += si.get("unit_price", 0) * si.get("quantity", 0)
+        rows = [{"item": v["name"], "qty_used": v["qty_used"], "revenue": round(v["revenue"])} for v in sorted(material_usage.values(), key=lambda x: x["qty_used"], reverse=True)]
+        chart_data = [{"name": r["item"][:20], "value": r["qty_used"]} for r in rows[:8]]
+        return {"title": "Outbound Report (Material Usage)", "summary": {"unique_items_used": len(rows), "total_units_dispatched": sum(r["qty_used"] for r in rows), "total_outbound_value": sum(r["revenue"] for r in rows)}, "rows": rows, "chart_data": chart_data}
+    
+    elif report_type == "excess":
+        rows = [{"name": i.get("name", ""), "sku": i.get("sku_code", ""), "category": i.get("category", ""), "quantity": i.get("quantity", 0), "reorder_level": i.get("reorder_level", 5), "excess": max(0, i.get("quantity", 0) - i.get("reorder_level", 5) * 3), "unit_price": round(i.get("unit_price", 0)), "excess_value": round(max(0, i.get("quantity", 0) - i.get("reorder_level", 5) * 3) * i.get("unit_price", 0))} for i in inv_items if i.get("quantity", 0) > i.get("reorder_level", 5) * 3]
+        chart_data = [{"name": r["name"][:20], "value": r["excess"]} for r in sorted(rows, key=lambda x: x["excess_value"], reverse=True)[:8]]
+        return {"title": "Excess Materials Report", "summary": {"excess_items": len(rows), "total_excess_value": sum(r["excess_value"] for r in rows)}, "rows": rows, "chart_data": chart_data}
+    
+    elif report_type == "scrap":
+        rows = [{"name": i.get("name", ""), "sku": i.get("sku_code", ""), "category": i.get("category", ""), "quantity": i.get("quantity", 0), "status": "Potential Scrap" if i.get("quantity", 0) == 0 else "Low Use", "unit_price": round(i.get("unit_price", 0))} for i in inv_items if i.get("quantity", 0) <= 1]
+        chart_data = [{"name": "Zero Stock", "value": sum(1 for r in rows if r["quantity"] == 0)}, {"name": "Near Zero", "value": sum(1 for r in rows if r["quantity"] == 1)}]
+        return {"title": "Scrap Report", "summary": {"potential_scrap_items": len(rows), "zero_stock_items": sum(1 for r in rows if r["quantity"] == 0)}, "rows": rows, "chart_data": chart_data}
+    
+    elif report_type == "price_fluctuation":
+        from collections import defaultdict
+        item_prices = defaultdict(list)
+        for p in projects:
+            for si in p.get("selected_items", []):
+                item_prices[si.get("name", "Unknown")].append(si.get("unit_price", 0))
+        rows = []
+        for name, prices in item_prices.items():
+            if len(prices) >= 1:
+                rows.append({"item": name, "min_price": round(min(prices)), "max_price": round(max(prices)), "avg_price": round(sum(prices) / len(prices)), "fluctuation": round(max(prices) - min(prices)), "usage_count": len(prices)})
+        rows.sort(key=lambda x: x["fluctuation"], reverse=True)
+        chart_data = [{"name": r["item"][:20], "value": r["fluctuation"]} for r in rows[:8]]
+        return {"title": "Price Fluctuation Report", "summary": {"items_tracked": len(rows), "max_fluctuation": max(r["fluctuation"] for r in rows) if rows else 0}, "rows": rows, "chart_data": chart_data}
+    
+    elif report_type == "low_stock":
+        rows = [{"name": i.get("name", ""), "sku": i.get("sku_code", ""), "category": i.get("category", ""), "quantity": i.get("quantity", 0), "reorder_level": i.get("reorder_level", 5), "deficit": max(0, i.get("reorder_level", 5) - i.get("quantity", 0)), "unit_price": round(i.get("unit_price", 0)), "restock_cost": round(max(0, i.get("reorder_level", 5) - i.get("quantity", 0)) * i.get("unit_price", 0))} for i in inv_items if i.get("quantity", 0) <= i.get("reorder_level", 5)]
+        from collections import defaultdict
+        cat_counts = defaultdict(int)
+        for r in rows:
+            cat_counts[r["category"]] += 1
+        chart_data = [{"name": k, "value": v} for k, v in cat_counts.items()]
+        return {"title": "Low Stock Report", "summary": {"low_stock_items": len(rows), "total_restock_cost": sum(r["restock_cost"] for r in rows), "critical_zero": sum(1 for r in rows if r["quantity"] == 0)}, "rows": sorted(rows, key=lambda x: x["deficit"], reverse=True), "chart_data": chart_data}
     
     elif report_type == "compliance":
         rows = []
         total_gst = 0
+        from collections import defaultdict
+        monthly_gst = defaultdict(float)
         for p in projects:
             ce = p.get("cost_estimation", {})
             gst = ce.get("gst_total", 0)
             total_gst += gst
+            month = p.get("created_at", "")[:7]
+            monthly_gst[month] += gst
             rows.append({"customer": p.get("customer", {}).get("name", ""), "ref": p.get("reference_number", ""), "subtotal": round(ce.get("items_total", 0)), "gst": round(gst), "total": round(ce.get("total_cost", 0)), "date": p.get("created_at", "")[:10]})
-        return {"title": "Compliance & Tax Report", "summary": {"total_gst_collected": round(total_gst), "total_invoices": len(rows)}, "rows": rows}
+        chart_data = [{"name": k, "value": round(v)} for k, v in sorted(monthly_gst.items())[-6:]]
+        return {"title": "Compliance & Tax Report", "summary": {"total_gst_collected": round(total_gst), "total_invoices": len(rows)}, "rows": rows, "chart_data": chart_data}
     
     elif report_type == "hr":
         from collections import defaultdict
@@ -2395,7 +2485,8 @@ async def get_report(report_type: str, request: Request, date_from: str = None, 
             if p.get("status") in ["approved", "completed"]:
                 staff_data[uid]["revenue"] += p.get("cost_estimation", {}).get("total_cost", 0)
         rows = [{"staff": v["name"], "total_projects": v["projects"], "completed": v["completed"], "revenue": round(v["revenue"]), "completion_rate": round((v["completed"] / v["projects"]) * 100, 1) if v["projects"] else 0} for v in staff_data.values()]
-        return {"title": "HR & Productivity Report", "summary": {"total_staff": len(rows), "avg_projects_per_staff": round(sum(r["total_projects"] for r in rows) / len(rows), 1) if rows else 0}, "rows": sorted(rows, key=lambda x: x["revenue"], reverse=True)}
+        chart_data = [{"name": r["staff"][:15], "value": r["total_projects"]} for r in sorted(rows, key=lambda x: x["revenue"], reverse=True)[:8]]
+        return {"title": "HR & Productivity Report", "summary": {"total_staff": len(rows), "avg_projects_per_staff": round(sum(r["total_projects"] for r in rows) / len(rows), 1) if rows else 0}, "rows": sorted(rows, key=lambda x: x["revenue"], reverse=True), "chart_data": chart_data}
     
     elif report_type == "customer":
         rows = []
@@ -2403,7 +2494,8 @@ async def get_report(report_type: str, request: Request, date_from: str = None, 
             fb = p.get("customer_feedback")
             rows.append({"customer": p.get("customer", {}).get("name", ""), "ref": p.get("reference_number", ""), "status": p.get("status", ""), "feedback": fb or "No feedback", "has_feedback": bool(fb)})
         with_fb = sum(1 for r in rows if r["has_feedback"])
-        return {"title": "Customer Satisfaction Report", "summary": {"total_customers": len(rows), "feedback_received": with_fb, "feedback_rate": round((with_fb / len(rows)) * 100, 1) if rows else 0}, "rows": rows}
+        chart_data = [{"name": "With Feedback", "value": with_fb}, {"name": "No Feedback", "value": len(rows) - with_fb}]
+        return {"title": "Customer Satisfaction Report", "summary": {"total_customers": len(rows), "feedback_received": with_fb, "feedback_rate": round((with_fb / len(rows)) * 100, 1) if rows else 0}, "rows": rows, "chart_data": chart_data}
     
     elif report_type == "marketing":
         from collections import defaultdict
@@ -2414,12 +2506,8 @@ async def get_report(report_type: str, request: Request, date_from: str = None, 
             if p.get("status") in ["approved", "completed"]:
                 sources[src]["converted"] += 1
         rows = [{"source": k, "leads": v["count"], "converted": v["converted"], "conversion_rate": round((v["converted"] / v["count"]) * 100, 1) if v["count"] else 0} for k, v in sources.items()]
-        return {"title": "Marketing Report", "summary": {"total_sources": len(rows), "total_leads": sum(r["leads"] for r in rows)}, "rows": sorted(rows, key=lambda x: x["leads"], reverse=True)}
-    
-    elif report_type == "om":
-        # O&M placeholder - based on completed projects
-        rows = [{"customer": p.get("customer", {}).get("name", ""), "ref": p.get("reference_number", ""), "completed_at": p.get("updated_at", "")[:10], "system_type": p.get("solar_system", {}).get("system_type", ""), "status": "Active"} for p in projects if p.get("status") == "completed"]
-        return {"title": "Operations & Maintenance Report", "summary": {"total_installations": len(rows), "active_sites": len(rows)}, "rows": rows}
+        chart_data = [{"name": r["source"], "value": r["leads"]} for r in sorted(rows, key=lambda x: x["leads"], reverse=True)[:8]]
+        return {"title": "Marketing Report", "summary": {"total_sources": len(rows), "total_leads": sum(r["leads"] for r in rows)}, "rows": sorted(rows, key=lambda x: x["leads"], reverse=True), "chart_data": chart_data}
     
     raise HTTPException(status_code=404, detail=f"Unknown report type: {report_type}")
 
