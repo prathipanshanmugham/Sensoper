@@ -18,6 +18,8 @@ import CompanyProfile from "./pages/CompanyProfile";
 import ApprovalsPage from "./pages/ApprovalsPage";
 import PermissionsPage from "./pages/PermissionsPage";
 import FormTabsManager from "./pages/FormTabsManager";
+import CeoDashboard from "./pages/CeoDashboard";
+import ReportsPage from "./pages/ReportsPage";
 
 // Protected Route Component
 function ProtectedRoute({ children, allowedRoles = null }) {
@@ -167,6 +169,22 @@ function AppRoutes() {
       />
 
       {/* Admin & Manager Routes */}
+      <Route
+        path="/dashboard/ceo"
+        element={
+          <ProtectedRoute allowedRoles={["admin", "manager"]}>
+            <CeoDashboard />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/dashboard/reports"
+        element={
+          <ProtectedRoute allowedRoles={["admin", "manager"]}>
+            <ReportsPage />
+          </ProtectedRoute>
+        }
+      />
       <Route
         path="/dashboard/approvals"
         element={

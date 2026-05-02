@@ -49,7 +49,13 @@ export const usersAPI = {
 
 // Dashboard API
 export const dashboardAPI = {
-  getStats: () => api.get('/dashboard/stats')
+  getStats: () => api.get('/dashboard/stats'),
+  getCeo: () => api.get('/dashboard/ceo')
+};
+
+// Reports API
+export const reportsAPI = {
+  get: (type, params = {}) => api.get(`/reports/${type}`, { params })
 };
 
 // AI API

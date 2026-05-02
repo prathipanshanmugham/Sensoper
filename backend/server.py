@@ -2214,6 +2214,215 @@ async def get_dashboard_stats(request: Request):
     
     return stats
 
+# ================== CEO DASHBOARD ==================
+
+@api_router.get("/dashboard/ceo")
+async def get_ceo_dashboard(request: Request):
+    user = await get_current_user(request)
+    if user["role"] not in ["admin", "manager"]:
+        raise HTTPException(status_code=403, detail="CEO dashboard is admin/manager only")
+    
+    query = {"deleted_at": {"$exists": False}}
+    all_projects = await db.projects.find(query).to_list(5000)
+    
+    # Status counts
+    status_counts = {}
+    for p in all_projects:
+        s = p.get("status", "draft")
+        status_counts[s] = status_counts.get(s, 0) + 1
+    
+    total = len(all_projects)
+    completed = status_counts.get("completed", 0)
+    approved = status_counts.get("approved", 0)
+    
+    # Revenue & Profit
+    total_revenue = sum(p.get("cost_estimation", {}).get("total_cost", 0) for p in all_projects if p.get("status") in ["completed", "approved"])
+    total_margin = sum(p.get("cost_estimation", {}).get("margin_total", 0) for p in all_projects if p.get("status") in ["completed", "approved"])
+    
+    # Conversion rate
+    submitted_plus = sum(1 for p in all_projects if p.get("status") in ["submitted", "approved", "completed", "rejected"])
+    conversion_rate = round((completed / submitted_plus) * 100, 1) if submitted_plus > 0 else 0
+    
+    # Monthly revenue trend (last 12 months)
+    from collections import defaultdict
+    monthly_revenue = defaultdict(float)
+    monthly_projects = defaultdict(int)
+    for p in all_projects:
+        created = p.get("created_at", "")
+        if created:
+            month_key = created[:7]  # YYYY-MM
+            monthly_projects[month_key] += 1
+            if p.get("status") in ["completed", "approved"]:
+                monthly_revenue[month_key] += p.get("cost_estimation", {}).get("total_cost", 0)
+    
+    sorted_months = sorted(monthly_revenue.keys())[-12:]
+    revenue_trend = [{"month": m, "revenue": round(monthly_revenue.get(m, 0)), "projects": monthly_projects.get(m, 0)} for m in sorted_months]
+    
+    # Sales funnel
+    funnel = {
+        "total_leads": total,
+        "quotes_generated": sum(1 for p in all_projects if p.get("status") != "draft"),
+        "approved": approved + completed,
+        "completed": completed
+    }
+    
+    # Top staff
+    staff_perf = defaultdict(lambda: {"name": "", "count": 0, "revenue": 0})
+    for p in all_projects:
+        uid = p.get("created_by", "")
+        staff_perf[uid]["name"] = p.get("created_by_name", "Unknown")
+        staff_perf[uid]["count"] += 1
+        if p.get("status") in ["completed", "approved"]:
+            staff_perf[uid]["revenue"] += p.get("cost_estimation", {}).get("total_cost", 0)
+    top_staff = sorted(staff_perf.values(), key=lambda x: x["revenue"], reverse=True)[:5]
+    
+    # Inventory value
+    inv_items = await db.inventory_items.find().to_list(1000)
+    inventory_value = sum(i.get("unit_price", 0) * i.get("quantity", 0) for i in inv_items)
+    low_stock = sum(1 for i in inv_items if i.get("quantity", 0) <= i.get("reorder_level", 5))
+    
+    # Pending approvals
+    pending_approvals = await db.approvals.count_documents({"status": "pending"})
+    
+    return {
+        "kpis": {
+            "total_revenue": round(total_revenue),
+            "total_profit": round(total_margin),
+            "conversion_rate": conversion_rate,
+            "active_projects": status_counts.get("submitted", 0) + status_counts.get("approved", 0),
+            "completed_projects": completed,
+            "pending_approvals": pending_approvals,
+            "inventory_value": round(inventory_value),
+            "low_stock_alerts": low_stock,
+            "total_projects": total
+        },
+        "status_distribution": [{"name": k, "value": v} for k, v in status_counts.items()],
+        "revenue_trend": revenue_trend,
+        "sales_funnel": funnel,
+        "top_staff": top_staff
+    }
+
+# ================== REPORTS ENGINE ==================
+
+@api_router.get("/reports/{report_type}")
+async def get_report(report_type: str, request: Request, date_from: str = None, date_to: str = None, system_type: str = None, status: str = None):
+    user = await get_current_user(request)
+    if user["role"] not in ["admin", "manager"]:
+        raise HTTPException(status_code=403, detail="Reports are admin/manager only")
+    
+    query = {"deleted_at": {"$exists": False}}
+    if date_from:
+        query["created_at"] = {"$gte": date_from}
+    if date_to:
+        query.setdefault("created_at", {})
+        if isinstance(query["created_at"], dict):
+            query["created_at"]["$lte"] = date_to + "T23:59:59"
+        else:
+            query["created_at"] = {"$gte": query["created_at"], "$lte": date_to + "T23:59:59"}
+    if system_type and system_type != "all":
+        query["solar_system.system_type"] = system_type
+    if status and status != "all":
+        query["status"] = status
+    
+    projects = await db.projects.find(query).to_list(5000)
+    inv_items = await db.inventory_items.find().to_list(1000)
+    
+    if report_type == "sales":
+        total_quotes = len(projects)
+        approved = sum(1 for p in projects if p.get("status") in ["approved", "completed"])
+        revenue = sum(p.get("cost_estimation", {}).get("total_cost", 0) for p in projects if p.get("status") in ["approved", "completed"])
+        return {
+            "title": "Sales Report",
+            "summary": {"total_quotes": total_quotes, "approved_projects": approved, "conversion_rate": round((approved / total_quotes) * 100, 1) if total_quotes else 0, "revenue": round(revenue)},
+            "rows": [{"customer": p.get("customer", {}).get("name", ""), "ref": p.get("reference_number", ""), "status": p.get("status", ""), "total": round(p.get("cost_estimation", {}).get("total_cost", 0)), "date": p.get("created_at", "")[:10]} for p in projects]
+        }
+    
+    elif report_type == "profit":
+        rows = []
+        total_cost = 0
+        total_selling = 0
+        total_margin = 0
+        for p in projects:
+            ce = p.get("cost_estimation", {})
+            selling = ce.get("total_cost", 0)
+            margin = ce.get("margin_total", 0)
+            base = selling - margin - ce.get("gst_total", 0)
+            rows.append({"customer": p.get("customer", {}).get("name", ""), "ref": p.get("reference_number", ""), "base_cost": round(base), "selling_price": round(selling), "margin": round(margin), "margin_pct": round((margin / selling) * 100, 1) if selling else 0})
+            total_cost += base
+            total_selling += selling
+            total_margin += margin
+        return {"title": "Profit Report", "summary": {"total_base_cost": round(total_cost), "total_selling": round(total_selling), "total_margin": round(total_margin), "avg_margin_pct": round((total_margin / total_selling) * 100, 1) if total_selling else 0}, "rows": rows}
+    
+    elif report_type == "execution":
+        rows = []
+        for p in projects:
+            created = p.get("created_at", "")[:10]
+            updated = p.get("updated_at", "")[:10]
+            rows.append({"customer": p.get("customer", {}).get("name", ""), "ref": p.get("reference_number", ""), "status": p.get("status", ""), "created": created, "updated": updated, "staff": p.get("created_by_name", ""), "system_kw": p.get("electrical", {}).get("sanction_load_kw", 0)})
+        return {"title": "Project Execution Report", "summary": {"total": len(rows), "completed": sum(1 for r in rows if r["status"] == "completed"), "in_progress": sum(1 for r in rows if r["status"] in ["submitted", "approved"])}, "rows": rows}
+    
+    elif report_type == "inventory":
+        rows = [{"name": i.get("name", ""), "sku": i.get("sku_code", ""), "category": i.get("category", ""), "quantity": i.get("quantity", 0), "unit_price": round(i.get("unit_price", 0)), "total_value": round(i.get("unit_price", 0) * i.get("quantity", 0)), "reorder_level": i.get("reorder_level", 5), "low_stock": i.get("quantity", 0) <= i.get("reorder_level", 5)} for i in inv_items]
+        return {"title": "Procurement & Inventory Report", "summary": {"total_items": len(rows), "total_value": sum(r["total_value"] for r in rows), "low_stock_count": sum(1 for r in rows if r["low_stock"])}, "rows": rows}
+    
+    elif report_type == "technical":
+        rows = []
+        for p in projects:
+            el = p.get("electrical", {})
+            ss = p.get("solar_system", {})
+            rows.append({"customer": p.get("customer", {}).get("name", ""), "ref": p.get("reference_number", ""), "system_type": ss.get("system_type", ""), "sanction_kw": el.get("sanction_load_kw", 0), "monthly_units": el.get("monthly_consumption_units", 0), "panel_wattage": ss.get("panel_wattage", 0), "expected_gen_kwh": round(el.get("sanction_load_kw", 0) * 4 * 30, 1)})
+        return {"title": "Technical & Performance Report", "summary": {"total_capacity_kw": round(sum(r["sanction_kw"] for r in rows), 1), "avg_monthly_consumption": round(sum(r["monthly_units"] for r in rows) / len(rows)) if rows else 0}, "rows": rows}
+    
+    elif report_type == "compliance":
+        rows = []
+        total_gst = 0
+        for p in projects:
+            ce = p.get("cost_estimation", {})
+            gst = ce.get("gst_total", 0)
+            total_gst += gst
+            rows.append({"customer": p.get("customer", {}).get("name", ""), "ref": p.get("reference_number", ""), "subtotal": round(ce.get("items_total", 0)), "gst": round(gst), "total": round(ce.get("total_cost", 0)), "date": p.get("created_at", "")[:10]})
+        return {"title": "Compliance & Tax Report", "summary": {"total_gst_collected": round(total_gst), "total_invoices": len(rows)}, "rows": rows}
+    
+    elif report_type == "hr":
+        from collections import defaultdict
+        staff_data = defaultdict(lambda: {"name": "", "projects": 0, "revenue": 0, "completed": 0})
+        for p in projects:
+            uid = p.get("created_by", "")
+            staff_data[uid]["name"] = p.get("created_by_name", "Unknown")
+            staff_data[uid]["projects"] += 1
+            if p.get("status") == "completed":
+                staff_data[uid]["completed"] += 1
+            if p.get("status") in ["approved", "completed"]:
+                staff_data[uid]["revenue"] += p.get("cost_estimation", {}).get("total_cost", 0)
+        rows = [{"staff": v["name"], "total_projects": v["projects"], "completed": v["completed"], "revenue": round(v["revenue"]), "completion_rate": round((v["completed"] / v["projects"]) * 100, 1) if v["projects"] else 0} for v in staff_data.values()]
+        return {"title": "HR & Productivity Report", "summary": {"total_staff": len(rows), "avg_projects_per_staff": round(sum(r["total_projects"] for r in rows) / len(rows), 1) if rows else 0}, "rows": sorted(rows, key=lambda x: x["revenue"], reverse=True)}
+    
+    elif report_type == "customer":
+        rows = []
+        for p in projects:
+            fb = p.get("customer_feedback")
+            rows.append({"customer": p.get("customer", {}).get("name", ""), "ref": p.get("reference_number", ""), "status": p.get("status", ""), "feedback": fb or "No feedback", "has_feedback": bool(fb)})
+        with_fb = sum(1 for r in rows if r["has_feedback"])
+        return {"title": "Customer Satisfaction Report", "summary": {"total_customers": len(rows), "feedback_received": with_fb, "feedback_rate": round((with_fb / len(rows)) * 100, 1) if rows else 0}, "rows": rows}
+    
+    elif report_type == "marketing":
+        from collections import defaultdict
+        sources = defaultdict(lambda: {"count": 0, "converted": 0})
+        for p in projects:
+            src = p.get("custom_fields", {}).get("customer", {}).get("referral_source", "Direct")
+            sources[src]["count"] += 1
+            if p.get("status") in ["approved", "completed"]:
+                sources[src]["converted"] += 1
+        rows = [{"source": k, "leads": v["count"], "converted": v["converted"], "conversion_rate": round((v["converted"] / v["count"]) * 100, 1) if v["count"] else 0} for k, v in sources.items()]
+        return {"title": "Marketing Report", "summary": {"total_sources": len(rows), "total_leads": sum(r["leads"] for r in rows)}, "rows": sorted(rows, key=lambda x: x["leads"], reverse=True)}
+    
+    elif report_type == "om":
+        # O&M placeholder - based on completed projects
+        rows = [{"customer": p.get("customer", {}).get("name", ""), "ref": p.get("reference_number", ""), "completed_at": p.get("updated_at", "")[:10], "system_type": p.get("solar_system", {}).get("system_type", ""), "status": "Active"} for p in projects if p.get("status") == "completed"]
+        return {"title": "Operations & Maintenance Report", "summary": {"total_installations": len(rows), "active_sites": len(rows)}, "rows": rows}
+    
+    raise HTTPException(status_code=404, detail=f"Unknown report type: {report_type}")
+
 # ================== AI RECOMMENDATIONS ==================
 
 @api_router.post("/ai/recommendations")

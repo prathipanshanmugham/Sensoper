@@ -26,7 +26,8 @@ import {
   Building2,
   ClipboardCheck,
   Shield,
-  Layers
+  Layers,
+  BarChart3
 } from 'lucide-react';
 
 const LOGO_URL = "https://customer-assets.emergentagent.com/job_solar-estimator-14/artifacts/2dpfr2zb_slg.png";
@@ -136,9 +137,11 @@ export default function Dashboard() {
 
   const navItems = [
     { icon: LayoutDashboard, label: 'Dashboard', href: '/dashboard', show: true },
+    { icon: TrendingUp, label: 'CEO Dashboard', href: '/dashboard/ceo', show: isAdmin || isManager },
     { icon: FolderPlus, label: 'New Project', href: '/dashboard/projects/new', show: true },
     { icon: FileText, label: 'All Projects', href: '/dashboard/projects', show: true },
     { icon: ClipboardCheck, label: 'Approvals', href: '/dashboard/approvals', show: isAdmin || isManager, badge: stats?.pending_approvals },
+    { icon: BarChart3, label: 'Reports', href: '/dashboard/reports', show: isAdmin || isManager },
     { icon: Package, label: 'Inventory', href: '/dashboard/inventory', show: isAdmin || isManager, badge: stats?.low_stock_alerts },
     { icon: ScrollText, label: 'Terms & Conditions', href: '/dashboard/terms', show: isAdmin || isManager },
     { icon: Users, label: 'User Management', href: '/dashboard/users', show: isAdmin },
