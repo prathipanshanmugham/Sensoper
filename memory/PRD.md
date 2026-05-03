@@ -1,51 +1,49 @@
 # Sensoper Controls & Renewables - Solar ERP
 
 ## Original Problem Statement
-Build a production-ready Solar Project ERP for "Sensoper Controls and Renewables" with role-based auth, multi-step site visit forms, dynamic cost estimation, project tracking, PDF quotations, approvals, permissions, dynamic form builder, CEO dashboard, comprehensive reports engine, daily data updates, payment tracking, and data completeness scoring.
+Build a production-ready Solar Project ERP with role-based auth, dynamic forms, cost estimation, project tracking, PDF quotations, approvals, permissions, CEO dashboard, profit leakage intelligence, consolidated reports, daily data updates, payment tracking, and data completeness scoring.
 
 ## Tech Stack
-- Frontend: React, Tailwind CSS, Shadcn UI, Recharts, jsPDF + autoTable, xlsx/SheetJS, file-saver, DOMPurify
+- Frontend: React, Tailwind CSS, Shadcn UI, Recharts (LineChart only), jsPDF + autoTable, xlsx/SheetJS, file-saver, DOMPurify
 - Backend: FastAPI, MongoDB, Motor (Async), JWT Auth (cookie-based)
-- Storage: Emergent Object Storage, Google Drive (manual link)
 
 ## Implemented Features
 - [x] Role-based JWT Authentication (Admin, Manager, Staff)
-- [x] Multi-step Site Visit Form (fully dynamic via API)
+- [x] Multi-step Dynamic Site Visit Form (API-driven tab order)
 - [x] Admin-Controlled Dynamic Form Builder (all tabs editable)
-- [x] Smart System Suggestions in Materials step
-- [x] CEO Dashboard (8 KPIs, Revenue Trend, Status Pie, Sales Funnel, Top Staff)
-- [x] **20 Report Types** with pie charts + PDF/Excel export
+- [x] CEO Dashboard (KPIs, Revenue Trend, Status Distribution, Sales Funnel, Top Staff)
+- [x] **Profit Leakage Alert System** — 7 alert types (low margin, underpriced quote, payment delay, project delay, material variance, excess material, team inefficiency), risk scoring 0-100, configurable thresholds
+- [x] **8 Consolidated Reports** — Sales & Revenue, Profit & Leakage, Project Execution, Inventory & Material, Customer Credit, Team Performance, Compliance & Tax, Customer Satisfaction (reduced from 20 redundant reports)
+- [x] **Tab-based Report Views** — Multi-tab navigation within reports (overview/lead_sources, profit/material_variance, stock/usage/alerts)
 - [x] **Daily Data Updates** (5 sections: Progress, Material, Payment, Installation, O&M)
-- [x] **Payment Tracking** (per-project payments with history)
-- [x] **Material Usage Logging** (estimated vs actual with variance)
-- [x] **Data Completeness Score** (0-100% per project, 6 checks)
+- [x] **Payment Tracking** + **Material Usage Logging** with variance
+- [x] **Data Completeness Score** (0-100% per project)
 - [x] **Project-Level Report API** (full details + payments + materials + updates)
-- [x] **Enhanced Report Filters** (date range, system type, status, customer, staff)
-- [x] **Sticky Sidebar** across all dashboard pages
-- [x] **Sensoper Favicon**
-- [x] **Auto-save Draft** when project form is partially filled
-- [x] Dynamic Cost Estimation Engine
-- [x] Professional PDF Quotation with QR codes
-- [x] Approvals Dashboard with auto-execution
-- [x] Dynamic Permissions (16 per role)
-- [x] Inventory Management, Company Branding, Terms & Conditions
-- [x] Audit Logs, DOMPurify XSS protection, Mobile Responsive
+- [x] Enhanced Report Filters (date, system type, status, customer, staff)
+- [x] Sticky Sidebar, Sensoper Favicon, Auto-save Draft
+- [x] Dynamic Cost Estimation, PDF Quotation with QR, Approvals, Permissions, Inventory, Audit Logs
 
-## Report Types (20)
-Sales, Profit, Expense, Execution, Inventory, Inbound, Outbound, Low Stock, Excess Materials, Scrap, Price Fluctuation, Technical & O&M, Compliance & Tax, HR & Productivity, Marketing, Customer Satisfaction, Customer Credit, Referral, Team Load, Excess Material Utilisation
+## Report Types (8 Consolidated)
+1. Sales & Revenue (tabs: overview, lead_sources)
+2. Profit & Leakage (tabs: profit, material_variance)
+3. Project Execution
+4. Inventory & Material (tabs: stock_levels, material_usage, alerts)
+5. Customer Credit
+6. Team Performance
+7. Compliance & Tax
+8. Customer Satisfaction
 
-## DB Collections
-users, projects, inventory_items, inventory_categories, terms_conditions, company_profiles, audit_logs, approvals, deletion_requests, permissions, login_attempts, form_tabs, **daily_updates**, **payments**, **material_usage_logs**
+## Alert Types (7)
+low_margin, underpriced_quote, payment_delay, project_delay, material_variance, excess_material, team_inefficiency
 
 ## P1 - Upcoming
-- [ ] Project-level PDF/Excel download button in ProjectDetails page
+- [ ] Project-level PDF/Excel download button in ProjectDetails
 - [ ] Data completeness UI indicators in project list
-- [ ] Configurable report restriction based on completeness
-- [ ] Google Maps API for site location
-- [ ] Project-level notes/comments
+- [ ] In-app notification bell for alerts
+- [ ] Project-level alert badges on project cards
 
 ## P2 - Future/Backlog
+- [ ] WhatsApp/Email notifications for alerts
 - [ ] Auto inventory deduction on project approval
 - [ ] Offline PWA mode
-- [ ] WhatsApp/Email for quote sharing
 - [ ] Component splitting, backend route modules
