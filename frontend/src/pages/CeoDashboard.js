@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
 import {
-  BarChart3, TrendingUp, DollarSign, CheckCircle2, Clock, Package,
+  BarChart3, TrendingUp, IndianRupee, CheckCircle2, Clock, Package,
   AlertTriangle, Users, ArrowLeft, Loader2, ClipboardCheck, ArrowUpRight
 } from 'lucide-react';
 import {
@@ -79,15 +79,15 @@ export default function CeoDashboard() {
 
         {/* KPI Grid */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6" data-testid="kpi-grid">
-          <KpiCard title="Total Revenue" value={`Rs ${(kpis.total_revenue || 0).toLocaleString('en-IN')}`} icon={DollarSign} color="emerald" subtitle="Approved + Completed" onClick={() => navigate('/dashboard/reports?type=sales')} />
-          <KpiCard title="Total Profit" value={`Rs ${(kpis.total_profit || 0).toLocaleString('en-IN')}`} icon={TrendingUp} color="blue" subtitle="Internal margins" onClick={() => navigate('/dashboard/reports?type=profit')} />
+          <KpiCard title="Total Revenue" value={`₹${(kpis.total_revenue || 0).toLocaleString('en-IN')}`} icon={IndianRupee} color="emerald" subtitle="Approved + Completed" onClick={() => navigate('/dashboard/reports?type=sales')} />
+          <KpiCard title="Total Profit" value={`₹${(kpis.total_profit || 0).toLocaleString('en-IN')}`} icon={TrendingUp} color="blue" subtitle="Internal margins" onClick={() => navigate('/dashboard/reports?type=profit')} />
           <KpiCard title="Conversion Rate" value={`${kpis.conversion_rate}%`} icon={BarChart3} color="violet" subtitle={`${kpis.completed_projects} of ${kpis.total_projects} projects`} />
           <KpiCard title="Active Projects" value={kpis.active_projects} icon={Clock} color="amber" onClick={() => navigate('/dashboard/projects')} />
           <KpiCard title="Completed" value={kpis.completed_projects} icon={CheckCircle2} color="emerald" onClick={() => navigate('/dashboard/reports?type=execution')} />
           <KpiCard title="Pending Approvals" value={kpis.pending_approvals} icon={ClipboardCheck} color="red" onClick={() => navigate('/dashboard/approvals')} />
-          <KpiCard title="Inventory Value" value={`Rs ${(kpis.inventory_value || 0).toLocaleString('en-IN')}`} icon={Package} color="slate" onClick={() => navigate('/dashboard/reports?type=inventory')} />
+          <KpiCard title="Inventory Value" value={`₹${(kpis.inventory_value || 0).toLocaleString('en-IN')}`} icon={Package} color="slate" onClick={() => navigate('/dashboard/reports?type=inventory')} />
           <KpiCard title="Low Stock Alerts" value={kpis.low_stock_alerts} icon={AlertTriangle} color="amber" onClick={() => navigate('/dashboard/inventory')} />
-          <KpiCard title="Outstanding Credit" value={`Rs ${(kpis.total_outstanding || 0).toLocaleString('en-IN')}`} icon={DollarSign} color="red" subtitle={`Overdue: Rs ${(kpis.overdue_amount || 0).toLocaleString('en-IN')}`} onClick={() => navigate('/dashboard/credits')} />
+          <KpiCard title="Outstanding Credit" value={`₹${(kpis.total_outstanding || 0).toLocaleString('en-IN')}`} icon={IndianRupee} color="red" subtitle={`Overdue: Rs ${(kpis.overdue_amount || 0).toLocaleString('en-IN')}`} onClick={() => navigate('/dashboard/credits')} />
         </div>
 
         {/* Charts Row */}
@@ -102,7 +102,7 @@ export default function CeoDashboard() {
                     <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
                     <XAxis dataKey="month" tick={{ fontSize: 11 }} stroke="#94a3b8" />
                     <YAxis tick={{ fontSize: 11 }} stroke="#94a3b8" tickFormatter={(v) => v >= 100000 ? `${(v/100000).toFixed(1)}L` : v >= 1000 ? `${(v/1000).toFixed(0)}K` : v} />
-                    <Tooltip formatter={(v) => [`Rs ${v.toLocaleString('en-IN')}`, 'Revenue']} />
+                    <Tooltip formatter={(v) => [`₹${v.toLocaleString('en-IN')}`, 'Revenue']} />
                     <Line type="monotone" dataKey="revenue" stroke="#10b981" strokeWidth={2.5} dot={{ r: 4, fill: '#10b981' }} />
                   </LineChart>
                 </ResponsiveContainer>
@@ -176,7 +176,7 @@ export default function CeoDashboard() {
         {/* Credit Section */}
         {data.credit_data && (
           <Card className="border-slate-200 mt-4" data-testid="credit-section">
-            <CardHeader className="pb-2"><CardTitle className="text-base font-['Outfit'] flex items-center gap-2"><DollarSign className="h-4 w-4" />Customer Credit Overview</CardTitle></CardHeader>
+            <CardHeader className="pb-2"><CardTitle className="text-base font-['Outfit'] flex items-center gap-2"><IndianRupee className="h-4 w-4" />Customer Credit Overview</CardTitle></CardHeader>
             <CardContent className="p-4 pt-0">
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                 {/* Aging Chart */}

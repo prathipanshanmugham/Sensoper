@@ -6,7 +6,7 @@ import { Button } from '../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
 import { 
-  FileText, Clock, CheckCircle2, AlertCircle, TrendingUp, DollarSign,
+  FileText, Clock, CheckCircle2, AlertCircle, TrendingUp, IndianRupee,
   Package, ClipboardCheck, XCircle, Trash2
 } from 'lucide-react';
 
@@ -154,7 +154,7 @@ export default function Dashboard() {
             <StatCard title="Total Projects" value={stats?.total || 0} icon={FileText} color="emerald" />
             <StatCard title="Pending Review" value={stats?.submitted || 0} icon={AlertCircle} color="blue" />
             <StatCard title="Approved" value={stats?.approved || 0} icon={CheckCircle2} color="green" />
-            <StatCard title="Total Revenue" value={`Rs ${((stats?.total_revenue || 0) / 100000).toFixed(1)}L`} icon={DollarSign} trend={`${stats?.conversion_rate || 0}% conversion`} color="amber" />
+            <StatCard title="Total Revenue" value={`₹${((stats?.total_revenue || 0) / 100000).toFixed(1)}L`} icon={IndianRupee} trend={`${stats?.conversion_rate || 0}% conversion`} color="amber" />
           </div>
 
           <Card className="border-slate-200">

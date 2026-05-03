@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Badge } from '../components/ui/badge';
 import {
-  Loader2, FileSpreadsheet, FileText, DollarSign, TrendingUp, Briefcase,
+  Loader2, FileSpreadsheet, FileText, IndianRupee, TrendingUp, Briefcase,
   Package, Users, Receipt, Star, AlertTriangle, Truck, ClipboardList, Megaphone
 } from 'lucide-react';
 import jsPDF from 'jspdf';
@@ -19,11 +19,11 @@ import { saveAs } from 'file-saver';
 const PIE_COLORS = ['#10b981', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#84cc16'];
 
 const REPORTS = [
-  { id: 'sales_revenue', label: 'Sales & Revenue', icon: DollarSign, desc: 'Revenue, quotes, conversion, lead sources' },
+  { id: 'sales_revenue', label: 'Sales & Revenue', icon: IndianRupee, desc: 'Revenue, quotes, conversion, lead sources' },
   { id: 'profit_leakage', label: 'Profit & Leakage', icon: TrendingUp, desc: 'Margins, cost analysis, leakage alerts' },
   { id: 'project_execution', label: 'Project Execution', icon: Briefcase, desc: 'Progress, delays, completion, O&M' },
   { id: 'inventory_material', label: 'Inventory & Material', icon: Package, desc: 'Stock, usage, variance, alerts' },
-  { id: 'customer_credit', label: 'Customer Credit', icon: DollarSign, desc: 'Receivables, payments, outstanding' },
+  { id: 'customer_credit', label: 'Customer Credit', icon: IndianRupee, desc: 'Receivables, payments, outstanding' },
   { id: 'team_performance', label: 'Team Performance', icon: Users, desc: 'Productivity, workload, efficiency' },
   { id: 'compliance_tax', label: 'Compliance & Tax', icon: Receipt, desc: 'GST, tax summaries, invoices' },
   { id: 'customer_satisfaction', label: 'Customer Satisfaction', icon: Star, desc: 'Feedback, complaints, resolution' },

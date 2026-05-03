@@ -7,7 +7,7 @@ import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Badge } from '../components/ui/badge';
 import {
-  Loader2, AlertTriangle, DollarSign, Shield, TrendingDown, Save, Settings2
+  Loader2, AlertTriangle, IndianRupee, Shield, TrendingDown, Save, Settings2
 } from 'lucide-react';
 
 const RISK_COLORS = { High: '#ef4444', Medium: '#f59e0b', Low: '#10b981' };
@@ -76,7 +76,7 @@ export default function AlertsDashboard() {
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6" data-testid="alert-kpis">
           <Card className="border-red-200 bg-red-50">
             <CardContent className="p-4 text-center">
-              <DollarSign className="h-6 w-6 text-red-500 mx-auto mb-1" />
+              <IndianRupee className="h-6 w-6 text-red-500 mx-auto mb-1" />
               <p className="text-2xl font-bold text-red-700">Rs {(data.total_leakage || 0).toLocaleString('en-IN')}</p>
               <p className="text-xs text-red-500 uppercase tracking-wider">Total Leakage</p>
             </CardContent>
