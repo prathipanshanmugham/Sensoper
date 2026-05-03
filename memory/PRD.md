@@ -24,7 +24,7 @@
 1. Sales & Revenue (tabs: overview, lead_sources)
 2. Profit & Leakage (tabs: profit, material_variance)
 3. Project Execution
-4. Inventory & Material (tabs: stock_levels, material_usage, alerts)
+4. Inventory & Material (tabs: stock_levels, material_usage, alerts, **movement — Fast/Slow moving with Product · Status · Procurement Date · Last Used · Usage Count · Movement Type; filter by movement_type**)
 5. Customer Credit
 6. Team Performance
 7. Compliance & Tax
@@ -35,13 +35,16 @@
 12. **Marketing Report** (leads from daily updates, conversions)
 
 ### Inventory Enhancements
-- [x] Image URL field (Drive link)
+- [x] Image URL field (pasteable https link + live preview, replacing file upload — Feb 2026)
 - [x] Margin % per product (internal)
-- [x] Active/Inactive status
+- [x] Active/Inactive status (green/grey dot in list)
 - [x] QC Checklist template per product
+- [x] Procurement Date field (used for movement analysis — Feb 2026)
+- [x] Fast / Slow moving classification (≥5 usages in last 30 days = Fast) — Feb 2026
 
 ### Filters (cleaned)
 - Date range, System type, Status only (customer/staff filters removed)
+- Inventory → Movement tab: adds Movement Type filter (All / Fast / Slow)
 
 ## P1 - Upcoming
 - [x] Project-level PDF/Excel download in ProjectDetails *(shipped Feb 2026 — Excel + PDF buttons visible for all statuses)*
