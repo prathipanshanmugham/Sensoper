@@ -1,56 +1,52 @@
 # Sensoper Controls & Renewables - Solar ERP
 
-## Original Problem Statement
-Full-featured Solar Project ERP with role-based auth, dynamic forms, cost estimation, project tracking, PDF quotations, approvals, permissions, CEO dashboard, profit leakage intelligence, consolidated reports, daily data updates, payment tracking, data completeness, customer credit management, procurement (inbound), delivery (outbound), brand returns, and weekly audit system.
-
 ## Tech Stack
-- Frontend: React, Tailwind CSS, Shadcn UI, Recharts, jsPDF + autoTable, xlsx/SheetJS, DOMPurify
+- Frontend: React, Tailwind CSS, Shadcn UI, Recharts, jsPDF, xlsx/SheetJS, DOMPurify
 - Backend: FastAPI, MongoDB, Motor (Async), JWT Auth (cookie-based)
 
 ## Implemented Modules
 
 ### Core
-- [x] Role-based Auth (Admin, Manager, Staff)
-- [x] Dynamic Form Builder (all tabs editable, 6 field types)
-- [x] Multi-step Site Visit Form (API-driven)
-- [x] Dynamic Cost Estimation Engine
-- [x] PDF Quotation with QR codes
-- [x] Approvals + Permissions System
-- [x] Inventory Management
+- [x] Role-based Auth, Dynamic Form Builder, Multi-step Site Visit Form
+- [x] Dynamic Cost Estimation, PDF Quotation, Approvals, Permissions, Inventory
 
 ### Intelligence
-- [x] CEO Dashboard (KPIs, Revenue Trend, Sales Funnel)
-- [x] Profit Leakage Alert System (7 alert types, risk scoring)
-- [x] 8 Consolidated Reports with tab views + PDF/Excel export
-- [x] Data Completeness Score (0-100%)
-- [x] Configurable Thresholds
+- [x] CEO Dashboard (KPIs, Revenue Trend, Sales Funnel, **Credit Aging + Top Debtors**)
+- [x] Profit Leakage Alerts (7 types, risk scoring, configurable thresholds)
+- [x] **12 Reports** with charts + PDF/Excel export
 
 ### Operations
-- [x] **Customer Credits** — Credit entries, payment tracking, aging analysis (0-30/30-60/60+ days), auto-overdue, auto-close
-- [x] **Purchase Inbound** — Full procurement lifecycle: PO → Approve → Arrival (transport) → QC → Inventory update with storage location
-- [x] **Delivery Outbound** — Dispatch tracking with customer, transport, items, distance
-- [x] **Brand Returns** — Return logging (damage/excess/defect), supplier tracking, status workflow
-- [x] **Weekly Audits** — Structured audits with checklist, issue tracking, severity, deadline, resolution status
-- [x] **Daily Data Updates** — 5 sections (Progress, Material, Payment, Installation, O&M)
-- [x] **Payment Tracking** + **Material Usage Logging**
+- [x] Customer Credits, Purchase Inbound (5-step PO flow), Delivery Outbound
+- [x] Brand Returns, Weekly Audits, Daily Updates (**7 types: Progress, Leads, Invoicing, Material, Payment, Installation, O&M**)
+- [x] Payment Tracking, Material Usage Logging, Data Completeness Score
 
-### UI/UX
-- [x] Sticky Sidebar across all pages
-- [x] Sensoper Favicon
-- [x] Auto-save Draft
-- [x] Mobile-responsive forms
+### Reports (12 total)
+1. Sales & Revenue (tabs: overview, lead_sources)
+2. Profit & Leakage (tabs: profit, material_variance)
+3. Project Execution
+4. Inventory & Material (tabs: stock_levels, material_usage, alerts)
+5. Customer Credit
+6. Team Performance
+7. Compliance & Tax
+8. Customer Satisfaction
+9. **Inbound Report** (PO details, QC, transport)
+10. **Outbound Report** (deliveries, dispatch, transport)
+11. **Audit Report** (checklist, issues, resolution)
+12. **Marketing Report** (leads from daily updates, conversions)
 
-## DB Collections (20)
-users, projects, inventory_items, inventory_categories, terms_conditions, company_profiles, audit_logs, approvals, deletion_requests, permissions, login_attempts, form_tabs, daily_updates, payments, material_usage_logs, settings, **customer_credits**, **credit_payments**, **purchase_orders**, **deliveries**, **brand_returns**, **audits**
+### Inventory Enhancements
+- [x] Image URL field (Drive link)
+- [x] Margin % per product (internal)
+- [x] Active/Inactive status
+- [x] QC Checklist template per product
+
+### Filters (cleaned)
+- Date range, System type, Status only (customer/staff filters removed)
 
 ## P1 - Upcoming
 - [ ] Project-level PDF/Excel download in ProjectDetails
-- [ ] Data completeness UI indicators in project list
 - [ ] In-app notification bell for alerts
-- [ ] Report integration for new operational modules
+- [ ] Inventory UI updates (status dot, QC checklist UI)
 
 ## P2 - Future
-- [ ] WhatsApp/Email notifications
-- [ ] Offline PWA mode
-- [ ] Auto inventory deduction
-- [ ] Backend route module refactoring
+- [ ] WhatsApp/Email notifications, Offline PWA, Backend route modules
