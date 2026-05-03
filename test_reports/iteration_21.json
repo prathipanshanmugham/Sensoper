@@ -1,0 +1,71 @@
+{
+  "summary": "Iteration 21 — Inventory Movement report + procurement_date + image URL. Backend: all 7 pytest cases PASS (auth, procurement_date/image_url round-trip, movement tab structure, FAST classification after seeding 5 material_usage_logs within 30 days for TEST_MOVE_FAST_ITEM, fast/slow query filter, regression of 3 other tabs). Frontend: Inventory dialog now uses Product Image URL text input + procurement date input (no file upload). Movement tab renders 9 rows with status-cell + movement-badge test IDs, summary shows total_items/fast_moving/slow_moving/window_days, filter-movement-type only visible on Movement tab. One significant bug found: Movement Type filter has a stale-closure off-by-one bug — the first change does not apply; the new value only takes effect on the NEXT change.",
+
+  "backend_issues": { "critical": [], "minor": [] },
+
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "ReportsPage.js line 142 onValueChange handler",
+        "issue": "STALE-CLOSURE BUG: Selecting a Movement Type does nothing on the FIRST change (API call fires with OLD filters). Captured network proof: click 'Fast Moving' -> GET /api/reports/inventory_material?tab=movement (NO movement_type query); then click 'Slow Moving' -> GET ...?movement_type=fast (one step behind). Root cause: setFilters is async and fetchReport(useCallback dep=[filters]) captures the previous filters in the same tick. Fix: pass value directly e.g. fetchReport(activeReport, activeTab, { movement_type: v }) OR move fetchReport into a useEffect on filters.movement_type.",
+        "selector": "[data-testid='filter-movement-type']",
+        "priority": "HIGH"
+      }
+    ],
+    "integration_issues": [],
+    "design_issues": []
+  },
+
+  "passed_tests": [
+    "Login admin@sensoper.com / Admin@123 -> /dashboard OK",
+    "Inventory Add-Item dialog: file input count = 0 (upload dropzone removed)",
+    "item-image-url-input + item-procurement-date-input visible in dialog",
+    "Invalid URL 'not-a-url' shows inline text 'Invalid URL — must start with http:// or https://'",
+    "Valid URL: <img data-testid=item-image-preview> renders initially; on image-load failure gracefully switches to item-image-preview-error placeholder (verified with a URL the preview env couldn't fetch)",
+    "Inventory list still renders 18 status dots (data-testid=status-dot-*) — regression OK",
+    "Reports/Inventory & Material shows 4 tabs: stock_levels, material_usage, alerts, movement",
+    "filter-movement-type is HIDDEN on stock_levels tab and VISIBLE on movement tab (correct conditional)",
+    "Movement tab: 9 rows with data-testid=status-cell-0..8 and data-testid=movement-badge-0..8",
+    "Summary on Movement tab: total_items=9, fast_moving=0, slow_moving=9, window_days=30 (4 cards correct)",
+    "Backend pytest: test_iteration21_movement.py -> 7/7 PASSED (incl. FAST classification after seeding 5 /api/material-usage POSTs -> rows[*].movement_type=='Fast', usage_count=5, qty_used=10.0, summary.fast_moving>=1)",
+    "Backend movement_type=fast filter returns only Fast rows; movement_type=slow filter returns only Slow rows",
+    "POST+PUT /api/inventory/items round-trip: procurement_date and image_url both persist and are echoed by GET /api/inventory/items",
+    "No uncaught JS exceptions during flows (only benign 401 retries + a net::ERR_CONNECTION_CLOSED for the deliberately unreachable test image)"
+  ],
+
+  "test_report_links": [
+    "/app/backend/tests/test_iteration21_movement.py",
+    "/app/test_reports/pytest/iteration21_movement.xml"
+  ],
+
+  "action_items": [
+    "Fix ReportsPage.js Movement Type filter stale-closure bug on line 142. Quick fix: const onMovementChange = (v) => { setFilters(p => ({...p, movement_type: v})); fetchReportWithOverride(activeReport, activeTab, { movement_type: v }); }; OR drop the inline call and add: useEffect(() => { if (activeReport) fetchReport(activeReport, activeTab); }, [filters.movement_type]);",
+    "(Nice-to-have) Collapse the Movement summary generation so that summary uses PRE-filter counts when a movement_type filter is active (currently summary.fast_moving is computed AFTER filter, so when user selects Slow the 'fast_moving' card shows 0 even if Fast items exist). Consider computing the summary counters before applying the movement_type filter."
+  ],
+
+  "critical_code_review_comments": [
+    "ReportsPage.js:142 — setFilters followed by fetchReport in the same synchronous handler is a classic stale-closure anti-pattern. Every other filter on the page uses onValueChange={setFilters(...)} alone (no inline fetchReport) and relies on the user pressing tabs / selecting report to trigger fetch. The movement filter should follow the same pattern via useEffect on filters.movement_type.",
+    "server.py:2630-2644 — fast_count/slow_count in the movement summary are computed AFTER the movement_type filter has already pruned rows. When user selects 'slow' filter, summary.fast_moving always shows 0. Consider computing these counters on the UNFILTERED list and only filtering `rows` for display.",
+    "server.py:2624 — acceptable: movement_type filter accepts any casing ('Fast','fast','FAST'). Returns 200 with placeholder row when no match — good UX."
+  ],
+
+  "updated_files": [
+    "/app/backend/tests/test_iteration21_movement.py (new)"
+  ],
+
+  "success_rate": {
+    "backend": "100% (7/7 pytest)",
+    "frontend": "~90% — all required elements render correctly; movement-type filter has a 1-click lag bug"
+  },
+
+  "test_credentials": { "admin": "admin@sensoper.com / Admin@123" },
+
+  "seed_data_creation": "During pytest: temporary inventory item TEST_MOVE_FAST_ITEM + 5 material_usage_logs (item_name=TEST_MOVE_FAST_ITEM, actual_qty=2 each, project_id=first existing project) created and the inventory item was cleaned up. The 5 usage logs remain in material_usage_logs for reproducibility of FAST classification on the next run. Also a TEST_MOVE_ITEM_A was created+deleted as part of the round-trip test.",
+
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+
+  "context_for_next_testing_agent": "Movement feature is otherwise fully working end-to-end. Backend is solid and pytest is committed under /app/backend/tests/test_iteration21_movement.py (login via session cookie not Bearer). Two follow-ups for main agent: (1) fix Movement Type filter off-by-one stale-closure bug at ReportsPage.js:142; (2) decide whether Movement summary counters should be pre-filter (currently post-filter). Image preview uses img onError -> fallback div; use a public JPEG/PNG URL when manually testing.",
+
+  "rca of the issue": "Movement filter bug RCA — `fetchReport` is a useCallback with dependency on [filters]. When the user changes the Select, the handler calls `setFilters(p => ({...p, movement_type: v}))` followed IMMEDIATELY by `fetchReport(...)`. Because React batches state updates, `fetchReport` in that exact call still closes over the PREVIOUS filters object (movement_type=old). The new filters value only takes effect on the next render, and `fetchReport` is not automatically re-invoked. Net effect: every selection acts one step behind. Reproduction: open Movement tab -> select Fast Moving -> /api/reports/inventory_material fires WITHOUT movement_type -> select Slow Moving -> fires WITH movement_type=fast. Fix: useEffect(() => { fetchReport(activeReport, activeTab) }, [filters.movement_type]) OR pass the fresh value explicitly to fetchReport."
+}

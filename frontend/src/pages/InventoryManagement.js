@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
-import { inventoryAPI, uploadAPI } from '../utils/api';
+import { inventoryAPI } from '../utils/api';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '../components/ui/dialog';
 import { 
   ArrowLeft, Plus, Edit, Trash2, Loader2, Package, AlertTriangle,
-  Search, Warehouse, Upload, Tag, X, CheckCircle2, Circle
+  Search, Warehouse, Tag, X, CheckCircle2, Circle, Link2, CalendarDays
 } from 'lucide-react';
 
 export default function InventoryManagement() {
@@ -23,14 +23,14 @@ export default function InventoryManagement() {
   const [editingItem, setEditingItem] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterCategory, setFilterCategory] = useState('all');
-  const [imageUploading, setImageUploading] = useState(false);
+  const [imagePreviewOk, setImagePreviewOk] = useState(true);
   const [newCat, setNewCat] = useState({ name: '', slug: '', description: '' });
   
   const [itemForm, setItemForm] = useState({
     name: '', sku_code: '', category: '',
     zone: '', aisle: '', shelf: '', rack: '', bin_location: '',
     quantity: 0, unit_price: 0, supplier: '', gst_percentage: 18, reorder_level: 10,
-    image_url: '', active: true, qc_checklist: []
+    image_url: '', active: true, qc_checklist: [], procurement_date: ''
   });
   const [newQcItem, setNewQcItem] = useState('');
   
@@ -62,7 +62,8 @@ export default function InventoryManagement() {
         supplier: item.supplier || '', gst_percentage: item.gst_percentage || 18,
         reorder_level: item.reorder_level || 10, image_url: item.image_url || '',
         active: item.active !== undefined ? item.active : true,
-        qc_checklist: Array.isArray(item.qc_checklist) ? item.qc_checklist : []
+        qc_checklist: Array.isArray(item.qc_checklist) ? item.qc_checklist : [],
+        procurement_date: item.procurement_date || ''
       });
     } else {
       setEditingItem(null);
@@ -70,30 +71,30 @@ export default function InventoryManagement() {
         name: '', sku_code: '', category: categories[0]?.slug || '',
         zone: '', aisle: '', shelf: '', rack: '', bin_location: '',
         quantity: 0, unit_price: 0, supplier: '', gst_percentage: 18, reorder_level: 10,
-        image_url: '', active: true, qc_checklist: []
+        image_url: '', active: true, qc_checklist: [], procurement_date: ''
       });
     }
     setNewQcItem('');
+    setImagePreviewOk(true);
     setError('');
     setShowItemDialog(true);
   };
 
-  const handleImageUpload = async (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setImageUploading(true);
+  const isValidImageUrl = (url) => {
+    if (!url) return true; // empty allowed
     try {
-      const res = await uploadAPI.uploadImage(file);
-      const url = uploadAPI.getFileUrl(res.data.storage_path);
-      setItemForm(p => ({ ...p, image_url: url }));
-    } catch (err) {
-      setError('Image upload failed');
-    } finally { setImageUploading(false); }
+      const u = new URL(url);
+      return u.protocol === 'http:' || u.protocol === 'https:';
+    } catch { return false; }
   };
 
   const handleSaveItem = async () => {
     if (!itemForm.name || !itemForm.sku_code || !itemForm.category) {
       setError('Name, SKU Code, and Category are required');
+      return;
+    }
+    if (itemForm.image_url && !isValidImageUrl(itemForm.image_url)) {
+      setError('Image URL must be a valid http(s) URL');
       return;
     }
     setActionLoading(true);
@@ -312,20 +313,42 @@ export default function InventoryManagement() {
           <div className="space-y-4 py-4">
             {error && <div className="p-3 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg">{error}</div>}
 
-            {/* Image Upload */}
+            {/* Image URL + Preview */}
             <div className="space-y-2">
-              <Label>Product Image</Label>
-              <div className="flex items-center gap-4">
-                {itemForm.image_url ? (
-                  <div className="relative">
-                    <img src={itemForm.image_url} alt="" className="h-20 w-20 rounded-lg object-cover border" />
-                    <button onClick={() => setItemForm(p => ({ ...p, image_url: '' }))} className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-0.5"><X className="h-3 w-3" /></button>
-                  </div>
+              <Label className="flex items-center gap-1.5"><Link2 className="h-3.5 w-3.5" /> Product Image URL</Label>
+              <div className="flex items-start gap-3">
+                <div className="flex-1">
+                  <Input
+                    type="url"
+                    value={itemForm.image_url}
+                    onChange={(e) => { setItemForm(p => ({ ...p, image_url: e.target.value })); setImagePreviewOk(true); }}
+                    placeholder="https://example.com/product.jpg"
+                    className="h-10"
+                    data-testid="item-image-url-input"
+                  />
+                  <p className="text-[11px] text-slate-400 mt-1">Paste a public https:// link to an image (product photo, datasheet thumbnail, etc.)</p>
+                  {itemForm.image_url && !isValidImageUrl(itemForm.image_url) && (
+                    <p className="text-[11px] text-red-500 mt-1">Invalid URL — must start with http:// or https://</p>
+                  )}
+                </div>
+                {itemForm.image_url && isValidImageUrl(itemForm.image_url) ? (
+                  imagePreviewOk ? (
+                    <img
+                      src={itemForm.image_url}
+                      alt="preview"
+                      className="h-20 w-20 rounded-lg object-cover border border-slate-200 shrink-0"
+                      onError={() => setImagePreviewOk(false)}
+                      data-testid="item-image-preview"
+                    />
+                  ) : (
+                    <div className="h-20 w-20 rounded-lg border border-dashed border-red-300 bg-red-50 flex flex-col items-center justify-center shrink-0 text-[10px] text-red-600 px-1 text-center" data-testid="item-image-preview-error">
+                      Preview<br />failed
+                    </div>
+                  )
                 ) : (
-                  <label className="h-20 w-20 rounded-lg border-2 border-dashed border-slate-300 flex flex-col items-center justify-center cursor-pointer hover:bg-slate-50 transition-colors">
-                    {imageUploading ? <Loader2 className="h-5 w-5 animate-spin text-slate-400" /> : <><Upload className="h-5 w-5 text-slate-400" /><span className="text-[10px] text-slate-400 mt-1">Upload</span></>}
-                    <input type="file" accept="image/*" className="hidden" onChange={handleImageUpload} disabled={imageUploading} data-testid="item-image-input" />
-                  </label>
+                  <div className="h-20 w-20 rounded-lg border border-dashed border-slate-300 bg-slate-50 flex items-center justify-center shrink-0">
+                    <Package className="h-6 w-6 text-slate-300" />
+                  </div>
                 )}
               </div>
             </div>
@@ -368,6 +391,19 @@ export default function InventoryManagement() {
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2"><Label>Supplier</Label><Input value={itemForm.supplier} onChange={(e) => setItemForm(p => ({ ...p, supplier: e.target.value }))} placeholder="Supplier name" className="h-11" data-testid="item-supplier-input" /></div>
               <div className="space-y-2"><Label>Reorder Level</Label><Input type="number" min="0" value={itemForm.reorder_level} onChange={(e) => setItemForm(p => ({ ...p, reorder_level: parseInt(e.target.value) || 0 }))} className="h-11" data-testid="item-reorder-input" /></div>
+            </div>
+
+            {/* Procurement Date */}
+            <div className="space-y-2">
+              <Label className="flex items-center gap-1.5"><CalendarDays className="h-3.5 w-3.5" /> Procurement Date</Label>
+              <Input
+                type="date"
+                value={itemForm.procurement_date}
+                onChange={(e) => setItemForm(p => ({ ...p, procurement_date: e.target.value }))}
+                className="h-11"
+                data-testid="item-procurement-date-input"
+              />
+              <p className="text-[11px] text-slate-400">Date this batch / product was procured. Used for movement analysis in the Inventory Report.</p>
             </div>
 
             {/* Active toggle */}

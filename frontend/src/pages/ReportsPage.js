@@ -50,7 +50,7 @@ export default function ReportsPage() {
   const [activeTab, setActiveTab] = useState('');
   const [reportData, setReportData] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [filters, setFilters] = useState({ date_from: '', date_to: '', system_type: 'all', status: 'all' });
+  const [filters, setFilters] = useState({ date_from: '', date_to: '', system_type: 'all', status: 'all', movement_type: 'all' });
 
   const fetchReport = useCallback(async (type, tab) => {
     setLoading(true);
@@ -61,6 +61,7 @@ export default function ReportsPage() {
       if (filters.date_to) params.date_to = filters.date_to;
       if (filters.system_type !== 'all') params.system_type = filters.system_type;
       if (filters.status !== 'all') params.status = filters.status;
+      if (filters.movement_type !== 'all' && type === 'inventory_material' && tab === 'movement') params.movement_type = filters.movement_type;
       if (tab) params.tab = tab;
       const res = await reportsAPI.get(type, params);
       setReportData(res.data);
@@ -134,6 +135,24 @@ export default function ReportsPage() {
                 <Select value={filters.status} onValueChange={(v) => setFilters(p => ({...p, status: v}))}><SelectTrigger className="h-9" data-testid="filter-status"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All</SelectItem><SelectItem value="draft">Draft</SelectItem><SelectItem value="submitted">Submitted</SelectItem><SelectItem value="approved">Approved</SelectItem><SelectItem value="completed">Completed</SelectItem><SelectItem value="rejected">Rejected</SelectItem></SelectContent></Select>
               </div>
             </div>
+            {activeReport === 'inventory_material' && activeTab === 'movement' && (
+              <div className="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-3" data-testid="movement-filter-row">
+                <div className="space-y-1">
+                  <Label className="text-xs">Movement Type</Label>
+                  <Select value={filters.movement_type} onValueChange={(v) => { setFilters(p => ({...p, movement_type: v})); fetchReport(activeReport, activeTab); }}>
+                    <SelectTrigger className="h-9" data-testid="filter-movement-type"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All</SelectItem>
+                      <SelectItem value="fast">Fast Moving</SelectItem>
+                      <SelectItem value="slow">Slow Moving</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="col-span-1 sm:col-span-3 flex items-end">
+                  <p className="text-[11px] text-slate-400">Fast = ≥ 5 usages in the selected window (defaults to last 30 days if no date range).</p>
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -217,7 +236,18 @@ export default function ReportsPage() {
                         <tr key={row.ref || idx} className="border-b border-slate-100 hover:bg-slate-50">
                           {getColumns().map(col => (
                             <td key={col} className="px-3 py-2.5 text-slate-700 whitespace-nowrap">
-                              {col === 'status' || col === 'payment_status' || col === 'load_status' || col === 'risk_level' ? <Badge variant="outline" className={`text-[10px] ${row[col]==='High'||row[col]==='Overloaded'?'border-red-300 text-red-700':row[col]==='Paid'||row[col]==='completed'?'border-emerald-300 text-emerald-700':''}`}>{row[col]}</Badge> :
+                              {col === 'movement_type' ? (
+                                <Badge className={`text-[10px] ${row[col] === 'Fast' ? 'bg-emerald-100 text-emerald-700' : row[col] === 'Slow' ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-600'}`} data-testid={`movement-badge-${idx}`}>
+                                  {row[col]}
+                                </Badge>
+                              ) :
+                               col === 'status' && (row[col] === 'Active' || row[col] === 'Inactive') ? (
+                                <span className="inline-flex items-center gap-1.5" data-testid={`status-cell-${idx}`}>
+                                  <span className={`inline-block h-2 w-2 rounded-full ${row[col] === 'Active' ? 'bg-emerald-500' : 'bg-slate-300'}`} />
+                                  <span className="text-xs text-slate-600">{row[col]}</span>
+                                </span>
+                              ) :
+                               col === 'status' || col === 'payment_status' || col === 'load_status' || col === 'risk_level' ? <Badge variant="outline" className={`text-[10px] ${row[col]==='High'||row[col]==='Overloaded'?'border-red-300 text-red-700':row[col]==='Paid'||row[col]==='completed'?'border-emerald-300 text-emerald-700':''}`}>{row[col]}</Badge> :
                                col === 'low_stock' ? (row[col] ? <Badge className="bg-red-100 text-red-700 text-[10px]">Low</Badge> : <Badge className="bg-emerald-100 text-emerald-700 text-[10px]">OK</Badge>) :
                                col === 'alert' && row[col] ? <span className="text-xs text-red-600 flex items-center gap-1"><AlertTriangle className="h-3 w-3" />{row[col]}</span> :
                                typeof row[col]==='number' && row[col]>999 ? row[col].toLocaleString('en-IN') :

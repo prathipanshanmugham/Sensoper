@@ -220,6 +220,7 @@ class InventoryItemCreate(BaseModel):
     margin_pct: float = 0
     active: bool = True
     qc_checklist: list = []
+    procurement_date: Optional[str] = None
 
 class InventoryItemUpdate(BaseModel):
     name: Optional[str] = None
@@ -238,6 +239,7 @@ class InventoryItemUpdate(BaseModel):
     margin_pct: Optional[float] = None
     active: Optional[bool] = None
     qc_checklist: Optional[list] = None
+    procurement_date: Optional[str] = None
 
 class InventoryCategoryCreate(BaseModel):
     name: str
@@ -1375,6 +1377,7 @@ async def get_inventory_items(
             "margin_pct": item.get("margin_pct", 0),
             "active": item.get("active", True),
             "qc_checklist": item.get("qc_checklist", []),
+            "procurement_date": item.get("procurement_date"),
             "created_at": item["created_at"],
             "updated_at": item.get("updated_at")
         }
@@ -1421,6 +1424,7 @@ async def get_inventory_item(item_id: str, request: Request):
         "margin_pct": item.get("margin_pct", 0),
         "active": item.get("active", True),
         "qc_checklist": item.get("qc_checklist", []),
+        "procurement_date": item.get("procurement_date"),
         "created_at": item["created_at"],
         "updated_at": item.get("updated_at"),
         "transactions": [
@@ -1463,6 +1467,7 @@ async def create_inventory_item(item: InventoryItemCreate, request: Request):
         "margin_pct": item.margin_pct,
         "active": item.active,
         "qc_checklist": item.qc_checklist,
+        "procurement_date": item.procurement_date,
         "created_at": datetime.now(timezone.utc).isoformat(),
         "updated_at": datetime.now(timezone.utc).isoformat()
     }
@@ -1528,6 +1533,8 @@ async def update_inventory_item(item_id: str, updates: InventoryItemUpdate, requ
         update_data["active"] = updates.active
     if updates.qc_checklist is not None:
         update_data["qc_checklist"] = updates.qc_checklist
+    if updates.procurement_date is not None:
+        update_data["procurement_date"] = updates.procurement_date
     
     # Handle quantity adjustment
     if updates.quantity is not None and updates.quantity != item["quantity"]:
@@ -2466,7 +2473,7 @@ async def _get_filtered_projects(query_base, date_from, date_to, system_type, st
     return await db.projects.find(query).to_list(5000)
 
 @api_router.get("/reports/{report_type}")
-async def get_report(report_type: str, request: Request, date_from: str = None, date_to: str = None, system_type: str = None, status: str = None, project_id: str = None, tab: str = None):
+async def get_report(report_type: str, request: Request, date_from: str = None, date_to: str = None, system_type: str = None, status: str = None, project_id: str = None, tab: str = None, movement_type: str = None):
     user = await get_current_user(request)
     if user["role"] not in ["admin", "manager"]:
         raise HTTPException(status_code=403, detail="Reports are admin/manager only")
@@ -2555,11 +2562,87 @@ async def get_report(report_type: str, request: Request, date_from: str = None, 
         usage_rows = [{"item": k, "estimated": round(v["est"],1), "actual": round(v["act"],1), "variance": round(v["act"]-v["est"],1), "wastage": round(v["waste"],1), "status": "Excess" if v["act"]>v["est"] else "Shortage" if v["act"]<v["est"] else "OK"} for k,v in usage_agg.items()]
         # Alerts
         alert_rows = [{"name": i.get("name",""), "quantity": i.get("quantity",0), "reorder": i.get("reorder_level",5), "deficit": max(0, i.get("reorder_level",5)-i.get("quantity",0))} for i in inv_items if i.get("quantity",0) <= i.get("reorder_level",5)]
-        tabs_data = {"stock_levels": {"rows": stock_rows}, "material_usage": {"rows": usage_rows if usage_rows else [{"item": "No logs", "estimated": 0, "actual": 0, "variance": 0, "wastage": 0, "status": "N/A"}]}, "alerts": {"rows": alert_rows if alert_rows else [{"name": "All stock OK", "quantity": 0, "reorder": 0, "deficit": 0}]}}
+
+        # === Movement Analysis (fast / slow) ===
+        # Determine time window from filters — fallback to last 30 days
+        now_utc = datetime.now(timezone.utc)
+        if date_from:
+            try:
+                window_start = datetime.fromisoformat(date_from).replace(tzinfo=timezone.utc)
+            except (ValueError, TypeError):
+                window_start = now_utc - timedelta(days=30)
+        else:
+            window_start = now_utc - timedelta(days=30)
+        if date_to:
+            try:
+                window_end = datetime.fromisoformat(date_to + "T23:59:59").replace(tzinfo=timezone.utc)
+            except (ValueError, TypeError):
+                window_end = now_utc
+        else:
+            window_end = now_utc
+
+        # Aggregate usage per item_name within window
+        movement_agg = defaultdict(lambda: {"count": 0, "last_used": None, "qty": 0})
+        for log in usage_logs:
+            ts_str = log.get("created_at") or log.get("timestamp") or ""
+            try:
+                ts = datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
+                if ts.tzinfo is None:
+                    ts = ts.replace(tzinfo=timezone.utc)
+            except (ValueError, TypeError, AttributeError):
+                continue
+            if ts < window_start or ts > window_end:
+                continue
+            name = log.get("item_name", "")
+            if not name:
+                continue
+            movement_agg[name]["count"] += 1
+            movement_agg[name]["qty"] += log.get("actual_qty", 0)
+            if movement_agg[name]["last_used"] is None or ts > movement_agg[name]["last_used"]:
+                movement_agg[name]["last_used"] = ts
+
+        FAST_THRESHOLD = 5  # ≥ 5 usages in window → Fast
+        movement_rows = []
+        for it in inv_items:
+            nm = it.get("name", "")
+            agg = movement_agg.get(nm, {"count": 0, "last_used": None, "qty": 0})
+            mtype = "Fast" if agg["count"] >= FAST_THRESHOLD else "Slow"
+            last_used_str = agg["last_used"].strftime("%Y-%m-%d") if agg["last_used"] else "-"
+            procurement_date = it.get("procurement_date") or "-"
+            active_status = "Active" if it.get("active", True) else "Inactive"
+            movement_rows.append({
+                "product": nm,
+                "sku": it.get("sku_code", ""),
+                "status": active_status,
+                "procurement_date": procurement_date,
+                "last_used_date": last_used_str,
+                "usage_count": agg["count"],
+                "qty_used": round(agg["qty"], 1),
+                "movement_type": mtype
+            })
+        # Apply movement_type filter
+        if movement_type and movement_type not in (None, "all", "All"):
+            mt_norm = movement_type.strip().lower()
+            movement_rows = [r for r in movement_rows if r["movement_type"].lower() == mt_norm]
+        # Sort fast first then by usage_count desc
+        movement_rows.sort(key=lambda r: (0 if r["movement_type"] == "Fast" else 1, -r["usage_count"]))
+
+        fast_count = sum(1 for r in movement_rows if r["movement_type"] == "Fast")
+        slow_count = sum(1 for r in movement_rows if r["movement_type"] == "Slow")
+
+        tabs_data = {
+            "stock_levels": {"rows": stock_rows},
+            "material_usage": {"rows": usage_rows if usage_rows else [{"item": "No logs", "estimated": 0, "actual": 0, "variance": 0, "wastage": 0, "status": "N/A"}]},
+            "alerts": {"rows": alert_rows if alert_rows else [{"name": "All stock OK", "quantity": 0, "reorder": 0, "deficit": 0}]},
+            "movement": {"rows": movement_rows if movement_rows else [{"product": "No items", "sku": "", "status": "-", "procurement_date": "-", "last_used_date": "-", "usage_count": 0, "qty_used": 0, "movement_type": "-"}]}
+        }
         cat_val = defaultdict(float)
         for r in stock_rows: cat_val[r["category"]] += r["total_value"]
         chart_data = [{"name": k, "value": round(v)} for k,v in cat_val.items() if v>0]
-        return {"title": "Inventory & Material Report", "summary": {"total_items": len(stock_rows), "total_value": sum(r["total_value"] for r in stock_rows), "low_stock": sum(1 for r in stock_rows if r["low_stock"]), "materials_tracked": len(usage_agg)}, "rows": tabs_data.get(tab or "stock_levels", tabs_data["stock_levels"])["rows"], "tabs": list(tabs_data.keys()), "chart_data": chart_data}
+        summary = {"total_items": len(stock_rows), "total_value": sum(r["total_value"] for r in stock_rows), "low_stock": sum(1 for r in stock_rows if r["low_stock"]), "materials_tracked": len(usage_agg)}
+        if (tab or "") == "movement":
+            summary = {"total_items": len(inv_items), "fast_moving": fast_count, "slow_moving": slow_count, "window_days": max(1, (window_end - window_start).days)}
+        return {"title": "Inventory & Material Report", "summary": summary, "rows": tabs_data.get(tab or "stock_levels", tabs_data["stock_levels"])["rows"], "tabs": list(tabs_data.keys()), "chart_data": chart_data}
 
     # === 5. CUSTOMER CREDIT ===
     elif report_type == "customer_credit":
