@@ -1,50 +1,51 @@
-# Sensoper Controls & Renewables - Solar Project Cost Estimator
+# Sensoper Controls & Renewables - Solar ERP
 
 ## Original Problem Statement
-Build a production-ready Solar Project Cost Estimator / ERP web application for "Sensoper Controls and Renewables" with role-based auth, multi-step site visit data collection, dynamic cost estimation engine, project tracking dashboard, professional PDF quotation generation, approvals workflow, dynamic permissions, admin-controlled dynamic form tabs, CEO dashboard, and comprehensive reports engine.
+Build a production-ready Solar Project ERP for "Sensoper Controls and Renewables" with role-based auth, multi-step site visit forms, dynamic cost estimation, project tracking, PDF quotations, approvals, permissions, dynamic form builder, CEO dashboard, comprehensive reports engine, daily data updates, payment tracking, and data completeness scoring.
 
 ## Tech Stack
 - Frontend: React, Tailwind CSS, Shadcn UI, Recharts, jsPDF + autoTable, xlsx/SheetJS, file-saver, DOMPurify
-- Backend: FastAPI, MongoDB, Motor (Async), JWT Authentication (cookie-based)
-- Storage: Emergent Object Storage, Google Drive (site images via manual link)
-- AI: Emergent LLM Key for recommendations
+- Backend: FastAPI, MongoDB, Motor (Async), JWT Auth (cookie-based)
+- Storage: Emergent Object Storage, Google Drive (manual link)
 
-## Core Features (All Implemented)
+## Implemented Features
 - [x] Role-based JWT Authentication (Admin, Manager, Staff)
-- [x] Multi-step Site Visit Form (fully dynamic - all tabs ordered via API)
-- [x] Merged Site Measurements & Electrical into "Site & Electrical" tab
+- [x] Multi-step Site Visit Form (fully dynamic via API)
+- [x] Admin-Controlled Dynamic Form Builder (all tabs editable)
 - [x] Smart System Suggestions in Materials step
-- [x] **Admin-Controlled Dynamic Tabs (Form Tab Builder)** — Full CRUD, 6 field types, mandatory rules, role visibility
-- [x] **System Tabs Fully Editable** — Rename, add fields, toggle active/inactive, delete, reorder
-- [x] **CEO Dashboard** — 8 KPIs, Revenue Trend chart, Project Status pie, Sales Funnel, Top Staff, drill-down navigation
-- [x] **Reports Engine** — 10 report types (Sales, Profit, Execution, Inventory, Technical, O&M, Compliance, HR, Marketing, Customer Satisfaction), global filters, PDF + Excel export
-- [x] Dynamic Cost Estimation Engine with per-item margins
-- [x] Professional PDF Quotation with logo, QR codes, UPI QR
-- [x] Project Tracking Dashboard with status workflow
+- [x] CEO Dashboard (8 KPIs, Revenue Trend, Status Pie, Sales Funnel, Top Staff)
+- [x] **20 Report Types** with pie charts + PDF/Excel export
+- [x] **Daily Data Updates** (5 sections: Progress, Material, Payment, Installation, O&M)
+- [x] **Payment Tracking** (per-project payments with history)
+- [x] **Material Usage Logging** (estimated vs actual with variance)
+- [x] **Data Completeness Score** (0-100% per project, 6 checks)
+- [x] **Project-Level Report API** (full details + payments + materials + updates)
+- [x] **Enhanced Report Filters** (date range, system type, status, customer, staff)
+- [x] **Sticky Sidebar** across all dashboard pages
+- [x] **Sensoper Favicon**
+- [x] **Auto-save Draft** when project form is partially filled
+- [x] Dynamic Cost Estimation Engine
+- [x] Professional PDF Quotation with QR codes
 - [x] Approvals Dashboard with auto-execution
-- [x] Dynamic Permissions System (16 per role)
-- [x] Company Branding, Terms & Conditions, Inventory Management
-- [x] Google Drive Integration, Audit Logs, Mobile Responsive
-- [x] DOMPurify XSS protection, memoized AuthContext, stable React keys
+- [x] Dynamic Permissions (16 per role)
+- [x] Inventory Management, Company Branding, Terms & Conditions
+- [x] Audit Logs, DOMPurify XSS protection, Mobile Responsive
 
-## Key API Endpoints
-- Auth: /api/auth/login, /register, /me, /refresh, /logout
-- Projects: CRUD + /submit, /approve, /reject, /complete, /margin, /reference, /status, /gallery
-- **CEO Dashboard: GET /api/dashboard/ceo**
-- **Reports: GET /api/reports/{type} (sales|profit|execution|inventory|technical|om|compliance|hr|marketing|customer)**
-- Form Tabs: GET/POST /api/form-tabs, PUT /api/form-tabs/{id}, DELETE /api/form-tabs/{id}, PUT /api/form-tabs/reorder
-- Approvals, Permissions, Inventory, Company, Upload endpoints
+## Report Types (20)
+Sales, Profit, Expense, Execution, Inventory, Inbound, Outbound, Low Stock, Excess Materials, Scrap, Price Fluctuation, Technical & O&M, Compliance & Tax, HR & Productivity, Marketing, Customer Satisfaction, Customer Credit, Referral, Team Load, Excess Material Utilisation
+
+## DB Collections
+users, projects, inventory_items, inventory_categories, terms_conditions, company_profiles, audit_logs, approvals, deletion_requests, permissions, login_attempts, form_tabs, **daily_updates**, **payments**, **material_usage_logs**
 
 ## P1 - Upcoming
-- [ ] Enhanced Form Builder: Multi-select, file upload, GPS, toggle field types
-- [ ] Make ALL form fields dynamic (remove hardcoded sections)
-- [ ] Wire staff actions to Approvals workflow
-- [ ] Google Maps API for site location capture
+- [ ] Project-level PDF/Excel download button in ProjectDetails page
+- [ ] Data completeness UI indicators in project list
+- [ ] Configurable report restriction based on completeness
+- [ ] Google Maps API for site location
 - [ ] Project-level notes/comments
 
 ## P2 - Future/Backlog
 - [ ] Auto inventory deduction on project approval
 - [ ] Offline PWA mode
-- [ ] WhatsApp Business API for quote sharing
-- [ ] Email PDF delivery
-- [ ] Component splitting, backend refactoring
+- [ ] WhatsApp/Email for quote sharing
+- [ ] Component splitting, backend route modules
