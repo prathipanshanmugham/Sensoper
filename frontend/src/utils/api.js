@@ -97,6 +97,47 @@ export const thresholdsAPI = {
   update: (data) => api.put('/settings/thresholds', data)
 };
 
+// Customer Credits
+export const creditsAPI = {
+  create: (data) => api.post('/credits', data),
+  list: (params = {}) => api.get('/credits', { params }),
+  pay: (id, data) => api.post(`/credits/${id}/pay`, data),
+  getPayments: (id) => api.get(`/credits/${id}/payments`),
+  delete: (id) => api.delete(`/credits/${id}`)
+};
+
+// Purchase Orders
+export const purchaseOrdersAPI = {
+  create: (data) => api.post('/purchase-orders', data),
+  list: (params = {}) => api.get('/purchase-orders', { params }),
+  approve: (id) => api.put(`/purchase-orders/${id}/approve`),
+  arrival: (id, data) => api.put(`/purchase-orders/${id}/arrival`, data),
+  qc: (id, data) => api.put(`/purchase-orders/${id}/qc`, data),
+  inbound: (id, data) => api.put(`/purchase-orders/${id}/inbound`, data)
+};
+
+// Deliveries
+export const deliveriesAPI = {
+  create: (data) => api.post('/deliveries', data),
+  list: (params = {}) => api.get('/deliveries', { params }),
+  complete: (id) => api.put(`/deliveries/${id}/complete`)
+};
+
+// Brand Returns
+export const returnsAPI = {
+  create: (data) => api.post('/returns', data),
+  list: (params = {}) => api.get('/returns', { params }),
+  complete: (id) => api.put(`/returns/${id}/complete`)
+};
+
+// Audits
+export const auditsAPI = {
+  create: (data) => api.post('/audits', data),
+  list: (params = {}) => api.get('/audits', { params }),
+  update: (id, data) => api.put(`/audits/${id}`, data),
+  addIssue: (id, data) => api.put(`/audits/${id}/issue`, data)
+};
+
 // AI API
 export const aiAPI = {
   getRecommendations: (data) => api.post('/ai/recommendations', data)

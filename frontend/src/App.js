@@ -23,6 +23,11 @@ import ReportsPage from "./pages/ReportsPage";
 import DashboardLayout from "./components/DashboardLayout";
 import DailyUpdatesPage from "./pages/DailyUpdatesPage";
 import AlertsDashboard from "./pages/AlertsDashboard";
+import CustomerCreditsPage from "./pages/CustomerCreditsPage";
+import PurchaseInboundPage from "./pages/PurchaseInboundPage";
+import DeliveryOutboundPage from "./pages/DeliveryOutboundPage";
+import BrandReturnsPage from "./pages/BrandReturnsPage";
+import WeeklyAuditPage from "./pages/WeeklyAuditPage";
 
 // Protected Route Component
 function ProtectedRoute({ children, allowedRoles = null }) {
@@ -102,6 +107,11 @@ function AppRoutes() {
       <Route path="/dashboard/reports" element={<ProtectedRoute allowedRoles={["admin", "manager"]}><DashboardLayout><ReportsPage /></DashboardLayout></ProtectedRoute>} />
       <Route path="/dashboard/daily-updates" element={<ProtectedRoute><DashboardLayout><DailyUpdatesPage /></DashboardLayout></ProtectedRoute>} />
       <Route path="/dashboard/alerts" element={<ProtectedRoute allowedRoles={["admin", "manager"]}><DashboardLayout><AlertsDashboard /></DashboardLayout></ProtectedRoute>} />
+      <Route path="/dashboard/credits" element={<ProtectedRoute allowedRoles={["admin", "manager"]}><DashboardLayout><CustomerCreditsPage /></DashboardLayout></ProtectedRoute>} />
+      <Route path="/dashboard/purchase-inbound" element={<ProtectedRoute allowedRoles={["admin", "manager"]}><DashboardLayout><PurchaseInboundPage /></DashboardLayout></ProtectedRoute>} />
+      <Route path="/dashboard/delivery-outbound" element={<ProtectedRoute allowedRoles={["admin", "manager"]}><DashboardLayout><DeliveryOutboundPage /></DashboardLayout></ProtectedRoute>} />
+      <Route path="/dashboard/returns" element={<ProtectedRoute><DashboardLayout><BrandReturnsPage /></DashboardLayout></ProtectedRoute>} />
+      <Route path="/dashboard/audits" element={<ProtectedRoute allowedRoles={["admin", "manager"]}><DashboardLayout><WeeklyAuditPage /></DashboardLayout></ProtectedRoute>} />
       <Route path="/dashboard/approvals" element={<ProtectedRoute allowedRoles={["admin", "manager"]}><DashboardLayout><ApprovalsPage /></DashboardLayout></ProtectedRoute>} />
       <Route path="/dashboard/terms" element={<ProtectedRoute allowedRoles={["admin", "manager"]}><DashboardLayout><TermsConditions /></DashboardLayout></ProtectedRoute>} />
       <Route path="/dashboard/inventory" element={<ProtectedRoute allowedRoles={["admin", "manager"]}><DashboardLayout><InventoryManagement /></DashboardLayout></ProtectedRoute>} />

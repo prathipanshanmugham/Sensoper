@@ -7,7 +7,7 @@ import { Badge } from '../components/ui/badge';
 import {
   LayoutDashboard, FolderPlus, Users, LogOut, FileText, TrendingUp,
   Menu, X, Package, History, ScrollText, Building2, ClipboardCheck, Shield,
-  Layers, BarChart3, CalendarDays, AlertTriangle
+  Layers, BarChart3, CalendarDays, AlertTriangle, CreditCard, Truck, Undo2, ClipboardList
 } from 'lucide-react';
 
 const LOGO_URL = "https://customer-assets.emergentagent.com/job_solar-estimator-14/artifacts/2dpfr2zb_slg.png";
@@ -41,6 +41,11 @@ export default function DashboardLayout({ children }) {
     { icon: ClipboardCheck, label: 'Approvals', href: '/dashboard/approvals', show: isAdmin || isManager, badge: stats?.pending_approvals },
     { icon: BarChart3, label: 'Reports', href: '/dashboard/reports', show: isAdmin || isManager },
     { icon: AlertTriangle, label: 'Profit Alerts', href: '/dashboard/alerts', show: isAdmin || isManager },
+    { icon: CreditCard, label: 'Customer Credits', href: '/dashboard/credits', show: isAdmin || isManager },
+    { icon: Package, label: 'Purchase Inbound', href: '/dashboard/purchase-inbound', show: isAdmin || isManager },
+    { icon: Truck, label: 'Delivery Outbound', href: '/dashboard/delivery-outbound', show: isAdmin || isManager },
+    { icon: Undo2, label: 'Brand Returns', href: '/dashboard/returns', show: true },
+    { icon: ClipboardList, label: 'Weekly Audits', href: '/dashboard/audits', show: isAdmin || isManager },
     { icon: CalendarDays, label: 'Daily Updates', href: '/dashboard/daily-updates', show: true },
     { icon: Package, label: 'Inventory', href: '/dashboard/inventory', show: isAdmin || isManager, badge: stats?.low_stock_alerts },
     { icon: ScrollText, label: 'Terms & Conditions', href: '/dashboard/terms', show: isAdmin || isManager },

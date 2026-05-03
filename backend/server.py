@@ -339,6 +339,59 @@ class ThresholdUpdate(BaseModel):
     max_project_duration_days: Optional[int] = None
     underpriced_margin_pct: Optional[float] = None
 
+# ================== OPERATIONAL MODULE MODELS ==================
+
+class CustomerCreditCreate(BaseModel):
+    customer_name: str
+    customer_phone: str = ""
+    invoice_ref: str = ""
+    total_amount: float
+    due_date: str = ""
+    notes: str = ""
+
+class CreditPaymentCreate(BaseModel):
+    credit_id: str
+    amount: float
+    payment_method: str = "cash"
+    notes: str = ""
+
+class PurchaseOrderCreate(BaseModel):
+    supplier_name: str
+    supplier_contact: str = ""
+    items: list  # [{name, qty, unit_price}]
+    expected_delivery: str = ""
+    notes: str = ""
+
+class DeliveryOutboundCreate(BaseModel):
+    project_id: str = ""
+    customer_name: str
+    customer_address: str = ""
+    customer_contact: str = ""
+    items: list  # [{name, qty}]
+    transporter_name: str = ""
+    vehicle_number: str = ""
+    driver_contact: str = ""
+    dispatch_date: str = ""
+    delivery_date: str = ""
+    distance_km: float = 0
+    notes: str = ""
+
+class BrandReturnCreate(BaseModel):
+    project_id: str = ""
+    supplier_name: str = ""
+    item_name: str
+    quantity: float
+    reason: str  # damage, excess, defect
+    notes: str = ""
+
+class AuditCreate(BaseModel):
+    title: str
+    project_id: str = ""
+    auditor_name: str
+    deadline: str = ""
+    checklist: list  # [{item, status, notes}]
+    notes: str = ""
+
 # ================== HELPER FUNCTIONS ==================
 
 def hash_password(password: str) -> str:
@@ -3290,6 +3343,238 @@ async def get_project_report(project_id: str, request: Request):
         "daily_updates": updates
     }
 
+# ================== CUSTOMER CREDITS ==================
+
+@api_router.post("/credits")
+async def create_credit(credit: CustomerCreditCreate, request: Request):
+    user = await get_current_user(request)
+    doc = {
+        "customer_name": credit.customer_name, "customer_phone": credit.customer_phone,
+        "invoice_ref": credit.invoice_ref, "total_amount": credit.total_amount,
+        "amount_paid": 0, "balance": credit.total_amount,
+        "due_date": credit.due_date, "status": "active", "notes": credit.notes,
+        "created_by": user["id"], "created_by_name": user["name"],
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    result = await db.customer_credits.insert_one(doc)
+    return {"id": str(result.inserted_id), "message": "Credit created"}
+
+@api_router.get("/credits")
+async def list_credits(request: Request, status: str = None):
+    await get_current_user(request)
+    query = {}
+    if status and status != "all": query["status"] = status
+    credits = await db.customer_credits.find(query).sort("created_at", -1).to_list(500)
+    now = datetime.now(timezone.utc)
+    for c in credits:
+        c["id"] = str(c.pop("_id"))
+        if c.get("due_date") and c["status"] == "active":
+            try:
+                due = datetime.fromisoformat(c["due_date"])
+                if due.tzinfo is None:
+                    due = due.replace(tzinfo=timezone.utc)
+                if now > due:
+                    c["status"] = "overdue"
+                    await db.customer_credits.update_one({"_id": ObjectId(c["id"])}, {"$set": {"status": "overdue"}})
+            except (ValueError, TypeError):
+                pass
+    return credits
+
+@api_router.post("/credits/{credit_id}/pay")
+async def record_credit_payment(credit_id: str, payment: CreditPaymentCreate, request: Request):
+    user = await get_current_user(request)
+    credit = await db.customer_credits.find_one({"_id": ObjectId(credit_id)})
+    if not credit: raise HTTPException(status_code=404, detail="Credit not found")
+    pay_doc = {"credit_id": credit_id, "amount": payment.amount, "payment_method": payment.payment_method, "notes": payment.notes, "recorded_by": user["name"], "created_at": datetime.now(timezone.utc).isoformat()}
+    await db.credit_payments.insert_one(pay_doc)
+    new_paid = credit.get("amount_paid", 0) + payment.amount
+    new_balance = max(0, credit["total_amount"] - new_paid)
+    new_status = "closed" if new_balance <= 0 else credit.get("status", "active")
+    await db.customer_credits.update_one({"_id": ObjectId(credit_id)}, {"$set": {"amount_paid": new_paid, "balance": new_balance, "status": new_status}})
+    return {"message": "Payment recorded", "new_balance": new_balance}
+
+@api_router.get("/credits/{credit_id}/payments")
+async def get_credit_payments(credit_id: str, request: Request):
+    await get_current_user(request)
+    payments = await db.credit_payments.find({"credit_id": credit_id}).sort("created_at", -1).to_list(100)
+    for p in payments: p["id"] = str(p.pop("_id"))
+    return payments
+
+@api_router.delete("/credits/{credit_id}")
+async def delete_credit(credit_id: str, request: Request):
+    await get_current_user(request)
+    await db.customer_credits.delete_one({"_id": ObjectId(credit_id)})
+    return {"message": "Credit deleted"}
+
+# ================== PURCHASE ORDERS (INBOUND) ==================
+
+@api_router.post("/purchase-orders")
+async def create_po(po: PurchaseOrderCreate, request: Request):
+    user = await get_current_user(request)
+    total = sum(i.get("qty",0) * i.get("unit_price",0) for i in po.items)
+    doc = {
+        "supplier_name": po.supplier_name, "supplier_contact": po.supplier_contact,
+        "items": po.items, "total_amount": round(total, 2),
+        "expected_delivery": po.expected_delivery, "notes": po.notes,
+        "status": "pending", "qc": None, "transport": None, "storage_location": None,
+        "created_by": user["id"], "created_by_name": user["name"],
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    result = await db.purchase_orders.insert_one(doc)
+    return {"id": str(result.inserted_id), "message": "PO created"}
+
+@api_router.get("/purchase-orders")
+async def list_pos(request: Request, status: str = None):
+    await get_current_user(request)
+    query = {}
+    if status and status != "all": query["status"] = status
+    pos = await db.purchase_orders.find(query).sort("created_at", -1).to_list(500)
+    for p in pos: p["id"] = str(p.pop("_id"))
+    return pos
+
+@api_router.put("/purchase-orders/{po_id}/approve")
+async def approve_po(po_id: str, request: Request):
+    user = await require_permission(request, "can_manage_company")
+    await db.purchase_orders.update_one({"_id": ObjectId(po_id)}, {"$set": {"status": "approved", "approved_by": user["name"], "approved_at": datetime.now(timezone.utc).isoformat()}})
+    return {"message": "PO approved"}
+
+@api_router.put("/purchase-orders/{po_id}/arrival")
+async def record_arrival(po_id: str, request: Request):
+    body = await request.json()
+    await get_current_user(request)
+    transport = {"transporter": body.get("transporter",""), "vehicle": body.get("vehicle",""), "driver_contact": body.get("driver_contact",""), "lr_number": body.get("lr_number","")}
+    await db.purchase_orders.update_one({"_id": ObjectId(po_id)}, {"$set": {"status": "arrived", "transport": transport, "arrived_at": datetime.now(timezone.utc).isoformat()}})
+    return {"message": "Arrival recorded"}
+
+@api_router.put("/purchase-orders/{po_id}/qc")
+async def record_qc(po_id: str, request: Request):
+    body = await request.json()
+    await get_current_user(request)
+    qc = {"qty_check": body.get("qty_check", "pass"), "damage_check": body.get("damage_check", "pass"), "spec_match": body.get("spec_match", "pass"), "overall": body.get("overall", "pass"), "notes": body.get("notes", "")}
+    await db.purchase_orders.update_one({"_id": ObjectId(po_id)}, {"$set": {"status": "qc_done", "qc": qc, "qc_at": datetime.now(timezone.utc).isoformat()}})
+    return {"message": "QC recorded"}
+
+@api_router.put("/purchase-orders/{po_id}/inbound")
+async def complete_inbound(po_id: str, request: Request):
+    body = await request.json()
+    await get_current_user(request)
+    location = body.get("storage_location", "")
+    po = await db.purchase_orders.find_one({"_id": ObjectId(po_id)})
+    if po:
+        for item in po.get("items", []):
+            await db.inventory_items.update_one({"name": item.get("name")}, {"$inc": {"quantity": item.get("qty", 0)}})
+    await db.purchase_orders.update_one({"_id": ObjectId(po_id)}, {"$set": {"status": "completed", "storage_location": location, "completed_at": datetime.now(timezone.utc).isoformat()}})
+    return {"message": "Inbound completed, inventory updated"}
+
+# ================== DELIVERY OUTBOUND ==================
+
+@api_router.post("/deliveries")
+async def create_delivery(delivery: DeliveryOutboundCreate, request: Request):
+    user = await get_current_user(request)
+    doc = {
+        "project_id": delivery.project_id, "customer_name": delivery.customer_name,
+        "customer_address": delivery.customer_address, "customer_contact": delivery.customer_contact,
+        "items": delivery.items, "transporter_name": delivery.transporter_name,
+        "vehicle_number": delivery.vehicle_number, "driver_contact": delivery.driver_contact,
+        "dispatch_date": delivery.dispatch_date, "delivery_date": delivery.delivery_date,
+        "distance_km": delivery.distance_km, "notes": delivery.notes,
+        "status": "dispatched", "created_by": user["id"], "created_by_name": user["name"],
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    result = await db.deliveries.insert_one(doc)
+    return {"id": str(result.inserted_id), "message": "Delivery created"}
+
+@api_router.get("/deliveries")
+async def list_deliveries(request: Request, status: str = None):
+    await get_current_user(request)
+    query = {}
+    if status and status != "all": query["status"] = status
+    dels = await db.deliveries.find(query).sort("created_at", -1).to_list(500)
+    for d in dels: d["id"] = str(d.pop("_id"))
+    return dels
+
+@api_router.put("/deliveries/{delivery_id}/complete")
+async def complete_delivery(delivery_id: str, request: Request):
+    await get_current_user(request)
+    await db.deliveries.update_one({"_id": ObjectId(delivery_id)}, {"$set": {"status": "delivered", "completed_at": datetime.now(timezone.utc).isoformat()}})
+    return {"message": "Delivery completed"}
+
+# ================== BRAND RETURNS ==================
+
+@api_router.post("/returns")
+async def create_return(ret: BrandReturnCreate, request: Request):
+    user = await get_current_user(request)
+    doc = {
+        "project_id": ret.project_id, "supplier_name": ret.supplier_name,
+        "item_name": ret.item_name, "quantity": ret.quantity,
+        "reason": ret.reason, "notes": ret.notes,
+        "status": "pending", "created_by": user["id"], "created_by_name": user["name"],
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    result = await db.brand_returns.insert_one(doc)
+    return {"id": str(result.inserted_id), "message": "Return created"}
+
+@api_router.get("/returns")
+async def list_returns(request: Request, status: str = None):
+    await get_current_user(request)
+    query = {}
+    if status and status != "all": query["status"] = status
+    rets = await db.brand_returns.find(query).sort("created_at", -1).to_list(500)
+    for r in rets: r["id"] = str(r.pop("_id"))
+    return rets
+
+@api_router.put("/returns/{return_id}/complete")
+async def complete_return(return_id: str, request: Request):
+    await get_current_user(request)
+    await db.brand_returns.update_one({"_id": ObjectId(return_id)}, {"$set": {"status": "completed", "completed_at": datetime.now(timezone.utc).isoformat()}})
+    return {"message": "Return completed"}
+
+# ================== WEEKLY AUDITS ==================
+
+@api_router.post("/audits")
+async def create_audit(audit: AuditCreate, request: Request):
+    user = await get_current_user(request)
+    doc = {
+        "title": audit.title, "project_id": audit.project_id,
+        "auditor_name": audit.auditor_name, "deadline": audit.deadline,
+        "checklist": audit.checklist, "notes": audit.notes,
+        "issues": [], "status": "open",
+        "created_by": user["id"], "created_by_name": user["name"],
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    result = await db.audits.insert_one(doc)
+    return {"id": str(result.inserted_id), "message": "Audit created"}
+
+@api_router.get("/audits")
+async def list_audits(request: Request, status: str = None):
+    await get_current_user(request)
+    query = {}
+    if status and status != "all": query["status"] = status
+    audits = await db.audits.find(query).sort("created_at", -1).to_list(500)
+    for a in audits: a["id"] = str(a.pop("_id"))
+    return audits
+
+@api_router.put("/audits/{audit_id}")
+async def update_audit(audit_id: str, request: Request):
+    body = await request.json()
+    await get_current_user(request)
+    update = {}
+    if "checklist" in body: update["checklist"] = body["checklist"]
+    if "issues" in body: update["issues"] = body["issues"]
+    if "status" in body: update["status"] = body["status"]
+    if "notes" in body: update["notes"] = body["notes"]
+    update["updated_at"] = datetime.now(timezone.utc).isoformat()
+    await db.audits.update_one({"_id": ObjectId(audit_id)}, {"$set": update})
+    return {"message": "Audit updated"}
+
+@api_router.put("/audits/{audit_id}/issue")
+async def add_audit_issue(audit_id: str, request: Request):
+    body = await request.json()
+    await get_current_user(request)
+    issue = {"description": body.get("description",""), "severity": body.get("severity","medium"), "fix_deadline": body.get("fix_deadline",""), "status": "open", "created_at": datetime.now(timezone.utc).isoformat()}
+    await db.audits.update_one({"_id": ObjectId(audit_id)}, {"$push": {"issues": issue}})
+    return {"message": "Issue added"}
+
 # ================== HEALTH CHECK ==================
 
 @api_router.get("/")
@@ -3325,6 +3610,11 @@ async def startup_event():
     await db.daily_updates.create_index("created_at")
     await db.payments.create_index("project_id")
     await db.material_usage_logs.create_index("project_id")
+    await db.customer_credits.create_index("status")
+    await db.purchase_orders.create_index("status")
+    await db.deliveries.create_index("status")
+    await db.brand_returns.create_index("status")
+    await db.audits.create_index("status")
     await db.approvals.create_index("requested_by")
     await db.approvals.create_index("timestamp")
     await db.role_permissions.create_index("role_name", unique=True)
