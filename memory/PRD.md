@@ -44,9 +44,14 @@
 - Date range, System type, Status only (customer/staff filters removed)
 
 ## P1 - Upcoming
-- [ ] Project-level PDF/Excel download in ProjectDetails
-- [ ] In-app notification bell for alerts
-- [ ] Inventory UI updates (status dot, QC checklist UI)
+- [x] Project-level PDF/Excel download in ProjectDetails *(shipped Feb 2026 — Excel + PDF buttons visible for all statuses)*
+- [x] In-app notification bell for alerts *(shipped Feb 2026 — bell in top header with count + dropdown listing risky projects)*
+- [x] Inventory UI updates — status dot (green/grey) + QC checklist input/view in dialog *(shipped Feb 2026)*
+- [x] Decouple Leads & Invoicing in Daily Updates — now global (business-wide) tabs *(shipped Feb 2026)*
+- [x] Currency consistency — all `DollarSign` icons → `IndianRupee`; all literal `Rs ` UI strings → `₹` *(shipped Feb 2026; `Rs.` retained only in jsPDF text where helvetica lacks ₹ glyph)*
 
 ## P2 - Future
-- [ ] WhatsApp/Email notifications, Offline PWA, Backend route modules
+- [ ] WhatsApp Business API & Email delivery for quote sharing
+- [ ] PWA / Offline mode for field staff
+- [ ] Refactor server.py (~3900 lines) into modular routers (auth, projects, reports, inventory, operations)
+- [ ] Embed a Unicode font in jsPDF so ₹ glyph can render inside PDFs

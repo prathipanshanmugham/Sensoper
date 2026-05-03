@@ -618,7 +618,7 @@ export default function SiteVisitForm() {
                         <div className="space-y-1"><Label className="text-xs">Monthly Consumption (units) *</Label><Input type="number" value={formData.electrical.monthly_consumption_units} onChange={(e) => updateField('electrical', 'monthly_consumption_units', e.target.value)} placeholder="e.g., 500" className="h-10" data-testid="monthly-consumption-input" /></div>
                       </div>
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        <div className="space-y-1"><Label className="text-xs">EB Tariff (Rs/unit)</Label><Input type="number" step="0.1" value={formData.electrical.eb_tariff} onChange={(e) => updateField('electrical', 'eb_tariff', e.target.value)} placeholder="e.g., 7" className="h-10" data-testid="eb-tariff-input" /></div>
+                        <div className="space-y-1"><Label className="text-xs">EB Tariff (₹/unit)</Label><Input type="number" step="0.1" value={formData.electrical.eb_tariff} onChange={(e) => updateField('electrical', 'eb_tariff', e.target.value)} placeholder="e.g., 7" className="h-10" data-testid="eb-tariff-input" /></div>
                         <div className="space-y-1"><Label className="text-xs">Complexity</Label>
                           <ComboInput value={formData.additional.installation_complexity} onChange={(v) => updateField('additional', 'installation_complexity', v)} options={COMPLEXITY_OPTIONS} placeholder="Select" data-testid="complexity-input" />
                         </div>

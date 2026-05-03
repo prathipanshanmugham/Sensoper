@@ -87,7 +87,7 @@ export default function CustomerCreditsPage() {
                 <div className="space-y-1"><Label className="text-xs">Customer Name *</Label><Input value={form.customer_name} onChange={(e) => setForm(p => ({...p, customer_name: e.target.value}))} className="h-9" data-testid="credit-name" /></div>
                 <div className="space-y-1"><Label className="text-xs">Phone</Label><Input value={form.customer_phone} onChange={(e) => setForm(p => ({...p, customer_phone: e.target.value}))} className="h-9" data-testid="credit-phone" /></div>
                 <div className="space-y-1"><Label className="text-xs">Invoice Ref</Label><Input value={form.invoice_ref} onChange={(e) => setForm(p => ({...p, invoice_ref: e.target.value}))} className="h-9" data-testid="credit-invoice" /></div>
-                <div className="space-y-1"><Label className="text-xs">Total Amount (Rs) *</Label><Input type="number" value={form.total_amount} onChange={(e) => setForm(p => ({...p, total_amount: e.target.value}))} className="h-9" data-testid="credit-amount" /></div>
+                <div className="space-y-1"><Label className="text-xs">Total Amount (₹) *</Label><Input type="number" value={form.total_amount} onChange={(e) => setForm(p => ({...p, total_amount: e.target.value}))} className="h-9" data-testid="credit-amount" /></div>
                 <div className="space-y-1"><Label className="text-xs">Due Date</Label><Input type="date" value={form.due_date} onChange={(e) => setForm(p => ({...p, due_date: e.target.value}))} className="h-9" data-testid="credit-due" /></div>
               </div>
               <div className="flex gap-2 justify-end">
@@ -104,7 +104,7 @@ export default function CustomerCreditsPage() {
             <CardContent className="p-4 space-y-3">
               <h3 className="font-semibold text-sm">Record Payment</h3>
               <div className="grid grid-cols-3 gap-3">
-                <div className="space-y-1"><Label className="text-xs">Amount (Rs) *</Label><Input type="number" value={payForm.amount} onChange={(e) => setPayForm(p => ({...p, amount: e.target.value}))} className="h-9" data-testid="pay-amount" /></div>
+                <div className="space-y-1"><Label className="text-xs">Amount (₹) *</Label><Input type="number" value={payForm.amount} onChange={(e) => setPayForm(p => ({...p, amount: e.target.value}))} className="h-9" data-testid="pay-amount" /></div>
                 <div className="space-y-1"><Label className="text-xs">Method</Label>
                   <Select value={payForm.payment_method} onValueChange={(v) => setPayForm(p => ({...p, payment_method: v}))}><SelectTrigger className="h-9" data-testid="pay-method"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="cash">Cash</SelectItem><SelectItem value="upi">UPI</SelectItem><SelectItem value="cheque">Cheque</SelectItem><SelectItem value="bank_transfer">Bank Transfer</SelectItem></SelectContent></Select>
                 </div>

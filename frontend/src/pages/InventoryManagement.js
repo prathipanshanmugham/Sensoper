@@ -274,12 +274,12 @@ export default function InventoryManagement() {
                       <div className="flex-1 min-w-0">
                         <div className="flex items-start justify-between">
                           <div>
-                            <p className="font-medium text-slate-900 truncate flex items-center gap-1.5">
-                              {item.name}
+                            <div className="font-medium text-slate-900 truncate flex items-center gap-1.5">
+                              <span className="truncate">{item.name}</span>
                               {Array.isArray(item.qc_checklist) && item.qc_checklist.length > 0 && (
                                 <Badge variant="outline" className="text-[9px] border-blue-200 bg-blue-50 text-blue-700">QC: {item.qc_checklist.length}</Badge>
                               )}
-                            </p>
+                            </div>
                             <p className="text-xs text-slate-500 font-mono">{item.sku_code}</p>
                           </div>
                           <div className="flex gap-1 shrink-0 ml-2">
@@ -362,7 +362,7 @@ export default function InventoryManagement() {
 
             <div className="grid grid-cols-3 gap-4">
               <div className="space-y-2"><Label>Quantity</Label><Input type="number" min="0" value={itemForm.quantity} onChange={(e) => setItemForm(p => ({ ...p, quantity: parseInt(e.target.value) || 0 }))} className="h-11" data-testid="item-quantity-input" /></div>
-              <div className="space-y-2"><Label>Unit Price (Rs)</Label><Input type="number" min="0" value={itemForm.unit_price} onChange={(e) => setItemForm(p => ({ ...p, unit_price: parseFloat(e.target.value) || 0 }))} className="h-11" data-testid="item-price-input" /></div>
+              <div className="space-y-2"><Label>Unit Price (₹)</Label><Input type="number" min="0" value={itemForm.unit_price} onChange={(e) => setItemForm(p => ({ ...p, unit_price: parseFloat(e.target.value) || 0 }))} className="h-11" data-testid="item-price-input" /></div>
               <div className="space-y-2"><Label>GST %</Label><Input type="number" min="0" max="100" value={itemForm.gst_percentage} onChange={(e) => setItemForm(p => ({ ...p, gst_percentage: parseFloat(e.target.value) || 0 }))} className="h-11" data-testid="item-gst-input" /></div>
             </div>
             <div className="grid grid-cols-2 gap-4">
