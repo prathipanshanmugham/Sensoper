@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Badge } from '../components/ui/badge';
 import {
   Loader2, FileSpreadsheet, FileText, DollarSign, TrendingUp, Briefcase,
-  Package, Users, Receipt, Star, AlertTriangle
+  Package, Users, Receipt, Star, AlertTriangle, Truck, ClipboardList, Megaphone
 } from 'lucide-react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -26,7 +26,11 @@ const REPORTS = [
   { id: 'customer_credit', label: 'Customer Credit', icon: DollarSign, desc: 'Receivables, payments, outstanding' },
   { id: 'team_performance', label: 'Team Performance', icon: Users, desc: 'Productivity, workload, efficiency' },
   { id: 'compliance_tax', label: 'Compliance & Tax', icon: Receipt, desc: 'GST, tax summaries, invoices' },
-  { id: 'customer_satisfaction', label: 'Customer Satisfaction', icon: Star, desc: 'Feedback, complaints, resolution' }
+  { id: 'customer_satisfaction', label: 'Customer Satisfaction', icon: Star, desc: 'Feedback, complaints, resolution' },
+  { id: 'inbound', label: 'Inbound Report', icon: Package, desc: 'Purchase orders, QC, transport, receiving' },
+  { id: 'outbound', label: 'Outbound Report', icon: Truck, desc: 'Deliveries, dispatch, transport tracking' },
+  { id: 'audit', label: 'Audit Report', icon: ClipboardList, desc: 'Audits, checklist, issues, resolution' },
+  { id: 'marketing', label: 'Marketing Report', icon: Megaphone, desc: 'Leads, conversions, site visits, quotes' }
 ];
 
 function SummaryCard({ label, value }) {
@@ -46,7 +50,7 @@ export default function ReportsPage() {
   const [activeTab, setActiveTab] = useState('');
   const [reportData, setReportData] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [filters, setFilters] = useState({ date_from: '', date_to: '', system_type: 'all', status: 'all', customer: '', staff: '' });
+  const [filters, setFilters] = useState({ date_from: '', date_to: '', system_type: 'all', status: 'all' });
 
   const fetchReport = useCallback(async (type, tab) => {
     setLoading(true);
@@ -57,8 +61,6 @@ export default function ReportsPage() {
       if (filters.date_to) params.date_to = filters.date_to;
       if (filters.system_type !== 'all') params.system_type = filters.system_type;
       if (filters.status !== 'all') params.status = filters.status;
-      if (filters.customer) params.customer = filters.customer;
-      if (filters.staff) params.staff = filters.staff;
       if (tab) params.tab = tab;
       const res = await reportsAPI.get(type, params);
       setReportData(res.data);
@@ -116,13 +118,13 @@ export default function ReportsPage() {
       <div className="max-w-7xl mx-auto">
         <div className="mb-6">
           <h1 className="text-2xl font-bold font-['Outfit'] text-slate-900" data-testid="reports-title">Reports</h1>
-          <p className="text-sm text-slate-500">8 consolidated business intelligence reports</p>
+          <p className="text-sm text-slate-500">12 business intelligence reports</p>
         </div>
 
         {/* Filters */}
         <Card className="border-slate-200 mb-5" data-testid="filters-card">
           <CardContent className="p-4">
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               <div className="space-y-1"><Label className="text-xs">Date From</Label><Input type="date" value={filters.date_from} onChange={(e) => setFilters(p => ({...p, date_from: e.target.value}))} className="h-9" data-testid="filter-date-from" /></div>
               <div className="space-y-1"><Label className="text-xs">Date To</Label><Input type="date" value={filters.date_to} onChange={(e) => setFilters(p => ({...p, date_to: e.target.value}))} className="h-9" data-testid="filter-date-to" /></div>
               <div className="space-y-1"><Label className="text-xs">System Type</Label>
@@ -131,8 +133,6 @@ export default function ReportsPage() {
               <div className="space-y-1"><Label className="text-xs">Status</Label>
                 <Select value={filters.status} onValueChange={(v) => setFilters(p => ({...p, status: v}))}><SelectTrigger className="h-9" data-testid="filter-status"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All</SelectItem><SelectItem value="draft">Draft</SelectItem><SelectItem value="submitted">Submitted</SelectItem><SelectItem value="approved">Approved</SelectItem><SelectItem value="completed">Completed</SelectItem><SelectItem value="rejected">Rejected</SelectItem></SelectContent></Select>
               </div>
-              <div className="space-y-1"><Label className="text-xs">Customer</Label><Input value={filters.customer} onChange={(e) => setFilters(p => ({...p, customer: e.target.value}))} placeholder="Search..." className="h-9" data-testid="filter-customer" /></div>
-              <div className="space-y-1"><Label className="text-xs">Staff</Label><Input value={filters.staff} onChange={(e) => setFilters(p => ({...p, staff: e.target.value}))} placeholder="Search..." className="h-9" data-testid="filter-staff" /></div>
             </div>
           </CardContent>
         </Card>

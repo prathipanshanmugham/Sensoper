@@ -87,6 +87,7 @@ export default function CeoDashboard() {
           <KpiCard title="Pending Approvals" value={kpis.pending_approvals} icon={ClipboardCheck} color="red" onClick={() => navigate('/dashboard/approvals')} />
           <KpiCard title="Inventory Value" value={`Rs ${(kpis.inventory_value || 0).toLocaleString('en-IN')}`} icon={Package} color="slate" onClick={() => navigate('/dashboard/reports?type=inventory')} />
           <KpiCard title="Low Stock Alerts" value={kpis.low_stock_alerts} icon={AlertTriangle} color="amber" onClick={() => navigate('/dashboard/inventory')} />
+          <KpiCard title="Outstanding Credit" value={`Rs ${(kpis.total_outstanding || 0).toLocaleString('en-IN')}`} icon={DollarSign} color="red" subtitle={`Overdue: Rs ${(kpis.overdue_amount || 0).toLocaleString('en-IN')}`} onClick={() => navigate('/dashboard/credits')} />
         </div>
 
         {/* Charts Row */}
@@ -171,6 +172,51 @@ export default function CeoDashboard() {
             </CardContent>
           </Card>
         </div>
+
+        {/* Credit Section */}
+        {data.credit_data && (
+          <Card className="border-slate-200 mt-4" data-testid="credit-section">
+            <CardHeader className="pb-2"><CardTitle className="text-base font-['Outfit'] flex items-center gap-2"><DollarSign className="h-4 w-4" />Customer Credit Overview</CardTitle></CardHeader>
+            <CardContent className="p-4 pt-0">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                {/* Aging Chart */}
+                <div className="space-y-3">
+                  <p className="text-xs font-medium uppercase tracking-wider text-slate-400">Credit Aging</p>
+                  {[
+                    { label: '0-30 Days', value: data.credit_data.aging?.['0_30'] || 0, color: '#10b981' },
+                    { label: '30-60 Days', value: data.credit_data.aging?.['30_60'] || 0, color: '#f59e0b' },
+                    { label: '60+ Days', value: data.credit_data.aging?.['60_plus'] || 0, color: '#ef4444' }
+                  ].map(bucket => {
+                    const maxVal = Math.max(data.credit_data.aging?.['0_30'] || 0, data.credit_data.aging?.['30_60'] || 0, data.credit_data.aging?.['60_plus'] || 0, 1);
+                    return (
+                      <div key={bucket.label} className="space-y-1">
+                        <div className="flex justify-between text-xs"><span className="text-slate-600">{bucket.label}</span><span className="font-bold">Rs {bucket.value.toLocaleString('en-IN')}</span></div>
+                        <div className="w-full h-3 bg-slate-100 rounded-full overflow-hidden"><div className="h-full rounded-full" style={{width: `${(bucket.value / maxVal) * 100}%`, backgroundColor: bucket.color}} /></div>
+                      </div>
+                    );
+                  })}
+                </div>
+                {/* Top Debtors */}
+                <div>
+                  <p className="text-xs font-medium uppercase tracking-wider text-slate-400 mb-3">Top 5 Outstanding</p>
+                  {data.credit_data.top_debtors?.length > 0 ? (
+                    <div className="space-y-2">
+                      {data.credit_data.top_debtors.map((d, i) => (
+                        <div key={d.name || i} className="flex items-center justify-between p-2 bg-slate-50 rounded-lg">
+                          <span className="text-sm text-slate-700">{d.name}</span>
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-bold text-slate-900">Rs {d.balance.toLocaleString('en-IN')}</span>
+                            {d.status === 'overdue' && <Badge className="bg-red-100 text-red-700 text-[9px]">Overdue</Badge>}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : <p className="text-sm text-slate-400 text-center py-4">No outstanding credits</p>}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
       </div>
     </div>
   );

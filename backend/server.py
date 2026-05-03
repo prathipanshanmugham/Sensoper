@@ -217,6 +217,9 @@ class InventoryItemCreate(BaseModel):
     gst_percentage: float = 18.0
     reorder_level: int = 10
     image_url: Optional[str] = None
+    margin_pct: float = 0
+    active: bool = True
+    qc_checklist: list = []
 
 class InventoryItemUpdate(BaseModel):
     name: Optional[str] = None
@@ -232,6 +235,9 @@ class InventoryItemUpdate(BaseModel):
     gst_percentage: Optional[float] = None
     reorder_level: Optional[int] = None
     image_url: Optional[str] = None
+    margin_pct: Optional[float] = None
+    active: Optional[bool] = None
+    qc_checklist: Optional[list] = None
 
 class InventoryCategoryCreate(BaseModel):
     name: str
@@ -1366,6 +1372,9 @@ async def get_inventory_items(
             "gst_percentage": item.get("gst_percentage", 18.0),
             "reorder_level": item.get("reorder_level", 10),
             "image_url": item.get("image_url"),
+            "margin_pct": item.get("margin_pct", 0),
+            "active": item.get("active", True),
+            "qc_checklist": item.get("qc_checklist", []),
             "created_at": item["created_at"],
             "updated_at": item.get("updated_at")
         }
@@ -1409,7 +1418,11 @@ async def get_inventory_item(item_id: str, request: Request):
         "gst_percentage": item.get("gst_percentage", 18.0),
         "reorder_level": item.get("reorder_level", 10),
         "image_url": item.get("image_url"),
+        "margin_pct": item.get("margin_pct", 0),
+        "active": item.get("active", True),
+        "qc_checklist": item.get("qc_checklist", []),
         "created_at": item["created_at"],
+        "updated_at": item.get("updated_at"),
         "transactions": [
             {
                 "id": str(t["_id"]),
@@ -1447,6 +1460,9 @@ async def create_inventory_item(item: InventoryItemCreate, request: Request):
         "gst_percentage": item.gst_percentage,
         "reorder_level": item.reorder_level,
         "image_url": item.image_url,
+        "margin_pct": item.margin_pct,
+        "active": item.active,
+        "qc_checklist": item.qc_checklist,
         "created_at": datetime.now(timezone.utc).isoformat(),
         "updated_at": datetime.now(timezone.utc).isoformat()
     }
@@ -1506,6 +1522,12 @@ async def update_inventory_item(item_id: str, updates: InventoryItemUpdate, requ
         update_data["gst_percentage"] = updates.gst_percentage
     if updates.reorder_level is not None:
         update_data["reorder_level"] = updates.reorder_level
+    if updates.margin_pct is not None:
+        update_data["margin_pct"] = updates.margin_pct
+    if updates.active is not None:
+        update_data["active"] = updates.active
+    if updates.qc_checklist is not None:
+        update_data["qc_checklist"] = updates.qc_checklist
     
     # Handle quantity adjustment
     if updates.quantity is not None and updates.quantity != item["quantity"]:
@@ -2371,6 +2393,28 @@ async def get_ceo_dashboard(request: Request):
     # Pending approvals
     pending_approvals = await db.approvals.count_documents({"status": "pending"})
     
+    # Customer credit data
+    credits = await db.customer_credits.find({"status": {"$ne": "closed"}}).to_list(500)
+    total_outstanding = sum(c.get("balance", 0) for c in credits)
+    overdue_credits = [c for c in credits if c.get("status") == "overdue"]
+    overdue_amount = sum(c.get("balance", 0) for c in overdue_credits)
+    # Top 5 debtors
+    top_debtors = sorted(credits, key=lambda x: x.get("balance", 0), reverse=True)[:5]
+    top_debtors_list = [{"name": c.get("customer_name", ""), "balance": round(c.get("balance", 0)), "status": c.get("status", "")} for c in top_debtors]
+    # Aging
+    credit_aging = {"0_30": 0, "30_60": 0, "60_plus": 0}
+    for c in credits:
+        created = c.get("created_at", "")
+        if created:
+            try:
+                created_dt = datetime.fromisoformat(created.replace("Z", "+00:00"))
+                days = (datetime.now(timezone.utc) - created_dt).days
+                if days <= 30: credit_aging["0_30"] += c.get("balance", 0)
+                elif days <= 60: credit_aging["30_60"] += c.get("balance", 0)
+                else: credit_aging["60_plus"] += c.get("balance", 0)
+            except (ValueError, TypeError):
+                pass
+    
     return {
         "kpis": {
             "total_revenue": round(total_revenue),
@@ -2381,12 +2425,20 @@ async def get_ceo_dashboard(request: Request):
             "pending_approvals": pending_approvals,
             "inventory_value": round(inventory_value),
             "low_stock_alerts": low_stock,
-            "total_projects": total
+            "total_projects": total,
+            "total_outstanding": round(total_outstanding),
+            "overdue_amount": round(overdue_amount)
         },
         "status_distribution": [{"name": k, "value": v} for k, v in status_counts.items()],
         "revenue_trend": revenue_trend,
         "sales_funnel": funnel,
-        "top_staff": top_staff
+        "top_staff": top_staff,
+        "credit_data": {
+            "total_outstanding": round(total_outstanding),
+            "overdue_amount": round(overdue_amount),
+            "top_debtors": top_debtors_list,
+            "aging": credit_aging
+        }
     }
 
 # ================== REPORTS ENGINE (8 Consolidated Reports) ==================
@@ -2414,11 +2466,11 @@ async def _get_filtered_projects(query_base, date_from, date_to, system_type, st
     return await db.projects.find(query).to_list(5000)
 
 @api_router.get("/reports/{report_type}")
-async def get_report(report_type: str, request: Request, date_from: str = None, date_to: str = None, system_type: str = None, status: str = None, customer: str = None, staff: str = None, project_id: str = None, tab: str = None):
+async def get_report(report_type: str, request: Request, date_from: str = None, date_to: str = None, system_type: str = None, status: str = None, project_id: str = None, tab: str = None):
     user = await get_current_user(request)
     if user["role"] not in ["admin", "manager"]:
         raise HTTPException(status_code=403, detail="Reports are admin/manager only")
-    projects = await _get_filtered_projects({}, date_from, date_to, system_type, status, customer, staff, project_id)
+    projects = await _get_filtered_projects({}, date_from, date_to, system_type, status, None, None, project_id)
     inv_items = await db.inventory_items.find().to_list(1000)
     from collections import defaultdict, Counter
 
@@ -2561,6 +2613,50 @@ async def get_report(report_type: str, request: Request, date_from: str = None, 
         with_fb = sum(1 for r in rows if r["has_feedback"])
         chart_data = [{"name": "With Feedback", "value": with_fb}, {"name": "No Feedback", "value": len(rows)-with_fb}]
         return {"title": "Customer Satisfaction Report", "summary": {"total_customers": len(rows), "feedback_received": with_fb, "feedback_rate": round((with_fb/len(rows))*100,1) if rows else 0}, "rows": rows, "chart_data": chart_data}
+
+    # === 9. INBOUND REPORT ===
+    elif report_type == "inbound":
+        pos = await db.purchase_orders.find().sort("created_at", -1).to_list(500)
+        rows = []
+        for po in pos:
+            po_id = str(po["_id"])
+            qc = po.get("qc", {}) or {}
+            transport = po.get("transport", {}) or {}
+            rows.append({"supplier": po.get("supplier_name",""), "items_count": len(po.get("items",[])), "total": round(po.get("total_amount",0)), "status": po.get("status",""), "qc_result": qc.get("overall","N/A"), "transporter": transport.get("transporter","N/A"), "vehicle": transport.get("vehicle","N/A"), "storage": po.get("storage_location","N/A"), "date": po.get("created_at","")[:10]})
+        status_counts = {}
+        for r in rows: status_counts[r["status"]] = status_counts.get(r["status"], 0) + 1
+        chart_data = [{"name": k.replace("_"," ").title(), "value": v} for k,v in status_counts.items()]
+        return {"title": "Inbound Report", "summary": {"total_pos": len(rows), "completed": sum(1 for r in rows if r["status"]=="completed"), "total_value": sum(r["total"] for r in rows)}, "rows": rows, "chart_data": chart_data}
+
+    # === 10. OUTBOUND REPORT ===
+    elif report_type == "outbound":
+        dels = await db.deliveries.find().sort("created_at", -1).to_list(500)
+        rows = [{"customer": d.get("customer_name",""), "items_count": len(d.get("items",[])), "transporter": d.get("transporter_name","N/A"), "vehicle": d.get("vehicle_number","N/A"), "distance_km": d.get("distance_km",0), "dispatch": d.get("dispatch_date",""), "delivery": d.get("delivery_date",""), "status": d.get("status","")} for d in dels]
+        chart_data = [{"name": "Dispatched", "value": sum(1 for r in rows if r["status"]=="dispatched")}, {"name": "Delivered", "value": sum(1 for r in rows if r["status"]=="delivered")}]
+        return {"title": "Outbound Report", "summary": {"total_deliveries": len(rows), "delivered": sum(1 for r in rows if r["status"]=="delivered"), "total_distance": sum(r["distance_km"] for r in rows)}, "rows": rows, "chart_data": [c for c in chart_data if c["value"]>0]}
+
+    # === 11. AUDIT REPORT ===
+    elif report_type == "audit":
+        audits = await db.audits.find().sort("created_at", -1).to_list(500)
+        rows = [{"title": a.get("title",""), "auditor": a.get("auditor_name",""), "status": a.get("status",""), "checklist_items": len(a.get("checklist",[])), "issues_count": len(a.get("issues",[])), "deadline": a.get("deadline","N/A"), "date": a.get("created_at","")[:10]} for a in audits]
+        chart_data = [{"name": "Open", "value": sum(1 for r in rows if r["status"]=="open")}, {"name": "In Progress", "value": sum(1 for r in rows if r["status"]=="in_progress")}, {"name": "Resolved", "value": sum(1 for r in rows if r["status"]=="resolved")}]
+        return {"title": "Audit Report", "summary": {"total_audits": len(rows), "open": sum(1 for r in rows if r["status"]=="open"), "total_issues": sum(r["issues_count"] for r in rows)}, "rows": rows, "chart_data": [c for c in chart_data if c["value"]>0]}
+
+    # === 12. MARKETING REPORT ===
+    elif report_type == "marketing":
+        lead_updates = await db.daily_updates.find({"update_type": "leads"}).sort("created_at", -1).to_list(500)
+        total_leads = sum(int(u.get("data",{}).get("total_leads",0) or 0) for u in lead_updates)
+        qualified = sum(int(u.get("data",{}).get("qualified_leads",0) or 0) for u in lead_updates)
+        site_visits = sum(int(u.get("data",{}).get("site_visits",0) or 0) for u in lead_updates)
+        quotes_sent = sum(int(u.get("data",{}).get("quotes_sent",0) or 0) for u in lead_updates)
+        followups = sum(int(u.get("data",{}).get("followups",0) or 0) for u in lead_updates)
+        conversions = sum(int(u.get("data",{}).get("conversions",0) or 0) for u in lead_updates)
+        conversion_rate = round((conversions / total_leads) * 100, 1) if total_leads > 0 else 0
+        rows = [{"date": u.get("created_at","")[:10], "total_leads": u.get("data",{}).get("total_leads",0), "qualified": u.get("data",{}).get("qualified_leads",0), "site_visits": u.get("data",{}).get("site_visits",0), "quotes_sent": u.get("data",{}).get("quotes_sent",0), "conversions": u.get("data",{}).get("conversions",0), "by": u.get("created_by_name","")} for u in lead_updates]
+        chart_data = [{"name": "Leads", "value": total_leads}, {"name": "Qualified", "value": qualified}, {"name": "Site Visits", "value": site_visits}, {"name": "Quotes", "value": quotes_sent}, {"name": "Conversions", "value": conversions}]
+        if not rows:
+            rows = [{"date": "-", "total_leads": 0, "qualified": 0, "site_visits": 0, "quotes_sent": 0, "conversions": 0, "by": "No data yet"}]
+        return {"title": "Marketing Report", "summary": {"total_leads": total_leads, "qualified_leads": qualified, "quotes_sent": quotes_sent, "conversion_rate": conversion_rate}, "rows": rows, "chart_data": [c for c in chart_data if c["value"]>0]}
 
     raise HTTPException(status_code=404, detail=f"Unknown report type: {report_type}")
 

@@ -9,11 +9,13 @@ import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Badge } from '../components/ui/badge';
 import {
-  Loader2, Plus, Save, Trash2, ClipboardList, DollarSign, Package, Wrench, HardHat, Calendar
+  Loader2, Plus, Save, Trash2, ClipboardList, DollarSign, Package, Wrench, HardHat, Calendar, Megaphone, Receipt
 } from 'lucide-react';
 
 const UPDATE_TYPES = [
   { id: 'progress', label: 'Project Progress', icon: ClipboardList, color: 'emerald' },
+  { id: 'leads', label: 'Leads Update', icon: Megaphone, color: 'pink' },
+  { id: 'invoicing', label: 'Invoicing', icon: Receipt, color: 'indigo' },
   { id: 'material', label: 'Material Usage', icon: Package, color: 'blue' },
   { id: 'payment', label: 'Payment', icon: DollarSign, color: 'amber' },
   { id: 'installation', label: 'Installation', icon: HardHat, color: 'violet' },
@@ -38,6 +40,8 @@ export default function DailyUpdatesPage() {
   const [paymentForm, setPaymentForm] = useState({ amount: '', payment_method: 'upi', notes: '' });
   const [installForm, setInstallForm] = useState({ team: '', work_status: '', completion_date: '', notes: '' });
   const [omForm, setOmForm] = useState({ service: '', issues_resolved: '', notes: '' });
+  const [leadsForm, setLeadsForm] = useState({ total_leads: '', qualified_leads: '', site_visits: '', quotes_sent: '', followups: '', conversions: '' });
+  const [invoicingForm, setInvoicingForm] = useState({ invoices_generated: '', total_amount: '', payments_received: '', pending_invoices: '' });
 
   const fetchProjects = useCallback(async () => {
     try {
@@ -86,6 +90,14 @@ export default function DailyUpdatesPage() {
         if (!omForm.service) { setError('Service description required'); setSaving(false); return; }
         await dailyUpdatesAPI.create({ project_id: selectedProject, update_type: 'om', data: omForm });
         setOmForm({ service: '', issues_resolved: '', notes: '' });
+      } else if (activeType === 'leads') {
+        if (!leadsForm.total_leads) { setError('Total leads required'); setSaving(false); return; }
+        await dailyUpdatesAPI.create({ project_id: selectedProject || 'general', update_type: 'leads', data: leadsForm });
+        setLeadsForm({ total_leads: '', qualified_leads: '', site_visits: '', quotes_sent: '', followups: '', conversions: '' });
+      } else if (activeType === 'invoicing') {
+        if (!invoicingForm.invoices_generated) { setError('Invoice count required'); setSaving(false); return; }
+        await dailyUpdatesAPI.create({ project_id: selectedProject || 'general', update_type: 'invoicing', data: invoicingForm });
+        setInvoicingForm({ invoices_generated: '', total_amount: '', payments_received: '', pending_invoices: '' });
       }
       await fetchUpdates();
     } catch (err) {
@@ -215,6 +227,28 @@ export default function DailyUpdatesPage() {
                     </div>
                   </>
                 )}
+                {activeType === 'leads' && (
+                  <>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                      <div className="space-y-1"><Label className="text-xs">Total Leads *</Label><Input type="number" value={leadsForm.total_leads} onChange={(e) => setLeadsForm(p => ({...p, total_leads: e.target.value}))} className="h-9" data-testid="leads-total" /></div>
+                      <div className="space-y-1"><Label className="text-xs">Qualified Leads</Label><Input type="number" value={leadsForm.qualified_leads} onChange={(e) => setLeadsForm(p => ({...p, qualified_leads: e.target.value}))} className="h-9" data-testid="leads-qualified" /></div>
+                      <div className="space-y-1"><Label className="text-xs">Site Visits</Label><Input type="number" value={leadsForm.site_visits} onChange={(e) => setLeadsForm(p => ({...p, site_visits: e.target.value}))} className="h-9" data-testid="leads-visits" /></div>
+                      <div className="space-y-1"><Label className="text-xs">Quotes Sent</Label><Input type="number" value={leadsForm.quotes_sent} onChange={(e) => setLeadsForm(p => ({...p, quotes_sent: e.target.value}))} className="h-9" data-testid="leads-quotes" /></div>
+                      <div className="space-y-1"><Label className="text-xs">Follow-ups</Label><Input type="number" value={leadsForm.followups} onChange={(e) => setLeadsForm(p => ({...p, followups: e.target.value}))} className="h-9" data-testid="leads-followups" /></div>
+                      <div className="space-y-1"><Label className="text-xs">Conversions</Label><Input type="number" value={leadsForm.conversions} onChange={(e) => setLeadsForm(p => ({...p, conversions: e.target.value}))} className="h-9" data-testid="leads-conversions" /></div>
+                    </div>
+                  </>
+                )}
+                {activeType === 'invoicing' && (
+                  <>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                      <div className="space-y-1"><Label className="text-xs">Invoices Generated *</Label><Input type="number" value={invoicingForm.invoices_generated} onChange={(e) => setInvoicingForm(p => ({...p, invoices_generated: e.target.value}))} className="h-9" data-testid="inv-count" /></div>
+                      <div className="space-y-1"><Label className="text-xs">Total Amount (Rs)</Label><Input type="number" value={invoicingForm.total_amount} onChange={(e) => setInvoicingForm(p => ({...p, total_amount: e.target.value}))} className="h-9" data-testid="inv-amount" /></div>
+                      <div className="space-y-1"><Label className="text-xs">Payments Received (Rs)</Label><Input type="number" value={invoicingForm.payments_received} onChange={(e) => setInvoicingForm(p => ({...p, payments_received: e.target.value}))} className="h-9" data-testid="inv-received" /></div>
+                      <div className="space-y-1"><Label className="text-xs">Pending Invoices</Label><Input type="number" value={invoicingForm.pending_invoices} onChange={(e) => setInvoicingForm(p => ({...p, pending_invoices: e.target.value}))} className="h-9" data-testid="inv-pending" /></div>
+                    </div>
+                  </>
+                )}
                 <div className="flex justify-end pt-2">
                   <Button onClick={handleSave} disabled={saving} className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white" data-testid="save-update-btn">
                     {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}Save Update
@@ -249,6 +283,8 @@ export default function DailyUpdatesPage() {
                              {u.update_type === 'payment' && <span>Rs {parseFloat(u.data?.amount || 0).toLocaleString('en-IN')} via {u.data?.payment_method}</span>}
                              {u.update_type === 'installation' && <span>Team: {u.data?.team} — {u.data?.work_status}</span>}
                              {u.update_type === 'om' && <span>{u.data?.service}</span>}
+                             {u.update_type === 'leads' && <span>Leads: {u.data?.total_leads} total, {u.data?.qualified_leads} qualified, {u.data?.conversions} converted</span>}
+                             {u.update_type === 'invoicing' && <span>Invoices: {u.data?.invoices_generated} generated, Rs {parseFloat(u.data?.total_amount || 0).toLocaleString('en-IN')}</span>}
                            </div>
                            {u.data?.notes && <p className="text-xs text-slate-400 mt-0.5">{u.data.notes}</p>}
                            {u.data?.issues && <p className="text-xs text-red-400 mt-0.5">Issues: {u.data.issues}</p>}
