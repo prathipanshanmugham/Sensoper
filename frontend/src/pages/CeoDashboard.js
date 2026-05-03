@@ -10,7 +10,7 @@ import {
 } from 'lucide-react';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  PieChart, Pie, Cell, BarChart, Bar
+  BarChart, Bar
 } from 'recharts';
 
 const COLORS = ['#10b981', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
@@ -109,19 +109,24 @@ export default function CeoDashboard() {
             </CardContent>
           </Card>
 
-          {/* Status Pie */}
+          {/* Status Distribution */}
           <Card className="border-slate-200" data-testid="status-chart">
             <CardHeader className="pb-2"><CardTitle className="text-base font-['Outfit']">Project Status</CardTitle></CardHeader>
             <CardContent className="p-4 pt-0">
               {status_distribution.length > 0 ? (
-                <ResponsiveContainer width="100%" height={260}>
-                  <PieChart>
-                    <Pie data={status_distribution} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={90} label={({ name, value }) => `${name}: ${value}`} labelLine={{ stroke: '#94a3b8' }} fontSize={11}>
-                      {status_distribution.map((entry) => <Cell key={entry.name} fill={STATUS_COLORS[entry.name] || '#94a3b8'} />)}
-                    </Pie>
-                    <Tooltip />
-                  </PieChart>
-                </ResponsiveContainer>
+                <div className="space-y-3 pt-2">
+                  {status_distribution.map((item) => {
+                    const total = status_distribution.reduce((s, i) => s + i.value, 0);
+                    const pct = total > 0 ? (item.value / total) * 100 : 0;
+                    const color = STATUS_COLORS[item.name] || '#94a3b8';
+                    return (
+                      <div key={item.name} className="space-y-1">
+                        <div className="flex justify-between text-xs"><span className="text-slate-600 capitalize">{item.name}</span><span className="font-bold" style={{color}}>{item.value} ({pct.toFixed(0)}%)</span></div>
+                        <div className="w-full h-3 bg-slate-100 rounded-full overflow-hidden"><div className="h-full rounded-full" style={{width: `${pct}%`, backgroundColor: color}} /></div>
+                      </div>
+                    );
+                  })}
+                </div>
               ) : <p className="text-sm text-slate-400 text-center py-16">No projects yet</p>}
             </CardContent>
           </Card>
@@ -139,9 +144,7 @@ export default function CeoDashboard() {
                   <XAxis type="number" tick={{ fontSize: 11 }} stroke="#94a3b8" />
                   <YAxis type="category" dataKey="name" tick={{ fontSize: 12 }} stroke="#94a3b8" width={80} />
                   <Tooltip formatter={(v) => [v, 'Count']} />
-                  <Bar dataKey="value" radius={[0, 6, 6, 0]}>
-                    {funnelData.map((entry, idx) => <Cell key={idx} fill={entry.fill} />)}
-                  </Bar>
+                  <Bar dataKey="value" radius={[0, 6, 6, 0]} fill="#3b82f6" />
                 </BarChart>
               </ResponsiveContainer>
             </CardContent>

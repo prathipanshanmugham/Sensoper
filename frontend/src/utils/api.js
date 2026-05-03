@@ -85,6 +85,18 @@ export const projectReportAPI = {
   getCompleteness: (projectId) => api.get(`/projects/${projectId}/completeness`)
 };
 
+// Alerts & Risk
+export const alertsAPI = {
+  getDashboard: () => api.get('/alerts/dashboard'),
+  getProjectAlerts: (projectId) => api.get(`/alerts/project/${projectId}`)
+};
+
+// Thresholds
+export const thresholdsAPI = {
+  get: () => api.get('/settings/thresholds'),
+  update: (data) => api.put('/settings/thresholds', data)
+};
+
 // AI API
 export const aiAPI = {
   getRecommendations: (data) => api.post('/ai/recommendations', data)

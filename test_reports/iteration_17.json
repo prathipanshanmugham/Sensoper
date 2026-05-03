@@ -1,0 +1,87 @@
+{
+  "summary": "Completed comprehensive testing of Iteration 17 features: Profit Leakage Alert System (7 alert types, risk scoring 0-100, configurable thresholds, alert dashboard) and Consolidated Reports (8 reports with tab-based views, old report types return 404). All 28 backend tests passed (100%). All frontend features verified working correctly.",
+
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+
+  "passed_tests": [
+    "Admin login with credentials (admin@sensoper.com / Admin@123)",
+    "GET /api/alerts/dashboard returns total_leakage, total_alerts, risky_projects, top_risks, alerts_by_type, chart_data, thresholds",
+    "Alerts dashboard top_risks contains risk_score (0-100), risk_level (High/Medium/Low), alert_count",
+    "Alerts dashboard thresholds contains min_margin_pct, max_material_variance_pct, payment_delay_days, max_project_duration_days",
+    "GET /api/alerts/project/{id} returns risk_score, risk_level, alerts[], suggestions[]",
+    "GET /api/settings/thresholds returns current thresholds",
+    "PUT /api/settings/thresholds updates thresholds and persists",
+    "GET /api/reports/sales_revenue returns data with tabs (overview, lead_sources)",
+    "GET /api/reports/sales_revenue?tab=lead_sources returns lead source data",
+    "GET /api/reports/profit_leakage returns data with tabs (profit, material_variance) and leakage info",
+    "GET /api/reports/profit_leakage?tab=material_variance returns variance data",
+    "GET /api/reports/project_execution returns project status data",
+    "GET /api/reports/inventory_material returns data with tabs (stock_levels, material_usage, alerts)",
+    "GET /api/reports/inventory_material?tab=material_usage returns usage data",
+    "GET /api/reports/customer_credit returns receivables data",
+    "GET /api/reports/team_performance returns staff workload data",
+    "GET /api/reports/compliance_tax returns GST/tax data",
+    "GET /api/reports/customer_satisfaction returns feedback data",
+    "Old 'sales' report type returns 404",
+    "Old 'profit' report type returns 404",
+    "Old 'expense' report type returns 404",
+    "Old 'inventory' report type returns 404",
+    "Old 'execution' report type returns 404",
+    "Reports accept date_from and date_to filters",
+    "Reports accept system_type filter",
+    "Reports accept status filter",
+    "Reports accept customer filter",
+    "Reports accept staff filter",
+    "UI: Alerts Dashboard loads with 4 KPI cards (Total Leakage, Active Alerts, Risky Projects, Alert Types)",
+    "UI: Leakage by Category chart shows bar visualization",
+    "UI: Risk Distribution shows projects with risk scores",
+    "UI: High-Risk Projects table with risk score bars, levels, alert counts",
+    "UI: Thresholds button opens settings panel with Min Margin %, Max Material Var %, Payment Delay Days, Max Project Days",
+    "UI: Reports page shows 8 report cards (Sales & Revenue, Profit & Leakage, Project Execution, Inventory & Material, Customer Credit, Team Performance, Compliance & Tax, Customer Satisfaction)",
+    "UI: Sales & Revenue report shows tabs (Overview, Lead Sources)",
+    "UI: Profit & Leakage report shows tabs (Profit, Material Variance) with leakage alerts column",
+    "UI: Inventory & Material report shows tabs (Stock Levels, Material Usage, Alerts)",
+    "UI: Tab switching works correctly - data changes when switching tabs",
+    "UI: PDF and Excel export buttons present and functional",
+    "UI: Enhanced filters visible (Date From, Date To, System Type, Status, Customer, Staff)"
+  ],
+
+  "test_report_links": [
+    "/app/backend/tests/test_iteration17_alerts_reports.py",
+    "/app/test_reports/pytest/iteration17_results.xml"
+  ],
+
+  "action_items": [],
+
+  "critical_code_review_comments": [],
+
+  "updated_files": [
+    "/app/backend/tests/test_iteration17_alerts_reports.py - Created comprehensive test file for iteration 17 features"
+  ],
+
+  "success_rate": {
+    "backend": "100% (28/28 tests passed)",
+    "frontend": "100% (all features working)"
+  },
+
+  "test_credentials": {
+    "admin": "admin@sensoper.com / Admin@123"
+  },
+
+  "seed_data_creation": "No new seed data created - used existing projects and data from previous iterations",
+
+  "retest_needed": false,
+
+  "should_main_agent_self_test": false,
+
+  "context_for_next_testing_agent": "Iteration 17 testing completed successfully. Key features verified: 1) Profit Leakage Alert System at /dashboard/alerts with 7 alert types (low_margin, underpriced_quote, payment_delay, project_delay, material_variance, excess_material, team_inefficiency), risk scoring 0-100, configurable thresholds. 2) Alert Dashboard shows 4 KPIs (Total Leakage, Active Alerts, Risky Projects, Alert Types), Leakage by Category chart, Risk Distribution, High-Risk Projects table. 3) Thresholds API (GET/PUT /api/settings/thresholds) for min_margin_pct, max_material_variance_pct, payment_delay_days, max_project_duration_days. 4) Consolidated 8 reports: sales_revenue, profit_leakage, project_execution, inventory_material, customer_credit, team_performance, compliance_tax, customer_satisfaction. 5) Tab-based views: sales_revenue (overview, lead_sources), profit_leakage (profit, material_variance), inventory_material (stock_levels, material_usage, alerts). 6) Old report types (sales, profit, expense, inventory, execution) return 404. 7) Enhanced filters: date_from, date_to, system_type, status, customer, staff. 8) Charts use CSS bar visualizations instead of Recharts Pie (Recharts v3 Cell had ref issues)."
+}
