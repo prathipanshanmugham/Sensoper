@@ -36,7 +36,11 @@ const REPORT_TYPES = [
   { id: 'compliance', label: 'Compliance & Tax', icon: Receipt, color: 'red' },
   { id: 'hr', label: 'HR & Productivity', icon: Users, color: 'indigo' },
   { id: 'marketing', label: 'Marketing', icon: Megaphone, color: 'pink' },
-  { id: 'customer', label: 'Customer Satisfaction', icon: Star, color: 'orange' }
+  { id: 'customer', label: 'Customer Satisfaction', icon: Star, color: 'orange' },
+  { id: 'customer_credit', label: 'Customer Credit', icon: DollarSign, color: 'rose' },
+  { id: 'referral', label: 'Referral', icon: Megaphone, color: 'sky' },
+  { id: 'team_load', label: 'Team Load', icon: Users, color: 'lime' },
+  { id: 'excess_utilisation', label: 'Material Utilisation', icon: Package, color: 'fuchsia' }
 ];
 
 function SummaryCard({ label, value }) {
@@ -54,7 +58,7 @@ export default function ReportsPage() {
   const [activeReport, setActiveReport] = useState(searchParams.get('type') || '');
   const [reportData, setReportData] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [filters, setFilters] = useState({ date_from: '', date_to: '', system_type: 'all', status: 'all' });
+  const [filters, setFilters] = useState({ date_from: '', date_to: '', system_type: 'all', status: 'all', customer: '', staff: '' });
 
   const fetchReport = useCallback(async (type) => {
     setLoading(true);
@@ -65,6 +69,8 @@ export default function ReportsPage() {
       if (filters.date_to) params.date_to = filters.date_to;
       if (filters.system_type !== 'all') params.system_type = filters.system_type;
       if (filters.status !== 'all') params.status = filters.status;
+      if (filters.customer) params.customer = filters.customer;
+      if (filters.staff) params.staff = filters.staff;
       const res = await reportsAPI.get(type, params);
       setReportData(res.data);
     } catch (err) {
@@ -160,7 +166,7 @@ export default function ReportsPage() {
         {/* Global Filters */}
         <Card className="border-slate-200 mb-6" data-testid="filters-card">
           <CardContent className="p-4">
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
               <div className="space-y-1">
                 <Label className="text-xs">Date From</Label>
                 <Input type="date" value={filters.date_from} onChange={(e) => setFilters(p => ({ ...p, date_from: e.target.value }))} className="h-9" data-testid="filter-date-from" />
@@ -195,12 +201,20 @@ export default function ReportsPage() {
                   </SelectContent>
                 </Select>
               </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Customer</Label>
+                <Input value={filters.customer} onChange={(e) => setFilters(p => ({ ...p, customer: e.target.value }))} placeholder="Search customer..." className="h-9" data-testid="filter-customer" />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Staff</Label>
+                <Input value={filters.staff} onChange={(e) => setFilters(p => ({ ...p, staff: e.target.value }))} placeholder="Search staff..." className="h-9" data-testid="filter-staff" />
+              </div>
             </div>
           </CardContent>
         </Card>
 
         {/* Report Type Grid */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-6" data-testid="report-types">
+        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-5 gap-3 mb-6" data-testid="report-types">
           {REPORT_TYPES.map(rt => (
             <button key={rt.id} onClick={() => handleSelectReport(rt.id)}
               className={`p-3 rounded-xl border text-left transition-all ${activeReport === rt.id ? 'border-emerald-400 bg-emerald-50 ring-1 ring-emerald-200' : 'border-slate-200 bg-white hover:border-slate-300'}`}

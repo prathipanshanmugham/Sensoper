@@ -21,6 +21,7 @@ import FormTabsManager from "./pages/FormTabsManager";
 import CeoDashboard from "./pages/CeoDashboard";
 import ReportsPage from "./pages/ReportsPage";
 import DashboardLayout from "./components/DashboardLayout";
+import DailyUpdatesPage from "./pages/DailyUpdatesPage";
 
 // Protected Route Component
 function ProtectedRoute({ children, allowedRoles = null }) {
@@ -98,6 +99,7 @@ function AppRoutes() {
       <Route path="/dashboard/form-tabs" element={<ProtectedRoute allowedRoles={["admin"]}><DashboardLayout><FormTabsManager /></DashboardLayout></ProtectedRoute>} />
       <Route path="/dashboard/ceo" element={<ProtectedRoute allowedRoles={["admin", "manager"]}><DashboardLayout><CeoDashboard /></DashboardLayout></ProtectedRoute>} />
       <Route path="/dashboard/reports" element={<ProtectedRoute allowedRoles={["admin", "manager"]}><DashboardLayout><ReportsPage /></DashboardLayout></ProtectedRoute>} />
+      <Route path="/dashboard/daily-updates" element={<ProtectedRoute><DashboardLayout><DailyUpdatesPage /></DashboardLayout></ProtectedRoute>} />
       <Route path="/dashboard/approvals" element={<ProtectedRoute allowedRoles={["admin", "manager"]}><DashboardLayout><ApprovalsPage /></DashboardLayout></ProtectedRoute>} />
       <Route path="/dashboard/terms" element={<ProtectedRoute allowedRoles={["admin", "manager"]}><DashboardLayout><TermsConditions /></DashboardLayout></ProtectedRoute>} />
       <Route path="/dashboard/inventory" element={<ProtectedRoute allowedRoles={["admin", "manager"]}><DashboardLayout><InventoryManagement /></DashboardLayout></ProtectedRoute>} />

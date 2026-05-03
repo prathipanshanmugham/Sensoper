@@ -305,6 +305,31 @@ class FormTabUpdate(BaseModel):
     roles_visible: Optional[List[str]] = None
     active: Optional[bool] = None
 
+# ================== DAILY UPDATE & PAYMENT MODELS ==================
+
+class DailyUpdateCreate(BaseModel):
+    project_id: str
+    update_type: str  # progress, material, payment, installation, om
+    data: dict
+
+class DailyUpdateUpdate(BaseModel):
+    data: Optional[dict] = None
+    update_type: Optional[str] = None
+
+class PaymentCreate(BaseModel):
+    project_id: str
+    amount: float
+    payment_method: str  # cash, cheque, upi, bank_transfer, emi
+    notes: str = ""
+
+class MaterialUsageCreate(BaseModel):
+    project_id: str
+    item_name: str
+    estimated_qty: float
+    actual_qty: float
+    wastage: float = 0
+    notes: str = ""
+
 # ================== HELPER FUNCTIONS ==================
 
 def hash_password(password: str) -> str:
@@ -2305,7 +2330,7 @@ async def get_ceo_dashboard(request: Request):
 # ================== REPORTS ENGINE ==================
 
 @api_router.get("/reports/{report_type}")
-async def get_report(report_type: str, request: Request, date_from: str = None, date_to: str = None, system_type: str = None, status: str = None):
+async def get_report(report_type: str, request: Request, date_from: str = None, date_to: str = None, system_type: str = None, status: str = None, customer: str = None, staff: str = None, project_id: str = None):
     user = await get_current_user(request)
     if user["role"] not in ["admin", "manager"]:
         raise HTTPException(status_code=403, detail="Reports are admin/manager only")
@@ -2323,6 +2348,12 @@ async def get_report(report_type: str, request: Request, date_from: str = None, 
         query["solar_system.system_type"] = system_type
     if status and status != "all":
         query["status"] = status
+    if customer and customer != "all":
+        query["customer.name"] = {"$regex": customer, "$options": "i"}
+    if staff and staff != "all":
+        query["created_by_name"] = {"$regex": staff, "$options": "i"}
+    if project_id:
+        query["_id"] = ObjectId(project_id)
     
     projects = await db.projects.find(query).to_list(5000)
     inv_items = await db.inventory_items.find().to_list(1000)
@@ -2508,6 +2539,73 @@ async def get_report(report_type: str, request: Request, date_from: str = None, 
         rows = [{"source": k, "leads": v["count"], "converted": v["converted"], "conversion_rate": round((v["converted"] / v["count"]) * 100, 1) if v["count"] else 0} for k, v in sources.items()]
         chart_data = [{"name": r["source"], "value": r["leads"]} for r in sorted(rows, key=lambda x: x["leads"], reverse=True)[:8]]
         return {"title": "Marketing Report", "summary": {"total_sources": len(rows), "total_leads": sum(r["leads"] for r in rows)}, "rows": sorted(rows, key=lambda x: x["leads"], reverse=True), "chart_data": chart_data}
+    
+    elif report_type == "customer_credit":
+        all_payments = await db.payments.find().to_list(5000)
+        from collections import defaultdict
+        project_payments = defaultdict(float)
+        for pay in all_payments:
+            project_payments[pay["project_id"]] += pay.get("amount", 0)
+        rows = []
+        for p in projects:
+            pid = str(p["_id"])
+            total_cost = p.get("cost_estimation", {}).get("total_cost", 0)
+            paid = project_payments.get(pid, 0)
+            balance = max(0, total_cost - paid)
+            pay_status = "Paid" if paid >= total_cost and total_cost > 0 else "Partial" if paid > 0 else "Pending"
+            rows.append({"customer": p.get("customer", {}).get("name", ""), "ref": p.get("reference_number", ""), "total_value": round(total_cost), "amount_paid": round(paid), "balance": round(balance), "payment_status": pay_status})
+        chart_data = [{"name": "Paid", "value": sum(1 for r in rows if r["payment_status"] == "Paid")}, {"name": "Partial", "value": sum(1 for r in rows if r["payment_status"] == "Partial")}, {"name": "Pending", "value": sum(1 for r in rows if r["payment_status"] == "Pending")}]
+        return {"title": "Customer Credit Report", "summary": {"total_receivable": sum(r["total_value"] for r in rows), "total_collected": sum(r["amount_paid"] for r in rows), "outstanding": sum(r["balance"] for r in rows), "fully_paid": sum(1 for r in rows if r["payment_status"] == "Paid")}, "rows": rows, "chart_data": [c for c in chart_data if c["value"] > 0]}
+    
+    elif report_type == "referral":
+        from collections import defaultdict
+        sources = defaultdict(lambda: {"leads": 0, "converted": 0, "revenue": 0})
+        for p in projects:
+            src = p.get("custom_fields", {}).get("customer", {}).get("referral_source", "Direct")
+            sources[src]["leads"] += 1
+            if p.get("status") in ["approved", "completed"]:
+                sources[src]["converted"] += 1
+                sources[src]["revenue"] += p.get("cost_estimation", {}).get("total_cost", 0)
+        rows = [{"source": k, "leads": v["leads"], "converted": v["converted"], "conversion_rate": round((v["converted"] / v["leads"]) * 100, 1) if v["leads"] else 0, "revenue": round(v["revenue"])} for k, v in sources.items()]
+        chart_data = [{"name": r["source"], "value": r["revenue"]} for r in sorted(rows, key=lambda x: x["revenue"], reverse=True)[:8]]
+        return {"title": "Referral Report", "summary": {"total_sources": len(rows), "total_leads": sum(r["leads"] for r in rows), "best_source": max(rows, key=lambda x: x["revenue"])["source"] if rows else "N/A"}, "rows": sorted(rows, key=lambda x: x["revenue"], reverse=True), "chart_data": chart_data}
+    
+    elif report_type == "team_load":
+        from collections import defaultdict
+        team_data = defaultdict(lambda: {"name": "", "assigned": 0, "completed": 0, "in_progress": 0})
+        for p in projects:
+            uid = p.get("created_by", "")
+            team_data[uid]["name"] = p.get("created_by_name", "Unknown")
+            team_data[uid]["assigned"] += 1
+            if p.get("status") == "completed":
+                team_data[uid]["completed"] += 1
+            elif p.get("status") in ["submitted", "approved"]:
+                team_data[uid]["in_progress"] += 1
+        rows = []
+        avg_load = sum(v["assigned"] for v in team_data.values()) / len(team_data) if team_data else 0
+        for v in team_data.values():
+            load_status = "Overloaded" if v["assigned"] > avg_load * 1.5 else "Underutilized" if v["assigned"] < avg_load * 0.5 else "Balanced"
+            rows.append({"staff": v["name"], "assigned": v["assigned"], "in_progress": v["in_progress"], "completed": v["completed"], "load_status": load_status})
+        chart_data = [{"name": r["staff"][:15], "value": r["assigned"]} for r in sorted(rows, key=lambda x: x["assigned"], reverse=True)[:8]]
+        return {"title": "Installation Team Load Report", "summary": {"total_staff": len(rows), "avg_projects_per_staff": round(avg_load, 1), "overloaded": sum(1 for r in rows if r["load_status"] == "Overloaded")}, "rows": sorted(rows, key=lambda x: x["assigned"], reverse=True), "chart_data": chart_data}
+    
+    elif report_type == "excess_utilisation":
+        usage_logs = await db.material_usage_logs.find().to_list(5000)
+        from collections import defaultdict
+        item_data = defaultdict(lambda: {"estimated": 0, "actual": 0, "wastage": 0})
+        for log in usage_logs:
+            name = log.get("item_name", "Unknown")
+            item_data[name]["estimated"] += log.get("estimated_qty", 0)
+            item_data[name]["actual"] += log.get("actual_qty", 0)
+            item_data[name]["wastage"] += log.get("wastage", 0)
+        rows = []
+        for name, d in item_data.items():
+            variance = d["actual"] - d["estimated"]
+            rows.append({"item": name, "estimated": round(d["estimated"], 1), "actual": round(d["actual"], 1), "variance": round(variance, 1), "wastage": round(d["wastage"], 1), "status": "Excess" if variance > 0 else "Shortage" if variance < 0 else "On Target"})
+        if not rows:
+            rows = [{"item": "No usage logs recorded", "estimated": 0, "actual": 0, "variance": 0, "wastage": 0, "status": "N/A"}]
+        chart_data = [{"name": "Excess", "value": sum(1 for r in rows if r["status"] == "Excess")}, {"name": "Shortage", "value": sum(1 for r in rows if r["status"] == "Shortage")}, {"name": "On Target", "value": sum(1 for r in rows if r["status"] == "On Target")}]
+        return {"title": "Excess Material Utilisation Report", "summary": {"items_tracked": len(item_data), "excess_items": sum(1 for r in rows if r["status"] == "Excess"), "total_wastage": round(sum(r["wastage"] for r in rows), 1)}, "rows": rows, "chart_data": [c for c in chart_data if c["value"] > 0]}
     
     raise HTTPException(status_code=404, detail=f"Unknown report type: {report_type}")
 
@@ -2943,6 +3041,209 @@ async def delete_form_tab(tab_id: str, request: Request):
     await create_audit_log(user["id"], user["name"], "delete", "form_tab", tab_id, {"name": tab.get("name")})
     return {"message": "Tab deleted"}
 
+# ================== DAILY UPDATES ==================
+
+@api_router.post("/daily-updates")
+async def create_daily_update(update: DailyUpdateCreate, request: Request):
+    user = await get_current_user(request)
+    doc = {
+        "project_id": update.project_id,
+        "update_type": update.update_type,
+        "data": update.data,
+        "created_by": user["id"],
+        "created_by_name": user["name"],
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    result = await db.daily_updates.insert_one(doc)
+    return {"id": str(result.inserted_id), "message": "Update created"}
+
+@api_router.get("/daily-updates")
+async def list_daily_updates(request: Request, project_id: str = None, update_type: str = None, date_from: str = None, date_to: str = None):
+    await get_current_user(request)
+    query = {}
+    if project_id:
+        query["project_id"] = project_id
+    if update_type:
+        query["update_type"] = update_type
+    if date_from:
+        query.setdefault("created_at", {})["$gte"] = date_from
+    if date_to:
+        query.setdefault("created_at", {})["$lte"] = date_to + "T23:59:59"
+    updates = await db.daily_updates.find(query).sort("created_at", -1).to_list(500)
+    for u in updates:
+        u["id"] = str(u.pop("_id"))
+    return updates
+
+@api_router.get("/daily-updates/project/{project_id}")
+async def get_project_updates(project_id: str, request: Request):
+    await get_current_user(request)
+    updates = await db.daily_updates.find({"project_id": project_id}).sort("created_at", -1).to_list(200)
+    for u in updates:
+        u["id"] = str(u.pop("_id"))
+    return updates
+
+@api_router.put("/daily-updates/{update_id}")
+async def update_daily_update(update_id: str, body: DailyUpdateUpdate, request: Request):
+    user = await get_current_user(request)
+    doc = await db.daily_updates.find_one({"_id": ObjectId(update_id)})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Update not found")
+    update_data = {"updated_at": datetime.now(timezone.utc).isoformat()}
+    if body.data is not None:
+        update_data["data"] = body.data
+    if body.update_type is not None:
+        update_data["update_type"] = body.update_type
+    await db.daily_updates.update_one({"_id": ObjectId(update_id)}, {"$set": update_data})
+    return {"message": "Update modified"}
+
+@api_router.delete("/daily-updates/{update_id}")
+async def delete_daily_update(update_id: str, request: Request):
+    await get_current_user(request)
+    result = await db.daily_updates.delete_one({"_id": ObjectId(update_id)})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Update not found")
+    return {"message": "Update deleted"}
+
+# ================== PAYMENTS ==================
+
+@api_router.post("/payments")
+async def create_payment(payment: PaymentCreate, request: Request):
+    user = await get_current_user(request)
+    project = await db.projects.find_one({"_id": ObjectId(payment.project_id)})
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    doc = {
+        "project_id": payment.project_id,
+        "amount": payment.amount,
+        "payment_method": payment.payment_method,
+        "notes": payment.notes,
+        "recorded_by": user["id"],
+        "recorded_by_name": user["name"],
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    result = await db.payments.insert_one(doc)
+    return {"id": str(result.inserted_id), "message": "Payment recorded"}
+
+@api_router.get("/payments/project/{project_id}")
+async def get_project_payments(project_id: str, request: Request):
+    await get_current_user(request)
+    payments = await db.payments.find({"project_id": project_id}).sort("created_at", -1).to_list(200)
+    for p in payments:
+        p["id"] = str(p.pop("_id"))
+    return payments
+
+# ================== MATERIAL USAGE LOGS ==================
+
+@api_router.post("/material-usage")
+async def create_material_usage(usage: MaterialUsageCreate, request: Request):
+    user = await get_current_user(request)
+    doc = {
+        "project_id": usage.project_id,
+        "item_name": usage.item_name,
+        "estimated_qty": usage.estimated_qty,
+        "actual_qty": usage.actual_qty,
+        "wastage": usage.wastage,
+        "variance": usage.actual_qty - usage.estimated_qty,
+        "notes": usage.notes,
+        "logged_by": user["id"],
+        "logged_by_name": user["name"],
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    result = await db.material_usage_logs.insert_one(doc)
+    return {"id": str(result.inserted_id), "message": "Usage logged"}
+
+@api_router.get("/material-usage/project/{project_id}")
+async def get_project_material_usage(project_id: str, request: Request):
+    await get_current_user(request)
+    logs = await db.material_usage_logs.find({"project_id": project_id}).sort("created_at", -1).to_list(200)
+    for l in logs:
+        l["id"] = str(l.pop("_id"))
+    return logs
+
+# ================== DATA COMPLETENESS ==================
+
+@api_router.get("/projects/{project_id}/completeness")
+async def get_project_completeness(project_id: str, request: Request):
+    await get_current_user(request)
+    project = await db.projects.find_one({"_id": ObjectId(project_id)})
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    score = 0
+    checks = {}
+    # Customer details (20%)
+    cust = project.get("customer", {})
+    cust_ok = bool(cust.get("name") and cust.get("phone") and cust.get("address"))
+    checks["customer_details"] = cust_ok
+    if cust_ok: score += 20
+    # Site data (20%)
+    loc = project.get("location", {})
+    site_ok = bool(loc.get("site_location_words") or loc.get("address"))
+    checks["site_data"] = site_ok
+    if site_ok: score += 20
+    # Electrical data (15%)
+    elec = project.get("electrical", {})
+    elec_ok = bool(elec.get("sanction_load_kw") and elec.get("monthly_consumption_units"))
+    checks["electrical_data"] = elec_ok
+    if elec_ok: score += 15
+    # Costing (20%)
+    items = project.get("selected_items", [])
+    cost_ok = len(items) > 0
+    checks["costing"] = cost_ok
+    if cost_ok: score += 20
+    # Drive link (10%)
+    drive_ok = bool(project.get("drive_folder_link"))
+    checks["site_docs"] = drive_ok
+    if drive_ok: score += 10
+    # Daily updates (15%)
+    update_count = await db.daily_updates.count_documents({"project_id": project_id})
+    updates_ok = update_count >= 1
+    checks["daily_updates"] = updates_ok
+    if updates_ok: score += 15
+    return {"score": min(score, 100), "checks": checks, "update_count": update_count}
+
+# ================== PROJECT REPORT (Per-Project Download) ==================
+
+@api_router.get("/projects/{project_id}/report")
+async def get_project_report(project_id: str, request: Request):
+    await get_current_user(request)
+    project = await db.projects.find_one({"_id": ObjectId(project_id)})
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    payments = await db.payments.find({"project_id": project_id}).to_list(100)
+    for p in payments:
+        p["id"] = str(p.pop("_id"))
+    material_logs = await db.material_usage_logs.find({"project_id": project_id}).to_list(100)
+    for m in material_logs:
+        m["id"] = str(m.pop("_id"))
+    updates = await db.daily_updates.find({"project_id": project_id}).sort("created_at", -1).to_list(100)
+    for u in updates:
+        u["id"] = str(u.pop("_id"))
+    total_paid = sum(p.get("amount", 0) for p in payments)
+    total_cost = project.get("cost_estimation", {}).get("total_cost", 0)
+    return {
+        "project": {
+            "id": project_id,
+            "ref": project.get("reference_number", ""),
+            "customer": project.get("customer", {}),
+            "location": project.get("location", {}),
+            "status": project.get("status", ""),
+            "electrical": project.get("electrical", {}),
+            "solar_system": project.get("solar_system", {}),
+            "cost_estimation": project.get("cost_estimation", {}),
+            "selected_items": project.get("selected_items", []),
+            "manual_costs": project.get("manual_costs", []),
+            "site_measurements": project.get("site_measurements", {}),
+            "created_at": project.get("created_at", ""),
+            "updated_at": project.get("updated_at", "")
+        },
+        "payments": payments,
+        "total_paid": total_paid,
+        "balance": max(0, total_cost - total_paid),
+        "payment_status": "Paid" if total_paid >= total_cost and total_cost > 0 else "Partial" if total_paid > 0 else "Pending",
+        "material_usage": material_logs,
+        "daily_updates": updates
+    }
+
 # ================== HEALTH CHECK ==================
 
 @api_router.get("/")
@@ -2974,6 +3275,10 @@ async def startup_event():
     await db.approvals.create_index("type")
     await db.form_tabs.create_index("slug", unique=True)
     await db.form_tabs.create_index("order")
+    await db.daily_updates.create_index("project_id")
+    await db.daily_updates.create_index("created_at")
+    await db.payments.create_index("project_id")
+    await db.material_usage_logs.create_index("project_id")
     await db.approvals.create_index("requested_by")
     await db.approvals.create_index("timestamp")
     await db.role_permissions.create_index("role_name", unique=True)

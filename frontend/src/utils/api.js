@@ -58,6 +58,33 @@ export const reportsAPI = {
   get: (type, params = {}) => api.get(`/reports/${type}`, { params })
 };
 
+// Daily Updates API
+export const dailyUpdatesAPI = {
+  create: (data) => api.post('/daily-updates', data),
+  list: (params = {}) => api.get('/daily-updates', { params }),
+  getByProject: (projectId) => api.get(`/daily-updates/project/${projectId}`),
+  update: (id, data) => api.put(`/daily-updates/${id}`, data),
+  delete: (id) => api.delete(`/daily-updates/${id}`)
+};
+
+// Payments API
+export const paymentsAPI = {
+  create: (data) => api.post('/payments', data),
+  getByProject: (projectId) => api.get(`/payments/project/${projectId}`)
+};
+
+// Material Usage API
+export const materialUsageAPI = {
+  create: (data) => api.post('/material-usage', data),
+  getByProject: (projectId) => api.get(`/material-usage/project/${projectId}`)
+};
+
+// Project Report & Completeness
+export const projectReportAPI = {
+  getReport: (projectId) => api.get(`/projects/${projectId}/report`),
+  getCompleteness: (projectId) => api.get(`/projects/${projectId}/completeness`)
+};
+
 // AI API
 export const aiAPI = {
   getRecommendations: (data) => api.post('/ai/recommendations', data)
