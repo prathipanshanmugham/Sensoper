@@ -2620,15 +2620,17 @@ async def get_report(report_type: str, request: Request, date_from: str = None, 
                 "qty_used": round(agg["qty"], 1),
                 "movement_type": mtype
             })
-        # Apply movement_type filter
+        # Sort fast first then by usage_count desc (on full list BEFORE filter)
+        movement_rows.sort(key=lambda r: (0 if r["movement_type"] == "Fast" else 1, -r["usage_count"]))
+
+        # Compute summary counters on UNFILTERED list
+        fast_count = sum(1 for r in movement_rows if r["movement_type"] == "Fast")
+        slow_count = sum(1 for r in movement_rows if r["movement_type"] == "Slow")
+
+        # Apply movement_type filter (only affects displayed rows, not summary)
         if movement_type and movement_type not in (None, "all", "All"):
             mt_norm = movement_type.strip().lower()
             movement_rows = [r for r in movement_rows if r["movement_type"].lower() == mt_norm]
-        # Sort fast first then by usage_count desc
-        movement_rows.sort(key=lambda r: (0 if r["movement_type"] == "Fast" else 1, -r["usage_count"]))
-
-        fast_count = sum(1 for r in movement_rows if r["movement_type"] == "Fast")
-        slow_count = sum(1 for r in movement_rows if r["movement_type"] == "Slow")
 
         tabs_data = {
             "stock_levels": {"rows": stock_rows},

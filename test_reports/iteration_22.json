@@ -1,0 +1,60 @@
+{
+  "summary": "Iteration 22 — Focused retest of the 2 action items from iteration_21. Both fixes are CONFIRMED working end-to-end. (1) ReportsPage.js Movement Type Select stale-closure bug is FIXED: Slow/Fast/All now fire the correct GET /api/reports/inventory_material request on the VERY FIRST click (verified via page.on('request') capture). (2) Backend movement summary counters (fast_moving / slow_moving) are now computed on the UNFILTERED list BEFORE the movement_type filter is applied: when UI filter=slow, summary still shows fast_moving=1 while displayed rows contain only Slow items. 4 new pytest cases all PASS. Live UI verification also PASSES. No regressions observed in other tabs or in the inventory list dialog.",
+
+  "backend_issues": { "critical": [], "minor": [] },
+
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+
+  "passed_tests": [
+    "pytest test_iteration22_retest.py::test_summary_unfiltered_when_filter_slow PASSED — seeded 5 usage logs for TEST_RETEST_FAST_ITEM, GET ?tab=movement&movement_type=slow returns summary.fast_moving=1 and rows contain only Slow items (TEST_RETEST_FAST_ITEM NOT present in rows)",
+    "pytest test_iteration22_retest.py::test_summary_unfiltered_when_filter_fast PASSED — summary.slow_moving>=1 while filter=fast; all displayed rows are Fast",
+    "pytest test_iteration22_retest.py::test_summary_no_filter_all PASSED — baseline summary contains both fast>=1 and slow>=1",
+    "pytest test_iteration22_retest.py::test_summary_consistent_across_filters PASSED — summary.fast_moving and summary.slow_moving are IDENTICAL across none/all/fast/slow filters (no variance)",
+    "Playwright UI: Movement Type → Slow Moving FIRST click fires /api/reports/inventory_material?movement_type=slow&tab=movement (captured via page.on('request'))",
+    "Playwright UI: Movement Type → Fast Moving FIRST click fires /api/reports/inventory_material?movement_type=fast&tab=movement",
+    "Playwright UI: Movement Type → All FIRST click fires /api/reports/inventory_material?tab=movement (no movement_type param)",
+    "Playwright UI: Summary cards while filter=slow → TOTAL ITEMS=10, FAST MOVING=1, SLOW MOVING=9, WINDOW DAYS=30 (UNFILTERED counters)",
+    "Playwright UI: While filter=slow, exactly 9 movement-badge-* elements render, all showing 'Slow' (zero Fast rows displayed)"
+  ],
+
+  "test_report_links": [
+    "/app/backend/tests/test_iteration22_retest.py",
+    "/app/backend/tests/test_iteration21_movement.py",
+    "/app/test_reports/pytest/iteration22.xml"
+  ],
+
+  "action_items": [
+    "(Housekeeping, non-blocking) test_iteration21_movement.py::test_fast_classification_after_seeding now fails with usage_count=10 vs expected 5 because material_usage_logs are NOT cleaned up between runs (noted in iteration_21 seed_data_creation). The fix is in the test — compute expected from current GET-before-seed baseline or change the assertion to >=5. Production code is unaffected.",
+    "(Nice-to-have, already noted prior) Seeded material_usage_logs with prefix 'TEST_SEED' / 'TEST_RETEST' persist in DB — consider adding an admin cleanup endpoint or fixture-level delete."
+  ],
+
+  "critical_code_review_comments": [
+    "ReportsPage.js:55 fetchReport(type, tab, overrideFilters) — correctly uses overrideFilters to bypass stale-closure via `const f = overrideFilters ? { ...filters, ...overrideFilters } : filters;`. Pattern is sound. Consider renaming to fetchReportWithFilters for clarity, and extracting the similar inline pattern for other filters that may suffer the same bug in future.",
+    "server.py:2624-2633 — correctly sorts the FULL movement_rows list then computes fast_count/slow_count BEFORE applying movement_type filter. Good separation: summary=unfiltered, rows=filtered. The `mt_norm` casing normalisation is defensive and correct.",
+    "Minor: the 'No items' placeholder row at server.py:2639 can be returned when movement_type filter matches nothing — that row has movement_type='-' which will not break the frontend Badge variant (falls to neutral slate variant). Acceptable."
+  ],
+
+  "updated_files": [
+    "/app/backend/tests/test_iteration22_retest.py (new — 4 tests, all pass)"
+  ],
+
+  "success_rate": {
+    "backend": "100% (4/4 iter22 retest pytest + 6/7 iter21 — 1 pre-existing seed-accumulation test failure, not caused by current fixes)",
+    "frontend": "100% for both retest targets"
+  },
+
+  "test_credentials": { "admin": "admin@sensoper.com / Admin@123" },
+
+  "seed_data_creation": "Created TEST_RETEST_FAST_ITEM inventory item + 5 material_usage_logs (item_name=TEST_RETEST_FAST_ITEM, actual_qty=2 each, project_id=first project). Inventory item was deleted in fixture teardown; usage logs persist (as in iteration_21). Also TEST_MOVE_FAST_ITEM logs from prior runs still exist, contributing to fast_moving count=1 via accumulated logs on any pre-existing inventory row matching that name.",
+
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+
+  "context_for_next_testing_agent": "Both iteration_21 action items are resolved and verified. The ReportsPage.js Movement filter now responds on first click and the backend movement summary reflects unfiltered totals. For any future movement-related work, the canonical pytest regression is /app/backend/tests/test_iteration22_retest.py (covers cross-filter consistency). The iteration_21 test file has one brittle strict-equality assertion (usage_count == 5) that fails after re-runs due to non-cleaned usage_logs — this is a test-hygiene issue, not a product bug. BASE_URL must be exported from frontend/.env before running pytest: `export $(grep REACT_APP_BACKEND_URL frontend/.env) && pytest ...`.",
+
+  "rca of the issue": "Both fixes validated. BUG 1 root cause was stale closure: setFilters followed by fetchReport in the same tick captured the previous filters. Fix applied by E1: fetchReport now accepts overrideFilters and the Select onValueChange at ReportsPage.js:143 passes { movement_type: v } so the fresh value is merged BEFORE the request is built. BUG 2 root cause was counter computation order: fast_count/slow_count were being computed AFTER `movement_rows = [r for r in movement_rows if r['movement_type'].lower()==mt_norm]`, so filtering to 'slow' zeroed out fast_count. Fix applied by E1: counters are now computed at server.py:2627-2628 BEFORE the filter application at line 2631."
+}

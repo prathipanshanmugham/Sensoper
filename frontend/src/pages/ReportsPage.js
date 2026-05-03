@@ -52,16 +52,17 @@ export default function ReportsPage() {
   const [loading, setLoading] = useState(false);
   const [filters, setFilters] = useState({ date_from: '', date_to: '', system_type: 'all', status: 'all', movement_type: 'all' });
 
-  const fetchReport = useCallback(async (type, tab) => {
+  const fetchReport = useCallback(async (type, tab, overrideFilters) => {
     setLoading(true);
     setReportData(null);
     try {
+      const f = overrideFilters ? { ...filters, ...overrideFilters } : filters;
       const params = {};
-      if (filters.date_from) params.date_from = filters.date_from;
-      if (filters.date_to) params.date_to = filters.date_to;
-      if (filters.system_type !== 'all') params.system_type = filters.system_type;
-      if (filters.status !== 'all') params.status = filters.status;
-      if (filters.movement_type !== 'all' && type === 'inventory_material' && tab === 'movement') params.movement_type = filters.movement_type;
+      if (f.date_from) params.date_from = f.date_from;
+      if (f.date_to) params.date_to = f.date_to;
+      if (f.system_type !== 'all') params.system_type = f.system_type;
+      if (f.status !== 'all') params.status = f.status;
+      if (f.movement_type !== 'all' && type === 'inventory_material' && tab === 'movement') params.movement_type = f.movement_type;
       if (tab) params.tab = tab;
       const res = await reportsAPI.get(type, params);
       setReportData(res.data);
@@ -139,7 +140,7 @@ export default function ReportsPage() {
               <div className="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-3" data-testid="movement-filter-row">
                 <div className="space-y-1">
                   <Label className="text-xs">Movement Type</Label>
-                  <Select value={filters.movement_type} onValueChange={(v) => { setFilters(p => ({...p, movement_type: v})); fetchReport(activeReport, activeTab); }}>
+                  <Select value={filters.movement_type} onValueChange={(v) => { setFilters(p => ({...p, movement_type: v})); fetchReport(activeReport, activeTab, { movement_type: v }); }}>
                     <SelectTrigger className="h-9" data-testid="filter-movement-type"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">All</SelectItem>
