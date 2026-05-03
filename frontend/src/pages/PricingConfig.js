@@ -9,7 +9,7 @@ import {
   ArrowLeft,
   Save,
   Loader2,
-  DollarSign,
+  IndianRupee,
   Settings,
   RefreshCw
 } from 'lucide-react';
@@ -199,7 +199,7 @@ export default function PricingConfig() {
               <Card className="border-slate-200 sticky top-6">
                 <CardHeader>
                   <CardTitle className="text-lg font-['Outfit'] flex items-center gap-2">
-                    <DollarSign className="h-5 w-5 text-[#4ADE40]" />
+                    <IndianRupee className="h-5 w-5 text-[#4ADE40]" />
                     Sample Estimate
                   </CardTitle>
                   <CardDescription>

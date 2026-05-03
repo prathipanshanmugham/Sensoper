@@ -77,7 +77,7 @@ export default function AlertsDashboard() {
           <Card className="border-red-200 bg-red-50">
             <CardContent className="p-4 text-center">
               <IndianRupee className="h-6 w-6 text-red-500 mx-auto mb-1" />
-              <p className="text-2xl font-bold text-red-700">Rs {(data.total_leakage || 0).toLocaleString('en-IN')}</p>
+              <p className="text-2xl font-bold text-red-700">₹{(data.total_leakage || 0).toLocaleString('en-IN')}</p>
               <p className="text-xs text-red-500 uppercase tracking-wider">Total Leakage</p>
             </CardContent>
           </Card>
@@ -117,7 +117,7 @@ export default function AlertsDashboard() {
                     const pct = maxVal > 0 ? (item.value / maxVal) * 100 : 0;
                     return (
                       <div key={item.name} className="space-y-1">
-                        <div className="flex justify-between text-xs"><span className="text-slate-600">{item.name}</span><span className="font-bold text-slate-900">Rs {item.value.toLocaleString('en-IN')}</span></div>
+                        <div className="flex justify-between text-xs"><span className="text-slate-600">{item.name}</span><span className="font-bold text-slate-900">₹{item.value.toLocaleString('en-IN')}</span></div>
                         <div className="w-full h-3 bg-slate-100 rounded-full overflow-hidden"><div className="h-full rounded-full" style={{width: `${pct}%`, backgroundColor: PIE_COLORS[i % PIE_COLORS.length]}} /></div>
                       </div>
                     );

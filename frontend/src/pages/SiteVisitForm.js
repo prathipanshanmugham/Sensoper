@@ -919,7 +919,7 @@ export default function SiteVisitForm() {
                         <Label className="text-xs uppercase tracking-wider text-slate-500 mb-1 block">{cat.name}</Label>
                         <Select onValueChange={(v) => addSelectedItem(v)}>
                           <SelectTrigger className="h-11" data-testid={`select-${cat.slug}`}><SelectValue placeholder={`Add ${cat.name.toLowerCase()}...`} /></SelectTrigger>
-                          <SelectContent>{catItems.map(item => (<SelectItem key={item.id} value={item.id}>{item.name} - Rs {item.unit_price.toLocaleString('en-IN')} (Stock: {item.quantity})</SelectItem>))}</SelectContent>
+                          <SelectContent>{catItems.map(item => (<SelectItem key={item.id} value={item.id}>{item.name} - ₹{item.unit_price.toLocaleString('en-IN')} (Stock: {item.quantity})</SelectItem>))}</SelectContent>
                         </Select>
                       </div>
                     );
@@ -935,10 +935,10 @@ export default function SiteVisitForm() {
                           <div className="flex items-center gap-2">
                             <div className="flex-1 min-w-0">
                               <p className="font-medium text-sm text-slate-900 truncate">{item.name}</p>
-                              <p className="text-xs text-slate-500">{getCategoryLabel(item.category)} - Rs {item.unit_price.toLocaleString('en-IN')} x</p>
+                              <p className="text-xs text-slate-500">{getCategoryLabel(item.category)} - ₹{item.unit_price.toLocaleString('en-IN')} x</p>
                             </div>
                             <Input type="number" min="1" value={item.quantity} onChange={(e) => updateSelectedItem(idx, 'quantity', parseInt(e.target.value) || 1)} className="w-16 h-9 text-center text-sm" data-testid={`item-qty-${idx}`} />
-                            <span className="text-sm font-medium text-slate-900 w-24 text-right">Rs {(item.unit_price * item.quantity).toLocaleString('en-IN')}</span>
+                            <span className="text-sm font-medium text-slate-900 w-24 text-right">₹{(item.unit_price * item.quantity).toLocaleString('en-IN')}</span>
                             <Button variant="ghost" size="icon" className="h-8 w-8 text-red-500 shrink-0" onClick={() => removeSelectedItem(idx)}><Trash2 className="h-3.5 w-3.5" /></Button>
                           </div>
                           {canSetMargin && (
@@ -947,7 +947,7 @@ export default function SiteVisitForm() {
                               <span className="text-xs text-amber-700 font-medium">Margin</span>
                               <Input type="number" min="0" max="100" step="0.5" value={item.margin_percentage} onChange={(e) => updateSelectedItem(idx, 'margin_percentage', parseFloat(e.target.value) || 0)} className="w-20 h-7 text-xs text-center" data-testid={`item-margin-${idx}`} />
                               <span className="text-xs text-slate-500">%</span>
-                              {item.margin_percentage > 0 && <span className="text-xs text-amber-600 ml-auto">+Rs {(item.unit_price * item.quantity * item.margin_percentage / 100).toLocaleString('en-IN')}</span>}
+                              {item.margin_percentage > 0 && <span className="text-xs text-amber-600 ml-auto">+₹{(item.unit_price * item.quantity * item.margin_percentage / 100).toLocaleString('en-IN')}</span>}
                             </div>
                           )}
                         </div>
@@ -974,11 +974,11 @@ export default function SiteVisitForm() {
                   <CardContent className="p-4">
                     <h3 className="font-semibold text-slate-900 mb-2">Cost Summary</h3>
                     <div className="space-y-1 text-sm">
-                      <div className="flex justify-between"><span className="text-slate-600">Items</span><span className="font-medium">Rs {totals.itemsTotal.toLocaleString('en-IN')}</span></div>
-                      <div className="flex justify-between"><span className="text-slate-600">Manual</span><span className="font-medium">Rs {totals.manualTotal.toLocaleString('en-IN')}</span></div>
-                      <div className="flex justify-between"><span className="text-slate-600">GST</span><span className="font-medium">Rs {totals.gstTotal.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span></div>
-                      {canSetMargin && totals.marginTotal > 0 && <div className="flex justify-between text-amber-700"><span>Margin</span><span className="font-medium">Rs {totals.marginTotal.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span></div>}
-                      <div className="flex justify-between pt-2 border-t border-emerald-300"><span className="font-bold">Estimated Total</span><span className="font-bold text-emerald-700">Rs {totals.total.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span></div>
+                      <div className="flex justify-between"><span className="text-slate-600">Items</span><span className="font-medium">₹{totals.itemsTotal.toLocaleString('en-IN')}</span></div>
+                      <div className="flex justify-between"><span className="text-slate-600">Manual</span><span className="font-medium">₹{totals.manualTotal.toLocaleString('en-IN')}</span></div>
+                      <div className="flex justify-between"><span className="text-slate-600">GST</span><span className="font-medium">₹{totals.gstTotal.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span></div>
+                      {canSetMargin && totals.marginTotal > 0 && <div className="flex justify-between text-amber-700"><span>Margin</span><span className="font-medium">₹{totals.marginTotal.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span></div>}
+                      <div className="flex justify-between pt-2 border-t border-emerald-300"><span className="font-bold">Estimated Total</span><span className="font-bold text-emerald-700">₹{totals.total.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span></div>
                     </div>
                   </CardContent>
                 </Card>

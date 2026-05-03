@@ -14,11 +14,13 @@ import {
   ArrowLeft, Loader2, User, MapPin, Zap, Sun, Clock, CheckCircle2, XCircle, 
   AlertCircle, Download, Share2, Trash2, Send, AlertTriangle, Package, Percent, 
   Video, Upload, Film, Pencil, Save, X, MessageSquare, QrCode, FolderOpen, Camera, Ruler,
-  ExternalLink, Copy, Link2
+  ExternalLink, Copy, FileSpreadsheet
 } from 'lucide-react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import QRCode from 'qrcode';
+import * as XLSX from 'xlsx';
+import { saveAs } from 'file-saver';
 
 const API_URL = process.env.REACT_APP_BACKEND_URL;
 
@@ -173,7 +175,7 @@ export default function ProjectDetails() {
     const hexToRgb = (hex) => [parseInt(hex.slice(1,3),16), parseInt(hex.slice(3,5),16), parseInt(hex.slice(5,7),16)];
     const pRgb = hexToRgb(primaryHex);
     const sRgb = hexToRgb(secondaryHex);
-    const currency = (val) => `Rs ${(val || 0).toLocaleString('en-IN')}`;
+    const currency = (val) => `Rs. ${(val || 0).toLocaleString('en-IN')}`;
 
     // Fetch logo as base64 from backend (bypasses CORS)
     let logoBase64 = null;
@@ -280,7 +282,7 @@ export default function ProjectDetails() {
         ['Sanction Load', `${project.electrical?.sanction_load_kw || 0} kW`],
         ['Connected Load', `${project.electrical?.connected_load_kw || 0} kW`],
         ['Monthly Consumption', `${project.electrical?.monthly_consumption_units || 0} units`],
-        ['EB Tariff', `Rs ${project.electrical?.eb_tariff || 0}/unit`],
+        ['EB Tariff', `Rs. ${project.electrical?.eb_tariff || 0}/unit`],
         ['System Type', (project.solar_system?.system_type || '-').toUpperCase()],
         ['Cable Length', `${project.additional?.cable_length_meters || 0} m`],
       ],
@@ -381,8 +383,81 @@ export default function ProjectDetails() {
     doc.save(`Quotation-${project.customer?.name || 'Customer'}-${new Date().toISOString().split('T')[0]}.pdf`);
   };
 
+  const generateExcel = () => {
+    const cp = companyProfile || {};
+    const wb = XLSX.utils.book_new();
+
+    const overview = [
+      ['Company', cp.company_name || 'Sensoper Controls & Renewables'],
+      ['Project Ref', project.reference_number || `SCR-${id.slice(0,8).toUpperCase()}`],
+      ['Status', (project.status || 'draft').toUpperCase()],
+      ['Created By', project.created_by_name || '-'],
+      ['Created At', new Date(project.created_at).toLocaleDateString('en-IN')],
+      [],
+      ['— Customer —'],
+      ['Name', project.customer?.name || '-'],
+      ['Phone', project.customer?.phone || '-'],
+      ['Email', project.customer?.email || '-'],
+      ['Address', project.customer?.address || '-'],
+      [],
+      ['— Location & Mounting —'],
+      ['Address', project.location?.address || '-'],
+      ['What3Words', project.location?.site_location_words || '-'],
+      ['Roof Type', project.mounting?.roof_type || '-'],
+      ['Structure', project.mounting?.structure_type || '-'],
+      ['Tilt', `${project.mounting?.tilt_angle || 0}°`],
+      [],
+      ['— Electrical —'],
+      ['Service Type', project.electrical?.service_type || '-'],
+      ['Sanction Load (kW)', project.electrical?.sanction_load_kw || 0],
+      ['Connected Load (kW)', project.electrical?.connected_load_kw || 0],
+      ['Monthly Consumption (units)', project.electrical?.monthly_consumption_units || 0],
+      ['EB Tariff (₹/unit)', project.electrical?.eb_tariff || 0],
+      ['System Type', project.solar_system?.system_type || '-'],
+      ['Cable Length (m)', project.additional?.cable_length_meters || 0],
+      [],
+      ['— Cost Summary —'],
+      ['Subtotal (₹)', (project.cost_estimation || {}).subtotal || 0],
+      ['GST (₹)', (project.cost_estimation || {}).total_gst || 0],
+      ['Margin (₹)', (project.cost_estimation || {}).total_margin || 0],
+      ['TOTAL (₹)', (project.cost_estimation || {}).total_cost || 0],
+    ];
+    const overviewWs = XLSX.utils.aoa_to_sheet(overview);
+    overviewWs['!cols'] = [{ wch: 30 }, { wch: 50 }];
+    XLSX.utils.book_append_sheet(wb, overviewWs, 'Overview');
+
+    const items = project.cost_estimation?.items_breakdown || project.selected_items || [];
+    if (items.length > 0) {
+      const matsRows = items.map(item => ({
+        Item: item.name,
+        Category: CATEGORY_LABELS[item.category] || item.category,
+        SKU: item.sku_code || '-',
+        Quantity: item.quantity,
+        'Unit Price (₹)': item.unit_price || 0,
+        'GST %': item.gst_percentage || 18,
+        'Margin %': item.margin_percentage || 0,
+        'Amount (₹)': item.amount || (item.unit_price * item.quantity)
+      }));
+      const matsWs = XLSX.utils.json_to_sheet(matsRows);
+      matsWs['!cols'] = [{ wch: 30 }, { wch: 18 }, { wch: 14 }, { wch: 10 }, { wch: 14 }, { wch: 8 }, { wch: 10 }, { wch: 14 }];
+      XLSX.utils.book_append_sheet(wb, matsWs, 'Materials');
+    }
+
+    const manualCosts = project.cost_estimation?.manual_costs || project.manual_costs || [];
+    if (manualCosts.length > 0) {
+      const mcRows = manualCosts.map(c => ({ Description: c.description, 'Amount (₹)': c.amount || 0 }));
+      const mcWs = XLSX.utils.json_to_sheet(mcRows);
+      mcWs['!cols'] = [{ wch: 40 }, { wch: 14 }];
+      XLSX.utils.book_append_sheet(wb, mcWs, 'Manual Costs');
+    }
+
+    const buf = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+    const refNum = project.reference_number || `SCR-${id.slice(0,8).toUpperCase()}`;
+    saveAs(new Blob([buf], { type: 'application/octet-stream' }), `Project-${refNum}-${new Date().toISOString().slice(0,10)}.xlsx`);
+  };
+
   const shareViaWhatsApp = () => {
-    const message = encodeURIComponent(`*Solar Project Quotation*\n\nCustomer: ${project.customer?.name}\nRef: ${project.reference_number || ''}\nSystem: ${project.solar_system?.system_type}\nTotal: Rs ${(project.cost_estimation?.total_cost || 0).toLocaleString('en-IN')}\n\nFrom: ${companyProfile?.company_name || 'Sensoper Controls & Renewables'}`);
+    const message = encodeURIComponent(`*Solar Project Quotation*\n\nCustomer: ${project.customer?.name}\nRef: ${project.reference_number || ''}\nSystem: ${project.solar_system?.system_type}\nTotal: ₹${(project.cost_estimation?.total_cost || 0).toLocaleString('en-IN')}\n\nFrom: ${companyProfile?.company_name || 'Sensoper Controls & Renewables'}`);
     window.open(`https://wa.me/?text=${message}`, '_blank');
   };
 
@@ -452,11 +527,10 @@ export default function ProjectDetails() {
             {canEdit && (
               <Link to={`/dashboard/projects/${id}/edit`}><Button variant="outline" className="gap-2" data-testid="edit-project-btn"><Pencil className="h-4 w-4" />Edit</Button></Link>
             )}
+            <Button variant="outline" onClick={generateExcel} className="gap-2" data-testid="download-excel-btn"><FileSpreadsheet className="h-4 w-4" />Excel</Button>
+            <Button variant="outline" onClick={generatePDF} className="gap-2" data-testid="download-pdf-btn"><Download className="h-4 w-4" />PDF</Button>
             {(project.status === 'approved' || project.status === 'completed') && (
-              <>
-                <Button variant="outline" onClick={shareViaWhatsApp} className="gap-2" data-testid="share-whatsapp-btn"><Share2 className="h-4 w-4" />WhatsApp</Button>
-                <Button onClick={generatePDF} className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white" data-testid="download-pdf-btn"><Download className="h-4 w-4" />Download PDF</Button>
-              </>
+              <Button variant="outline" onClick={shareViaWhatsApp} className="gap-2" data-testid="share-whatsapp-btn"><Share2 className="h-4 w-4" />WhatsApp</Button>
             )}
           </div>
         </div>
@@ -497,7 +571,7 @@ export default function ProjectDetails() {
                 <InfoRow label="Sanction Load" value={`${project.electrical?.sanction_load_kw} kW`} />
                 <InfoRow label="Connected Load" value={`${project.electrical?.connected_load_kw} kW`} />
                 <InfoRow label="Monthly Consumption" value={`${project.electrical?.monthly_consumption_units} units`} />
-                <InfoRow label="EB Tariff" value={`Rs ${project.electrical?.eb_tariff}/unit`} />
+                <InfoRow label="EB Tariff" value={`₹${project.electrical?.eb_tariff}/unit`} />
                 <InfoRow label="Cable Length" value={`${project.additional?.cable_length_meters} m`} />
                 <InfoRow label="Complexity" value={project.additional?.installation_complexity?.toUpperCase()} />
               </CardContent>
@@ -701,8 +775,8 @@ export default function ProjectDetails() {
                       <tbody>{selectedItems.map((item, i) => (
                         <tr key={item.inventory_item_id || `row-${i}`} className="border-b border-slate-100">
                           <td className="py-2 px-4 font-medium">{item.name}</td><td className="py-2 px-4 text-slate-500">{CATEGORY_LABELS[item.category] || item.category}</td>
-                          <td className="py-2 px-4 text-center">{item.quantity}</td><td className="py-2 px-4 text-right">Rs {(item.unit_price || 0).toLocaleString('en-IN')}</td>
-                          <td className="py-2 px-4 text-right text-slate-500">{item.gst_percentage}%</td><td className="py-2 px-4 text-right font-medium">Rs {(item.amount || item.unit_price * item.quantity).toLocaleString('en-IN')}</td>
+                          <td className="py-2 px-4 text-center">{item.quantity}</td><td className="py-2 px-4 text-right">₹{(item.unit_price || 0).toLocaleString('en-IN')}</td>
+                          <td className="py-2 px-4 text-right text-slate-500">{item.gst_percentage}%</td><td className="py-2 px-4 text-right font-medium">₹{(item.amount || item.unit_price * item.quantity).toLocaleString('en-IN')}</td>
                         </tr>
                       ))}</tbody>
                     </table>
@@ -720,17 +794,17 @@ export default function ProjectDetails() {
                 {selectedItems.map((item, i) => (
                   <div key={item.inventory_item_id || `cost-${i}`} className="flex justify-between py-1.5 border-b border-slate-100 last:border-0">
                     <span className="text-sm text-slate-500 truncate mr-2">{item.name} x{item.quantity}</span>
-                    <span className="text-sm font-medium text-slate-900">Rs {(item.amount || item.unit_price * item.quantity).toLocaleString('en-IN')}</span>
+                    <span className="text-sm font-medium text-slate-900">₹{(item.amount || item.unit_price * item.quantity).toLocaleString('en-IN')}</span>
                   </div>
                 ))}
                 {manualCosts.map((c, i) => (
                   <div key={`m${i}`} className="flex justify-between py-1.5 border-b border-slate-100">
-                    <span className="text-sm text-slate-500 italic">{c.description}</span><span className="text-sm font-medium text-slate-900">Rs {(c.amount || 0).toLocaleString('en-IN')}</span>
+                    <span className="text-sm text-slate-500 italic">{c.description}</span><span className="text-sm font-medium text-slate-900">₹{(c.amount || 0).toLocaleString('en-IN')}</span>
                   </div>
                 ))}
                 <div className="mt-4 pt-3 border-t border-slate-200 space-y-2">
-                  <div className="flex justify-between text-sm"><span className="text-slate-500">Subtotal</span><span className="font-medium">Rs {(ce.subtotal || 0).toLocaleString('en-IN')}</span></div>
-                  <div className="flex justify-between text-sm"><span className="text-slate-500">GST</span><span className="font-medium">Rs {(ce.total_gst || 0).toLocaleString('en-IN')}</span></div>
+                  <div className="flex justify-between text-sm"><span className="text-slate-500">Subtotal</span><span className="font-medium">₹{(ce.subtotal || 0).toLocaleString('en-IN')}</span></div>
+                  <div className="flex justify-between text-sm"><span className="text-slate-500">GST</span><span className="font-medium">₹{(ce.total_gst || 0).toLocaleString('en-IN')}</span></div>
                   
                   {(isAdmin || isManager) && (
                     <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg mt-2">
@@ -747,14 +821,14 @@ export default function ProjectDetails() {
                       <Button size="sm" onClick={handleMarginUpdate} disabled={marginLoading} className="w-full mt-2 bg-amber-600 hover:bg-amber-700 text-white h-8 text-xs" data-testid="update-margins-btn">
                         {marginLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Apply Margins'}
                       </Button>
-                      <div className="flex justify-between text-xs mt-2"><span className="text-amber-600">Total Margin</span><span className="font-medium text-amber-800">Rs {(ce.total_margin || 0).toLocaleString('en-IN')}</span></div>
+                      <div className="flex justify-between text-xs mt-2"><span className="text-amber-600">Total Margin</span><span className="font-medium text-amber-800">₹{(ce.total_margin || 0).toLocaleString('en-IN')}</span></div>
                       {project.margin_added_by && <p className="text-xs text-amber-500 mt-1">Last by {project.margin_added_by}</p>}
                     </div>
                   )}
                   
                   <div className="flex justify-between pt-3 border-t-2 border-slate-300 mt-2">
                     <span className="font-bold text-slate-900 text-base">TOTAL</span>
-                    <span className="font-bold text-emerald-600 text-lg">Rs {(ce.total_cost || 0).toLocaleString('en-IN')}</span>
+                    <span className="font-bold text-emerald-600 text-lg">₹{(ce.total_cost || 0).toLocaleString('en-IN')}</span>
                   </div>
                 </div>
 

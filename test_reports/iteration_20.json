@@ -1,0 +1,95 @@
+{
+  "summary": "Frontend-only testing of 5 UI/UX refinements: currency consistency (₹ vs Rs/$), Daily Updates global Leads/Invoicing tabs, Project header Excel+PDF buttons for all statuses, Inventory active dot + QC Checklist, and Notification bell. All 5 features verified working end-to-end via Playwright. Minor: 4 stray 'Rs' literals in form labels and a React hydration warning in InventoryManagement (Badge nested inside <p>).",
+
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "InventoryManagement.js (mobile card line ~277-280)",
+        "issue": "React hydration warning: Badge (<div>) rendered inside <p> for item name -> 'In HTML, <div> cannot be a descendant of <p>'. Functional but produces console warning on mobile viewport / SSR.",
+        "selector": "[data-testid^='item-card-'] p",
+        "priority": "LOW"
+      },
+      {
+        "component": "InventoryManagement.js line 365",
+        "issue": "Form label still reads 'Unit Price (Rs)' — should be 'Unit Price (₹)' per currency consistency requirement.",
+        "selector": "[data-testid='item-price-input'] preceding Label",
+        "priority": "LOW"
+      },
+      {
+        "component": "CustomerCreditsPage.js lines 90 & 107",
+        "issue": "Form labels 'Total Amount (Rs) *' and 'Amount (Rs) *' still use literal 'Rs' — should be '₹'.",
+        "selector": "[data-testid='credit-amount'], [data-testid='pay-amount']",
+        "priority": "LOW"
+      },
+      {
+        "component": "SiteVisitForm.js line 621",
+        "issue": "Form label 'EB Tariff (Rs/unit)' uses literal 'Rs' — should be '₹/unit'.",
+        "selector": "[data-testid='eb-tariff-input']",
+        "priority": "LOW"
+      }
+    ],
+    "integration_issues": [],
+    "design_issues": []
+  },
+
+  "passed_tests": [
+    "Login admin@sensoper.com/Admin@123 -> /dashboard OK",
+    "Notification Bell present in header (data-testid=notification-bell-btn)",
+    "Notification count badge shows 11 (matches GET /api/alerts/dashboard total_alerts)",
+    "Clicking bell opens notification-panel listing 'Profit Leakage Alerts · 11 active · Impact ₹1,62,907' with risky project entries",
+    "Daily Updates page shows ALL 7 tabs in order: Leads Update (Global), Invoicing (Global), Project Progress, Material Usage, Payment, Installation, O&M",
+    "Leads tab: project selector HIDDEN, leads-total field visible; saving POSTs /api/daily-updates with project_id='general' -> 200 (id returned)",
+    "Invoicing tab: project selector HIDDEN, inv-count field visible",
+    "Project Progress tab: project selector reappears (visual confirmation in screenshot)",
+    "Inventory: 18 status dots rendered across desktop+mobile (data-testid=status-dot-{id} / status-dot-mobile-{id}); 8/9 green active, 1 grey inactive (Test Inverter 5kW)",
+    "Inventory dialog: Active toggle visible (data-testid=item-active-toggle) and 'QC Checklist' section text present",
+    "QC badges 'QC: 3' visible on 2 items in list confirming qc_checklist persistence",
+    "Inventory edit save: PUT /api/inventory/items/{id} -> 200 OK",
+    "Project Details for draft project: Excel + PDF buttons BOTH visible (data-testid=download-excel-btn / download-pdf-btn)",
+    "Excel download triggered: Project-SCR-AB44A6-2026-05-03.xlsx",
+    "PDF download triggered: Quotation-AutoSave_V5_*.pdf",
+    "Currency check: /dashboard/credits has ₹ symbol, /dashboard/ceo has ₹ symbol, /dashboard/reports — no stray 'Rs' literals on body text",
+    "No DollarSign icon usage anywhere in /app/frontend/src",
+    "No uncaught JS exceptions during any flow (only 401 resource warning + hydration warning)"
+  ],
+
+  "test_report_links": [],
+
+  "action_items": [
+    "Replace 'Rs' literal in 4 form labels with ₹: InventoryManagement.js:365 ('Unit Price (Rs)'), CustomerCreditsPage.js:90+107 ('Total Amount (Rs)','Amount (Rs)'), SiteVisitForm.js:621 ('EB Tariff (Rs/unit)').",
+    "Fix hydration warning in InventoryManagement.js mobile card (line ~277): change wrapping <p> to <div>/<span> since Badge renders a <div> child. Same likely on line ~232 desktop tr.",
+    "Optional: PDF filename uses 'Quotation-AutoSave_V*' instead of project-status oriented name; consider 'Project-SCR-XXX-{status}.pdf' to match Excel naming convention."
+  ],
+
+  "critical_code_review_comments": [
+    "InventoryManagement.js item name node uses <p> wrapping Badge component (which is a <div>) -> invalid HTML, triggers React hydration warning. Replace <p> with <div> or move Badge outside the <p>.",
+    "Several pages still hold 'Rs' currency literal in form labels (CustomerCreditsPage, InventoryManagement, SiteVisitForm). Currency-consistency replacement was incomplete.",
+    "PUT /api/inventory/items/{id} response body did not echo qc_checklist/active fields (verified via network response text). Data IS persisted (badges 'QC: 3' show after refresh), but response shape may need to include the saved fields for client-side optimistic update consistency."
+  ],
+
+  "updated_files": [],
+
+  "success_rate": {
+    "backend": "N/A (frontend-only testing as requested)",
+    "frontend": "100% feature acceptance, 4 minor cosmetic/hydration findings"
+  },
+
+  "test_credentials": {
+    "admin": "admin@sensoper.com / Admin@123"
+  },
+
+  "seed_data_creation": "Created 1 daily update via UI: type=leads, total_leads=10, qualified_leads=5, project_id=general (id 69f77c4abd2b463031501a0c)",
+
+  "retest_needed": false,
+
+  "should_main_agent_self_test": true,
+
+  "context_for_next_testing_agent": "All 5 iteration-20 features work end-to-end. Bell badge=11, notification panel populated from /api/alerts/dashboard. DailyUpdates GLOBAL_TYPES (leads, invoicing) bypass project selector and POST with project_id='general'. Inventory has status dots + QC checklist UI; QC badges visible on 2 items. ProjectDetails Excel+PDF buttons work for draft status (downloaded Project-SCR-AB44A6-2026-05-03.xlsx + Quotation PDF). Only follow-ups are 4 cosmetic 'Rs'-literal labels (Inventory price label, CustomerCredits amount labels, SiteVisit EB tariff label) and a hydration warning where InventoryManagement mobile card wraps Badge inside <p>. Test data: project id used 69f63feebe382e57dcab44a6 (status=draft); 58 projects exist in DB.",
+
+  "rca of the issue": "N/A — no blocking bugs."
+}

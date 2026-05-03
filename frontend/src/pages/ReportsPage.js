@@ -181,7 +181,7 @@ export default function ReportsPage() {
               {reportData.summary && (
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4" data-testid="report-summary">
                   {Object.entries(reportData.summary).map(([k, v]) => (
-                    <SummaryCard key={k} label={formatHeader(k)} value={typeof v === 'number' && v > 999 ? `Rs ${v.toLocaleString('en-IN')}` : v} />
+                    <SummaryCard key={k} label={formatHeader(k)} value={typeof v === 'number' && v > 999 ? `₹${v.toLocaleString('en-IN')}` : v} />
                   ))}
                 </div>
               )}

@@ -6,7 +6,7 @@ import { Label } from '../components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Badge } from '../components/ui/badge';
-import { Loader2, Plus, DollarSign, X, Save, Trash2 } from 'lucide-react';
+import { Loader2, Plus, IndianRupee, X, Save, Trash2 } from 'lucide-react';
 
 const STATUS_COLORS = { active: 'bg-blue-100 text-blue-700', overdue: 'bg-red-100 text-red-700', closed: 'bg-emerald-100 text-emerald-700' };
 
@@ -66,10 +66,10 @@ export default function CustomerCreditsPage() {
 
         {/* KPIs */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6" data-testid="credit-kpis">
-          <Card className="border-slate-200"><CardContent className="p-4 text-center"><p className="text-[10px] uppercase tracking-wider text-slate-400">Total Outstanding</p><p className="text-xl font-bold text-slate-900">Rs {totalOutstanding.toLocaleString('en-IN')}</p></CardContent></Card>
+          <Card className="border-slate-200"><CardContent className="p-4 text-center"><p className="text-[10px] uppercase tracking-wider text-slate-400">Total Outstanding</p><p className="text-xl font-bold text-slate-900">₹{totalOutstanding.toLocaleString('en-IN')}</p></CardContent></Card>
           <Card className="border-red-200 bg-red-50"><CardContent className="p-4 text-center"><p className="text-[10px] uppercase tracking-wider text-red-400">Overdue</p><p className="text-xl font-bold text-red-700">{overdue}</p></CardContent></Card>
-          <Card className="border-slate-200"><CardContent className="p-4 text-center"><p className="text-[10px] uppercase tracking-wider text-slate-400">0-30 Days</p><p className="text-lg font-bold text-slate-700">Rs {aging['0_30'].toLocaleString('en-IN')}</p></CardContent></Card>
-          <Card className="border-amber-200"><CardContent className="p-4 text-center"><p className="text-[10px] uppercase tracking-wider text-amber-500">60+ Days</p><p className="text-lg font-bold text-amber-700">Rs {aging['60_plus'].toLocaleString('en-IN')}</p></CardContent></Card>
+          <Card className="border-slate-200"><CardContent className="p-4 text-center"><p className="text-[10px] uppercase tracking-wider text-slate-400">0-30 Days</p><p className="text-lg font-bold text-slate-700">₹{aging['0_30'].toLocaleString('en-IN')}</p></CardContent></Card>
+          <Card className="border-amber-200"><CardContent className="p-4 text-center"><p className="text-[10px] uppercase tracking-wider text-amber-500">60+ Days</p><p className="text-lg font-bold text-amber-700">₹{aging['60_plus'].toLocaleString('en-IN')}</p></CardContent></Card>
         </div>
 
         {/* Filter */}
@@ -110,7 +110,7 @@ export default function CustomerCreditsPage() {
                 </div>
                 <div className="flex items-end gap-2">
                   <Button variant="outline" size="sm" onClick={() => setShowPay(null)}><X className="h-4 w-4" /></Button>
-                  <Button size="sm" onClick={handlePay} disabled={saving} className="bg-blue-600 text-white" data-testid="record-pay-btn"><DollarSign className="h-4 w-4 mr-1" />Pay</Button>
+                  <Button size="sm" onClick={handlePay} disabled={saving} className="bg-blue-600 text-white" data-testid="record-pay-btn"><IndianRupee className="h-4 w-4 mr-1" />Pay</Button>
                 </div>
               </div>
             </CardContent>
@@ -137,9 +137,9 @@ export default function CustomerCreditsPage() {
                     <tr key={c.id} className="border-b border-slate-100 hover:bg-slate-50" data-testid={`credit-row-${c.id}`}>
                       <td className="px-4 py-2.5 font-medium">{c.customer_name}</td>
                       <td className="px-4 py-2.5 text-slate-500 text-xs">{c.invoice_ref || '-'}</td>
-                      <td className="px-4 py-2.5">Rs {(c.total_amount || 0).toLocaleString('en-IN')}</td>
-                      <td className="px-4 py-2.5 text-emerald-600">Rs {(c.amount_paid || 0).toLocaleString('en-IN')}</td>
-                      <td className="px-4 py-2.5 font-semibold">Rs {(c.balance || 0).toLocaleString('en-IN')}</td>
+                      <td className="px-4 py-2.5">₹{(c.total_amount || 0).toLocaleString('en-IN')}</td>
+                      <td className="px-4 py-2.5 text-emerald-600">₹{(c.amount_paid || 0).toLocaleString('en-IN')}</td>
+                      <td className="px-4 py-2.5 font-semibold">₹{(c.balance || 0).toLocaleString('en-IN')}</td>
                       <td className="px-4 py-2.5"><Badge className={`text-[10px] ${STATUS_COLORS[c.status] || ''}`}>{c.status}</Badge></td>
                       <td className="px-4 py-2.5 text-xs text-slate-500">{c.due_date || '-'}</td>
                       <td className="px-4 py-2.5 flex gap-1">

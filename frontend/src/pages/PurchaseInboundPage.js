@@ -145,7 +145,7 @@ export default function PurchaseInboundPage() {
                       <h3 className="font-semibold text-slate-900">{po.supplier_name}</h3>
                       <Badge className={`text-[10px] ${STATUS_COLORS[po.status] || ''}`}>{STATUS_LABELS[po.status] || po.status}</Badge>
                     </div>
-                    <p className="text-xs text-slate-500 mt-1">{po.items?.length || 0} items | Rs {(po.total_amount || 0).toLocaleString('en-IN')} | {new Date(po.created_at).toLocaleDateString('en-IN')}</p>
+                    <p className="text-xs text-slate-500 mt-1">{po.items?.length || 0} items | ₹{(po.total_amount || 0).toLocaleString('en-IN')} | {new Date(po.created_at).toLocaleDateString('en-IN')}</p>
                     {po.transport && <p className="text-xs text-slate-400 mt-1"><Truck className="inline h-3 w-3 mr-1" />{po.transport.transporter} | {po.transport.vehicle}</p>}
                     {po.qc && <p className="text-xs text-slate-400 mt-1"><ClipboardCheck className="inline h-3 w-3 mr-1" />QC: {po.qc.overall}</p>}
                     {po.storage_location && <p className="text-xs text-slate-400 mt-1"><Package className="inline h-3 w-3 mr-1" />Location: {po.storage_location}</p>}

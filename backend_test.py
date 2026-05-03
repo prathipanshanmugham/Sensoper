@@ -10,7 +10,7 @@ import json
 from datetime import datetime
 
 class SolarEstimatorAPITester:
-    def __init__(self, base_url="https://admin-tabs-studio.preview.emergentagent.com"):
+    def __init__(self, base_url="https://solar-ops-management.preview.emergentagent.com"):
         self.base_url = base_url
         self.session = requests.Session()
         self.admin_token = None

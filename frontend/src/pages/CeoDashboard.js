@@ -87,7 +87,7 @@ export default function CeoDashboard() {
           <KpiCard title="Pending Approvals" value={kpis.pending_approvals} icon={ClipboardCheck} color="red" onClick={() => navigate('/dashboard/approvals')} />
           <KpiCard title="Inventory Value" value={`₹${(kpis.inventory_value || 0).toLocaleString('en-IN')}`} icon={Package} color="slate" onClick={() => navigate('/dashboard/reports?type=inventory')} />
           <KpiCard title="Low Stock Alerts" value={kpis.low_stock_alerts} icon={AlertTriangle} color="amber" onClick={() => navigate('/dashboard/inventory')} />
-          <KpiCard title="Outstanding Credit" value={`₹${(kpis.total_outstanding || 0).toLocaleString('en-IN')}`} icon={IndianRupee} color="red" subtitle={`Overdue: Rs ${(kpis.overdue_amount || 0).toLocaleString('en-IN')}`} onClick={() => navigate('/dashboard/credits')} />
+          <KpiCard title="Outstanding Credit" value={`₹${(kpis.total_outstanding || 0).toLocaleString('en-IN')}`} icon={IndianRupee} color="red" subtitle={`Overdue: ₹${(kpis.overdue_amount || 0).toLocaleString('en-IN')}`} onClick={() => navigate('/dashboard/credits')} />
         </div>
 
         {/* Charts Row */}
@@ -164,7 +164,7 @@ export default function CeoDashboard() {
                         <p className="text-sm font-medium text-slate-900 truncate">{s.name}</p>
                         <p className="text-xs text-slate-500">{s.count} projects</p>
                       </div>
-                      <Badge variant="outline" className="text-xs shrink-0">Rs {s.revenue.toLocaleString('en-IN')}</Badge>
+                      <Badge variant="outline" className="text-xs shrink-0">₹{s.revenue.toLocaleString('en-IN')}</Badge>
                     </div>
                   ))}
                 </div>
@@ -190,7 +190,7 @@ export default function CeoDashboard() {
                     const maxVal = Math.max(data.credit_data.aging?.['0_30'] || 0, data.credit_data.aging?.['30_60'] || 0, data.credit_data.aging?.['60_plus'] || 0, 1);
                     return (
                       <div key={bucket.label} className="space-y-1">
-                        <div className="flex justify-between text-xs"><span className="text-slate-600">{bucket.label}</span><span className="font-bold">Rs {bucket.value.toLocaleString('en-IN')}</span></div>
+                        <div className="flex justify-between text-xs"><span className="text-slate-600">{bucket.label}</span><span className="font-bold">₹{bucket.value.toLocaleString('en-IN')}</span></div>
                         <div className="w-full h-3 bg-slate-100 rounded-full overflow-hidden"><div className="h-full rounded-full" style={{width: `${(bucket.value / maxVal) * 100}%`, backgroundColor: bucket.color}} /></div>
                       </div>
                     );
@@ -205,7 +205,7 @@ export default function CeoDashboard() {
                         <div key={d.name || i} className="flex items-center justify-between p-2 bg-slate-50 rounded-lg">
                           <span className="text-sm text-slate-700">{d.name}</span>
                           <div className="flex items-center gap-2">
-                            <span className="text-sm font-bold text-slate-900">Rs {d.balance.toLocaleString('en-IN')}</span>
+                            <span className="text-sm font-bold text-slate-900">₹{d.balance.toLocaleString('en-IN')}</span>
                             {d.status === 'overdue' && <Badge className="bg-red-100 text-red-700 text-[9px]">Overdue</Badge>}
                           </div>
                         </div>
