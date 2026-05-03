@@ -1,49 +1,56 @@
 # Sensoper Controls & Renewables - Solar ERP
 
 ## Original Problem Statement
-Build a production-ready Solar Project ERP with role-based auth, dynamic forms, cost estimation, project tracking, PDF quotations, approvals, permissions, CEO dashboard, profit leakage intelligence, consolidated reports, daily data updates, payment tracking, and data completeness scoring.
+Full-featured Solar Project ERP with role-based auth, dynamic forms, cost estimation, project tracking, PDF quotations, approvals, permissions, CEO dashboard, profit leakage intelligence, consolidated reports, daily data updates, payment tracking, data completeness, customer credit management, procurement (inbound), delivery (outbound), brand returns, and weekly audit system.
 
 ## Tech Stack
-- Frontend: React, Tailwind CSS, Shadcn UI, Recharts (LineChart only), jsPDF + autoTable, xlsx/SheetJS, file-saver, DOMPurify
+- Frontend: React, Tailwind CSS, Shadcn UI, Recharts, jsPDF + autoTable, xlsx/SheetJS, DOMPurify
 - Backend: FastAPI, MongoDB, Motor (Async), JWT Auth (cookie-based)
 
-## Implemented Features
-- [x] Role-based JWT Authentication (Admin, Manager, Staff)
-- [x] Multi-step Dynamic Site Visit Form (API-driven tab order)
-- [x] Admin-Controlled Dynamic Form Builder (all tabs editable)
-- [x] CEO Dashboard (KPIs, Revenue Trend, Status Distribution, Sales Funnel, Top Staff)
-- [x] **Profit Leakage Alert System** — 7 alert types (low margin, underpriced quote, payment delay, project delay, material variance, excess material, team inefficiency), risk scoring 0-100, configurable thresholds
-- [x] **8 Consolidated Reports** — Sales & Revenue, Profit & Leakage, Project Execution, Inventory & Material, Customer Credit, Team Performance, Compliance & Tax, Customer Satisfaction (reduced from 20 redundant reports)
-- [x] **Tab-based Report Views** — Multi-tab navigation within reports (overview/lead_sources, profit/material_variance, stock/usage/alerts)
-- [x] **Daily Data Updates** (5 sections: Progress, Material, Payment, Installation, O&M)
-- [x] **Payment Tracking** + **Material Usage Logging** with variance
-- [x] **Data Completeness Score** (0-100% per project)
-- [x] **Project-Level Report API** (full details + payments + materials + updates)
-- [x] Enhanced Report Filters (date, system type, status, customer, staff)
-- [x] Sticky Sidebar, Sensoper Favicon, Auto-save Draft
-- [x] Dynamic Cost Estimation, PDF Quotation with QR, Approvals, Permissions, Inventory, Audit Logs
+## Implemented Modules
 
-## Report Types (8 Consolidated)
-1. Sales & Revenue (tabs: overview, lead_sources)
-2. Profit & Leakage (tabs: profit, material_variance)
-3. Project Execution
-4. Inventory & Material (tabs: stock_levels, material_usage, alerts)
-5. Customer Credit
-6. Team Performance
-7. Compliance & Tax
-8. Customer Satisfaction
+### Core
+- [x] Role-based Auth (Admin, Manager, Staff)
+- [x] Dynamic Form Builder (all tabs editable, 6 field types)
+- [x] Multi-step Site Visit Form (API-driven)
+- [x] Dynamic Cost Estimation Engine
+- [x] PDF Quotation with QR codes
+- [x] Approvals + Permissions System
+- [x] Inventory Management
 
-## Alert Types (7)
-low_margin, underpriced_quote, payment_delay, project_delay, material_variance, excess_material, team_inefficiency
+### Intelligence
+- [x] CEO Dashboard (KPIs, Revenue Trend, Sales Funnel)
+- [x] Profit Leakage Alert System (7 alert types, risk scoring)
+- [x] 8 Consolidated Reports with tab views + PDF/Excel export
+- [x] Data Completeness Score (0-100%)
+- [x] Configurable Thresholds
+
+### Operations
+- [x] **Customer Credits** — Credit entries, payment tracking, aging analysis (0-30/30-60/60+ days), auto-overdue, auto-close
+- [x] **Purchase Inbound** — Full procurement lifecycle: PO → Approve → Arrival (transport) → QC → Inventory update with storage location
+- [x] **Delivery Outbound** — Dispatch tracking with customer, transport, items, distance
+- [x] **Brand Returns** — Return logging (damage/excess/defect), supplier tracking, status workflow
+- [x] **Weekly Audits** — Structured audits with checklist, issue tracking, severity, deadline, resolution status
+- [x] **Daily Data Updates** — 5 sections (Progress, Material, Payment, Installation, O&M)
+- [x] **Payment Tracking** + **Material Usage Logging**
+
+### UI/UX
+- [x] Sticky Sidebar across all pages
+- [x] Sensoper Favicon
+- [x] Auto-save Draft
+- [x] Mobile-responsive forms
+
+## DB Collections (20)
+users, projects, inventory_items, inventory_categories, terms_conditions, company_profiles, audit_logs, approvals, deletion_requests, permissions, login_attempts, form_tabs, daily_updates, payments, material_usage_logs, settings, **customer_credits**, **credit_payments**, **purchase_orders**, **deliveries**, **brand_returns**, **audits**
 
 ## P1 - Upcoming
-- [ ] Project-level PDF/Excel download button in ProjectDetails
+- [ ] Project-level PDF/Excel download in ProjectDetails
 - [ ] Data completeness UI indicators in project list
 - [ ] In-app notification bell for alerts
-- [ ] Project-level alert badges on project cards
+- [ ] Report integration for new operational modules
 
-## P2 - Future/Backlog
-- [ ] WhatsApp/Email notifications for alerts
-- [ ] Auto inventory deduction on project approval
+## P2 - Future
+- [ ] WhatsApp/Email notifications
 - [ ] Offline PWA mode
-- [ ] Component splitting, backend route modules
+- [ ] Auto inventory deduction
+- [ ] Backend route module refactoring
