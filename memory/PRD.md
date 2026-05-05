@@ -47,14 +47,21 @@
 - Inventory → Movement tab: adds Movement Type filter (All / Fast / Slow)
 
 ## P1 - Upcoming
-- [x] Project-level PDF/Excel download in ProjectDetails *(shipped Feb 2026 — Excel + PDF buttons visible for all statuses)*
-- [x] In-app notification bell for alerts *(shipped Feb 2026 — bell in top header with count + dropdown listing risky projects)*
-- [x] Inventory UI updates — status dot (green/grey) + QC checklist input/view in dialog *(shipped Feb 2026)*
-- [x] Decouple Leads & Invoicing in Daily Updates — now global (business-wide) tabs *(shipped Feb 2026)*
-- [x] Currency consistency — all `DollarSign` icons → `IndianRupee`; all literal `Rs ` UI strings → `₹` *(shipped Feb 2026; `Rs.` retained only in jsPDF text where helvetica lacks ₹ glyph)*
+- [x] Project-level PDF/Excel download in ProjectDetails *(shipped Feb 2026)*
+- [x] In-app notification bell for alerts *(shipped Feb 2026)*
+- [x] Inventory UI updates — status dot + QC checklist *(shipped Feb 2026)*
+- [x] Decouple Leads & Invoicing in Daily Updates *(shipped Feb 2026)*
+- [x] Currency consistency *(shipped Feb 2026)*
+- [x] Inventory movement intelligence — Fast/Slow + procurement_date + URL-based image *(shipped Feb 2026)*
+- [x] **Accounts module** (Cash on Hand / Meter Reading / Account Balance) — embedded as a sub-tab inside Customer Credits *(shipped Feb 2026)*
+- [x] **Readings module** (site reading-phase tracker, auto-overdue derivation, summary KPIs, status filter) *(shipped Feb 2026)*
+- [x] **CEO Dashboard expansion** — Cash / Readings / Account Balance snapshot cards with trend line *(shipped Feb 2026)*
+- [x] **Permissions refresh** — module-level access matrix (view/create/edit/delete/export × 16 modules) with admin lock + mobile cards *(shipped Feb 2026)*
+- [x] **PWA + offline support** — manifest, service worker (cache-first static, network-first navigation, offline fallback, no-cache /api/*, background-sync queue for /api/readings & /api/accounts), install prompt, CLEAR_CACHE on logout *(shipped Feb 2026)*
 
 ## P2 - Future
 - [ ] WhatsApp Business API & Email delivery for quote sharing
-- [ ] PWA / Offline mode for field staff
-- [ ] Refactor server.py (~3900 lines) into modular routers (auth, projects, reports, inventory, operations)
-- [ ] Embed a Unicode font in jsPDF so ₹ glyph can render inside PDFs
+- [ ] Refactor server.py (~4000 lines) into modular routers
+- [ ] Embed Unicode font in jsPDF so ₹ renders natively in PDFs
+- [ ] Dead Stock classification (no movement for extended duration)
+- [ ] Reorder Suggestions card driven by Fast-moving + low stock

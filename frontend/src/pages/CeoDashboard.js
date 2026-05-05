@@ -104,9 +104,9 @@ export default function CeoDashboard() {
               <p className="text-3xl font-bold font-['Outfit'] text-slate-900">₹{(cash?.amount || 0).toLocaleString('en-IN')}</p>
               <p className="text-[11px] text-slate-500 mt-1">{cash?.entry_date ? `As of ${cash.entry_date}` : 'No entries yet'}{cash?.entered_by ? ` · by ${cash.entered_by}` : ''}</p>
               {cashHistory.length >= 2 && (
-                <div className="mt-3 h-16">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={cashHistory}><Line type="monotone" dataKey="amount" stroke="#10b981" strokeWidth={2} dot={false} /><Tooltip formatter={(v) => `₹${v.toLocaleString('en-IN')}`} labelFormatter={(l) => l} /></LineChart>
+                <div className="mt-3 h-16 w-full">
+                  <ResponsiveContainer width="100%" height={64}>
+                    <LineChart data={cashHistory} margin={{ top: 2, right: 4, bottom: 2, left: 4 }}><Line type="monotone" dataKey="amount" stroke="#10b981" strokeWidth={2} dot={false} isAnimationActive={false} /><Tooltip formatter={(v) => `₹${v.toLocaleString('en-IN')}`} labelFormatter={(l) => l} /></LineChart>
                   </ResponsiveContainer>
                 </div>
               )}
