@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Sensoper — Offline</title>
+    <style>
+      :root { color-scheme: light; }
+      * { box-sizing: border-box; }
+      body { margin: 0; min-height: 100vh; font-family: 'Inter', system-ui, -apple-system, sans-serif; background: linear-gradient(180deg, #f8fafc 0%, #ecfdf5 100%); display: flex; align-items: center; justify-content: center; padding: 24px; color: #0f172a; }
+      .card { max-width: 460px; width: 100%; background: #fff; border: 1px solid #e2e8f0; border-radius: 18px; padding: 28px; box-shadow: 0 10px 30px -12px rgba(0,0,0,0.1); text-align: center; }
+      .badge { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; background: #ecfdf5; color: #047857; font-size: 12px; font-weight: 600; margin-bottom: 16px; }
+      h1 { font-size: 22px; margin: 0 0 8px; }
+      p { color: #475569; font-size: 14px; line-height: 1.55; margin: 0 0 18px; }
+      button { background: #10b981; color: #fff; border: 0; padding: 10px 20px; border-radius: 10px; font-weight: 600; cursor: pointer; font-size: 14px; }
+      button:hover { background: #059669; }
+      .hint { margin-top: 16px; font-size: 12px; color: #94a3b8; }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <div class="badge">● Offline</div>
+      <h1>You're offline right now</h1>
+      <p>You can still browse pages you've already opened on this device. Any reading updates or status changes you make will be queued and synced as soon as you're back online.</p>
+      <button onclick="window.location.reload()">Try again</button>
+      <div class="hint">Sensoper Controls &amp; Renewables — Field PWA</div>
+    </div>
+  </body>
+</html>

@@ -7,7 +7,7 @@ import { Badge } from '../components/ui/badge';
 import {
   LayoutDashboard, FolderPlus, Users, LogOut, FileText, TrendingUp,
   Menu, X, Package, History, ScrollText, Building2, ClipboardCheck, Shield,
-  Layers, BarChart3, CalendarDays, AlertTriangle, CreditCard, Truck, Undo2, ClipboardList, Bell
+  Layers, BarChart3, CalendarDays, AlertTriangle, CreditCard, Truck, Undo2, ClipboardList, Bell, Activity
 } from 'lucide-react';
 
 const LOGO_URL = "https://customer-assets.emergentagent.com/job_solar-estimator-14/artifacts/2dpfr2zb_slg.png";
@@ -49,6 +49,10 @@ export default function DashboardLayout({ children }) {
   }, [showAlertPanel]);
 
   const handleLogout = async () => {
+    // Notify service worker to purge cached assets so a different user signing in next gets fresh data
+    if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+      try { navigator.serviceWorker.controller.postMessage({ type: 'CLEAR_CACHE' }); } catch (_) { /* ignore */ }
+    }
     await logout();
     navigate('/login');
   };
@@ -67,6 +71,7 @@ export default function DashboardLayout({ children }) {
     { icon: Undo2, label: 'Brand Returns', href: '/dashboard/returns', show: true },
     { icon: ClipboardList, label: 'Weekly Audits', href: '/dashboard/audits', show: isAdmin || isManager },
     { icon: CalendarDays, label: 'Daily Updates', href: '/dashboard/daily-updates', show: true },
+    { icon: Activity, label: 'Readings', href: '/dashboard/readings', show: true },
     { icon: Package, label: 'Inventory', href: '/dashboard/inventory', show: isAdmin || isManager, badge: stats?.low_stock_alerts },
     { icon: ScrollText, label: 'Terms & Conditions', href: '/dashboard/terms', show: isAdmin || isManager },
     { icon: Users, label: 'User Management', href: '/dashboard/users', show: isAdmin },

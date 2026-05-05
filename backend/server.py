@@ -501,7 +501,24 @@ DEFAULT_PERMISSIONS = {
         "can_edit_inventory": True, "can_approve_inventory": True,
         "can_manage_users": True, "can_change_user_access": True,
         "can_view_reports": True, "can_view_audit_logs": True,
-        "can_manage_company": True, "can_manage_terms": True
+        "can_manage_company": True, "can_manage_terms": True,
+        # Module-level (added Feb 2026 for Accounts, Readings, refreshed UI)
+        "module_dashboard": {"view": True, "create": True, "edit": True, "delete": True, "export": True},
+        "module_ceo_dashboard": {"view": True, "create": True, "edit": True, "delete": True, "export": True},
+        "module_accounts": {"view": True, "create": True, "edit": True, "delete": True, "export": True},
+        "module_readings": {"view": True, "create": True, "edit": True, "delete": True, "export": True},
+        "module_inventory": {"view": True, "create": True, "edit": True, "delete": True, "export": True},
+        "module_purchase_inbound": {"view": True, "create": True, "edit": True, "delete": True, "export": True},
+        "module_delivery_outbound": {"view": True, "create": True, "edit": True, "delete": True, "export": True},
+        "module_credits": {"view": True, "create": True, "edit": True, "delete": True, "export": True},
+        "module_returns": {"view": True, "create": True, "edit": True, "delete": True, "export": True},
+        "module_audits": {"view": True, "create": True, "edit": True, "delete": True, "export": True},
+        "module_reports": {"view": True, "create": True, "edit": True, "delete": True, "export": True},
+        "module_alerts": {"view": True, "create": True, "edit": True, "delete": True, "export": True},
+        "module_approvals": {"view": True, "create": True, "edit": True, "delete": True, "export": True},
+        "module_users": {"view": True, "create": True, "edit": True, "delete": True, "export": True},
+        "module_permissions": {"view": True, "create": True, "edit": True, "delete": True, "export": True},
+        "module_settings": {"view": True, "create": True, "edit": True, "delete": True, "export": True}
     },
     "manager": {
         "can_create_project": True, "can_edit_project": True, "can_delete_project": False,
@@ -510,7 +527,23 @@ DEFAULT_PERMISSIONS = {
         "can_edit_inventory": True, "can_approve_inventory": True,
         "can_manage_users": False, "can_change_user_access": False,
         "can_view_reports": True, "can_view_audit_logs": True,
-        "can_manage_company": False, "can_manage_terms": True
+        "can_manage_company": False, "can_manage_terms": True,
+        "module_dashboard": {"view": True, "create": True, "edit": True, "delete": False, "export": True},
+        "module_ceo_dashboard": {"view": True, "create": False, "edit": False, "delete": False, "export": True},
+        "module_accounts": {"view": True, "create": True, "edit": True, "delete": False, "export": True},
+        "module_readings": {"view": True, "create": True, "edit": True, "delete": True, "export": True},
+        "module_inventory": {"view": True, "create": True, "edit": True, "delete": False, "export": True},
+        "module_purchase_inbound": {"view": True, "create": True, "edit": True, "delete": False, "export": True},
+        "module_delivery_outbound": {"view": True, "create": True, "edit": True, "delete": False, "export": True},
+        "module_credits": {"view": True, "create": True, "edit": True, "delete": False, "export": True},
+        "module_returns": {"view": True, "create": True, "edit": True, "delete": False, "export": True},
+        "module_audits": {"view": True, "create": True, "edit": True, "delete": False, "export": True},
+        "module_reports": {"view": True, "create": False, "edit": False, "delete": False, "export": True},
+        "module_alerts": {"view": True, "create": False, "edit": True, "delete": False, "export": True},
+        "module_approvals": {"view": True, "create": False, "edit": True, "delete": False, "export": False},
+        "module_users": {"view": False, "create": False, "edit": False, "delete": False, "export": False},
+        "module_permissions": {"view": False, "create": False, "edit": False, "delete": False, "export": False},
+        "module_settings": {"view": True, "create": False, "edit": False, "delete": False, "export": False}
     },
     "staff": {
         "can_create_project": True, "can_edit_project": True, "can_delete_project": False,
@@ -519,7 +552,23 @@ DEFAULT_PERMISSIONS = {
         "can_edit_inventory": False, "can_approve_inventory": False,
         "can_manage_users": False, "can_change_user_access": False,
         "can_view_reports": False, "can_view_audit_logs": False,
-        "can_manage_company": False, "can_manage_terms": False
+        "can_manage_company": False, "can_manage_terms": False,
+        "module_dashboard": {"view": True, "create": True, "edit": True, "delete": False, "export": False},
+        "module_ceo_dashboard": {"view": False, "create": False, "edit": False, "delete": False, "export": False},
+        "module_accounts": {"view": True, "create": True, "edit": False, "delete": False, "export": False},
+        "module_readings": {"view": True, "create": True, "edit": True, "delete": False, "export": False},
+        "module_inventory": {"view": True, "create": False, "edit": False, "delete": False, "export": False},
+        "module_purchase_inbound": {"view": True, "create": False, "edit": False, "delete": False, "export": False},
+        "module_delivery_outbound": {"view": True, "create": False, "edit": False, "delete": False, "export": False},
+        "module_credits": {"view": True, "create": False, "edit": False, "delete": False, "export": False},
+        "module_returns": {"view": True, "create": True, "edit": False, "delete": False, "export": False},
+        "module_audits": {"view": False, "create": False, "edit": False, "delete": False, "export": False},
+        "module_reports": {"view": False, "create": False, "edit": False, "delete": False, "export": False},
+        "module_alerts": {"view": False, "create": False, "edit": False, "delete": False, "export": False},
+        "module_approvals": {"view": False, "create": False, "edit": False, "delete": False, "export": False},
+        "module_users": {"view": False, "create": False, "edit": False, "delete": False, "export": False},
+        "module_permissions": {"view": False, "create": False, "edit": False, "delete": False, "export": False},
+        "module_settings": {"view": False, "create": False, "edit": False, "delete": False, "export": False}
     }
 }
 
@@ -2445,8 +2494,44 @@ async def get_ceo_dashboard(request: Request):
             "overdue_amount": round(overdue_amount),
             "top_debtors": top_debtors_list,
             "aging": credit_aging
-        }
+        },
+        "accounts_summary": await _ceo_accounts_summary(),
+        "readings_summary": await _ceo_readings_summary()
     }
+
+async def _ceo_accounts_summary():
+    """Latest snapshot per account_entries type for CEO Dashboard cards."""
+    out = {}
+    for t in ("cash_on_hand", "meter_reading", "account_balance"):
+        latest = await db.account_entries.find_one({"entry_type": t}, sort=[("entry_date", -1), ("created_at", -1)])
+        if latest:
+            out[t] = {
+                "amount": latest.get("amount", 0),
+                "entry_date": latest.get("entry_date"),
+                "description": latest.get("description", ""),
+                "entered_by": latest.get("entered_by", ""),
+                "updated_at": latest.get("updated_at") or latest.get("created_at")
+            }
+        else:
+            out[t] = {"amount": 0, "entry_date": None, "description": "", "entered_by": "", "updated_at": None}
+    # 30-day history of cash_on_hand for trend chart
+    docs = await db.account_entries.find({"entry_type": "cash_on_hand"}).sort("entry_date", -1).limit(30).to_list(30)
+    out["cash_history"] = [{"date": d.get("entry_date"), "amount": d.get("amount", 0)} for d in reversed(docs)]
+    return out
+
+async def _ceo_readings_summary():
+    docs = await db.readings.find({}).to_list(5000)
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    active = completed = overdue = 0
+    for d in docs:
+        end_date = _compute_end_date(d.get("start_date", ""), d.get("days", 0))
+        s = d.get("status", "active")
+        if s == "active" and end_date and end_date < today:
+            s = "overdue"
+        if s == "active": active += 1
+        elif s == "completed": completed += 1
+        elif s == "overdue": overdue += 1
+    return {"total": len(docs), "active": active, "completed": completed, "overdue": overdue}
 
 # ================== REPORTS ENGINE (8 Consolidated Reports) ==================
 
@@ -3791,6 +3876,10 @@ async def startup_event():
     await db.daily_updates.create_index("created_at")
     await db.payments.create_index("project_id")
     await db.material_usage_logs.create_index("project_id")
+    await db.account_entries.create_index([("entry_type", 1), ("entry_date", -1)])
+    await db.account_entries.create_index("entry_date")
+    await db.readings.create_index("status")
+    await db.readings.create_index("start_date")
     await db.customer_credits.create_index("status")
     await db.purchase_orders.create_index("status")
     await db.deliveries.create_index("status")
@@ -3870,7 +3959,7 @@ async def startup_event():
             await db.inventory_categories.insert_one({**cat, "created_at": datetime.now(timezone.utc).isoformat()})
     logger.info("Inventory categories seeded")
     
-    # Seed default permissions
+    # Seed default permissions (and merge in any newly added module keys to existing roles)
     for role_name, perms in DEFAULT_PERMISSIONS.items():
         existing_perm = await db.role_permissions.find_one({"role_name": role_name})
         if not existing_perm:
@@ -3879,6 +3968,15 @@ async def startup_event():
                 "permissions": perms,
                 "created_at": datetime.now(timezone.utc).isoformat()
             })
+        else:
+            existing_keys = set((existing_perm.get("permissions") or {}).keys())
+            missing = {k: v for k, v in perms.items() if k not in existing_keys}
+            if missing:
+                merged = {**(existing_perm.get("permissions") or {}), **missing}
+                await db.role_permissions.update_one(
+                    {"role_name": role_name},
+                    {"$set": {"permissions": merged, "updated_at": datetime.now(timezone.utc).isoformat()}}
+                )
     logger.info("Default permissions seeded")
     
     # Seed system form tabs
@@ -3941,6 +4039,257 @@ async def startup_event():
 @app.on_event("shutdown")
 async def shutdown_db_client():
     client.close()
+
+# Include the router in the main app
+# ================== ACCOUNTS (Cash on Hand, Meter Readings, Account Balance) ==================
+
+class AccountEntryCreate(BaseModel):
+    entry_type: str  # cash_on_hand | meter_reading | account_balance
+    entry_date: str  # ISO date YYYY-MM-DD
+    amount: float
+    description: Optional[str] = ""
+
+class AccountEntryUpdate(BaseModel):
+    entry_type: Optional[str] = None
+    entry_date: Optional[str] = None
+    amount: Optional[float] = None
+    description: Optional[str] = None
+
+ACCOUNT_TYPES = {"cash_on_hand", "meter_reading", "account_balance"}
+
+@api_router.get("/accounts")
+async def list_accounts(request: Request, entry_type: Optional[str] = None, date_from: Optional[str] = None, date_to: Optional[str] = None):
+    user = await get_current_user(request)
+    if user["role"] not in ["admin", "manager", "staff"]:
+        raise HTTPException(status_code=403, detail="Forbidden")
+    q = {}
+    if entry_type:
+        q["entry_type"] = entry_type
+    if date_from or date_to:
+        q["entry_date"] = {}
+        if date_from: q["entry_date"]["$gte"] = date_from
+        if date_to: q["entry_date"]["$lte"] = date_to
+    cursor = db.account_entries.find(q).sort("entry_date", -1).limit(2000)
+    docs = await cursor.to_list(2000)
+    return [{
+        "id": str(d["_id"]),
+        "entry_type": d.get("entry_type"),
+        "entry_date": d.get("entry_date"),
+        "amount": d.get("amount", 0),
+        "description": d.get("description", ""),
+        "entered_by_id": d.get("entered_by_id"),
+        "entered_by": d.get("entered_by", ""),
+        "created_at": d.get("created_at")
+    } for d in docs]
+
+@api_router.post("/accounts")
+async def create_account_entry(entry: AccountEntryCreate, request: Request):
+    user = await get_current_user(request)
+    if entry.entry_type not in ACCOUNT_TYPES:
+        raise HTTPException(status_code=400, detail=f"entry_type must be one of {sorted(ACCOUNT_TYPES)}")
+    doc = {
+        "entry_type": entry.entry_type,
+        "entry_date": entry.entry_date,
+        "amount": float(entry.amount),
+        "description": entry.description or "",
+        "entered_by_id": user["id"],
+        "entered_by": user.get("name", ""),
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    result = await db.account_entries.insert_one(doc)
+    await create_audit_log(user["id"], user.get("name",""), "create", "account_entry", str(result.inserted_id), None, doc)
+    return {"id": str(result.inserted_id), "message": "Account entry created"}
+
+@api_router.put("/accounts/{entry_id}")
+async def update_account_entry(entry_id: str, updates: AccountEntryUpdate, request: Request):
+    user = await get_current_user(request)
+    existing = await db.account_entries.find_one({"_id": ObjectId(entry_id)})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Entry not found")
+    if user["role"] == "staff" and existing.get("entered_by_id") != user["id"]:
+        raise HTTPException(status_code=403, detail="Staff can only edit their own entries")
+    update_data = {k: v for k, v in updates.dict(exclude_unset=True).items() if v is not None}
+    if "entry_type" in update_data and update_data["entry_type"] not in ACCOUNT_TYPES:
+        raise HTTPException(status_code=400, detail="Invalid entry_type")
+    if update_data:
+        update_data["updated_at"] = datetime.now(timezone.utc).isoformat()
+        await db.account_entries.update_one({"_id": ObjectId(entry_id)}, {"$set": update_data})
+    await create_audit_log(user["id"], user.get("name",""), "update", "account_entry", entry_id, None, update_data)
+    return {"message": "Account entry updated"}
+
+@api_router.delete("/accounts/{entry_id}")
+async def delete_account_entry(entry_id: str, request: Request):
+    user = await get_current_user(request)
+    existing = await db.account_entries.find_one({"_id": ObjectId(entry_id)})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Entry not found")
+    if user["role"] not in ["admin", "manager"]:
+        raise HTTPException(status_code=403, detail="Only admin/manager can delete account entries")
+    await db.account_entries.delete_one({"_id": ObjectId(entry_id)})
+    await create_audit_log(user["id"], user.get("name",""), "delete", "account_entry", entry_id, existing, None)
+    return {"message": "Deleted"}
+
+@api_router.get("/accounts/summary")
+async def accounts_summary(request: Request):
+    """Latest snapshot per account type — used by CEO Dashboard."""
+    await get_current_user(request)
+    summary = {}
+    for t in ACCOUNT_TYPES:
+        latest = await db.account_entries.find_one({"entry_type": t}, sort=[("entry_date", -1), ("created_at", -1)])
+        if latest:
+            summary[t] = {
+                "amount": latest.get("amount", 0),
+                "entry_date": latest.get("entry_date"),
+                "description": latest.get("description", ""),
+                "entered_by": latest.get("entered_by", ""),
+                "updated_at": latest.get("updated_at") or latest.get("created_at")
+            }
+        else:
+            summary[t] = {"amount": 0, "entry_date": None, "description": "", "entered_by": "", "updated_at": None}
+    return summary
+
+
+# ================== READINGS (Site reading-phase tracker) ==================
+
+class ReadingCreate(BaseModel):
+    site_name: str
+    site_ref: Optional[str] = ""
+    site_address: Optional[str] = ""
+    device_id: Optional[str] = ""
+    device_type: Optional[str] = ""
+    device_serial: Optional[str] = ""
+    customer_name: Optional[str] = ""
+    customer_phone: Optional[str] = ""
+    customer_account: Optional[str] = ""
+    start_date: str  # YYYY-MM-DD
+    days: int = 30
+    status: str = "active"  # active | completed | overdue
+    notes: Optional[str] = ""
+
+class ReadingUpdate(BaseModel):
+    site_name: Optional[str] = None
+    site_ref: Optional[str] = None
+    site_address: Optional[str] = None
+    device_id: Optional[str] = None
+    device_type: Optional[str] = None
+    device_serial: Optional[str] = None
+    customer_name: Optional[str] = None
+    customer_phone: Optional[str] = None
+    customer_account: Optional[str] = None
+    start_date: Optional[str] = None
+    days: Optional[int] = None
+    status: Optional[str] = None
+    notes: Optional[str] = None
+
+READING_STATUSES = {"active", "completed", "overdue"}
+
+def _compute_end_date(start_date_str: str, days: int) -> str:
+    try:
+        d = datetime.strptime(start_date_str, "%Y-%m-%d")
+    except (ValueError, TypeError):
+        return ""
+    return (d + timedelta(days=int(days or 0))).strftime("%Y-%m-%d")
+
+def _serialise_reading(d: dict) -> dict:
+    end_date = _compute_end_date(d.get("start_date", ""), d.get("days", 0))
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    raw_status = d.get("status", "active")
+    # Auto-classify overdue (without persisting) when end date passed but still active
+    derived_status = raw_status
+    if raw_status == "active" and end_date and end_date < today:
+        derived_status = "overdue"
+    return {
+        "id": str(d["_id"]),
+        "site_name": d.get("site_name", ""),
+        "site_ref": d.get("site_ref", ""),
+        "site_address": d.get("site_address", ""),
+        "device_id": d.get("device_id", ""),
+        "device_type": d.get("device_type", ""),
+        "device_serial": d.get("device_serial", ""),
+        "customer_name": d.get("customer_name", ""),
+        "customer_phone": d.get("customer_phone", ""),
+        "customer_account": d.get("customer_account", ""),
+        "start_date": d.get("start_date", ""),
+        "days": d.get("days", 0),
+        "end_date": end_date,
+        "status": derived_status,
+        "notes": d.get("notes", ""),
+        "created_by": d.get("created_by", ""),
+        "created_at": d.get("created_at"),
+        "updated_at": d.get("updated_at")
+    }
+
+@api_router.get("/readings")
+async def list_readings(request: Request, status: Optional[str] = None, date_from: Optional[str] = None, date_to: Optional[str] = None):
+    user = await get_current_user(request)
+    if user["role"] not in ["admin", "manager", "staff"]:
+        raise HTTPException(status_code=403, detail="Forbidden")
+    q = {}
+    if date_from or date_to:
+        q["start_date"] = {}
+        if date_from: q["start_date"]["$gte"] = date_from
+        if date_to: q["start_date"]["$lte"] = date_to
+    docs = await db.readings.find(q).sort("start_date", -1).to_list(2000)
+    rows = [_serialise_reading(d) for d in docs]
+    if status and status != "all":
+        rows = [r for r in rows if r["status"] == status]
+    return rows
+
+@api_router.get("/readings/summary")
+async def readings_summary(request: Request):
+    await get_current_user(request)
+    docs = await db.readings.find({}).to_list(5000)
+    rows = [_serialise_reading(d) for d in docs]
+    return {
+        "total": len(rows),
+        "active": sum(1 for r in rows if r["status"] == "active"),
+        "completed": sum(1 for r in rows if r["status"] == "completed"),
+        "overdue": sum(1 for r in rows if r["status"] == "overdue")
+    }
+
+@api_router.post("/readings")
+async def create_reading(reading: ReadingCreate, request: Request):
+    user = await get_current_user(request)
+    if reading.status not in READING_STATUSES:
+        raise HTTPException(status_code=400, detail="Invalid status")
+    doc = reading.dict()
+    doc["created_by"] = user.get("name", "")
+    doc["created_by_id"] = user["id"]
+    doc["created_at"] = datetime.now(timezone.utc).isoformat()
+    doc["updated_at"] = doc["created_at"]
+    result = await db.readings.insert_one(doc)
+    await create_audit_log(user["id"], user.get("name",""), "create", "reading", str(result.inserted_id), None, doc)
+    fresh = await db.readings.find_one({"_id": result.inserted_id})
+    return _serialise_reading(fresh)
+
+@api_router.put("/readings/{reading_id}")
+async def update_reading(reading_id: str, updates: ReadingUpdate, request: Request):
+    user = await get_current_user(request)
+    existing = await db.readings.find_one({"_id": ObjectId(reading_id)})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Reading not found")
+    update_data = {k: v for k, v in updates.dict(exclude_unset=True).items() if v is not None}
+    if "status" in update_data and update_data["status"] not in READING_STATUSES:
+        raise HTTPException(status_code=400, detail="Invalid status")
+    if update_data:
+        update_data["updated_at"] = datetime.now(timezone.utc).isoformat()
+        await db.readings.update_one({"_id": ObjectId(reading_id)}, {"$set": update_data})
+    await create_audit_log(user["id"], user.get("name",""), "update", "reading", reading_id, None, update_data)
+    fresh = await db.readings.find_one({"_id": ObjectId(reading_id)})
+    return _serialise_reading(fresh)
+
+@api_router.delete("/readings/{reading_id}")
+async def delete_reading(reading_id: str, request: Request):
+    user = await get_current_user(request)
+    if user["role"] not in ["admin", "manager"]:
+        raise HTTPException(status_code=403, detail="Only admin/manager can delete readings")
+    existing = await db.readings.find_one({"_id": ObjectId(reading_id)})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Reading not found")
+    await db.readings.delete_one({"_id": ObjectId(reading_id)})
+    await create_audit_log(user["id"], user.get("name",""), "delete", "reading", reading_id, existing, None)
+    return {"message": "Deleted"}
+
 
 # Include the router in the main app
 app.include_router(api_router)

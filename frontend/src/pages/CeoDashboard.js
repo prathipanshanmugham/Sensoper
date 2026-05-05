@@ -6,7 +6,8 @@ import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
 import {
   BarChart3, TrendingUp, IndianRupee, CheckCircle2, Clock, Package,
-  AlertTriangle, Users, ArrowLeft, Loader2, ClipboardCheck, ArrowUpRight
+  AlertTriangle, Users, ArrowLeft, Loader2, ClipboardCheck, ArrowUpRight,
+  Wallet, Banknote, Activity
 } from 'lucide-react';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -57,7 +58,11 @@ export default function CeoDashboard() {
   if (loading) return <div className="min-h-screen bg-slate-50 flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-emerald-600" /></div>;
   if (!data) return <div className="min-h-screen bg-slate-50 flex items-center justify-center"><p className="text-slate-500">Failed to load dashboard</p></div>;
 
-  const { kpis, status_distribution, revenue_trend, sales_funnel, top_staff } = data;
+  const { kpis, status_distribution, revenue_trend, sales_funnel, top_staff, accounts_summary, readings_summary } = data;
+  const cash = accounts_summary?.cash_on_hand;
+  const balance = accounts_summary?.account_balance;
+  const meter = accounts_summary?.meter_reading;
+  const cashHistory = accounts_summary?.cash_history || [];
 
   const funnelData = [
     { name: 'Leads', value: sales_funnel.total_leads, fill: '#94a3b8' },
@@ -88,6 +93,51 @@ export default function CeoDashboard() {
           <KpiCard title="Inventory Value" value={`₹${(kpis.inventory_value || 0).toLocaleString('en-IN')}`} icon={Package} color="slate" onClick={() => navigate('/dashboard/reports?type=inventory')} />
           <KpiCard title="Low Stock Alerts" value={kpis.low_stock_alerts} icon={AlertTriangle} color="amber" onClick={() => navigate('/dashboard/inventory')} />
           <KpiCard title="Outstanding Credit" value={`₹${(kpis.total_outstanding || 0).toLocaleString('en-IN')}`} icon={IndianRupee} color="red" subtitle={`Overdue: ₹${(kpis.overdue_amount || 0).toLocaleString('en-IN')}`} onClick={() => navigate('/dashboard/credits')} />
+        </div>
+
+        {/* Operational Snapshot — Cash / Readings / Account Balance (Feb 2026) */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6" data-testid="ceo-snapshot-grid">
+          {/* Cash on Hand */}
+          <Card className="border-emerald-200 bg-emerald-50/40 hover:shadow-md transition-shadow cursor-pointer" onClick={() => navigate('/dashboard/credits')} data-testid="ceo-cash-card">
+            <CardHeader className="pb-2"><div className="flex items-center justify-between"><CardTitle className="text-sm font-semibold text-emerald-700 flex items-center gap-2"><Wallet className="h-4 w-4" />Cash on Hand</CardTitle><ArrowUpRight className="h-3.5 w-3.5 text-emerald-500" /></div></CardHeader>
+            <CardContent>
+              <p className="text-3xl font-bold font-['Outfit'] text-slate-900">₹{(cash?.amount || 0).toLocaleString('en-IN')}</p>
+              <p className="text-[11px] text-slate-500 mt-1">{cash?.entry_date ? `As of ${cash.entry_date}` : 'No entries yet'}{cash?.entered_by ? ` · by ${cash.entered_by}` : ''}</p>
+              {cashHistory.length >= 2 && (
+                <div className="mt-3 h-16">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={cashHistory}><Line type="monotone" dataKey="amount" stroke="#10b981" strokeWidth={2} dot={false} /><Tooltip formatter={(v) => `₹${v.toLocaleString('en-IN')}`} labelFormatter={(l) => l} /></LineChart>
+                  </ResponsiveContainer>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Readings */}
+          <Card className="border-blue-200 bg-blue-50/40 hover:shadow-md transition-shadow cursor-pointer" onClick={() => navigate('/dashboard/readings')} data-testid="ceo-readings-card">
+            <CardHeader className="pb-2"><div className="flex items-center justify-between"><CardTitle className="text-sm font-semibold text-blue-700 flex items-center gap-2"><Activity className="h-4 w-4" />Readings</CardTitle><ArrowUpRight className="h-3.5 w-3.5 text-blue-500" /></div></CardHeader>
+            <CardContent>
+              <p className="text-3xl font-bold font-['Outfit'] text-slate-900">{readings_summary?.active || 0}</p>
+              <p className="text-[11px] text-slate-500 mt-1">Currently active reading-phase sites</p>
+              <div className="flex gap-3 mt-3 text-xs">
+                <span className="text-emerald-600 flex items-center gap-1"><CheckCircle2 className="h-3 w-3" />Completed: <strong>{readings_summary?.completed || 0}</strong></span>
+                <span className="text-red-600 flex items-center gap-1"><AlertTriangle className="h-3 w-3" />Overdue: <strong>{readings_summary?.overdue || 0}</strong></span>
+              </div>
+              {meter?.amount > 0 && (
+                <p className="text-[11px] text-slate-500 mt-2 pt-2 border-t border-blue-100">Latest meter reading: <span className="font-semibold text-slate-700">{meter.amount.toLocaleString('en-IN')}</span> {meter.entry_date ? `(${meter.entry_date})` : ''}</p>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Account Balance */}
+          <Card className="border-violet-200 bg-violet-50/40 hover:shadow-md transition-shadow cursor-pointer" onClick={() => navigate('/dashboard/credits')} data-testid="ceo-balance-card">
+            <CardHeader className="pb-2"><div className="flex items-center justify-between"><CardTitle className="text-sm font-semibold text-violet-700 flex items-center gap-2"><Banknote className="h-4 w-4" />Account Balance</CardTitle><ArrowUpRight className="h-3.5 w-3.5 text-violet-500" /></div></CardHeader>
+            <CardContent>
+              <p className="text-3xl font-bold font-['Outfit'] text-slate-900">₹{(balance?.amount || 0).toLocaleString('en-IN')}</p>
+              <p className="text-[11px] text-slate-500 mt-1">{balance?.entry_date ? `As of ${balance.entry_date}` : 'No entries yet'}{balance?.entered_by ? ` · by ${balance.entered_by}` : ''}</p>
+              {balance?.description && <p className="text-xs text-slate-600 mt-2 truncate">{balance.description}</p>}
+            </CardContent>
+          </Card>
         </div>
 
         {/* Charts Row */}

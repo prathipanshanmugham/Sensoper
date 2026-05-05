@@ -243,4 +243,22 @@ export const formTabsAPI = {
   reorder: (order) => api.put('/form-tabs/reorder', { order })
 };
 
+// Accounts API (Cash on Hand, Meter Readings, Account Balance) — used by Credits page sub-tab + CEO Dashboard
+export const accountsAPI = {
+  list: (params = {}) => api.get('/accounts', { params }),
+  create: (data) => api.post('/accounts', data),
+  update: (id, data) => api.put(`/accounts/${id}`, data),
+  delete: (id) => api.delete(`/accounts/${id}`),
+  summary: () => api.get('/accounts/summary')
+};
+
+// Readings API (Site reading-phase tracker)
+export const readingsAPI = {
+  list: (params = {}) => api.get('/readings', { params }),
+  summary: () => api.get('/readings/summary'),
+  create: (data) => api.post('/readings', data),
+  update: (id, data) => api.put(`/readings/${id}`, data),
+  delete: (id) => api.delete(`/readings/${id}`)
+};
+
 export default api;

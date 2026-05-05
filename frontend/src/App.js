@@ -2,6 +2,7 @@ import "@/App.css";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { Toaster } from "./components/ui/sonner";
+import PwaInstaller from "./components/PwaInstaller";
 
 // Pages
 import Login from "./pages/Login";
@@ -17,6 +18,7 @@ import AuditLogs from "./pages/AuditLogs";
 import CompanyProfile from "./pages/CompanyProfile";
 import ApprovalsPage from "./pages/ApprovalsPage";
 import PermissionsPage from "./pages/PermissionsPage";
+import ReadingsPage from "./pages/ReadingsPage";
 import FormTabsManager from "./pages/FormTabsManager";
 import CeoDashboard from "./pages/CeoDashboard";
 import ReportsPage from "./pages/ReportsPage";
@@ -115,6 +117,7 @@ function AppRoutes() {
       <Route path="/dashboard/approvals" element={<ProtectedRoute allowedRoles={["admin", "manager"]}><DashboardLayout><ApprovalsPage /></DashboardLayout></ProtectedRoute>} />
       <Route path="/dashboard/terms" element={<ProtectedRoute allowedRoles={["admin", "manager"]}><DashboardLayout><TermsConditions /></DashboardLayout></ProtectedRoute>} />
       <Route path="/dashboard/inventory" element={<ProtectedRoute allowedRoles={["admin", "manager"]}><DashboardLayout><InventoryManagement /></DashboardLayout></ProtectedRoute>} />
+      <Route path="/dashboard/readings" element={<ProtectedRoute><DashboardLayout><ReadingsPage /></DashboardLayout></ProtectedRoute>} />
       {/* Default Redirect */}
       <Route path="/" element={<Navigate to="/dashboard" replace />} />
       <Route path="*" element={<Navigate to="/dashboard" replace />} />
@@ -128,6 +131,7 @@ function App() {
       <BrowserRouter>
         <AuthProvider>
           <AppRoutes />
+          <PwaInstaller />
           <Toaster />
         </AuthProvider>
       </BrowserRouter>
