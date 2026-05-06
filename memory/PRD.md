@@ -59,6 +59,9 @@
 - [x] **What3Words integration** — `Auto-fill from GPS` button on Site Visit form Location step. Browser geolocation → W3W v3 API (key `REACT_APP_W3W_API_KEY=G4IVNNAW`) → autofills `site_location_words` + lat/lng + nearestPlace. Privacy-friendly: GPS button only, no auto-fetch on typing. *(May 2026)*
 - [x] **Permissions refresh** — module-level access matrix (view/create/edit/delete/export × 16 modules) with admin lock + mobile cards *(shipped Feb 2026)*
 - [x] **PWA + offline support** — manifest, service worker (cache-first static, network-first navigation, offline fallback, no-cache /api/*, background-sync queue for /api/readings & /api/accounts), install prompt, CLEAR_CACHE on logout *(shipped Feb 2026)*
+- [x] **Login/Register password-eye toggle** — Eye/EyeOff icon button toggles input type between password ↔ text. *(shipped May 2026)*
+- [x] **Accounting page reorganized into 5 tabs** — `Customer | Credits | Accounts | Expenses | GST`. New `Customer` tab aggregates per-customer (invoices/total/paid/balance/overdue) with search. GST tab snapshot now includes **Total GST Paid (MTD)**, **Input Credits (MTD)**, **Net GST Liability (MTD)** (paid − input). Backend `/api/accounts` accepts `entry_type=gst_paid`; `/api/accounts/summary` exposes `gst_paid_mtd`, `gst_input_mtd`, `gst_net_mtd`. *(May 2026)*
+- [x] **CEO Dashboard symmetric refresh** — Net Cash Flow strip removed. Layout: 8 KPI cards (4×2) → 4 financial snapshots (Cash · Op Exp MTD · GST Input MTD · Account Balance) → 4-col charts row (Revenue 2col + Project Status 1col + Readings 1col) → Sales Funnel + Top Staff (2×1) → Credit overview. *(May 2026)*
 
 ## P2 - Future
 - [ ] WhatsApp Business API & Email delivery for quote sharing
