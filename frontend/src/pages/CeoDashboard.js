@@ -6,8 +6,8 @@ import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
 import {
   BarChart3, TrendingUp, IndianRupee, CheckCircle2, Clock, Package,
-  AlertTriangle, Users, ArrowLeft, Loader2, ClipboardCheck, ArrowUpRight,
-  Wallet, Banknote, Activity, Receipt, Calculator, TrendingDown
+  AlertTriangle, Users, Loader2, ClipboardCheck, ArrowUpRight,
+  Wallet, Banknote, Activity, Receipt, Calculator
 } from 'lucide-react';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -63,7 +63,6 @@ export default function CeoDashboard() {
   const balance = accounts_summary?.account_balance;
   const opExpMtd = accounts_summary?.operational_expense_mtd || 0;
   const gstInputMtd = accounts_summary?.gst_input_mtd || 0;
-  const netCashFlow = accounts_summary?.net_cash_flow_mtd ?? ((cash?.amount || 0) - opExpMtd - gstInputMtd);
   const cashHistory = accounts_summary?.cash_history || [];
 
   const funnelData = [
@@ -84,7 +83,7 @@ export default function CeoDashboard() {
           <Button variant="outline" onClick={() => navigate('/dashboard/reports')} className="gap-2" data-testid="goto-reports-btn"><BarChart3 className="h-4 w-4" />Reports</Button>
         </div>
 
-        {/* KPI Grid */}
+        {/* KPI Grid — symmetric 4×2 */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6" data-testid="kpi-grid">
           <KpiCard title="Total Revenue" value={`₹${(kpis.total_revenue || 0).toLocaleString('en-IN')}`} icon={IndianRupee} color="emerald" subtitle="Approved + Completed" onClick={() => navigate('/dashboard/reports?type=sales')} />
           <KpiCard title="Total Profit" value={`₹${(kpis.total_profit || 0).toLocaleString('en-IN')}`} icon={TrendingUp} color="blue" subtitle="Internal margins" onClick={() => navigate('/dashboard/reports?type=profit')} />
@@ -94,11 +93,10 @@ export default function CeoDashboard() {
           <KpiCard title="Pending Approvals" value={kpis.pending_approvals} icon={ClipboardCheck} color="red" onClick={() => navigate('/dashboard/approvals')} />
           <KpiCard title="Inventory Value" value={`₹${(kpis.inventory_value || 0).toLocaleString('en-IN')}`} icon={Package} color="slate" onClick={() => navigate('/dashboard/reports?type=inventory')} />
           <KpiCard title="Low Stock Alerts" value={kpis.low_stock_alerts} icon={AlertTriangle} color="amber" onClick={() => navigate('/dashboard/inventory')} />
-          <KpiCard title="Outstanding Credit" value={`₹${(kpis.total_outstanding || 0).toLocaleString('en-IN')}`} icon={IndianRupee} color="red" subtitle={`Overdue: ₹${(kpis.overdue_amount || 0).toLocaleString('en-IN')}`} onClick={() => navigate('/dashboard/credits')} />
         </div>
 
-        {/* Operational Snapshot — Cash · Op Exp · GST Input · Account Balance + Net Cash Flow + Readings */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-3" data-testid="ceo-snapshot-grid">
+        {/* Operational Snapshot — Cash · Op Exp · GST Input · Account Balance */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6" data-testid="ceo-snapshot-grid">
           {/* Cash on Hand */}
           <Card className="border-emerald-200 bg-emerald-50/40 hover:shadow-md transition-shadow cursor-pointer" onClick={() => navigate('/dashboard/credits')} data-testid="ceo-cash-card">
             <CardHeader className="pb-2"><div className="flex items-center justify-between"><CardTitle className="text-sm font-semibold text-emerald-700 flex items-center gap-2"><Wallet className="h-4 w-4" />Cash on Hand</CardTitle><ArrowUpRight className="h-3.5 w-3.5 text-emerald-500" /></div></CardHeader>
@@ -143,36 +141,8 @@ export default function CeoDashboard() {
           </Card>
         </div>
 
-        {/* Net Cash Flow + Readings strip */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-          <Card className={`border-2 ${netCashFlow >= 0 ? 'border-emerald-300 bg-gradient-to-br from-emerald-50 to-emerald-100/40' : 'border-red-300 bg-gradient-to-br from-red-50 to-red-100/40'} hover:shadow-md transition-shadow md:col-span-2`} data-testid="ceo-netflow-card">
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between gap-3 flex-wrap">
-                <div className="flex items-center gap-2">
-                  <TrendingDown className={`h-4 w-4 ${netCashFlow >= 0 ? 'text-emerald-600 rotate-180' : 'text-red-600'}`} />
-                  <p className="text-xs uppercase tracking-wider text-slate-600 font-semibold">Net Cash Flow (MTD)</p>
-                </div>
-                <p className={`text-2xl font-bold font-['Outfit'] ${netCashFlow >= 0 ? 'text-emerald-700' : 'text-red-700'}`} data-testid="ceo-netflow-amount">{netCashFlow >= 0 ? '+₹' : '-₹'}{Math.abs(netCashFlow).toLocaleString('en-IN')}</p>
-              </div>
-              <p className="text-[11px] text-slate-500 mt-2">Cash on Hand minus Op Exp and GST Input this month. {netCashFlow >= 0 ? 'Healthy positive flow.' : 'Outflow exceeds cash inflow — review.'}</p>
-            </CardContent>
-          </Card>
-
-          {/* Readings */}
-          <Card className="border-blue-200 bg-blue-50/40 hover:shadow-md transition-shadow cursor-pointer" onClick={() => navigate('/dashboard/readings')} data-testid="ceo-readings-card">
-            <CardHeader className="pb-2"><div className="flex items-center justify-between"><CardTitle className="text-sm font-semibold text-blue-700 flex items-center gap-2"><Activity className="h-4 w-4" />Readings</CardTitle><ArrowUpRight className="h-3.5 w-3.5 text-blue-500" /></div></CardHeader>
-            <CardContent>
-              <p className="text-2xl font-bold font-['Outfit'] text-slate-900">{readings_summary?.active || 0}</p>
-              <div className="flex gap-3 mt-1 text-[11px]">
-                <span className="text-emerald-600">Done: <strong>{readings_summary?.completed || 0}</strong></span>
-                <span className="text-red-600">Overdue: <strong>{readings_summary?.overdue || 0}</strong></span>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Charts Row */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
+        {/* Charts Row — Revenue (2) + Status (1) + Readings (1) = symmetric 4-col */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
           {/* Revenue Trend */}
           <Card className="border-slate-200 lg:col-span-2" data-testid="revenue-chart">
             <CardHeader className="pb-2"><CardTitle className="text-base font-['Outfit']">Revenue Trend</CardTitle></CardHeader>
@@ -210,6 +180,21 @@ export default function CeoDashboard() {
                   })}
                 </div>
               ) : <p className="text-sm text-slate-400 text-center py-16">No projects yet</p>}
+            </CardContent>
+          </Card>
+
+          {/* Readings */}
+          <Card className="border-blue-200 bg-blue-50/40 hover:shadow-md transition-shadow cursor-pointer" onClick={() => navigate('/dashboard/readings')} data-testid="ceo-readings-card">
+            <CardHeader className="pb-2"><div className="flex items-center justify-between"><CardTitle className="text-sm font-semibold text-blue-700 flex items-center gap-2"><Activity className="h-4 w-4" />Readings</CardTitle><ArrowUpRight className="h-3.5 w-3.5 text-blue-500" /></div></CardHeader>
+            <CardContent className="space-y-3">
+              <div>
+                <p className="text-3xl font-bold font-['Outfit'] text-slate-900">{readings_summary?.active || 0}</p>
+                <p className="text-[11px] text-slate-500 mt-1">Active readings</p>
+              </div>
+              <div className="space-y-1.5 pt-2 border-t border-blue-100">
+                <div className="flex justify-between text-xs"><span className="text-slate-600">Completed</span><span className="font-semibold text-emerald-700">{readings_summary?.completed || 0}</span></div>
+                <div className="flex justify-between text-xs"><span className="text-slate-600">Overdue</span><span className="font-semibold text-red-700">{readings_summary?.overdue || 0}</span></div>
+              </div>
             </CardContent>
           </Card>
         </div>

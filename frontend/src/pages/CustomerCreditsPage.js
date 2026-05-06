@@ -10,11 +10,12 @@ import { Loader2, Plus, IndianRupee, X, Save, Trash2 } from 'lucide-react';
 import AccountsSection from '../components/AccountsSection';
 import ExpensesSection from '../components/ExpensesSection';
 import GstSection from '../components/GstSection';
+import CustomerSection from '../components/CustomerSection';
 
 const STATUS_COLORS = { active: 'bg-blue-100 text-blue-700', overdue: 'bg-red-100 text-red-700', closed: 'bg-emerald-100 text-emerald-700' };
 
 export default function CustomerCreditsPage() {
-  const [section, setSection] = useState('credits');
+  const [section, setSection] = useState('customer');
   const [credits, setCredits] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -70,13 +71,15 @@ export default function CustomerCreditsPage() {
 
         {/* Section tabs */}
         <div className="flex gap-2 mb-5 border-b border-slate-200 overflow-x-auto" data-testid="section-tabs">
-          <button onClick={() => setSection('credits')} className={`px-4 py-2 text-sm border-b-2 transition-colors whitespace-nowrap ${section === 'credits' ? 'border-emerald-500 text-emerald-700 font-medium' : 'border-transparent text-slate-500 hover:text-slate-800'}`} data-testid="tab-credits">Customer Credits</button>
-          <button onClick={() => setSection('accounts')} className={`px-4 py-2 text-sm border-b-2 transition-colors whitespace-nowrap ${section === 'accounts' ? 'border-emerald-500 text-emerald-700 font-medium' : 'border-transparent text-slate-500 hover:text-slate-800'}`} data-testid="tab-accounts">Accounts</button>
+          <button onClick={() => setSection('customer')} className={`px-4 py-2 text-sm border-b-2 transition-colors whitespace-nowrap ${section === 'customer' ? 'border-emerald-500 text-emerald-700 font-medium' : 'border-transparent text-slate-500 hover:text-slate-800'}`} data-testid="tab-customer">Customer</button>
+          <button onClick={() => setSection('credits')} className={`px-4 py-2 text-sm border-b-2 transition-colors whitespace-nowrap ${section === 'credits' ? 'border-blue-500 text-blue-700 font-medium' : 'border-transparent text-slate-500 hover:text-slate-800'}`} data-testid="tab-credits">Credits</button>
+          <button onClick={() => setSection('accounts')} className={`px-4 py-2 text-sm border-b-2 transition-colors whitespace-nowrap ${section === 'accounts' ? 'border-violet-500 text-violet-700 font-medium' : 'border-transparent text-slate-500 hover:text-slate-800'}`} data-testid="tab-accounts">Accounts</button>
           <button onClick={() => setSection('expenses')} className={`px-4 py-2 text-sm border-b-2 transition-colors whitespace-nowrap ${section === 'expenses' ? 'border-amber-500 text-amber-700 font-medium' : 'border-transparent text-slate-500 hover:text-slate-800'}`} data-testid="tab-expenses">Expenses</button>
           <button onClick={() => setSection('gst')} className={`px-4 py-2 text-sm border-b-2 transition-colors whitespace-nowrap ${section === 'gst' ? 'border-rose-500 text-rose-700 font-medium' : 'border-transparent text-slate-500 hover:text-slate-800'}`} data-testid="tab-gst">GST</button>
         </div>
 
-        {section === 'accounts' ? <AccountsSection /> :
+        {section === 'customer' ? <CustomerSection /> :
+         section === 'accounts' ? <AccountsSection /> :
          section === 'expenses' ? <ExpensesSection /> :
          section === 'gst' ? <GstSection /> : (<>
         {/* KPIs */}
