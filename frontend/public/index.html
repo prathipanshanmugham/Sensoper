@@ -33,6 +33,30 @@
     <body>
         <noscript>You need to enable JavaScript to run this app.</noscript>
         <div id="root"></div>
+        <script>
+          /* Stale-SW emergency unregister (Sensoper, May 2026 deploy fix).
+             If a previous service worker (v1.0.0 or earlier) cached an old JS
+             bundle, it can leave the user stuck. This boot guard runs before
+             React loads and (a) deletes any v1.0.0 caches and (b) forces an
+             update check on the active service worker so the new v1.1.0 SW
+             takes over and reloads the tab. Safe to keep long-term: it's
+             idempotent and a no-op once the user is on the fresh build. */
+          (function () {
+            try {
+              if ('caches' in window) {
+                caches.keys().then(function (keys) {
+                  var stale = keys.filter(function (k) { return /v1\.0\.0/.test(k); });
+                  if (stale.length) Promise.all(stale.map(function (k) { return caches.delete(k); }));
+                });
+              }
+              if ('serviceWorker' in navigator) {
+                navigator.serviceWorker.getRegistrations().then(function (regs) {
+                  regs.forEach(function (r) { try { r.update(); } catch (_) {} });
+                });
+              }
+            } catch (_) { /* silent */ }
+          })();
+        </script>
         <!--
       This HTML file is a template.
       If you open it directly in the browser, you will see an empty page.

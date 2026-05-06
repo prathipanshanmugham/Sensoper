@@ -13,7 +13,30 @@ export default function PwaInstaller() {
   useEffect(() => {
     if ('serviceWorker' in navigator) {
       const onLoad = () => {
-        navigator.serviceWorker.register('/service-worker.js').catch(() => { /* silent */ });
+        navigator.serviceWorker.register('/service-worker.js').then((reg) => {
+          // If a waiting SW exists (new deploy ready), tell it to skip waiting
+          // so the new cache strategy / fresh code activates without needing
+          // a manual hard-refresh from the user.
+          if (reg.waiting) reg.waiting.postMessage({ type: 'SKIP_WAITING' });
+          reg.addEventListener('updatefound', () => {
+            const installing = reg.installing;
+            if (!installing) return;
+            installing.addEventListener('statechange', () => {
+              if (installing.state === 'installed' && navigator.serviceWorker.controller) {
+                installing.postMessage({ type: 'SKIP_WAITING' });
+              }
+            });
+          });
+        }).catch(() => { /* silent */ });
+        // When the controller swaps to a new SW, reload once to pick up the new
+        // bundle (only if user has already been controlled before — so first-time
+        // visitors don't get a reload loop).
+        let refreshing = false;
+        navigator.serviceWorker.addEventListener('controllerchange', () => {
+          if (refreshing) return;
+          refreshing = true;
+          window.location.reload();
+        });
       };
       window.addEventListener('load', onLoad);
       return () => window.removeEventListener('load', onLoad);

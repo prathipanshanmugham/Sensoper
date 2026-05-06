@@ -6,15 +6,18 @@
  *  - Background-sync queue for failed POST/PUT to /api/readings & /api/accounts so field staff can work offline.
  */
 
-const VERSION = 'v1.0.0';
+const VERSION = 'v1.1.0';
 const STATIC_CACHE = `sensoper-static-${VERSION}`;
 const RUNTIME_CACHE = `sensoper-runtime-${VERSION}`;
 const OFFLINE_URL = '/offline.html';
 const QUEUE_DB = 'sensoper-offline-queue';
 const QUEUE_STORE = 'requests';
 
+// Only the offline shell + manifest are pre-cached. JS/CSS bundles change on
+// every build (filename hashes), so we use NETWORK-FIRST for them to avoid
+// serving stale code after an upstream deploy. Cache is only a fallback when
+// the user is offline.
 const PRECACHE_URLS = [
-  '/',
   '/offline.html',
   '/manifest.json',
 ];
@@ -27,9 +30,17 @@ self.addEventListener('install', (event) => {
 
 self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches.keys().then((keys) =>
-      Promise.all(keys.filter((k) => ![STATIC_CACHE, RUNTIME_CACHE].includes(k)).map((k) => caches.delete(k)))
-    ).then(() => self.clients.claim())
+    caches.keys()
+      .then((keys) => Promise.all(keys.filter((k) => ![STATIC_CACHE, RUNTIME_CACHE].includes(k)).map((k) => caches.delete(k))))
+      .then(() => self.clients.claim())
+      .then(() => self.clients.matchAll({ type: 'window' }))
+      .then((clientsList) => {
+        // After a SW upgrade, force every open tab to reload so the user immediately
+        // gets the fresh JS bundle instead of being stuck on whatever the old SW cached.
+        clientsList.forEach((client) => {
+          try { client.navigate(client.url); } catch (_) { /* ignore — top-level frame only */ }
+        });
+      })
   );
 });
 
@@ -130,14 +141,20 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // 4) Static assets → cache first, then network
+  // 4) Static assets → NETWORK-FIRST (so deployments propagate immediately),
+  //    fall back to cache only when offline. JS/CSS filenames are hashed by
+  //    webpack so a stale bundle in cache never matches a fresh request URL,
+  //    but we still keep this strategy for safety.
   if (req.method === 'GET' && (req.destination === 'script' || req.destination === 'style' || req.destination === 'font' || req.destination === 'image')) {
     event.respondWith(
-      caches.match(req).then((hit) => hit || fetch(req).then((resp) => {
-        const copy = resp.clone();
-        caches.open(RUNTIME_CACHE).then((c) => c.put(req, copy)).catch(() => {});
+      fetch(req).then((resp) => {
+        // Cache successful GETs in the background for offline use.
+        if (resp && resp.status === 200 && resp.type !== 'opaque') {
+          const copy = resp.clone();
+          caches.open(RUNTIME_CACHE).then((c) => c.put(req, copy)).catch(() => {});
+        }
         return resp;
-      }).catch(() => caches.match(OFFLINE_URL)))
+      }).catch(() => caches.match(req).then((hit) => hit || caches.match(OFFLINE_URL)))
     );
   }
 });
