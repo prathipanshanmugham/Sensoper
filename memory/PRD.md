@@ -53,9 +53,10 @@
 - [x] Decouple Leads & Invoicing in Daily Updates *(shipped Feb 2026)*
 - [x] Currency consistency *(shipped Feb 2026)*
 - [x] Inventory movement intelligence — Fast/Slow + procurement_date + URL-based image *(shipped Feb 2026)*
-- [x] **Accounts module** (Cash on Hand / Meter Reading / Account Balance) — embedded as a sub-tab inside Customer Credits *(shipped Feb 2026)*
-- [x] **Readings module** (site reading-phase tracker, auto-overdue derivation, summary KPIs, status filter) *(shipped Feb 2026)*
-- [x] **CEO Dashboard expansion** — Cash / Readings / Account Balance snapshot cards with trend line *(shipped Feb 2026)*
+- [x] **Accounts module** — Customer Credits page renamed to **Accounts**. Sub-tabs: Customer Credits | Accounts (Cash on Hand + Account Balance — Meter Reading dropped) | **Expenses** (Operational Expense + GST Input). Backend `/api/accounts/summary` returns per-type snapshots + `operational_expense_mtd` + `gst_input_mtd` totals. *(Feb 2026)*
+- [x] **Readings module** *(Feb 2026)*
+- [x] **CEO Dashboard refresh** — 4-card snapshot row (Cash · Op Exp MTD · GST Input MTD · Account Balance) + **Net Cash Flow** strip with explicit `+₹` / `-₹` sign + Readings card. *(Feb 2026, Net-Cash-Flow sign added May 2026)*
+- [x] **What3Words integration** — `Auto-fill from GPS` button on Site Visit form Location step. Browser geolocation → W3W v3 API (key `REACT_APP_W3W_API_KEY=G4IVNNAW`) → autofills `site_location_words` + lat/lng + nearestPlace. Privacy-friendly: GPS button only, no auto-fetch on typing. *(May 2026)*
 - [x] **Permissions refresh** — module-level access matrix (view/create/edit/delete/export × 16 modules) with admin lock + mobile cards *(shipped Feb 2026)*
 - [x] **PWA + offline support** — manifest, service worker (cache-first static, network-first navigation, offline fallback, no-cache /api/*, background-sync queue for /api/readings & /api/accounts), install prompt, CLEAR_CACHE on logout *(shipped Feb 2026)*
 

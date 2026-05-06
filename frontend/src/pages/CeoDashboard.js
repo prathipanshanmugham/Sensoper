@@ -152,7 +152,7 @@ export default function CeoDashboard() {
                   <TrendingDown className={`h-4 w-4 ${netCashFlow >= 0 ? 'text-emerald-600 rotate-180' : 'text-red-600'}`} />
                   <p className="text-xs uppercase tracking-wider text-slate-600 font-semibold">Net Cash Flow (MTD)</p>
                 </div>
-                <p className={`text-2xl font-bold font-['Outfit'] ${netCashFlow >= 0 ? 'text-emerald-700' : 'text-red-700'}`} data-testid="ceo-netflow-amount">{netCashFlow >= 0 ? '+' : ''}₹{Math.abs(netCashFlow).toLocaleString('en-IN')}</p>
+                <p className={`text-2xl font-bold font-['Outfit'] ${netCashFlow >= 0 ? 'text-emerald-700' : 'text-red-700'}`} data-testid="ceo-netflow-amount">{netCashFlow >= 0 ? '+₹' : '-₹'}{Math.abs(netCashFlow).toLocaleString('en-IN')}</p>
               </div>
               <p className="text-[11px] text-slate-500 mt-2">Cash on Hand minus Op Exp and GST Input this month. {netCashFlow >= 0 ? 'Healthy positive flow.' : 'Outflow exceeds cash inflow — review.'}</p>
             </CardContent>

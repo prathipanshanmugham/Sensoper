@@ -257,7 +257,7 @@ export default function SiteVisitForm() {
       });
       const { latitude, longitude } = pos.coords;
       const key = process.env.REACT_APP_W3W_API_KEY;
-      if (!key) { setGpsError('What3Words API key not configured'); return; }
+      if (!key || !key.trim()) { setGpsError('What3Words API key not configured. Add REACT_APP_W3W_API_KEY to frontend/.env'); return; }
       const resp = await fetch(`https://api.what3words.com/v3/convert-to-3wa?coordinates=${latitude},${longitude}&key=${key}`);
       if (!resp.ok) {
         const err = await resp.text();

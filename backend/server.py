@@ -4143,7 +4143,7 @@ async def delete_account_entry(entry_id: str, request: Request):
 
 @api_router.get("/accounts/summary")
 async def accounts_summary(request: Request):
-    """Latest snapshot per account type — used by CEO Dashboard."""
+    """Latest snapshot per account type + month-to-date totals for expense types — used by Accounts page + CEO Dashboard."""
     await get_current_user(request)
     summary = {}
     for t in ACCOUNT_TYPES:
@@ -4158,6 +4158,15 @@ async def accounts_summary(request: Request):
             }
         else:
             summary[t] = {"amount": 0, "entry_date": None, "description": "", "entered_by": "", "updated_at": None}
+    # Month-to-date totals for expense types
+    today = datetime.now(timezone.utc)
+    month_start = today.strftime("%Y-%m-01")
+    for t in ("operational_expense", "gst_input"):
+        cursor = db.account_entries.find({"entry_type": t, "entry_date": {"$gte": month_start}})
+        total = 0.0
+        async for d in cursor:
+            total += float(d.get("amount", 0))
+        summary[f"{t}_mtd"] = round(total, 2)
     return summary
 
 
