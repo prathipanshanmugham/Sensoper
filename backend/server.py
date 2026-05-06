@@ -2514,19 +2514,23 @@ async def _ceo_accounts_summary():
             }
         else:
             out[t] = {"amount": 0, "entry_date": None, "description": "", "entered_by": "", "updated_at": None}
-    # Month-to-date expense totals (Op Exp + GST Input)
+    # Month-to-date expense + GST totals
     today_utc = datetime.now(timezone.utc)
     month_start = today_utc.strftime("%Y-%m-01")
     op_exp_total = 0.0
     gst_input_total = 0.0
+    gst_paid_total = 0.0
     async for d in db.account_entries.find({"entry_type": "operational_expense", "entry_date": {"$gte": month_start}}):
         op_exp_total += float(d.get("amount", 0))
     async for d in db.account_entries.find({"entry_type": "gst_input", "entry_date": {"$gte": month_start}}):
         gst_input_total += float(d.get("amount", 0))
+    async for d in db.account_entries.find({"entry_type": "gst_paid", "entry_date": {"$gte": month_start}}):
+        gst_paid_total += float(d.get("amount", 0))
     out["operational_expense_mtd"] = round(op_exp_total, 2)
     out["gst_input_mtd"] = round(gst_input_total, 2)
-    out["net_cash_flow_mtd"] = round((out["cash_on_hand"]["amount"] or 0) - op_exp_total - gst_input_total, 2)
-    # 30-day history of cash_on_hand for trend chart
+    out["gst_paid_mtd"] = round(gst_paid_total, 2)
+    out["gst_net_mtd"] = round(gst_paid_total - gst_input_total, 2)  # net liability (positive = owed to govt)
+    # 30-day cash history
     docs = await db.account_entries.find({"entry_type": "cash_on_hand"}).sort("entry_date", -1).limit(30).to_list(30)
     out["cash_history"] = [{"date": d.get("entry_date"), "amount": d.get("amount", 0)} for d in reversed(docs)]
     return out
@@ -4067,7 +4071,7 @@ class AccountEntryUpdate(BaseModel):
     amount: Optional[float] = None
     description: Optional[str] = None
 
-ACCOUNT_TYPES = {"cash_on_hand", "account_balance", "operational_expense", "gst_input"}
+ACCOUNT_TYPES = {"cash_on_hand", "account_balance", "operational_expense", "gst_input", "gst_paid"}
 
 @api_router.get("/accounts")
 async def list_accounts(request: Request, entry_type: Optional[str] = None, date_from: Optional[str] = None, date_to: Optional[str] = None):
@@ -4158,15 +4162,16 @@ async def accounts_summary(request: Request):
             }
         else:
             summary[t] = {"amount": 0, "entry_date": None, "description": "", "entered_by": "", "updated_at": None}
-    # Month-to-date totals for expense types
+    # Month-to-date totals for expense / gst types
     today = datetime.now(timezone.utc)
     month_start = today.strftime("%Y-%m-01")
-    for t in ("operational_expense", "gst_input"):
+    for t in ("operational_expense", "gst_input", "gst_paid"):
         cursor = db.account_entries.find({"entry_type": t, "entry_date": {"$gte": month_start}})
         total = 0.0
         async for d in cursor:
             total += float(d.get("amount", 0))
         summary[f"{t}_mtd"] = round(total, 2)
+    summary["gst_net_mtd"] = round(summary.get("gst_paid_mtd", 0) - summary.get("gst_input_mtd", 0), 2)
     return summary
 
 
