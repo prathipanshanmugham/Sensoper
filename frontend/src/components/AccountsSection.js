@@ -6,11 +6,10 @@ import { Label } from '../components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
-import { Loader2, Plus, Save, Trash2, Edit, Wallet, Gauge, Banknote } from 'lucide-react';
+import { Loader2, Plus, Save, Trash2, Edit, Wallet, Banknote } from 'lucide-react';
 
 const ENTRY_META = {
   cash_on_hand: { label: 'Cash on Hand', icon: Wallet, color: 'emerald', accent: 'border-emerald-200 bg-emerald-50/40' },
-  meter_reading: { label: 'Meter Reading', icon: Gauge, color: 'blue', accent: 'border-blue-200 bg-blue-50/40' },
   account_balance: { label: 'Account Balance', icon: Banknote, color: 'violet', accent: 'border-violet-200 bg-violet-50/40' }
 };
 
@@ -74,7 +73,7 @@ export default function AccountsSection() {
   return (
     <div data-testid="accounts-section">
       {/* Snapshot cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-5">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-5">
         {Object.entries(ENTRY_META).map(([key, meta]) => {
           const s = summary?.[key];
           const Icon = meta.icon;
@@ -105,7 +104,6 @@ export default function AccountsSection() {
             <SelectContent>
               <SelectItem value="all">All Types</SelectItem>
               <SelectItem value="cash_on_hand">Cash on Hand</SelectItem>
-              <SelectItem value="meter_reading">Meter Reading</SelectItem>
               <SelectItem value="account_balance">Account Balance</SelectItem>
             </SelectContent>
           </Select>
@@ -126,7 +124,6 @@ export default function AccountsSection() {
                   <SelectTrigger className="h-9" data-testid="accounts-form-type"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="cash_on_hand">Cash on Hand</SelectItem>
-                    <SelectItem value="meter_reading">Meter Reading</SelectItem>
                     <SelectItem value="account_balance">Account Balance</SelectItem>
                   </SelectContent>
                 </Select>

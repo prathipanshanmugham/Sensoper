@@ -21,6 +21,7 @@ import autoTable from 'jspdf-autotable';
 import QRCode from 'qrcode';
 import * as XLSX from 'xlsx';
 import { saveAs } from 'file-saver';
+import { loadUnicodeFont } from '../utils/pdfFont';
 
 const API_URL = process.env.REACT_APP_BACKEND_URL;
 
@@ -165,6 +166,7 @@ export default function ProjectDetails() {
   const generatePDF = async () => {
     const cp = companyProfile || {};
     const doc = new jsPDF();
+    const FONT = await loadUnicodeFont(doc);
     const pageWidth = doc.internal.pageSize.getWidth();
     const pageHeight = doc.internal.pageSize.getHeight();
     const m = 15;
@@ -175,7 +177,7 @@ export default function ProjectDetails() {
     const hexToRgb = (hex) => [parseInt(hex.slice(1,3),16), parseInt(hex.slice(3,5),16), parseInt(hex.slice(5,7),16)];
     const pRgb = hexToRgb(primaryHex);
     const sRgb = hexToRgb(secondaryHex);
-    const currency = (val) => `Rs. ${(val || 0).toLocaleString('en-IN')}`;
+    const currency = (val) => `₹${(val || 0).toLocaleString('en-IN')}`;
 
     // Fetch logo as base64 from backend (bypasses CORS)
     let logoBase64 = null;
@@ -214,12 +216,12 @@ export default function ProjectDetails() {
         } catch (e) { console.error('Logo embed failed:', e); }
       } else {
         // Fallback: text company name if logo fails
-        d.setFontSize(16); d.setFont('helvetica', 'bold'); d.setTextColor(...pRgb);
+        d.setFontSize(16); d.setFont(FONT, 'bold'); d.setTextColor(...pRgb);
         d.text(cp.company_name || 'Sensoper Controls & Renewables', m, 20);
       }
 
       // Contact info on right side
-      d.setFontSize(7.5); d.setTextColor(100, 100, 100); d.setFont('helvetica', 'normal');
+      d.setFontSize(7.5); d.setTextColor(100, 100, 100); d.setFont(FONT, 'normal');
       const contact = [cp.phone, cp.email, cp.website].filter(Boolean);
       contact.forEach((line, i) => { d.text(line, pageWidth - m, 14 + i * 4, { align: 'right' }); });
       if (cp.gst_number) {
@@ -242,16 +244,16 @@ export default function ProjectDetails() {
     const refNum = project.reference_number || `SCR-${id.slice(0,8).toUpperCase()}`;
     doc.setFillColor(245, 247, 250); doc.roundedRect(m, y, contentW, 16, 2, 2, 'F');
     doc.setDrawColor(220, 220, 230); doc.roundedRect(m, y, contentW, 16, 2, 2, 'S');
-    doc.setFontSize(10); doc.setFont('helvetica', 'bold'); doc.setTextColor(40, 40, 40);
+    doc.setFontSize(10); doc.setFont(FONT, 'bold'); doc.setTextColor(40, 40, 40);
     doc.text('SOLAR PROJECT QUOTATION', m + 4, y + 6);
-    doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(100, 100, 100);
+    doc.setFont(FONT, 'normal'); doc.setFontSize(8); doc.setTextColor(100, 100, 100);
     doc.text(`Ref: ${refNum}`, m + 4, y + 12);
     doc.text(`Date: ${new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' })}`, pageWidth - m - 4, y + 6, { align: 'right' });
     doc.text(`Status: ${(project.status || 'draft').toUpperCase()}`, pageWidth - m - 4, y + 12, { align: 'right' });
     y += 24;
 
     const sectionHead = (title, yPos) => {
-      doc.setFontSize(11); doc.setFont('helvetica', 'bold'); doc.setTextColor(...sRgb);
+      doc.setFontSize(11); doc.setFont(FONT, 'bold'); doc.setTextColor(...sRgb);
       doc.text(title, m, yPos); doc.setDrawColor(...sRgb); doc.setLineWidth(0.4);
       doc.line(m, yPos + 1.5, m + doc.getTextWidth(title), yPos + 1.5);
       return yPos + 7;
@@ -259,7 +261,7 @@ export default function ProjectDetails() {
 
     // Customer
     y = sectionHead('Customer Details', y);
-    autoTable(doc, { startY: y, margin: { left: m, right: m }, theme: 'plain', styles: { fontSize: 9, cellPadding: 2, textColor: [50, 50, 50] }, columnStyles: { 0: { fontStyle: 'bold', cellWidth: 40, textColor: [100, 100, 100] } },
+    autoTable(doc, { startY: y, margin: { left: m, right: m }, theme: 'plain', styles: { font: FONT, fontSize: 9, cellPadding: 2, textColor: [50, 50, 50] }, columnStyles: { 0: { fontStyle: 'bold', cellWidth: 40, textColor: [100, 100, 100] } },
       body: [['Name', project.customer?.name || '-'], ['Phone', project.customer?.phone || '-'], ['Email', project.customer?.email || '-'], ['Address', project.customer?.address || '-']],
     }); y = doc.lastAutoTable.finalY + 8;
 
@@ -271,18 +273,18 @@ export default function ProjectDetails() {
     locationRows.push(['Roof Type', (project.mounting?.roof_type || '-').toUpperCase()]);
     locationRows.push(['Structure', project.mounting?.structure_type || '-']);
     locationRows.push(['Tilt Angle', `${project.mounting?.tilt_angle || 0}\u00B0`]);
-    autoTable(doc, { startY: y, margin: { left: m, right: m }, theme: 'plain', styles: { fontSize: 9, cellPadding: 2, textColor: [50, 50, 50] }, columnStyles: { 0: { fontStyle: 'bold', cellWidth: 40, textColor: [100, 100, 100] } }, body: locationRows });
+    autoTable(doc, { startY: y, margin: { left: m, right: m }, theme: 'plain', styles: { font: FONT, fontSize: 9, cellPadding: 2, textColor: [50, 50, 50] }, columnStyles: { 0: { fontStyle: 'bold', cellWidth: 40, textColor: [100, 100, 100] } }, body: locationRows });
     y = doc.lastAutoTable.finalY + 8;
 
     // Electrical
     y = sectionHead('Electrical Details', y);
-    autoTable(doc, { startY: y, margin: { left: m, right: m }, theme: 'plain', styles: { fontSize: 9, cellPadding: 2, textColor: [50, 50, 50] }, columnStyles: { 0: { fontStyle: 'bold', cellWidth: 50, textColor: [100, 100, 100] } },
+    autoTable(doc, { startY: y, margin: { left: m, right: m }, theme: 'plain', styles: { font: FONT, fontSize: 9, cellPadding: 2, textColor: [50, 50, 50] }, columnStyles: { 0: { fontStyle: 'bold', cellWidth: 50, textColor: [100, 100, 100] } },
       body: [
         ['Service Type', project.electrical?.service_type || '-'],
         ['Sanction Load', `${project.electrical?.sanction_load_kw || 0} kW`],
         ['Connected Load', `${project.electrical?.connected_load_kw || 0} kW`],
         ['Monthly Consumption', `${project.electrical?.monthly_consumption_units || 0} units`],
-        ['EB Tariff', `Rs. ${project.electrical?.eb_tariff || 0}/unit`],
+        ['EB Tariff', `₹${project.electrical?.eb_tariff || 0}/unit`],
         ['System Type', (project.solar_system?.system_type || '-').toUpperCase()],
         ['Cable Length', `${project.additional?.cable_length_meters || 0} m`],
       ],
@@ -290,7 +292,7 @@ export default function ProjectDetails() {
 
     // Cost Breakdown
     if (y > pageHeight - 80) { doc.addPage(); drawHeader(doc); y = 48; }
-    doc.setFontSize(12); doc.setFont('helvetica', 'bold'); doc.setTextColor(...pRgb);
+    doc.setFontSize(12); doc.setFont(FONT, 'bold'); doc.setTextColor(...pRgb);
     doc.text('Cost Breakdown', m, y); doc.setDrawColor(...pRgb); doc.setLineWidth(0.5);
     doc.line(m, y + 1.5, m + doc.getTextWidth('Cost Breakdown'), y + 1.5); y += 8;
 
@@ -300,8 +302,8 @@ export default function ProjectDetails() {
 
     autoTable(doc, { startY: y, margin: { left: m, right: m },
       head: [['Item', 'Category', 'Qty', 'Unit Price', 'GST', 'Amount']], body: costRows, theme: 'grid',
-      headStyles: { fillColor: pRgb, textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 8.5 },
-      styles: { fontSize: 8.5, cellPadding: 3, textColor: [40, 40, 40], lineColor: [220, 220, 230], lineWidth: 0.3 },
+      headStyles: { font: FONT, fillColor: pRgb, textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 8.5 },
+      styles: { font: FONT, fontSize: 8.5, cellPadding: 3, textColor: [40, 40, 40], lineColor: [220, 220, 230], lineWidth: 0.3 },
       columnStyles: { 0: { cellWidth: contentW * 0.28 }, 1: { cellWidth: contentW * 0.18 }, 2: { halign: 'center', cellWidth: contentW * 0.08 }, 3: { halign: 'right', cellWidth: contentW * 0.16 }, 4: { halign: 'center', cellWidth: contentW * 0.1 }, 5: { halign: 'right', cellWidth: contentW * 0.2, fontStyle: 'bold' } },
       alternateRowStyles: { fillColor: [250, 251, 252] },
       didDrawPage: (data) => { if (data.pageNumber > 1) drawHeader(data.doc); },
@@ -309,19 +311,19 @@ export default function ProjectDetails() {
 
     if (manualCosts.length > 0) {
       autoTable(doc, { startY: y, margin: { left: m, right: m }, theme: 'grid',
-        styles: { fontSize: 8.5, cellPadding: 3, textColor: [40, 40, 40], lineColor: [220, 220, 230], lineWidth: 0.3 },
+        styles: { font: FONT, fontSize: 8.5, cellPadding: 3, textColor: [40, 40, 40], lineColor: [220, 220, 230], lineWidth: 0.3 },
         columnStyles: { 0: { cellWidth: contentW * 0.28, fontStyle: 'italic' }, 5: { halign: 'right', cellWidth: contentW * 0.2, fontStyle: 'bold' } },
         body: manualCosts.map(c => [c.description, '', '', '', '', currency(c.amount)]),
       }); y = doc.lastAutoTable.finalY + 2;
     }
 
     const ce = project.cost_estimation || {};
-    autoTable(doc, { startY: y, margin: { left: m, right: m }, theme: 'plain', styles: { fontSize: 9, cellPadding: 3 },
+    autoTable(doc, { startY: y, margin: { left: m, right: m }, theme: 'plain', styles: { font: FONT, fontSize: 9, cellPadding: 3 },
       columnStyles: { 0: { cellWidth: contentW * 0.7, fontStyle: 'bold', textColor: [80, 80, 80] }, 1: { halign: 'right', cellWidth: contentW * 0.3 } },
       body: [['Subtotal', currency(ce.subtotal)], ['Total GST', currency(ce.total_gst)]],
     }); y = doc.lastAutoTable.finalY;
 
-    autoTable(doc, { startY: y, margin: { left: m, right: m }, theme: 'plain', styles: { fontSize: 13, cellPadding: 5, fontStyle: 'bold' },
+    autoTable(doc, { startY: y, margin: { left: m, right: m }, theme: 'plain', styles: { font: FONT, fontSize: 13, cellPadding: 5, fontStyle: 'bold' },
       columnStyles: { 0: { cellWidth: contentW * 0.7, textColor: [30, 30, 30] }, 1: { halign: 'right', cellWidth: contentW * 0.3, textColor: pRgb } },
       body: [['TOTAL AMOUNT', currency(ce.total_cost)]],
       didDrawCell: (data) => { if (data.row.index === 0 && data.column.index === 0) { doc.setDrawColor(...pRgb); doc.setLineWidth(0.8); doc.line(data.cell.x, data.cell.y, data.cell.x + contentW, data.cell.y); } },
@@ -334,7 +336,7 @@ export default function ProjectDetails() {
       y = sectionHead('Bank Details for Payment', y);
       const bankTableWidth = upiQR ? contentW * 0.6 : contentW;
       autoTable(doc, { startY: y, margin: { left: m, right: m }, theme: 'plain',
-        styles: { fontSize: 9, cellPadding: 2, textColor: [50, 50, 50] },
+        styles: { font: FONT, fontSize: 9, cellPadding: 2, textColor: [50, 50, 50] },
         columnStyles: { 0: { fontStyle: 'bold', cellWidth: 45, textColor: [100, 100, 100] } },
         tableWidth: bankTableWidth,
         body: [['Account Name', bank.account_name], ['Account No.', bank.account_number], ['IFSC Code', bank.ifsc_code], ['Bank Name', bank.bank_name], ['Branch', bank.branch], ...(bank.upi_id ? [['UPI ID', bank.upi_id]] : [])],
@@ -344,7 +346,7 @@ export default function ProjectDetails() {
           const qrX = m + bankTableWidth + 10;
           const qrY = y - 2;
           doc.addImage(upiQR, 'PNG', qrX, qrY, 35, 35);
-          doc.setFontSize(7); doc.setTextColor(100, 100, 100); doc.setFont('helvetica', 'normal');
+          doc.setFontSize(7); doc.setTextColor(100, 100, 100); doc.setFont(FONT, 'normal');
           doc.text('Scan to Pay (UPI)', qrX + 17.5, qrY + 39, { align: 'center' });
         } catch (e) { console.error('UPI QR PDF render failed:', e); }
       }
@@ -355,7 +357,7 @@ export default function ProjectDetails() {
     if (driveLink && driveQR) {
       if (y > pageHeight - 70) { doc.addPage(); drawHeader(doc); y = 48; }
       y = sectionHead('Site Documentation', y);
-      doc.setFontSize(9); doc.setFont('helvetica', 'normal'); doc.setTextColor(80, 80, 80);
+      doc.setFontSize(9); doc.setFont(FONT, 'normal'); doc.setTextColor(80, 80, 80);
       if (project.drive_folder_name) {
         doc.text(`Folder: ${project.drive_folder_name}`, m, y); y += 5;
       }
@@ -368,12 +370,12 @@ export default function ProjectDetails() {
 
     // Terms
     if (y > pageHeight - 45) { doc.addPage(); drawHeader(doc); y = 48; }
-    doc.setFontSize(10); doc.setFont('helvetica', 'bold'); doc.setTextColor(80, 80, 80);
+    doc.setFontSize(10); doc.setFont(FONT, 'bold'); doc.setTextColor(80, 80, 80);
     doc.text('Terms & Conditions', m, y); doc.setDrawColor(180, 180, 180); doc.setLineWidth(0.3); doc.line(m, y + 1.5, m + 48, y + 1.5); y += 7;
     const termsList = terms?.content ? parseTermsHtml(terms.content)
       : ['This quotation is valid for 30 days.', '50% advance payment required.', 'Balance on installation completion.', 'Installation: 7-14 working days after delivery.', '5-year workmanship warranty.', 'Panel warranty per manufacturer.'];
     autoTable(doc, { startY: y, margin: { left: m, right: m }, theme: 'plain',
-      styles: { fontSize: 7.5, cellPadding: { top: 1.5, bottom: 1.5, left: 2, right: 2 }, textColor: [80, 80, 80] },
+      styles: { font: FONT, fontSize: 7.5, cellPadding: { top: 1.5, bottom: 1.5, left: 2, right: 2 }, textColor: [80, 80, 80] },
       body: termsList.map((t, i) => [`${i + 1}. ${t}`]),
       didDrawPage: (data) => { drawHeader(data.doc); },
     });

@@ -15,6 +15,7 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import * as XLSX from 'xlsx';
 import { saveAs } from 'file-saver';
+import { loadUnicodeFont } from '../utils/pdfFont';
 
 const PIE_COLORS = ['#10b981', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#84cc16'];
 
@@ -86,9 +87,10 @@ export default function ReportsPage() {
     return Object.keys(reportData.rows[0]).filter(k => !['has_feedback'].includes(k));
   };
 
-  const exportPDF = () => {
+  const exportPDF = async () => {
     if (!reportData) return;
     const doc = new jsPDF({ orientation: 'landscape' });
+    const FONT = await loadUnicodeFont(doc);
     doc.setFontSize(18); doc.setTextColor(16, 185, 129);
     doc.text('Sensoper Controls & Renewables', 14, 18);
     doc.setFontSize(14); doc.setTextColor(30, 41, 59);
@@ -101,7 +103,7 @@ export default function ReportsPage() {
     }
     const cols = getColumns();
     if (reportData.rows?.length) {
-      autoTable(doc, { startY: 42 + (reportData.summary ? Object.keys(reportData.summary).length * 6 + 4 : 0), head: [cols.map(formatHeader)], body: reportData.rows.map(r => cols.map(c => { const v = r[c]; return typeof v === 'number' ? v.toLocaleString('en-IN') : String(v ?? ''); })), theme: 'striped', headStyles: { fillColor: [16, 185, 129], textColor: 255, fontSize: 8 }, bodyStyles: { fontSize: 7 }, margin: { left: 14, right: 14 } });
+      autoTable(doc, { startY: 42 + (reportData.summary ? Object.keys(reportData.summary).length * 6 + 4 : 0), head: [cols.map(formatHeader)], body: reportData.rows.map(r => cols.map(c => { const v = r[c]; return typeof v === 'number' ? v.toLocaleString('en-IN') : String(v ?? ''); })), theme: 'striped', styles: { font: FONT }, headStyles: { font: FONT, fillColor: [16, 185, 129], textColor: 255, fontSize: 8 }, bodyStyles: { font: FONT, fontSize: 7 }, margin: { left: 14, right: 14 } });
     }
     doc.save(`${reportData.title.replace(/\s+/g, '_')}_${new Date().toISOString().slice(0, 10)}.pdf`);
   };

@@ -65,7 +65,7 @@ export default function DashboardLayout({ children }) {
     { icon: ClipboardCheck, label: 'Approvals', href: '/dashboard/approvals', show: isAdmin || isManager, badge: stats?.pending_approvals },
     { icon: BarChart3, label: 'Reports', href: '/dashboard/reports', show: isAdmin || isManager },
     { icon: AlertTriangle, label: 'Profit Alerts', href: '/dashboard/alerts', show: isAdmin || isManager },
-    { icon: CreditCard, label: 'Customer Credits', href: '/dashboard/credits', show: isAdmin || isManager },
+    { icon: CreditCard, label: 'Accounts', href: '/dashboard/credits', show: isAdmin || isManager },
     { icon: Package, label: 'Purchase Inbound', href: '/dashboard/purchase-inbound', show: isAdmin || isManager },
     { icon: Truck, label: 'Delivery Outbound', href: '/dashboard/delivery-outbound', show: isAdmin || isManager },
     { icon: Undo2, label: 'Brand Returns', href: '/dashboard/returns', show: true },

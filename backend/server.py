@@ -2502,7 +2502,7 @@ async def get_ceo_dashboard(request: Request):
 async def _ceo_accounts_summary():
     """Latest snapshot per account_entries type for CEO Dashboard cards."""
     out = {}
-    for t in ("cash_on_hand", "meter_reading", "account_balance"):
+    for t in ("cash_on_hand", "account_balance"):
         latest = await db.account_entries.find_one({"entry_type": t}, sort=[("entry_date", -1), ("created_at", -1)])
         if latest:
             out[t] = {
@@ -2514,6 +2514,18 @@ async def _ceo_accounts_summary():
             }
         else:
             out[t] = {"amount": 0, "entry_date": None, "description": "", "entered_by": "", "updated_at": None}
+    # Month-to-date expense totals (Op Exp + GST Input)
+    today_utc = datetime.now(timezone.utc)
+    month_start = today_utc.strftime("%Y-%m-01")
+    op_exp_total = 0.0
+    gst_input_total = 0.0
+    async for d in db.account_entries.find({"entry_type": "operational_expense", "entry_date": {"$gte": month_start}}):
+        op_exp_total += float(d.get("amount", 0))
+    async for d in db.account_entries.find({"entry_type": "gst_input", "entry_date": {"$gte": month_start}}):
+        gst_input_total += float(d.get("amount", 0))
+    out["operational_expense_mtd"] = round(op_exp_total, 2)
+    out["gst_input_mtd"] = round(gst_input_total, 2)
+    out["net_cash_flow_mtd"] = round((out["cash_on_hand"]["amount"] or 0) - op_exp_total - gst_input_total, 2)
     # 30-day history of cash_on_hand for trend chart
     docs = await db.account_entries.find({"entry_type": "cash_on_hand"}).sort("entry_date", -1).limit(30).to_list(30)
     out["cash_history"] = [{"date": d.get("entry_date"), "amount": d.get("amount", 0)} for d in reversed(docs)]
@@ -4055,7 +4067,7 @@ class AccountEntryUpdate(BaseModel):
     amount: Optional[float] = None
     description: Optional[str] = None
 
-ACCOUNT_TYPES = {"cash_on_hand", "meter_reading", "account_balance"}
+ACCOUNT_TYPES = {"cash_on_hand", "account_balance", "operational_expense", "gst_input"}
 
 @api_router.get("/accounts")
 async def list_accounts(request: Request, entry_type: Optional[str] = None, date_from: Optional[str] = None, date_to: Optional[str] = None):
@@ -4289,6 +4301,20 @@ async def delete_reading(reading_id: str, request: Request):
     await db.readings.delete_one({"_id": ObjectId(reading_id)})
     await create_audit_log(user["id"], user.get("name",""), "delete", "reading", reading_id, existing, None)
     return {"message": "Deleted"}
+
+
+# Include the router in the main app
+app.include_router(api_router)
+
+# CORS Configuration
+frontend_url = os.environ.get("FRONTEND_URL", "http://localhost:3000")
+app.add_middleware(
+    CORSMiddleware,
+    allow_credentials=True,
+    allow_origins=[frontend_url, "http://localhost:3000", "https://solar-ops-management.preview.emergentagent.com"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 # Include the router in the main app

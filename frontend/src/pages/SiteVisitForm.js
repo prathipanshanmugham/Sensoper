@@ -14,7 +14,8 @@ import { ComboInput } from '../components/ui/combo-input';
 import { 
   User, MapPin, Zap, ArrowRight, ArrowLeft, Loader2, CheckCircle2,
   Sparkles, Plus, Trash2, Package, FolderOpen, X, Percent, FolderPlus, ExternalLink, CheckCircle, Link2,
-  Ruler, ChevronDown, ChevronRight, Home, Compass, Eye, PlugZap, Gauge, Settings2, HardHat, Shield, Layers
+  Ruler, ChevronDown, ChevronRight, Home, Compass, Eye, PlugZap, Gauge, Settings2, HardHat, Shield, Layers,
+  Crosshair, AlertCircle
 } from 'lucide-react';
 
 const SYSTEM_SLUGS = ['customer', 'location', 'site_electrical', 'materials', 'site_docs'];
@@ -45,6 +46,8 @@ export default function SiteVisitForm() {
   const [currentStep, setCurrentStep] = useState(1);
   const [loading, setLoading] = useState(false);
   const [loadingProject, setLoadingProject] = useState(!!editId);
+  const [gpsLoading, setGpsLoading] = useState(false);
+  const [gpsError, setGpsError] = useState('');
   const [aiLoading, setAiLoading] = useState(false);
   const [aiRecommendation, setAiRecommendation] = useState('');
   const [error, setError] = useState('');
@@ -241,6 +244,47 @@ export default function SiteVisitForm() {
 
   const updateField = (section, field, value) => {
     setFormData(prev => ({ ...prev, [section]: { ...prev[section], [field]: value } }));
+  };
+
+  // ── What3Words: capture GPS → fetch w3w → autofill ───────────────────
+  const fetchW3W = async () => {
+    setGpsError('');
+    if (!navigator.geolocation) { setGpsError('Geolocation not supported by this browser'); return; }
+    setGpsLoading(true);
+    try {
+      const pos = await new Promise((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(resolve, reject, { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 });
+      });
+      const { latitude, longitude } = pos.coords;
+      const key = process.env.REACT_APP_W3W_API_KEY;
+      if (!key) { setGpsError('What3Words API key not configured'); return; }
+      const resp = await fetch(`https://api.what3words.com/v3/convert-to-3wa?coordinates=${latitude},${longitude}&key=${key}`);
+      if (!resp.ok) {
+        const err = await resp.text();
+        throw new Error(`W3W ${resp.status}: ${err.slice(0, 120)}`);
+      }
+      const data = await resp.json();
+      if (!data.words) throw new Error('No words returned by W3W');
+      setFormData(prev => ({
+        ...prev,
+        location: {
+          ...prev.location,
+          latitude,
+          longitude,
+          site_location_words: data.words,
+          // If address blank, prefill with W3W nearestPlace if available
+          address: prev.location.address || (data.nearestPlace ? `Near ${data.nearestPlace}` : prev.location.address)
+        }
+      }));
+    } catch (e) {
+      const code = e?.code;
+      if (code === 1) setGpsError('Location permission denied. Enable it in your browser to use this feature.');
+      else if (code === 2) setGpsError('Position unavailable. Try again outdoors.');
+      else if (code === 3) setGpsError('Location request timed out.');
+      else setGpsError(e.message || 'Failed to fetch What3Words');
+    } finally {
+      setGpsLoading(false);
+    }
   };
 
   const updateMeasurement = (section, field, value) => {
@@ -581,9 +625,27 @@ export default function SiteVisitForm() {
             {STEPS[currentStep - 1]?.slug === 'location' && (
               <div className="space-y-4">
                 <div className="p-4 bg-emerald-50 rounded-lg border border-emerald-200">
-                  <h3 className="font-semibold text-emerald-800 mb-1">What3Words Address</h3>
-                  <p className="text-sm text-emerald-600 mb-2">Enter the 3-word location (e.g., apple.orange.table)</p>
+                  <div className="flex items-start justify-between gap-3 flex-wrap mb-2">
+                    <div>
+                      <h3 className="font-semibold text-emerald-800 mb-1">What3Words Address</h3>
+                      <p className="text-sm text-emerald-600">Enter the 3-word location, or auto-fill from your current GPS.</p>
+                    </div>
+                    <Button type="button" variant="outline" size="sm" onClick={fetchW3W} disabled={gpsLoading} className="h-9 gap-1.5 border-emerald-300 text-emerald-700 hover:bg-emerald-100" data-testid="w3w-gps-btn">
+                      {gpsLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Crosshair className="h-3.5 w-3.5" />}
+                      {gpsLoading ? 'Locating…' : 'Auto-fill from GPS'}
+                    </Button>
+                  </div>
                   <Input value={formData.location.site_location_words} onChange={(e) => updateField('location', 'site_location_words', e.target.value)} placeholder="word.word.word" className="font-mono h-11" data-testid="what3words-input" />
+                  {(formData.location.latitude && formData.location.longitude) && (
+                    <p className="text-[11px] text-emerald-600 mt-1.5 flex items-center gap-1" data-testid="w3w-coords">
+                      <MapPin className="h-3 w-3" />
+                      {Number(formData.location.latitude).toFixed(5)}, {Number(formData.location.longitude).toFixed(5)}
+                      <a href={`https://what3words.com/${formData.location.site_location_words}`} target="_blank" rel="noopener noreferrer" className="ml-2 text-emerald-700 hover:underline">Open in W3W ↗</a>
+                    </p>
+                  )}
+                  {gpsError && (
+                    <p className="text-[11px] text-red-600 mt-1.5 flex items-center gap-1" data-testid="w3w-error"><AlertCircle className="h-3 w-3" />{gpsError}</p>
+                  )}
                 </div>
                 <div className="space-y-2"><Label>Site Address</Label><Textarea rows={2} value={formData.location.address} onChange={(e) => updateField('location', 'address', e.target.value)} placeholder="Site location description" data-testid="location-address-input" /></div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

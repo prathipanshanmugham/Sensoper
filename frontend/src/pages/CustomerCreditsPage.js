@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Badge } from '../components/ui/badge';
 import { Loader2, Plus, IndianRupee, X, Save, Trash2 } from 'lucide-react';
 import AccountsSection from '../components/AccountsSection';
+import ExpensesSection from '../components/ExpensesSection';
 
 const STATUS_COLORS = { active: 'bg-blue-100 text-blue-700', overdue: 'bg-red-100 text-red-700', closed: 'bg-emerald-100 text-emerald-700' };
 
@@ -62,17 +63,19 @@ export default function CustomerCreditsPage() {
     <div className="py-6 px-4">
       <div className="max-w-6xl mx-auto">
         <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
-          <div><h1 className="text-2xl font-bold font-['Outfit'] text-slate-900" data-testid="credits-title">Customer Credits & Accounts</h1><p className="text-sm text-slate-500">Manage receivables and financial account snapshots</p></div>
+          <div><h1 className="text-2xl font-bold font-['Outfit'] text-slate-900" data-testid="credits-title">Accounts</h1><p className="text-sm text-slate-500">Receivables, financial snapshots & expenses</p></div>
           {section === 'credits' && <Button onClick={() => setShowForm(true)} className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white" data-testid="new-credit-btn"><Plus className="h-4 w-4" />New Credit</Button>}
         </div>
 
         {/* Section tabs */}
-        <div className="flex gap-2 mb-5 border-b border-slate-200" data-testid="section-tabs">
-          <button onClick={() => setSection('credits')} className={`px-4 py-2 text-sm border-b-2 transition-colors ${section === 'credits' ? 'border-emerald-500 text-emerald-700 font-medium' : 'border-transparent text-slate-500 hover:text-slate-800'}`} data-testid="tab-credits">Customer Credits</button>
-          <button onClick={() => setSection('accounts')} className={`px-4 py-2 text-sm border-b-2 transition-colors ${section === 'accounts' ? 'border-emerald-500 text-emerald-700 font-medium' : 'border-transparent text-slate-500 hover:text-slate-800'}`} data-testid="tab-accounts">Accounts</button>
+        <div className="flex gap-2 mb-5 border-b border-slate-200 overflow-x-auto" data-testid="section-tabs">
+          <button onClick={() => setSection('credits')} className={`px-4 py-2 text-sm border-b-2 transition-colors whitespace-nowrap ${section === 'credits' ? 'border-emerald-500 text-emerald-700 font-medium' : 'border-transparent text-slate-500 hover:text-slate-800'}`} data-testid="tab-credits">Customer Credits</button>
+          <button onClick={() => setSection('accounts')} className={`px-4 py-2 text-sm border-b-2 transition-colors whitespace-nowrap ${section === 'accounts' ? 'border-emerald-500 text-emerald-700 font-medium' : 'border-transparent text-slate-500 hover:text-slate-800'}`} data-testid="tab-accounts">Accounts</button>
+          <button onClick={() => setSection('expenses')} className={`px-4 py-2 text-sm border-b-2 transition-colors whitespace-nowrap ${section === 'expenses' ? 'border-amber-500 text-amber-700 font-medium' : 'border-transparent text-slate-500 hover:text-slate-800'}`} data-testid="tab-expenses">Expenses</button>
         </div>
 
-        {section === 'accounts' ? <AccountsSection /> : (<>
+        {section === 'accounts' ? <AccountsSection /> :
+         section === 'expenses' ? <ExpensesSection /> : (<>
         {/* KPIs */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6" data-testid="credit-kpis">
           <Card className="border-slate-200"><CardContent className="p-4 text-center"><p className="text-[10px] uppercase tracking-wider text-slate-400">Total Outstanding</p><p className="text-xl font-bold text-slate-900">₹{totalOutstanding.toLocaleString('en-IN')}</p></CardContent></Card>

@@ -7,7 +7,7 @@ import { Badge } from '../components/ui/badge';
 import {
   BarChart3, TrendingUp, IndianRupee, CheckCircle2, Clock, Package,
   AlertTriangle, Users, ArrowLeft, Loader2, ClipboardCheck, ArrowUpRight,
-  Wallet, Banknote, Activity
+  Wallet, Banknote, Activity, Receipt, Calculator, TrendingDown
 } from 'lucide-react';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -61,7 +61,9 @@ export default function CeoDashboard() {
   const { kpis, status_distribution, revenue_trend, sales_funnel, top_staff, accounts_summary, readings_summary } = data;
   const cash = accounts_summary?.cash_on_hand;
   const balance = accounts_summary?.account_balance;
-  const meter = accounts_summary?.meter_reading;
+  const opExpMtd = accounts_summary?.operational_expense_mtd || 0;
+  const gstInputMtd = accounts_summary?.gst_input_mtd || 0;
+  const netCashFlow = accounts_summary?.net_cash_flow_mtd ?? ((cash?.amount || 0) - opExpMtd - gstInputMtd);
   const cashHistory = accounts_summary?.cash_history || [];
 
   const funnelData = [
@@ -95,17 +97,17 @@ export default function CeoDashboard() {
           <KpiCard title="Outstanding Credit" value={`₹${(kpis.total_outstanding || 0).toLocaleString('en-IN')}`} icon={IndianRupee} color="red" subtitle={`Overdue: ₹${(kpis.overdue_amount || 0).toLocaleString('en-IN')}`} onClick={() => navigate('/dashboard/credits')} />
         </div>
 
-        {/* Operational Snapshot — Cash / Readings / Account Balance (Feb 2026) */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6" data-testid="ceo-snapshot-grid">
+        {/* Operational Snapshot — Cash · Op Exp · GST Input · Account Balance + Net Cash Flow + Readings */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-3" data-testid="ceo-snapshot-grid">
           {/* Cash on Hand */}
           <Card className="border-emerald-200 bg-emerald-50/40 hover:shadow-md transition-shadow cursor-pointer" onClick={() => navigate('/dashboard/credits')} data-testid="ceo-cash-card">
             <CardHeader className="pb-2"><div className="flex items-center justify-between"><CardTitle className="text-sm font-semibold text-emerald-700 flex items-center gap-2"><Wallet className="h-4 w-4" />Cash on Hand</CardTitle><ArrowUpRight className="h-3.5 w-3.5 text-emerald-500" /></div></CardHeader>
             <CardContent>
-              <p className="text-3xl font-bold font-['Outfit'] text-slate-900">₹{(cash?.amount || 0).toLocaleString('en-IN')}</p>
-              <p className="text-[11px] text-slate-500 mt-1">{cash?.entry_date ? `As of ${cash.entry_date}` : 'No entries yet'}{cash?.entered_by ? ` · by ${cash.entered_by}` : ''}</p>
+              <p className="text-2xl font-bold font-['Outfit'] text-slate-900">₹{(cash?.amount || 0).toLocaleString('en-IN')}</p>
+              <p className="text-[11px] text-slate-500 mt-1">{cash?.entry_date ? `As of ${cash.entry_date}` : 'No entries yet'}</p>
               {cashHistory.length >= 2 && (
-                <div className="mt-3 h-16 w-full">
-                  <ResponsiveContainer width="100%" height={64}>
+                <div className="mt-3 h-12 w-full">
+                  <ResponsiveContainer width="100%" height={48}>
                     <LineChart data={cashHistory} margin={{ top: 2, right: 4, bottom: 2, left: 4 }}><Line type="monotone" dataKey="amount" stroke="#10b981" strokeWidth={2} dot={false} isAnimationActive={false} /><Tooltip formatter={(v) => `₹${v.toLocaleString('en-IN')}`} labelFormatter={(l) => l} /></LineChart>
                   </ResponsiveContainer>
                 </div>
@@ -113,19 +115,21 @@ export default function CeoDashboard() {
             </CardContent>
           </Card>
 
-          {/* Readings */}
-          <Card className="border-blue-200 bg-blue-50/40 hover:shadow-md transition-shadow cursor-pointer" onClick={() => navigate('/dashboard/readings')} data-testid="ceo-readings-card">
-            <CardHeader className="pb-2"><div className="flex items-center justify-between"><CardTitle className="text-sm font-semibold text-blue-700 flex items-center gap-2"><Activity className="h-4 w-4" />Readings</CardTitle><ArrowUpRight className="h-3.5 w-3.5 text-blue-500" /></div></CardHeader>
+          {/* Operational Expense MTD */}
+          <Card className="border-amber-200 bg-amber-50/40 hover:shadow-md transition-shadow cursor-pointer" onClick={() => navigate('/dashboard/credits')} data-testid="ceo-opexp-card">
+            <CardHeader className="pb-2"><div className="flex items-center justify-between"><CardTitle className="text-sm font-semibold text-amber-700 flex items-center gap-2"><Receipt className="h-4 w-4" />Op Exp (MTD)</CardTitle><ArrowUpRight className="h-3.5 w-3.5 text-amber-500" /></div></CardHeader>
             <CardContent>
-              <p className="text-3xl font-bold font-['Outfit'] text-slate-900">{readings_summary?.active || 0}</p>
-              <p className="text-[11px] text-slate-500 mt-1">Currently active reading-phase sites</p>
-              <div className="flex gap-3 mt-3 text-xs">
-                <span className="text-emerald-600 flex items-center gap-1"><CheckCircle2 className="h-3 w-3" />Completed: <strong>{readings_summary?.completed || 0}</strong></span>
-                <span className="text-red-600 flex items-center gap-1"><AlertTriangle className="h-3 w-3" />Overdue: <strong>{readings_summary?.overdue || 0}</strong></span>
-              </div>
-              {meter?.amount > 0 && (
-                <p className="text-[11px] text-slate-500 mt-2 pt-2 border-t border-blue-100">Latest meter reading: <span className="font-semibold text-slate-700">{meter.amount.toLocaleString('en-IN')}</span> {meter.entry_date ? `(${meter.entry_date})` : ''}</p>
-              )}
+              <p className="text-2xl font-bold font-['Outfit'] text-slate-900">₹{opExpMtd.toLocaleString('en-IN')}</p>
+              <p className="text-[11px] text-slate-500 mt-1">Operational outflow this month</p>
+            </CardContent>
+          </Card>
+
+          {/* GST Input MTD */}
+          <Card className="border-sky-200 bg-sky-50/40 hover:shadow-md transition-shadow cursor-pointer" onClick={() => navigate('/dashboard/credits')} data-testid="ceo-gst-card">
+            <CardHeader className="pb-2"><div className="flex items-center justify-between"><CardTitle className="text-sm font-semibold text-sky-700 flex items-center gap-2"><Calculator className="h-4 w-4" />GST Input (MTD)</CardTitle><ArrowUpRight className="h-3.5 w-3.5 text-sky-500" /></div></CardHeader>
+            <CardContent>
+              <p className="text-2xl font-bold font-['Outfit'] text-slate-900">₹{gstInputMtd.toLocaleString('en-IN')}</p>
+              <p className="text-[11px] text-slate-500 mt-1">Input tax credits this month</p>
             </CardContent>
           </Card>
 
@@ -133,9 +137,36 @@ export default function CeoDashboard() {
           <Card className="border-violet-200 bg-violet-50/40 hover:shadow-md transition-shadow cursor-pointer" onClick={() => navigate('/dashboard/credits')} data-testid="ceo-balance-card">
             <CardHeader className="pb-2"><div className="flex items-center justify-between"><CardTitle className="text-sm font-semibold text-violet-700 flex items-center gap-2"><Banknote className="h-4 w-4" />Account Balance</CardTitle><ArrowUpRight className="h-3.5 w-3.5 text-violet-500" /></div></CardHeader>
             <CardContent>
-              <p className="text-3xl font-bold font-['Outfit'] text-slate-900">₹{(balance?.amount || 0).toLocaleString('en-IN')}</p>
-              <p className="text-[11px] text-slate-500 mt-1">{balance?.entry_date ? `As of ${balance.entry_date}` : 'No entries yet'}{balance?.entered_by ? ` · by ${balance.entered_by}` : ''}</p>
-              {balance?.description && <p className="text-xs text-slate-600 mt-2 truncate">{balance.description}</p>}
+              <p className="text-2xl font-bold font-['Outfit'] text-slate-900">₹{(balance?.amount || 0).toLocaleString('en-IN')}</p>
+              <p className="text-[11px] text-slate-500 mt-1">{balance?.entry_date ? `As of ${balance.entry_date}` : 'No entries yet'}</p>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Net Cash Flow + Readings strip */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+          <Card className={`border-2 ${netCashFlow >= 0 ? 'border-emerald-300 bg-gradient-to-br from-emerald-50 to-emerald-100/40' : 'border-red-300 bg-gradient-to-br from-red-50 to-red-100/40'} hover:shadow-md transition-shadow md:col-span-2`} data-testid="ceo-netflow-card">
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between gap-3 flex-wrap">
+                <div className="flex items-center gap-2">
+                  <TrendingDown className={`h-4 w-4 ${netCashFlow >= 0 ? 'text-emerald-600 rotate-180' : 'text-red-600'}`} />
+                  <p className="text-xs uppercase tracking-wider text-slate-600 font-semibold">Net Cash Flow (MTD)</p>
+                </div>
+                <p className={`text-2xl font-bold font-['Outfit'] ${netCashFlow >= 0 ? 'text-emerald-700' : 'text-red-700'}`} data-testid="ceo-netflow-amount">{netCashFlow >= 0 ? '+' : ''}₹{Math.abs(netCashFlow).toLocaleString('en-IN')}</p>
+              </div>
+              <p className="text-[11px] text-slate-500 mt-2">Cash on Hand minus Op Exp and GST Input this month. {netCashFlow >= 0 ? 'Healthy positive flow.' : 'Outflow exceeds cash inflow — review.'}</p>
+            </CardContent>
+          </Card>
+
+          {/* Readings */}
+          <Card className="border-blue-200 bg-blue-50/40 hover:shadow-md transition-shadow cursor-pointer" onClick={() => navigate('/dashboard/readings')} data-testid="ceo-readings-card">
+            <CardHeader className="pb-2"><div className="flex items-center justify-between"><CardTitle className="text-sm font-semibold text-blue-700 flex items-center gap-2"><Activity className="h-4 w-4" />Readings</CardTitle><ArrowUpRight className="h-3.5 w-3.5 text-blue-500" /></div></CardHeader>
+            <CardContent>
+              <p className="text-2xl font-bold font-['Outfit'] text-slate-900">{readings_summary?.active || 0}</p>
+              <div className="flex gap-3 mt-1 text-[11px]">
+                <span className="text-emerald-600">Done: <strong>{readings_summary?.completed || 0}</strong></span>
+                <span className="text-red-600">Overdue: <strong>{readings_summary?.overdue || 0}</strong></span>
+              </div>
             </CardContent>
           </Card>
         </div>
