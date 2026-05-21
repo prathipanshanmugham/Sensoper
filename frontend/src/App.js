@@ -30,6 +30,7 @@ import PurchaseInboundPage from "./pages/PurchaseInboundPage";
 import DeliveryOutboundPage from "./pages/DeliveryOutboundPage";
 import BrandReturnsPage from "./pages/BrandReturnsPage";
 import WeeklyAuditPage from "./pages/WeeklyAuditPage";
+import SolarReport from "./pages/SolarReport";
 
 // Protected Route Component
 function ProtectedRoute({ children, allowedRoles = null }) {
@@ -118,6 +119,7 @@ function AppRoutes() {
       <Route path="/dashboard/terms" element={<ProtectedRoute allowedRoles={["admin", "manager"]}><DashboardLayout><TermsConditions /></DashboardLayout></ProtectedRoute>} />
       <Route path="/dashboard/inventory" element={<ProtectedRoute allowedRoles={["admin", "manager"]}><DashboardLayout><InventoryManagement /></DashboardLayout></ProtectedRoute>} />
       <Route path="/dashboard/readings" element={<ProtectedRoute><DashboardLayout><ReadingsPage /></DashboardLayout></ProtectedRoute>} />
+      <Route path="/dashboard/solar-report" element={<ProtectedRoute><DashboardLayout><SolarReport /></DashboardLayout></ProtectedRoute>} />
       {/* Default Redirect */}
       <Route path="/" element={<Navigate to="/dashboard" replace />} />
       <Route path="*" element={<Navigate to="/dashboard" replace />} />

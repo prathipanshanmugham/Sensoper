@@ -4317,6 +4317,334 @@ async def delete_reading(reading_id: str, request: Request):
     return {"message": "Deleted"}
 
 
+
+# ============================================================
+# ============ TNEB / SOLAR REPORT MODULE ====================
+# ============================================================
+# Pluggable bill-fetch provider. Set BILL_FETCH_PROVIDER + BILL_FETCH_API_KEY
+# in backend/.env. Currently supports: setu, decentro, signzy (placeholders).
+# When unset, returns success=False so frontend falls into manual entry mode.
+
+import math
+from io import BytesIO
+from pypdf import PdfReader, PdfWriter
+from fastapi.responses import StreamingResponse
+
+class TnebFetchRequest(BaseModel):
+    service_number: str
+    phone: str
+
+class TnebConsumerData(BaseModel):
+    consumer_name: Optional[str] = None
+    address: Optional[str] = None
+    sanctioned_load_kw: Optional[float] = None
+    avg_monthly_consumption: Optional[float] = None
+    avg_monthly_bill: Optional[float] = None
+    tariff_category: Optional[str] = None  # Domestic / Commercial / Industrial
+    connection_type: Optional[str] = None  # Single Phase / Three Phase
+    historical_12m: Optional[List[dict]] = None  # [{"month":"2025-01","units":350,"amount":2100}]
+
+@api_router.post("/tneb/fetch")
+async def tneb_fetch(payload: TnebFetchRequest, current_user: dict = Depends(get_current_user)):
+    """Try a configured 3rd-party bill-fetch provider. Falls back to manual entry."""
+    # Basic format validation
+    svc = (payload.service_number or "").strip()
+    phone = (payload.phone or "").strip()
+    if not svc or len(svc) < 6:
+        raise HTTPException(status_code=400, detail="Invalid TNEB service number format")
+    if not phone.isdigit() or len(phone) != 10:
+        raise HTTPException(status_code=400, detail="Phone must be a 10-digit Indian mobile number")
+
+    provider = os.environ.get("BILL_FETCH_PROVIDER", "").lower().strip()
+    api_key = os.environ.get("BILL_FETCH_API_KEY", "").strip()
+
+    if not provider or not api_key:
+        return {
+            "success": False,
+            "fallback": "manual",
+            "message": "TNEB live fetch not configured. Please enter consumer details manually.",
+            "data": None,
+        }
+
+    # Provider-specific call (stubs — wire real endpoints once user provides key)
+    try:
+        if provider == "setu":
+            # Setu BBPS-style bill fetch (example contract — exact contract per Setu docs)
+            r = http_requests.post(
+                "https://uat.setu.co/api/bill-fetch/v1/fetch",
+                headers={"x-api-key": api_key, "Content-Type": "application/json"},
+                json={"biller_id": "TNEB", "service_number": svc, "phone": phone},
+                timeout=20,
+            )
+            r.raise_for_status()
+            payload_raw = r.json()
+        elif provider == "decentro":
+            r = http_requests.post(
+                "https://in.decentro.tech/v2/billers/fetch",
+                headers={"client_id": api_key.split(":")[0], "client_secret": api_key.split(":")[-1]},
+                json={"biller": "TNEB", "consumer_id": svc, "mobile": phone},
+                timeout=20,
+            )
+            r.raise_for_status()
+            payload_raw = r.json()
+        elif provider == "signzy":
+            r = http_requests.post(
+                "https://preproduction.signzy.tech/api/v2/patrons/utility/electricity",
+                headers={"Authorization": api_key},
+                json={"board": "TNEB", "consumerNumber": svc, "phone": phone},
+                timeout=20,
+            )
+            r.raise_for_status()
+            payload_raw = r.json()
+        else:
+            return {"success": False, "fallback": "manual",
+                    "message": f"Unknown provider '{provider}'. Set BILL_FETCH_PROVIDER to setu|decentro|signzy.",
+                    "data": None}
+
+        # Normalize provider response → TnebConsumerData. Real shapes will need
+        # tuning once a contract is locked; we map best-effort common keys.
+        d = payload_raw.get("data") or payload_raw.get("result") or payload_raw
+        normalized = {
+            "consumer_name": d.get("customerName") or d.get("consumer_name") or d.get("name"),
+            "address": d.get("address") or d.get("billingAddress"),
+            "sanctioned_load_kw": float(d.get("sanctionedLoad") or d.get("sanctioned_load") or 0) or None,
+            "avg_monthly_consumption": float(d.get("avgUnits") or d.get("units") or 0) or None,
+            "avg_monthly_bill": float(d.get("amount") or d.get("billAmount") or 0) or None,
+            "tariff_category": d.get("tariff") or d.get("tariffCategory"),
+            "connection_type": d.get("phase") or d.get("connectionType"),
+            "historical_12m": d.get("history") or None,
+        }
+        return {"success": True, "fallback": None,
+                "message": f"Fetched from {provider}.",
+                "data": normalized, "provider": provider}
+    except http_requests.RequestException as e:
+        logger.warning(f"TNEB provider {provider} error: {e}")
+        return {"success": False, "fallback": "manual",
+                "message": f"Provider error: {str(e)[:120]}. Please enter details manually.",
+                "data": None}
+
+
+@api_router.get("/solar/irradiation")
+async def solar_irradiation(lat: float, lng: float, current_user: dict = Depends(get_current_user)):
+    """Fetch annual avg daily solar irradiation (kWh/m²/day) from NASA POWER. Free, no key."""
+    if not (-90 <= lat <= 90 and -180 <= lng <= 180):
+        raise HTTPException(status_code=400, detail="Invalid coordinates")
+    try:
+        r = http_requests.get(
+            "https://power.larc.nasa.gov/api/temporal/climatology/point",
+            params={
+                "parameters": "ALLSKY_SFC_SW_DWN",
+                "community": "RE",
+                "longitude": lng,
+                "latitude": lat,
+                "format": "JSON",
+            },
+            timeout=20,
+        )
+        r.raise_for_status()
+        data = r.json()
+        monthly = data.get("properties", {}).get("parameter", {}).get("ALLSKY_SFC_SW_DWN", {}) or {}
+        # Annual is keyed as "ANN" in NASA POWER climatology
+        annual = monthly.get("ANN")
+        if annual is None or annual < 0:
+            # Fallback to India avg
+            annual = 5.0
+        # Strip ANN from monthly for cleaner response
+        months = {k: v for k, v in monthly.items() if k != "ANN" and isinstance(v, (int, float)) and v >= 0}
+        return {
+            "annual_avg_kwh_m2_day": round(float(annual), 3),
+            "monthly_kwh_m2_day": months,
+            "source": "NASA POWER",
+            "lat": lat,
+            "lng": lng,
+        }
+    except http_requests.RequestException as e:
+        logger.warning(f"NASA POWER fetch failed: {e}. Using India avg fallback.")
+        return {
+            "annual_avg_kwh_m2_day": 5.0,
+            "monthly_kwh_m2_day": {},
+            "source": "fallback (India avg)",
+            "lat": lat,
+            "lng": lng,
+            "warning": "NASA POWER unreachable; used 5.0 kWh/m²/day fallback.",
+        }
+
+
+class SolarSizingRequest(BaseModel):
+    monthly_consumption_units: float
+    sanctioned_load_kw: Optional[float] = None
+    tariff_category: str = "Domestic"  # Domestic / Commercial / Industrial
+    connection_type: str = "Single Phase"
+    avg_monthly_bill: Optional[float] = None
+    irradiation_kwh_m2_day: float = 5.0  # India avg fallback
+    system_type: Literal["on-grid", "off-grid", "hybrid"] = "on-grid"
+    panel_wattage_w: int = 550
+    cost_per_kwp: float = 55000  # ₹/kWp installed (2026 India avg residential on-grid)
+    battery_autonomy_days: float = 1.0
+    battery_voltage: int = 48
+    state: Optional[str] = "Tamil Nadu"
+
+@api_router.post("/solar/sizing")
+async def solar_sizing(req: SolarSizingRequest, current_user: dict = Depends(get_current_user)):
+    """Pure calculator: produces full solar system sizing + 25-year financial projection."""
+    PR = 0.75  # Performance ratio (typical India)
+    DEGRADATION_PCT = 0.7  # per year
+    TARIFF_ESCALATION_PCT = 2.5  # per year
+    GRID_EF_KG_PER_KWH = 0.82  # India grid CO2 emission factor
+
+    monthly_units = max(req.monthly_consumption_units, 1)
+    irradiation = max(req.irradiation_kwh_m2_day, 0.1)
+
+    # Tariff (₹/unit) — infer if bill provided else use category default
+    if req.avg_monthly_bill and req.avg_monthly_bill > 0:
+        tariff_per_unit = req.avg_monthly_bill / monthly_units
+    else:
+        tariff_per_unit = {"Domestic": 6.5, "Commercial": 9.0, "Industrial": 8.0}.get(req.tariff_category, 7.0)
+
+    # System sizing
+    daily_units_needed = monthly_units / 30.0
+    kwp_needed = daily_units_needed / (irradiation * PR)
+    # Round up to nearest 0.5 kWp; cap at sanctioned load if provided
+    kwp_recommended = math.ceil(kwp_needed * 2) / 2
+    if req.sanctioned_load_kw and kwp_recommended > req.sanctioned_load_kw:
+        kwp_recommended = req.sanctioned_load_kw
+
+    num_panels = math.ceil((kwp_recommended * 1000) / req.panel_wattage_w)
+    inverter_capacity_kw = round(kwp_recommended * 1.1, 2)
+
+    # Battery (off-grid/hybrid only)
+    battery_ah = 0
+    if req.system_type in ("off-grid", "hybrid"):
+        daily_wh = daily_units_needed * 1000
+        usable_wh = daily_wh * req.battery_autonomy_days / 0.85  # 85% round-trip efficiency
+        battery_ah = math.ceil(usable_wh / req.battery_voltage)
+
+    # Monthly generation & savings
+    monthly_generation = kwp_recommended * irradiation * 30 * PR
+    monthly_savings = monthly_generation * tariff_per_unit
+    annual_savings = monthly_savings * 12
+
+    # Cost & subsidy (PM Surya Ghar — residential domestic on-grid only, India 2026)
+    total_cost = round(kwp_recommended * req.cost_per_kwp)
+    subsidy = 0
+    if req.tariff_category == "Domestic" and req.system_type == "on-grid":
+        if kwp_recommended <= 1:
+            subsidy = 30000
+        elif kwp_recommended <= 2:
+            subsidy = 60000
+        else:
+            subsidy = 78000  # cap for ≥3 kW
+    net_cost = max(total_cost - subsidy, 0)
+
+    # Payback (simple)
+    payback_years = round(net_cost / annual_savings, 2) if annual_savings > 0 else None
+
+    # 25-year savings projection (with tariff escalation + panel degradation)
+    yearly_breakdown = []
+    cumulative = 0
+    for year in range(1, 26):
+        degraded_gen = monthly_generation * 12 * ((1 - DEGRADATION_PCT / 100) ** (year - 1))
+        escalated_tariff = tariff_per_unit * ((1 + TARIFF_ESCALATION_PCT / 100) ** (year - 1))
+        year_savings = degraded_gen * escalated_tariff
+        cumulative += year_savings
+        yearly_breakdown.append({
+            "year": year,
+            "generation_units": round(degraded_gen, 1),
+            "tariff": round(escalated_tariff, 2),
+            "savings": round(year_savings, 2),
+            "cumulative": round(cumulative, 2),
+        })
+    total_25yr_savings = round(cumulative)
+    roi_pct = round(((total_25yr_savings - net_cost) / net_cost) * 100, 1) if net_cost > 0 else None
+
+    # Technical KPIs
+    annual_generation = monthly_generation * 12
+    cuf_pct = round((annual_generation / (kwp_recommended * 8760)) * 100, 2) if kwp_recommended > 0 else 0
+    co2_offset_kg = round(annual_generation * GRID_EF_KG_PER_KWH)
+
+    return {
+        "sizing": {
+            "kwp_recommended": round(kwp_recommended, 2),
+            "num_panels": num_panels,
+            "panel_wattage_w": req.panel_wattage_w,
+            "inverter_capacity_kw": inverter_capacity_kw,
+            "battery_ah": battery_ah,
+            "battery_voltage": req.battery_voltage if battery_ah else 0,
+        },
+        "financials": {
+            "tariff_per_unit": round(tariff_per_unit, 2),
+            "total_cost": total_cost,
+            "subsidy": subsidy,
+            "net_cost": net_cost,
+            "monthly_generation_units": round(monthly_generation, 1),
+            "monthly_savings": round(monthly_savings, 2),
+            "annual_savings": round(annual_savings, 2),
+            "payback_years": payback_years,
+            "roi_pct": roi_pct,
+            "total_25yr_savings": total_25yr_savings,
+            "yearly_breakdown": yearly_breakdown,
+        },
+        "technical": {
+            "performance_ratio": PR,
+            "cuf_pct": cuf_pct,
+            "annual_generation_units": round(annual_generation),
+            "co2_offset_kg_per_year": co2_offset_kg,
+            "irradiation_kwh_m2_day": round(irradiation, 3),
+            "degradation_pct_per_year": DEGRADATION_PCT,
+        },
+        "assumptions": {
+            "tariff_escalation_pct": TARIFF_ESCALATION_PCT,
+            "grid_emission_factor_kg_per_kwh": GRID_EF_KG_PER_KWH,
+            "cost_per_kwp_inr": req.cost_per_kwp,
+            "subsidy_scheme": "PM Surya Ghar (residential domestic on-grid only)",
+        },
+    }
+
+
+@api_router.post("/solar/merge-pdf")
+async def solar_merge_pdf(
+    generated_pdf: UploadFile = File(...),
+    uploaded_pdf: UploadFile = File(...),
+    position: Literal["prepend", "append"] = Form("prepend"),
+    current_user: dict = Depends(get_current_user),
+):
+    """Merge frontend-generated report PDF with user-uploaded PDF. Returns merged PDF stream."""
+    try:
+        gen_bytes = await generated_pdf.read()
+        up_bytes = await uploaded_pdf.read()
+        if not gen_bytes or not up_bytes:
+            raise HTTPException(status_code=400, detail="Both PDF files are required and must be non-empty")
+
+        # Size sanity check (50MB max each)
+        if len(gen_bytes) > 50 * 1024 * 1024 or len(up_bytes) > 50 * 1024 * 1024:
+            raise HTTPException(status_code=413, detail="PDF file too large (max 50MB each)")
+
+        writer = PdfWriter()
+        gen_reader = PdfReader(BytesIO(gen_bytes))
+        up_reader = PdfReader(BytesIO(up_bytes))
+        first, second = (gen_reader, up_reader) if position == "prepend" else (up_reader, gen_reader)
+        for pg in first.pages:
+            writer.add_page(pg)
+        for pg in second.pages:
+            writer.add_page(pg)
+
+        out = BytesIO()
+        writer.write(out)
+        out.seek(0)
+
+        filename = (uploaded_pdf.filename or "report").rsplit(".", 1)[0] + "_merged.pdf"
+        return StreamingResponse(
+            out,
+            media_type="application/pdf",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"PDF merge failed: {e}")
+        raise HTTPException(status_code=500, detail=f"PDF merge failed: {str(e)[:200]}")
+
+
 # Include the router in the main app
 app.include_router(api_router)
 

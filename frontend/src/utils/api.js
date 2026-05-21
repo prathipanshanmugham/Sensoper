@@ -261,4 +261,21 @@ export const readingsAPI = {
   delete: (id) => api.delete(`/readings/${id}`)
 };
 
+// Solar Report API (TNEB fetch + sizing calc + PDF merge)
+export const solarReportAPI = {
+  fetchTneb: (service_number, phone) => api.post('/tneb/fetch', { service_number, phone }),
+  irradiation: (lat, lng) => api.get('/solar/irradiation', { params: { lat, lng } }),
+  sizing: (data) => api.post('/solar/sizing', data),
+  mergePdf: (generatedBlob, uploadedFile, position = 'prepend') => {
+    const fd = new FormData();
+    fd.append('generated_pdf', generatedBlob, 'sensoper_report.pdf');
+    fd.append('uploaded_pdf', uploadedFile);
+    fd.append('position', position);
+    return api.post('/solar/merge-pdf', fd, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      responseType: 'blob'
+    });
+  }
+};
+
 export default api;

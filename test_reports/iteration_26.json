@@ -1,0 +1,39 @@
+{
+  "summary": "Tested new TNEB Auto-Fetch + Solar Report + PDF Merge feature (iteration 26). Backend: 19/19 pytest cases pass — TNEB manual fallback, validation (svc<6 char, phone!=10 digits), live NASA POWER irradiation (Chennai returns ~5 kWh/m²/day from NASA), sizing math (kwp=4 for 450 units, 78k subsidy ≥3kW domestic on-grid, commercial subsidy=0, off-grid battery>0, tiny consumption floor=0.5kWp, 25-yr breakdown), PDF merge prepend/append page-count verified, empty/missing PDF validation, auth required. Frontend: SolarReport page renders solar-report-title, TNEB fetch → manual fallback warning visible, consumer-details-card opens, sizing-kpis + financial-kpis populate (kwp=4, subsidy=78k, payback=3.7y, 25-yr ₹12L savings), both savings charts render, download-pdf-btn + upload-pdf-input + merge-download-btn all present, GPS + irradiation buttons present, SiteVisitForm tneb-cta-block + open-solar-report-btn visible. Regression: login eye toggle works (password↔text), CEO Dashboard symmetric without 'Net Cash Flow' strip. Sidebar 'Solar Report' item visible (highlighted in screenshot).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "server.py module-level", "issue": "Duplicate `app.include_router(api_router)` and duplicate CORSMiddleware registration at end of file (lines 4649-4659 and 4663-4673). Not functionally broken but dead code."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration26_solar_report.py",
+    "/app/test_reports/pytest/iteration26.xml"
+  ],
+  "action_items": [
+    "(Optional cleanup) Remove duplicate include_router + CORSMiddleware block at the bottom of /app/backend/server.py (lines 4662-4673)."
+  ],
+  "critical_code_review_comments": [
+    "server.py duplicate router/CORS registration at end of file — harmless but should be cleaned up.",
+    "server.py is now >4670 lines — strongly recommend splitting solar/TNEB module into /app/backend/routes/solar_report.py for maintainability (file-size guideline >700 lines).",
+    "TNEB provider integration paths (setu/decentro/signzy) are stubs — once user provides BILL_FETCH_API_KEY, the response normalization in lines 4407-4416 will need contract-specific tuning per actual provider API.",
+    "NASA POWER endpoint correctly falls back to 5.0 kWh/m²/day on network error — good resilience.",
+    "PDF merge correctly returns 50MB cap (HTTP 413). Verified with empty-bytes → 400.",
+    "All new endpoints correctly enforce auth (verified 401/403 without session)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration26_solar_report.py (new)"
+  ],
+  "success_rate": {"backend": "100% (19/19)", "frontend": "100% — all data-testids present and integrations working"},
+  "test_credentials": "admin@sensoper.com / Admin@123 (cookie session via /api/auth/login)",
+  "seed_data_creation": "None — pure read/calc/PDF endpoints; no DB writes",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Iteration 26 added TNEB Auto-Fetch, NASA POWER irradiation, Solar Sizing calc and PDF merge. The reusable backend test file /app/backend/tests/test_iteration26_solar_report.py covers all endpoints. BILL_FETCH_PROVIDER/BILL_FETCH_API_KEY are intentionally unset in .env — manual fallback is the expected behaviour until user provides key. NASA POWER call is live (no key) — Chennai (13.08, 80.27) returns ~5 kWh/m²/day. PDF merge uses pypdf; tested with synthetic blank-page PDFs (1 gen + 2 upl = 3 merged pages, both prepend and append).",
+  "rca of the issue": "No bugs found in this iteration. All targeted features (TNEB manual fallback, irradiation API, sizing math with subsidy logic, PDF merge with positions, frontend SolarReport UI with all required testids, SiteVisitForm CTA block) function correctly. Iteration 25 features (login eye toggle, CEO Dashboard symmetric layout) remain intact."
+}

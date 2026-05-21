@@ -15,7 +15,7 @@ import {
   User, MapPin, Zap, ArrowRight, ArrowLeft, Loader2, CheckCircle2,
   Sparkles, Plus, Trash2, Package, FolderOpen, X, Percent, FolderPlus, ExternalLink, CheckCircle, Link2,
   Ruler, ChevronDown, ChevronRight, Home, Compass, Eye, PlugZap, Gauge, Settings2, HardHat, Shield, Layers,
-  Crosshair, AlertCircle
+  Crosshair, AlertCircle, Sun
 } from 'lucide-react';
 
 const SYSTEM_SLUGS = ['customer', 'location', 'site_electrical', 'materials', 'site_docs'];
@@ -617,6 +617,25 @@ export default function SiteVisitForm() {
                 </div>
                 <div className="space-y-2"><Label>Email</Label><Input type="email" value={formData.customer.email} onChange={(e) => updateField('customer', 'email', e.target.value)} placeholder="Email (optional)" className="h-11" data-testid="customer-email-input" /></div>
                 <div className="space-y-2"><Label>Address *</Label><Textarea rows={3} value={formData.customer.address} onChange={(e) => updateField('customer', 'address', e.target.value)} placeholder="Full address" className="min-h-[80px]" data-testid="customer-address-input" /></div>
+
+                {/* TNEB Auto-fetch CTA — opens the Solar Report tool pre-filled */}
+                <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg" data-testid="tneb-cta-block">
+                  <div className="flex items-start justify-between gap-3 flex-wrap">
+                    <div>
+                      <h3 className="font-semibold text-amber-800 flex items-center gap-1.5"><Sun className="h-4 w-4" />TNEB Auto-fetch & Solar Report</h3>
+                      <p className="text-sm text-amber-700">Have a TNEB service number? Auto-fetch consumer data and generate a branded solar project report (sizing + ROI + 25-yr savings + PDF).</p>
+                    </div>
+                    <Button type="button" variant="outline" className="gap-1 border-amber-300 hover:bg-amber-100" onClick={() => {
+                      const phone = (formData.customer.phone || '').replace(/\D/g, '');
+                      const params = new URLSearchParams();
+                      if (phone) params.set('phone', phone);
+                      if (formData.customer.name) params.set('name', formData.customer.name);
+                      if (formData.customer.address) params.set('address', formData.customer.address);
+                      window.open(`/dashboard/solar-report?${params.toString()}`, '_blank');
+                    }} data-testid="open-solar-report-btn"><Sun className="h-4 w-4" />Open Solar Report Tool</Button>
+                  </div>
+                </div>
+
                 {renderExtraFields('customer')}
               </div>
             )}

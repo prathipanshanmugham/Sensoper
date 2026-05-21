@@ -7,7 +7,7 @@ import { Badge } from '../components/ui/badge';
 import {
   LayoutDashboard, FolderPlus, Users, LogOut, FileText, TrendingUp,
   Menu, X, Package, History, ScrollText, Building2, ClipboardCheck, Shield,
-  Layers, BarChart3, CalendarDays, AlertTriangle, CreditCard, Truck, Undo2, ClipboardList, Bell, Activity
+  Layers, BarChart3, CalendarDays, AlertTriangle, CreditCard, Truck, Undo2, ClipboardList, Bell, Activity, Sun
 } from 'lucide-react';
 
 const LOGO_URL = "https://customer-assets.emergentagent.com/job_solar-estimator-14/artifacts/2dpfr2zb_slg.png";
@@ -61,6 +61,7 @@ export default function DashboardLayout({ children }) {
     { icon: LayoutDashboard, label: 'Dashboard', href: '/dashboard' , show: true },
     { icon: TrendingUp, label: 'CEO Dashboard', href: '/dashboard/ceo', show: isAdmin || isManager },
     { icon: FolderPlus, label: 'New Project', href: '/dashboard/projects/new', show: true },
+    { icon: Sun, label: 'Solar Report', href: '/dashboard/solar-report', show: true },
     { icon: FileText, label: 'All Projects', href: '/dashboard/projects', show: true },
     { icon: ClipboardCheck, label: 'Approvals', href: '/dashboard/approvals', show: isAdmin || isManager, badge: stats?.pending_approvals },
     { icon: BarChart3, label: 'Reports', href: '/dashboard/reports', show: isAdmin || isManager },
