@@ -10,7 +10,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '../components/ui/dialog';
 import { 
   ArrowLeft, Plus, Edit, Trash2, Loader2, Package, AlertTriangle,
-  Search, Warehouse, Tag, X, CheckCircle2, Circle, Link2, CalendarDays
+  Search, Warehouse, Tag, X, CheckCircle2, Circle, Link2, CalendarDays,
+  Upload, FileSpreadsheet, FileText, Download
 } from 'lucide-react';
 
 export default function InventoryManagement() {
@@ -36,6 +37,46 @@ export default function InventoryManagement() {
   
   const [actionLoading, setActionLoading] = useState(false);
   const [error, setError] = useState('');
+
+  // Import / Export state
+  const [showImportDialog, setShowImportDialog] = useState(false);
+  const [importFile, setImportFile] = useState(null);
+  const [importing, setImporting] = useState(false);
+  const [importResult, setImportResult] = useState(null);
+  const [exportLoading, setExportLoading] = useState(null);
+
+  const downloadBlob = (blob, filename) => {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = filename; document.body.appendChild(a); a.click();
+    setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 500);
+  };
+
+  const handleDownloadTemplate = async () => {
+    try { const res = await inventoryAPI.downloadTemplate(); downloadBlob(res.data, 'inventory_import_template.xlsx'); }
+    catch (e) { setError('Failed to download template'); }
+  };
+
+  const handleImport = async () => {
+    if (!importFile) { setError('Select a file first'); return; }
+    setImporting(true); setError(''); setImportResult(null);
+    try {
+      const res = await inventoryAPI.importItems(importFile);
+      setImportResult(res.data);
+      fetchData();
+    } catch (e) { setError(e.response?.data?.detail || 'Import failed'); }
+    finally { setImporting(false); }
+  };
+
+  const handleExport = async (format) => {
+    setExportLoading(format);
+    try {
+      const res = await inventoryAPI.exportItems(format);
+      const today = new Date().toISOString().slice(0, 10);
+      downloadBlob(res.data, `inventory_${today}.${format}`);
+    } catch (e) { setError('Export failed'); }
+    finally { setExportLoading(null); }
+  };
 
   const fetchData = useCallback(async () => {
     try {
@@ -185,7 +226,10 @@ export default function InventoryManagement() {
                   {categories.map(c => <SelectItem key={c.id} value={c.slug}>{c.name}</SelectItem>)}
                 </SelectContent>
               </Select>
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2">
+                <Button variant="outline" onClick={() => setShowImportDialog(true)} className="flex-1 sm:flex-none h-11" data-testid="import-inventory-btn"><Upload className="h-4 w-4 mr-1" />Import</Button>
+                <Button variant="outline" onClick={() => handleExport('xlsx')} disabled={exportLoading==='xlsx'} className="flex-1 sm:flex-none h-11" data-testid="export-xlsx-btn">{exportLoading==='xlsx' ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Download className="h-4 w-4 mr-1" />}Excel</Button>
+                <Button variant="outline" onClick={() => handleExport('pdf')} disabled={exportLoading==='pdf'} className="flex-1 sm:flex-none h-11" data-testid="export-pdf-btn">{exportLoading==='pdf' ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Download className="h-4 w-4 mr-1" />}PDF</Button>
                 <Button variant="outline" onClick={() => setShowCatDialog(true)} className="flex-1 sm:flex-none h-11" data-testid="manage-categories-btn"><Tag className="h-4 w-4 mr-1" />Categories</Button>
                 <Button onClick={() => openItemDialog()} className="flex-1 sm:flex-none bg-emerald-600 hover:bg-emerald-700 text-white h-11" data-testid="add-item-btn"><Plus className="h-4 w-4 mr-1" />Add Item</Button>
               </div>
@@ -511,6 +555,50 @@ export default function InventoryManagement() {
               </div>
             </div>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Import Dialog */}
+      <Dialog open={showImportDialog} onOpenChange={(open) => { setShowImportDialog(open); if (!open) { setImportFile(null); setImportResult(null); setError(''); } }}>
+        <DialogContent className="sm:max-w-lg" data-testid="import-inventory-dialog">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2"><Upload className="h-5 w-5 text-emerald-600" />Import Inventory</DialogTitle>
+            <DialogDescription>Upload an .xlsx or .csv file. Existing SKUs are updated, new SKUs are added.</DialogDescription>
+          </DialogHeader>
+          <div className="py-3 space-y-4">
+            <div className="p-3 rounded-lg bg-blue-50 border border-blue-200 flex items-center justify-between gap-3">
+              <p className="text-sm text-blue-800">First time? Download the template with sample data.</p>
+              <Button variant="outline" size="sm" className="gap-1 shrink-0" onClick={handleDownloadTemplate} data-testid="download-template-btn"><Download className="h-3.5 w-3.5" />Template</Button>
+            </div>
+            <div className="space-y-2">
+              <Label className="text-sm">File (.xlsx / .csv)</Label>
+              <Input type="file" accept=".xlsx,.csv" onChange={(e) => { setImportFile(e.target.files?.[0] || null); setImportResult(null); }} data-testid="import-file-input" />
+              {importFile && <p className="text-xs text-slate-500">{importFile.name} ({(importFile.size / 1024).toFixed(1)} KB)</p>}
+            </div>
+            <p className="text-[11px] text-slate-500">Required columns: <code className="bg-slate-100 px-1 rounded">name, sku_code, category, quantity, unit_price</code>. Optional: reorder_level, supplier, gst_percentage, margin_pct, zone, aisle, shelf, rack, bin_location, procurement_date, active.</p>
+            {error && <div className="p-2 bg-red-50 text-red-700 text-xs rounded">{error}</div>}
+            {importResult && (
+              <div className="p-3 rounded-lg bg-emerald-50 border border-emerald-200 text-sm" data-testid="import-result">
+                <p className="font-semibold text-emerald-800">{importResult.message}</p>
+                <p className="text-emerald-700 text-xs mt-1">Total rows processed: {importResult.total_rows}</p>
+                {importResult.errors?.length > 0 && (
+                  <div className="mt-2 max-h-32 overflow-y-auto">
+                    <p className="text-xs font-medium text-amber-700 mb-1">{importResult.errors.length} row(s) skipped:</p>
+                    <ul className="text-[11px] text-amber-700 space-y-0.5">
+                      {importResult.errors.slice(0, 8).map((er, i) => <li key={i}>Row {er.row}: {er.error}</li>)}
+                      {importResult.errors.length > 8 && <li>… and {importResult.errors.length - 8} more</li>}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowImportDialog(false)}>Close</Button>
+            <Button onClick={handleImport} disabled={!importFile || importing} className="bg-emerald-600 hover:bg-emerald-700 text-white gap-1" data-testid="confirm-import-btn">
+              {importing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}{importing ? 'Importing...' : 'Import'}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

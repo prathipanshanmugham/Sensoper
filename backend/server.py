@@ -1632,6 +1632,252 @@ async def delete_inventory_item(item_id: str, request: Request):
     
     return {"message": "Item deleted successfully"}
 
+# ===================== INVENTORY: IMPORT / EXPORT =====================
+
+INVENTORY_EXPORT_COLUMNS = [
+    "name", "sku_code", "category", "quantity", "unit_price", "reorder_level",
+    "supplier", "gst_percentage", "margin_pct", "zone", "aisle", "shelf", "rack",
+    "bin_location", "procurement_date", "active",
+]
+
+@api_router.get("/inventory/template")
+async def inventory_import_template(request: Request):
+    """Download a blank XLSX template with the required columns."""
+    await require_role("admin", "manager")(request)
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill, Alignment
+    from io import BytesIO
+
+    wb = Workbook(); ws = wb.active; ws.title = "Inventory Template"
+    headers = INVENTORY_EXPORT_COLUMNS
+    ws.append(headers)
+    header_fill = PatternFill("solid", fgColor="10B981")
+    bold_white = Font(bold=True, color="FFFFFF")
+    for col_idx in range(1, len(headers) + 1):
+        cell = ws.cell(row=1, column=col_idx)
+        cell.font = bold_white; cell.fill = header_fill
+        cell.alignment = Alignment(horizontal="center", vertical="center")
+    ws.append([
+        "Solar Panel 540W Mono", "SP-540-MONO", "Panels", 50, 11500, 5,
+        "ABC Solar Co", 18.0, 12.5, "A", "1", "S2", "R3", "B4",
+        "2026-01-15", True
+    ])
+    ws.append([])
+    ws.append(["NOTE:", "sku_code must be unique. quantity/unit_price/reorder_level/gst_percentage/margin_pct are numeric. active is TRUE/FALSE. procurement_date is YYYY-MM-DD."])
+    for col in ws.columns:
+        max_len = max((len(str(c.value)) for c in col if c.value), default=12)
+        ws.column_dimensions[col[0].column_letter].width = min(max(max_len + 2, 12), 35)
+    buf = BytesIO(); wb.save(buf); buf.seek(0)
+    return StreamingResponse(buf, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": 'attachment; filename="inventory_import_template.xlsx"'})
+
+
+@api_router.post("/inventory/import")
+async def inventory_import(request: Request, file: UploadFile = File(...)):
+    """Bulk import inventory items from XLSX/CSV. Existing SKUs are updated; new SKUs are created."""
+    current_user = await require_role("admin", "manager")(request)
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="No file uploaded")
+
+    raw = await file.read()
+    if not raw:
+        raise HTTPException(status_code=400, detail="Empty file")
+    if len(raw) > 10 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="File too large (max 10MB)")
+
+    from io import BytesIO
+    import pandas as _pd
+    fname = file.filename.lower()
+    try:
+        if fname.endswith(".csv"):
+            df = _pd.read_csv(BytesIO(raw))
+        else:
+            df = _pd.read_excel(BytesIO(raw), engine="openpyxl")
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Could not parse file: {str(e)[:160]}")
+
+    if df.empty:
+        raise HTTPException(status_code=400, detail="File has no rows")
+    df.columns = [str(c).strip().lower().replace(" ", "_") for c in df.columns]
+    missing = [c for c in ["name", "sku_code", "category", "quantity", "unit_price"] if c not in df.columns]
+    if missing:
+        raise HTTPException(status_code=400, detail=f"Missing required columns: {', '.join(missing)}")
+
+    created, updated, errors = 0, 0, []
+    now_iso = datetime.now(timezone.utc).isoformat()
+    for idx, row in df.iterrows():
+        excel_row = idx + 2
+        try:
+            sku = str(row.get("sku_code", "")).strip()
+            name = str(row.get("name", "")).strip()
+            category = str(row.get("category", "")).strip()
+            if not sku or not name or not category or sku.lower() == "nan" or name.lower() == "nan":
+                errors.append({"row": int(excel_row), "error": "sku_code, name and category are required"})
+                continue
+            qty_raw = row.get("quantity")
+            price_raw = row.get("unit_price")
+            if _pd.isna(qty_raw) or _pd.isna(price_raw):
+                errors.append({"row": int(excel_row), "error": "quantity and unit_price are required"})
+                continue
+            try:
+                quantity = int(float(qty_raw))
+                unit_price = float(price_raw)
+            except Exception:
+                errors.append({"row": int(excel_row), "error": "quantity must be integer, unit_price must be number"})
+                continue
+            if quantity < 0 or unit_price < 0:
+                errors.append({"row": int(excel_row), "error": "quantity and unit_price must be at least 0"})
+                continue
+
+            def _opt(col, default=None, cast=str):
+                v = row.get(col)
+                if v is None or (isinstance(v, float) and _pd.isna(v)) or str(v).strip() == "":
+                    return default
+                try: return cast(v)
+                except Exception: return default
+
+            doc = {
+                "name": name,
+                "sku_code": sku,
+                "category": category,
+                "quantity": quantity,
+                "unit_price": unit_price,
+                "reorder_level": _opt("reorder_level", 10, lambda v: int(float(v))) or 10,
+                "supplier": _opt("supplier", "", str) or "",
+                "gst_percentage": _opt("gst_percentage", 18.0, float) or 18.0,
+                "margin_pct": _opt("margin_pct", 0.0, float) or 0.0,
+                "zone": _opt("zone", "", str) or "",
+                "aisle": _opt("aisle", "", str) or "",
+                "shelf": _opt("shelf", "", str) or "",
+                "rack": _opt("rack", "", str) or "",
+                "bin_location": _opt("bin_location", "", str) or "",
+                "procurement_date": _opt("procurement_date", None, str),
+                "active": _opt("active", True, lambda v: str(v).strip().lower() in ("true", "1", "yes", "y")),
+                "image_url": _opt("image_url", None, str),
+                "updated_at": now_iso,
+            }
+            existing = await db.inventory_items.find_one({"sku_code": sku})
+            if existing:
+                await db.inventory_items.update_one({"_id": existing["_id"]}, {"$set": doc})
+                updated += 1
+            else:
+                doc["created_at"] = now_iso
+                doc["qc_checklist"] = []
+                res = await db.inventory_items.insert_one(doc)
+                await db.inventory_transactions.insert_one({
+                    "item_id": str(res.inserted_id),
+                    "transaction_type": "purchase",
+                    "quantity": quantity,
+                    "previous_quantity": 0,
+                    "new_quantity": quantity,
+                    "performed_by_id": current_user["id"],
+                    "performed_by_name": current_user["name"],
+                    "notes": "Bulk import",
+                    "timestamp": now_iso,
+                })
+                created += 1
+        except Exception as e:
+            errors.append({"row": int(excel_row), "error": str(e)[:200]})
+
+    await create_audit_log(current_user["id"], current_user["name"], "import", "inventory_item",
+                           f"created={created} updated={updated} errors={len(errors)}")
+    return {"created": created, "updated": updated, "errors": errors,
+            "total_rows": int(len(df)),
+            "message": f"Imported {created} new and updated {updated} existing items"}
+
+
+@api_router.get("/inventory/export")
+async def inventory_export(request: Request, format: str = "xlsx"):
+    """Export full inventory as XLSX or PDF."""
+    await require_role("admin", "manager", "staff")(request)
+    items = await db.inventory_items.find({}).to_list(5000)
+
+    fmt = (format or "xlsx").lower()
+    from io import BytesIO
+
+    if fmt == "xlsx":
+        from openpyxl import Workbook
+        from openpyxl.styles import Font, PatternFill, Alignment
+        wb = Workbook(); ws = wb.active; ws.title = "Inventory"
+        headers = INVENTORY_EXPORT_COLUMNS
+        ws.append(headers)
+        header_fill = PatternFill("solid", fgColor="10B981")
+        bold_white = Font(bold=True, color="FFFFFF")
+        for col_idx in range(1, len(headers) + 1):
+            cell = ws.cell(row=1, column=col_idx)
+            cell.font = bold_white; cell.fill = header_fill
+            cell.alignment = Alignment(horizontal="center", vertical="center")
+        for item in items:
+            row_vals = []
+            for c in headers:
+                v = item.get(c, "")
+                if isinstance(v, bool):
+                    row_vals.append("TRUE" if v else "FALSE")
+                else:
+                    row_vals.append(v)
+            ws.append(row_vals)
+        for col in ws.columns:
+            max_len = max((len(str(c.value)) for c in col if c.value is not None), default=10)
+            ws.column_dimensions[col[0].column_letter].width = min(max(max_len + 2, 10), 35)
+        buf = BytesIO(); wb.save(buf); buf.seek(0)
+        return StreamingResponse(buf,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": f'attachment; filename="inventory_{datetime.now(timezone.utc).date()}.xlsx"'})
+
+    if fmt == "pdf":
+        try:
+            from reportlab.lib.pagesizes import A4, landscape
+            from reportlab.lib import colors
+            from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+            from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+        except ImportError:
+            raise HTTPException(status_code=500, detail="reportlab not installed on backend")
+
+        buf = BytesIO()
+        doc = SimpleDocTemplate(buf, pagesize=landscape(A4), leftMargin=12, rightMargin=12, topMargin=14, bottomMargin=14)
+        styles = getSampleStyleSheet()
+        title_style = ParagraphStyle('title', parent=styles['Heading1'], fontSize=14, textColor=colors.HexColor('#0F172A'))
+        sub_style = ParagraphStyle('sub', parent=styles['Normal'], fontSize=8, textColor=colors.HexColor('#64748B'))
+        story = [
+            Paragraph("Sensoper - Inventory Export", title_style),
+            Paragraph(f"Generated {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')} - {len(items)} items", sub_style),
+            Spacer(1, 6),
+        ]
+        cols = ["SKU", "Name", "Category", "Qty", "Unit Price", "Reorder", "Supplier", "Zone", "Active"]
+        data = [cols]
+        for it in items:
+            data.append([
+                str(it.get("sku_code", ""))[:24],
+                str(it.get("name", ""))[:38],
+                str(it.get("category", ""))[:18],
+                str(it.get("quantity", "")),
+                f'Rs.{it.get("unit_price", 0):,.0f}',
+                str(it.get("reorder_level", "")),
+                str(it.get("supplier", ""))[:18],
+                str(it.get("zone", ""))[:8],
+                "Yes" if it.get("active") else "No",
+            ])
+        tbl = Table(data, repeatRows=1)
+        tbl.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#10B981')),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+            ('FONT', (0, 0), (-1, 0), 'Helvetica-Bold', 9),
+            ('FONT', (0, 1), (-1, -1), 'Helvetica', 8),
+            ('GRID', (0, 0), (-1, -1), 0.25, colors.HexColor('#CBD5E1')),
+            ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#F8FAFC')]),
+            ('ALIGN', (3, 1), (5, -1), 'RIGHT'),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('LEFTPADDING', (0, 0), (-1, -1), 4),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 4),
+        ]))
+        story.append(tbl)
+        doc.build(story); buf.seek(0)
+        return StreamingResponse(buf, media_type="application/pdf",
+            headers={"Content-Disposition": f'attachment; filename="inventory_{datetime.now(timezone.utc).date()}.pdf"'})
+
+    raise HTTPException(status_code=400, detail="format must be 'xlsx' or 'pdf'")
+
+
 @api_router.get("/inventory/alerts")
 async def get_inventory_alerts(request: Request):
     """Get all low stock alerts"""

@@ -167,7 +167,16 @@ export const inventoryAPI = {
   deleteItem: (id) => api.delete(`/inventory/items/${id}`),
   
   // Alerts
-  getAlerts: () => api.get('/inventory/alerts')
+  getAlerts: () => api.get('/inventory/alerts'),
+
+  // Import / Export
+  downloadTemplate: () => api.get('/inventory/template', { responseType: 'blob' }),
+  importItems: (file) => {
+    const fd = new FormData();
+    fd.append('file', file);
+    return api.post('/inventory/import', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+  },
+  exportItems: (format = 'xlsx') => api.get('/inventory/export', { params: { format }, responseType: 'blob' })
 };
 
 // File Upload API
