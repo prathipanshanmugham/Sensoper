@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback } from 'react';
 import { solarReportAPI } from '../utils/api';
 import { Card, CardContent } from '../components/ui/card';
 import { Button } from '../components/ui/button';
@@ -8,34 +8,24 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Badge } from '../components/ui/badge';
 import { toast } from 'sonner';
 import {
-  Loader2, Search, Crosshair, RefreshCw, Sun, Zap, IndianRupee,
-  Leaf, Calendar, AlertCircle, Edit3, CheckCircle2, ChevronDown, ChevronRight
+  Loader2, Search, Sun, Zap, IndianRupee,
+  Leaf, Calendar, AlertCircle, CheckCircle2, ChevronDown, ChevronRight
 } from 'lucide-react';
 import {
   BarChart, Bar, LineChart, Line, AreaChart, Area,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend
 } from 'recharts';
 
-const INDIA_AVG_IRRADIATION = 5.0;
+const SPECIFIC_YIELD_KWH_PER_KWP_PER_DAY = 4.0; // fixed industry average for India (residential on-grid). PR ~0.75, irradiation ~5.3 kWh/m²/day → ~4 kWh/kWp/day useful generation.
 
 const blank = {
   // TNEB inputs
   service_number: '',
-  phone: '',
-  // Consumer (editable, fetched or manual)
-  consumer_name: '',
-  address: '',
-  sanctioned_load_kw: '',
-  avg_monthly_consumption: '',
+  // Consumer fields specific to TNEB report (NOT duplicated from Customer step):
   avg_monthly_bill: '',
   tariff_category: 'Domestic',
-  connection_type: 'Single Phase',
-  // Location & config
-  lat: '',
-  lng: '',
-  irradiation_kwh_m2_day: INDIA_AVG_IRRADIATION,
+  // System config
   system_type: 'on-grid',
-  panel_wattage_w: 550,
   cost_per_kwp: 55000,
   battery_autonomy_days: 1.0,
   // Computed (filled after sizing call)
@@ -49,94 +39,68 @@ const blank = {
 /**
  * Embeddable Solar Report section used inside the SiteVisitForm wizard.
  * Controlled component — receives `value` and `onChange`.
- * Optional `customerDefaults` to pre-fill consumer fields from earlier wizard steps.
+ * Reads consumer + electrical + solar-system data via *Defaults props (no duplicate fields).
  */
-export default function SolarReportSection({ value, onChange, customerDefaults = {} }) {
+export default function SolarReportSection({ value, onChange, customerDefaults = {}, electricalDefaults = {}, solarSystemDefaults = {} }) {
   const data = { ...blank, ...(value || {}) };
   const update = (patch) => onChange({ ...data, ...patch });
-
-  // Pre-fill from customer step (one-time)
-  useEffect(() => {
-    if (value && (value.consumer_name || value.phone)) return;
-    const patch = {};
-    if (!data.consumer_name && customerDefaults.name) patch.consumer_name = customerDefaults.name;
-    if (!data.phone && customerDefaults.phone) patch.phone = (customerDefaults.phone || '').replace(/\D/g, '').slice(0, 10);
-    if (!data.address && customerDefaults.address) patch.address = customerDefaults.address;
-    if (Object.keys(patch).length) onChange({ ...data, ...patch });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   const [collapsed, setCollapsed] = useState(false);
   const [fetching, setFetching] = useState(false);
   const [fetchInfo, setFetchInfo] = useState(null);
-  const [gpsLoading, setGpsLoading] = useState(false);
-  const [irradLoading, setIrradLoading] = useState(false);
   const [sizingLoading, setSizingLoading] = useState(false);
 
+  // Resolved (read-only) inputs from upstream wizard steps
+  const consumerName = customerDefaults.name || '';
+  const consumerPhone = (customerDefaults.phone || '').replace(/\D/g, '').slice(0, 10);
+  const consumerAddress = customerDefaults.address || '';
+  const monthlyUnits = parseFloat(electricalDefaults.monthly_consumption_units) || 0;
+  const sanctionedLoad = parseFloat(electricalDefaults.sanction_load_kw) || 0;
+  const connectionType = electricalDefaults.service_type || 'Single Phase';
+  const panelWattage = parseInt(solarSystemDefaults.panel_wattage, 10) || 540;
+
   const handleFetchTneb = useCallback(async () => {
-    if (!data.service_number || data.service_number.length < 6) { toast.error('Enter a valid TNEB service number (min 6 chars)'); return; }
-    if (!/^\d{10}$/.test(data.phone)) { toast.error('Enter a valid 10-digit Indian mobile number'); return; }
+    if (!data.service_number || data.service_number.length < 6) { toast.error('Enter a valid TNEB service number (min 6 characters)'); return; }
+    if (!/^\d{10}$/.test(consumerPhone)) { toast.error('Customer phone in step 1 must be a 10-digit Indian mobile number'); return; }
     setFetching(true);
     setFetchInfo(null);
     try {
-      const res = await solarReportAPI.fetchTneb(data.service_number, data.phone);
+      const res = await solarReportAPI.fetchTneb(data.service_number, consumerPhone);
       const { success, message, data: fetched, fallback } = res.data;
       setFetchInfo({ success, message, fallback });
       if (success && fetched) {
+        // Only update fields unique to this section. Customer/electrical fields stay sourced from wizard steps.
         update({
-          consumer_name: fetched.consumer_name || data.consumer_name,
-          address: fetched.address || data.address,
-          sanctioned_load_kw: fetched.sanctioned_load_kw || data.sanctioned_load_kw,
-          avg_monthly_consumption: fetched.avg_monthly_consumption || data.avg_monthly_consumption,
           avg_monthly_bill: fetched.avg_monthly_bill || data.avg_monthly_bill,
           tariff_category: fetched.tariff_category || data.tariff_category,
-          connection_type: fetched.connection_type || data.connection_type,
         });
-        toast.success('TNEB data fetched');
+        toast.success('TNEB bill data fetched');
       } else {
-        toast.info('Manual entry mode — fill consumer details below');
+        toast.info('TNEB live fetch unavailable. Enter Average Monthly Bill manually.');
       }
     } catch (e) {
       setFetchInfo({ success: false, message: e.response?.data?.detail || 'Fetch failed', fallback: 'manual' });
       toast.error(e.response?.data?.detail || 'TNEB fetch failed');
     } finally { setFetching(false); }
-  }, [data.service_number, data.phone]);  // eslint-disable-line react-hooks/exhaustive-deps
-
-  const handleGPS = () => {
-    if (!navigator.geolocation) { toast.error('GPS not available'); return; }
-    setGpsLoading(true);
-    navigator.geolocation.getCurrentPosition(
-      (pos) => { update({ lat: pos.coords.latitude.toFixed(4), lng: pos.coords.longitude.toFixed(4) }); setGpsLoading(false); toast.success('GPS captured'); },
-      (err) => { setGpsLoading(false); toast.error(`GPS error: ${err.message}`); },
-      { enableHighAccuracy: true, timeout: 8000 }
-    );
-  };
-
-  const handleIrradiation = async () => {
-    if (!data.lat || !data.lng) { toast.error('Set GPS coordinates first'); return; }
-    setIrradLoading(true);
-    try {
-      const res = await solarReportAPI.irradiation(parseFloat(data.lat), parseFloat(data.lng));
-      update({ irradiation_kwh_m2_day: res.data.annual_avg_kwh_m2_day });
-      toast.success(`Irradiation: ${res.data.annual_avg_kwh_m2_day} kWh/m²/day`);
-    } catch (e) { toast.error('Irradiation fetch failed'); }
-    finally { setIrradLoading(false); }
-  };
+  }, [data.service_number, consumerPhone]);  // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSizing = async () => {
-    if (!data.avg_monthly_consumption || parseFloat(data.avg_monthly_consumption) <= 0) { toast.error('Enter average monthly consumption'); return; }
-    if (!data.consumer_name?.trim()) { toast.error('Enter consumer name'); return; }
+    if (monthlyUnits <= 0) { toast.error('Please enter Average Monthly Consumption in the Grid & Load section above first'); return; }
+    if (!consumerName.trim()) { toast.error('Please enter Customer Name in Step 1 (Customer Details)'); return; }
     setSizingLoading(true);
     try {
+      // Convert fixed specific yield (kWh/kWp/day) into the irradiation field the backend expects.
+      // Specific Yield = Irradiation × PR (0.75) → Irradiation = SY / 0.75
+      const fixedIrradiation = SPECIFIC_YIELD_KWH_PER_KWP_PER_DAY / 0.75;
       const payload = {
-        monthly_consumption_units: parseFloat(data.avg_monthly_consumption),
-        sanctioned_load_kw: data.sanctioned_load_kw ? parseFloat(data.sanctioned_load_kw) : null,
+        monthly_consumption_units: monthlyUnits,
+        sanctioned_load_kw: sanctionedLoad || null,
         tariff_category: data.tariff_category,
-        connection_type: data.connection_type,
+        connection_type: connectionType,
         avg_monthly_bill: data.avg_monthly_bill ? parseFloat(data.avg_monthly_bill) : null,
-        irradiation_kwh_m2_day: parseFloat(data.irradiation_kwh_m2_day) || INDIA_AVG_IRRADIATION,
+        irradiation_kwh_m2_day: fixedIrradiation,
         system_type: data.system_type,
-        panel_wattage_w: parseInt(data.panel_wattage_w, 10),
+        panel_wattage_w: panelWattage,
         cost_per_kwp: parseFloat(data.cost_per_kwp),
         battery_autonomy_days: parseFloat(data.battery_autonomy_days),
       };
@@ -148,8 +112,8 @@ export default function SolarReportSection({ value, onChange, customerDefaults =
         assumptions: res.data.assumptions,
         computed_at: new Date().toISOString(),
       });
-      toast.success(`Sized: ${res.data.sizing.kwp_recommended} kWp — payback ${res.data.financials.payback_years}y`);
-    } catch (e) { toast.error(e.response?.data?.detail || 'Sizing failed'); }
+      toast.success(`Recommended ${res.data.sizing.kwp_recommended} kWp — payback ${res.data.financials.payback_years} years`);
+    } catch (e) { toast.error(e.response?.data?.detail || 'Calculation failed'); }
     finally { setSizingLoading(false); }
   };
 
@@ -172,12 +136,12 @@ export default function SolarReportSection({ value, onChange, customerDefaults =
 
         {!collapsed && (
           <>
-            {/* TNEB Fetch row */}
+            {/* TNEB Service Number row (phone comes from Customer step) */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              <div className="space-y-1"><Label className="text-xs">TNEB Service Number *</Label><Input value={data.service_number} onChange={(e) => update({ service_number: e.target.value.trim() })} placeholder="e.g., 012345678901" className="h-9 bg-white" data-testid="sr-service-input" /></div>
-              <div className="space-y-1"><Label className="text-xs">Registered Phone *</Label><Input value={data.phone} onChange={(e) => update({ phone: e.target.value.replace(/\D/g, '').slice(0, 10) })} placeholder="10-digit mobile" className="h-9 bg-white" data-testid="sr-phone-input" /></div>
-              <div className="flex items-end"><Button type="button" onClick={handleFetchTneb} disabled={fetching} className="h-9 w-full gap-1 bg-emerald-600 hover:bg-emerald-700 text-white" data-testid="sr-fetch-btn">{fetching ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}{fetching ? 'Fetching...' : 'Auto-Fetch'}</Button></div>
+              <div className="space-y-1 md:col-span-2"><Label className="text-xs">TNEB Service Connection Number</Label><Input value={data.service_number} onChange={(e) => update({ service_number: e.target.value.trim() })} placeholder="e.g., 012345678901" className="h-9 bg-white" data-testid="sr-service-input" /></div>
+              <div className="flex items-end"><Button type="button" onClick={handleFetchTneb} disabled={fetching || !consumerPhone} className="h-9 w-full gap-1 bg-emerald-600 hover:bg-emerald-700 text-white" data-testid="sr-fetch-btn">{fetching ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}{fetching ? 'Fetching...' : 'Fetch from TNEB'}</Button></div>
             </div>
+            <p className="text-[11px] text-slate-500">Uses the customer phone <span className="font-mono">{consumerPhone || '— enter in Step 1'}</span> as the registered mobile.</p>
             {fetchInfo && (
               <div className={`p-2.5 rounded-md border text-xs flex items-start gap-2 ${fetchInfo.success ? 'border-emerald-300 bg-emerald-50 text-emerald-800' : 'border-amber-300 bg-amber-50 text-amber-800'}`} data-testid="sr-fetch-status">
                 {fetchInfo.success ? <CheckCircle2 className="h-3.5 w-3.5 mt-0.5 shrink-0" /> : <AlertCircle className="h-3.5 w-3.5 mt-0.5 shrink-0" />}
@@ -185,43 +149,31 @@ export default function SolarReportSection({ value, onChange, customerDefaults =
               </div>
             )}
 
-            {/* Consumer fields */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 border-t border-amber-200 pt-3">
-              <div className="space-y-1 md:col-span-2"><Label className="text-xs flex items-center gap-1"><Edit3 className="h-3 w-3" />Consumer Name *</Label><Input value={data.consumer_name} onChange={(e) => update({ consumer_name: e.target.value })} className="h-9 bg-white" data-testid="sr-consumer-name" /></div>
-              <div className="space-y-1"><Label className="text-xs">Sanctioned Load (kW)</Label><Input type="number" step="0.1" value={data.sanctioned_load_kw} onChange={(e) => update({ sanctioned_load_kw: e.target.value })} className="h-9 bg-white" data-testid="sr-sanctioned-load" /></div>
-              <div className="space-y-1"><Label className="text-xs">Avg Monthly Units *</Label><Input type="number" value={data.avg_monthly_consumption} onChange={(e) => update({ avg_monthly_consumption: e.target.value })} className="h-9 bg-white" data-testid="sr-consumption" /></div>
-              <div className="space-y-1"><Label className="text-xs">Avg Monthly Bill (₹)</Label><Input type="number" value={data.avg_monthly_bill} onChange={(e) => update({ avg_monthly_bill: e.target.value })} className="h-9 bg-white" data-testid="sr-bill" /></div>
+            {/* Inputs pulled from upstream steps (read-only summary) */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 border-t border-amber-200 pt-3 text-xs" data-testid="sr-upstream-summary">
+              <div><p className="text-slate-500">Customer</p><p className="font-medium text-slate-800 truncate">{consumerName || <span className="text-red-500">— set in Step 1</span>}</p></div>
+              <div><p className="text-slate-500">Avg Monthly Units</p><p className="font-medium text-slate-800">{monthlyUnits ? `${monthlyUnits} units/mo` : <span className="text-red-500">— set in Grid &amp; Load</span>}</p></div>
+              <div><p className="text-slate-500">Sanctioned Load</p><p className="font-medium text-slate-800">{sanctionedLoad ? `${sanctionedLoad} kW` : '—'}</p></div>
+              <div><p className="text-slate-500">Connection</p><p className="font-medium text-slate-800">{connectionType}</p></div>
+            </div>
+
+            {/* Solar-specific manual entry (no duplicates, no auto-detect, no irradiance) */}
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-3 border-t border-amber-200 pt-3">
+              <div className="space-y-1"><Label className="text-xs">Average Monthly Bill (₹)</Label><Input type="number" value={data.avg_monthly_bill} onChange={(e) => update({ avg_monthly_bill: e.target.value })} className="h-9 bg-white" data-testid="sr-bill" placeholder="e.g., 3500" /></div>
               <div className="space-y-1"><Label className="text-xs">Tariff Category</Label>
                 <Select value={data.tariff_category} onValueChange={(v) => update({ tariff_category: v })}>
                   <SelectTrigger className="h-9 bg-white" data-testid="sr-tariff"><SelectValue /></SelectTrigger>
                   <SelectContent><SelectItem value="Domestic">Domestic</SelectItem><SelectItem value="Commercial">Commercial</SelectItem><SelectItem value="Industrial">Industrial</SelectItem></SelectContent>
                 </Select>
               </div>
-              <div className="space-y-1"><Label className="text-xs">Connection</Label>
-                <Select value={data.connection_type} onValueChange={(v) => update({ connection_type: v })}>
-                  <SelectTrigger className="h-9 bg-white" data-testid="sr-connection"><SelectValue /></SelectTrigger>
-                  <SelectContent><SelectItem value="Single Phase">Single Phase</SelectItem><SelectItem value="Three Phase">Three Phase</SelectItem></SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1 md:col-span-3"><Label className="text-xs">Address</Label><Input value={data.address} onChange={(e) => update({ address: e.target.value })} className="h-9 bg-white" data-testid="sr-address" /></div>
-            </div>
-
-            {/* Location + system config */}
-            <div className="grid grid-cols-2 md:grid-cols-6 gap-3 border-t border-amber-200 pt-3">
-              <div className="space-y-1"><Label className="text-xs">Latitude</Label><Input value={data.lat} onChange={(e) => update({ lat: e.target.value })} className="h-9 bg-white" data-testid="sr-lat" /></div>
-              <div className="space-y-1"><Label className="text-xs">Longitude</Label><Input value={data.lng} onChange={(e) => update({ lng: e.target.value })} className="h-9 bg-white" data-testid="sr-lng" /></div>
-              <div className="flex items-end"><Button type="button" onClick={handleGPS} disabled={gpsLoading} variant="outline" className="h-9 w-full gap-1 bg-white" data-testid="sr-gps-btn">{gpsLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Crosshair className="h-4 w-4" />}GPS</Button></div>
-              <div className="flex items-end"><Button type="button" onClick={handleIrradiation} disabled={irradLoading || !data.lat} variant="outline" className="h-9 w-full gap-1 bg-white" data-testid="sr-irradiation-btn">{irradLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}NASA</Button></div>
-              <div className="space-y-1"><Label className="text-xs">Irradiation</Label><Input type="number" step="0.1" value={data.irradiation_kwh_m2_day} onChange={(e) => update({ irradiation_kwh_m2_day: e.target.value })} className="h-9 bg-white" data-testid="sr-irradiation" /></div>
-              <div className="space-y-1"><Label className="text-xs">System</Label>
+              <div className="space-y-1"><Label className="text-xs">System Type</Label>
                 <Select value={data.system_type} onValueChange={(v) => update({ system_type: v })}>
                   <SelectTrigger className="h-9 bg-white" data-testid="sr-system-type"><SelectValue /></SelectTrigger>
                   <SelectContent><SelectItem value="on-grid">On-Grid</SelectItem><SelectItem value="off-grid">Off-Grid</SelectItem><SelectItem value="hybrid">Hybrid</SelectItem></SelectContent>
                 </Select>
               </div>
-              <div className="space-y-1"><Label className="text-xs">Panel W</Label><Input type="number" value={data.panel_wattage_w} onChange={(e) => update({ panel_wattage_w: e.target.value })} className="h-9 bg-white" data-testid="sr-panel-w" /></div>
-              <div className="space-y-1"><Label className="text-xs">Cost/kWp (₹)</Label><Input type="number" value={data.cost_per_kwp} onChange={(e) => update({ cost_per_kwp: e.target.value })} className="h-9 bg-white" data-testid="sr-cost-kwp" /></div>
-              {data.system_type !== 'on-grid' && (<div className="space-y-1"><Label className="text-xs">Battery Days</Label><Input type="number" step="0.1" value={data.battery_autonomy_days} onChange={(e) => update({ battery_autonomy_days: e.target.value })} className="h-9 bg-white" data-testid="sr-batt-days" /></div>)}
+              <div className="space-y-1"><Label className="text-xs">Cost per kWp (₹)</Label><Input type="number" value={data.cost_per_kwp} onChange={(e) => update({ cost_per_kwp: e.target.value })} className="h-9 bg-white" data-testid="sr-cost-kwp" /></div>
+              {data.system_type !== 'on-grid' && (<div className="space-y-1 md:col-span-1"><Label className="text-xs">Battery Backup (days)</Label><Input type="number" step="0.1" value={data.battery_autonomy_days} onChange={(e) => update({ battery_autonomy_days: e.target.value })} className="h-9 bg-white" data-testid="sr-batt-days" /></div>)}
             </div>
 
             <Button type="button" onClick={handleSizing} disabled={sizingLoading} className="w-full h-10 gap-2 bg-blue-600 hover:bg-blue-700 text-white" data-testid="sr-calculate-btn">

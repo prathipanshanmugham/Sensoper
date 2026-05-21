@@ -259,15 +259,37 @@ export default function SiteVisitForm() {
         navigator.geolocation.getCurrentPosition(resolve, reject, { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 });
       });
       const { latitude, longitude } = pos.coords;
+      // Always save GPS coordinates first — W3W is a bonus, not a blocker
+      setFormData(prev => ({
+        ...prev,
+        location: { ...prev.location, latitude, longitude }
+      }));
       const key = process.env.REACT_APP_W3W_API_KEY;
-      if (!key || !key.trim()) { setGpsError('What3Words API key not configured. Add REACT_APP_W3W_API_KEY to frontend/.env'); return; }
-      const resp = await fetch(`https://api.what3words.com/v3/convert-to-3wa?coordinates=${latitude},${longitude}&key=${key}`);
+      if (!key || !key.trim()) {
+        setGpsError('Saved GPS coordinates. (What3Words key not configured — set REACT_APP_W3W_API_KEY in frontend/.env to enable 3-word addresses.)');
+        return;
+      }
+      let resp;
+      try {
+        resp = await fetch(`https://api.what3words.com/v3/convert-to-3wa?coordinates=${latitude},${longitude}&key=${encodeURIComponent(key)}`);
+      } catch (netErr) {
+        setGpsError(`Saved GPS coordinates. What3Words could not be reached: ${netErr.message || 'network error'}.`);
+        return;
+      }
       if (!resp.ok) {
-        const err = await resp.text();
-        throw new Error(`W3W ${resp.status}: ${err.slice(0, 120)}`);
+        const errBody = await resp.text();
+        let hint = '';
+        if (resp.status === 401) hint = ' (API key invalid or restricted to a different domain — check W3W dashboard for quote.sensoper.in).';
+        else if (resp.status === 402) hint = ' (Account quota exhausted — upgrade or wait until next cycle).';
+        else if (resp.status === 429) hint = ' (Rate limited — wait a minute and retry).';
+        setGpsError(`Saved GPS coordinates. What3Words returned ${resp.status}${hint} ${errBody.slice(0, 100)}`);
+        return;
       }
       const data = await resp.json();
-      if (!data.words) throw new Error('No words returned by W3W');
+      if (!data.words) {
+        setGpsError('Saved GPS coordinates. What3Words returned no words for this location.');
+        return;
+      }
       setFormData(prev => ({
         ...prev,
         location: {
@@ -275,7 +297,6 @@ export default function SiteVisitForm() {
           latitude,
           longitude,
           site_location_words: data.words,
-          // If address blank, prefill with W3W nearestPlace if available
           address: prev.location.address || (data.nearestPlace ? `Near ${data.nearestPlace}` : prev.location.address)
         }
       }));
@@ -671,6 +692,8 @@ export default function SiteVisitForm() {
                   value={formData.solar_report}
                   onChange={(sr) => setFormData(prev => ({ ...prev, solar_report: sr }))}
                   customerDefaults={{ name: formData.customer.name, phone: formData.customer.phone, address: formData.customer.address }}
+                  electricalDefaults={formData.electrical}
+                  solarSystemDefaults={formData.solar_system}
                 />
 
                 {/* Roof Details */}

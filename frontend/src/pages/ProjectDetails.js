@@ -378,6 +378,7 @@ export default function ProjectDetails() {
     // ========= SOLAR PROJECT REPORT (TNEB Auto-Fetch + Sizing) =========
     const sr = project.solar_report;
     if (sr && sr.sizing && sr.financials) {
+      try {
       // ---------- Chart helpers (jsPDF primitives, no external libs) ----------
       const COLORS = {
         emerald: [16, 185, 129], blue: [59, 130, 246], amber: [245, 158, 11],
@@ -433,22 +434,34 @@ export default function ProjectDetails() {
 
       const drawBarChartV = (x, yy, w, h, data, opts = {}) => {
         const padTop = 6, padBot = 13, padL = 3;
-        const maxVal = Math.max(...data.map(d => d.value), 1);
-        const chartH = h - padTop - padBot;
-        const chartW = w - padL;
-        const barW = (chartW / data.length) * 0.65;
-        const gap = (chartW / data.length) * 0.35;
+        const safeData = (data || []).map(d => ({
+          ...d,
+          value: Number(d.value) || 0,
+          color: Array.isArray(d.color) ? d.color : COLORS.blue,
+          label: String(d.label || ''),
+        }));
+        if (safeData.length === 0) return;
+        const maxVal = Math.max(...safeData.map(d => d.value), 1);
+        const chartH = Math.max(h - padTop - padBot, 1);
+        const chartW = Math.max(w - padL, 1);
+        const barW = (chartW / safeData.length) * 0.65;
+        const gap = (chartW / safeData.length) * 0.35;
         // X-axis
         doc.setDrawColor(200, 200, 200); doc.setLineWidth(0.2);
         doc.line(x + padL, yy + padTop + chartH, x + w, yy + padTop + chartH);
-        data.forEach((d, i) => {
+        safeData.forEach((d, i) => {
           const bx = x + padL + gap / 2 + i * (barW + gap);
-          const bh = (d.value / maxVal) * chartH;
+          const ratio = maxVal > 0 ? d.value / maxVal : 0;
+          const bh = Math.max(0, Math.min(ratio * chartH, chartH));
           const by = yy + padTop + chartH - bh;
-          doc.setFillColor(...(d.color || COLORS.blue));
-          doc.rect(bx, by, barW, bh, 'F');
+          if (!isFinite(bh) || !isFinite(bx) || !isFinite(by) || bh <= 0 || barW <= 0) {
+            // Still draw the label for empty bars
+          } else {
+            doc.setFillColor(...d.color);
+            doc.rect(bx, by, barW, bh, 'F');
+          }
           doc.setFont(FONT, 'bold'); doc.setFontSize(6.5); doc.setTextColor(40, 40, 40);
-          doc.text(opts.valueFormat ? opts.valueFormat(d.value) : String(d.value), bx + barW / 2, by - 0.8, { align: 'center' });
+          doc.text(opts.valueFormat ? opts.valueFormat(d.value) : String(Math.round(d.value)), bx + barW / 2, by - 0.8, { align: 'center' });
           doc.setFont(FONT, 'normal'); doc.setFontSize(6.5); doc.setTextColor(80, 80, 80);
           doc.text(d.label, bx + barW / 2, yy + padTop + chartH + 4, { align: 'center', maxWidth: barW + gap });
         });
@@ -628,11 +641,11 @@ export default function ProjectDetails() {
         { label: 'Govt Subsidy', value: f.subsidy, color: COLORS.emerald, fmt: currency },
         { label: 'Net Cost (You Pay)', value: f.net_cost, color: COLORS.blue, fmt: currency },
       ];
-      drawPie(pieCx, pieCy, pieR, costSlices, currency(f.total_cost).replace('₹', '₹'));
+      drawPie(pieCx, pieCy, pieR, costSlices, currency(f.total_cost));
       drawPieLegend(pieX + 46, sy + 14, costSlices, f.total_cost);
       // Plain-English caption under cost pie
-      doc.setFont(FONT, 'normal'); doc.setFontSize(6.5); doc.setTextColor(100, 116, 139);
-      doc.text(`Out of every ₹100 of project cost, government pays ₹${Math.round((f.subsidy / Math.max(f.total_cost, 1)) * 100)} as subsidy — you pay ₹${Math.round((f.net_cost / Math.max(f.total_cost, 1)) * 100)}.`, pieX, sy + 53, { maxWidth: halfW });
+      doc.setFont(FONT, 'normal'); doc.setFontSize(7); doc.setTextColor(100, 116, 139);
+      doc.text(`Out of every ${currency(100)} of project cost, the government pays ${currency(Math.round((f.subsidy / Math.max(f.total_cost, 1)) * 100))} as subsidy. You pay only ${currency(Math.round((f.net_cost / Math.max(f.total_cost, 1)) * 100))}.`, pieX, sy + 53, { maxWidth: halfW });
       sy = Math.max(sy + 60, doc.lastAutoTable?.finalY || sy) + 6;
 
       // ===== Monthly economics bar + Sizing donut =====
@@ -649,8 +662,8 @@ export default function ProjectDetails() {
       ];
       drawBarChartV(m, sy + 4, halfW, 50, barData, { valueFormat: (v) => '₹' + Math.round(v).toLocaleString('en-IN') });
       // Caption under monthly bar
-      doc.setFont(FONT, 'normal'); doc.setFontSize(6.5); doc.setTextColor(100, 116, 139);
-      doc.text(`Your monthly bill drops from ${currency(monthlyBill)} to about ${currency(monthlyAfter)} — that is ${currency(f.monthly_savings)} back in your pocket every month.`, m, sy + 58, { maxWidth: halfW });
+      doc.setFont(FONT, 'normal'); doc.setFontSize(7); doc.setTextColor(100, 116, 139);
+      doc.text(`Your monthly bill drops from ${currency(monthlyBill)} to about ${currency(monthlyAfter)}. That is ${currency(f.monthly_savings)} back in your pocket every single month.`, m, sy + 58, { maxWidth: halfW });
       // RIGHT: Energy mix donut (Solar vs Grid)
       doc.setFont(FONT, 'bold'); doc.setFontSize(9.5); doc.setTextColor(80, 80, 80);
       doc.text('Energy Source Mix (After Solar)', pieX, sy);
@@ -659,10 +672,10 @@ export default function ProjectDetails() {
       const gridUnits = Math.max((sr.avg_monthly_consumption || 0) - solarUnits, 0);
       const energySlices = [
         { label: 'Solar (Free)', value: solarUnits, color: COLORS.emerald, fmt: v => Math.round(v) + ' units' },
-        { label: 'Grid', value: gridUnits, color: COLORS.slate, fmt: v => Math.round(v) + ' units' },
+        { label: 'Grid (Paid)', value: gridUnits, color: COLORS.slate, fmt: v => Math.round(v) + ' units' },
       ];
       const pieCy2 = sy + 28;
-      drawPie(pieCx, pieCy2, pieR, energySlices, Math.round(solarUnits + gridUnits) + ' u');
+      drawPie(pieCx, pieCy2, pieR, energySlices, Math.round(solarUnits + gridUnits) + ' units');
       drawPieLegend(pieX + 46, sy + 14, energySlices, solarUnits + gridUnits);
       // Caption under energy mix pie
       doc.setFont(FONT, 'normal'); doc.setFontSize(6.5); doc.setTextColor(100, 116, 139);
@@ -700,7 +713,7 @@ export default function ProjectDetails() {
           data: yb.map(r => ({ x: r.year, y: r.savings })),
           color: COLORS.blue, lineWidth: 0.6,
         }];
-        const xLabels = yb.map((r, i) => (i === 0 || (i + 1) % 5 === 0) ? `Y${r.year}` : '');
+        const xLabels = yb.map((r, i) => (i === 0 || (i + 1) % 5 === 0) ? `Year ${r.year}` : '');
         drawLineChart(m, sy + 2, contentW, 65, lineSeries, {
           xLabels,
           yAxisFormat: (v) => v >= 100000 ? `${(v / 100000).toFixed(1)}L` : v >= 1000 ? `${(v / 1000).toFixed(0)}K` : Math.round(v),
@@ -719,11 +732,11 @@ export default function ProjectDetails() {
         doc.line(m, sy + 1.5, m + 45, sy + 1.5); sy += 4;
         drawBarChartV(m, sy, contentW, 45,
           snapshots.map(r => ({
-            label: `Y${r.year}`,
+            label: `Year ${r.year}`,
             value: r.savings,
             color: r.year === 1 ? COLORS.blue : r.year <= 10 ? COLORS.emerald : r.year <= 20 ? COLORS.amber : COLORS.rose,
           })),
-          { valueFormat: (v) => '₹' + (v >= 100000 ? (v / 100000).toFixed(1) + 'L' : (v / 1000).toFixed(0) + 'K') }
+          { valueFormat: (v) => '₹' + (v >= 100000 ? (v / 100000).toFixed(1) + ' Lakh' : (v / 1000).toFixed(0) + 'K') }
         );
         sy += 50;
       }
@@ -732,7 +745,10 @@ export default function ProjectDetails() {
       if (sy > pageHeight - 20) { doc.addPage(); drawHeader(doc); sy = 48; }
       doc.setFillColor(245, 245, 245); doc.roundedRect(m, sy, contentW, 11, 1.5, 1.5, 'F');
       doc.setFont(FONT, 'normal'); doc.setFontSize(7.5); doc.setTextColor(80, 80, 80);
-      doc.text('All financial projections assume 2.5% annual tariff escalation and 0.7% annual panel degradation. PM Surya Ghar subsidy applies only to residential domestic on-grid systems (capped at ₹78,000 for ≥3 kWp). Actual savings may vary with shading, weather, and site conditions.', m + 3, sy + 4, { maxWidth: contentW - 6 });
+      doc.text('All financial projections assume 2.5% annual tariff escalation and 0.7% annual panel degradation. PM Surya Ghar subsidy applies only to residential domestic on-grid systems (capped at ₹78,000 for 3 kWp and above). Actual savings may vary with shading, weather, and site conditions.', m + 3, sy + 4, { maxWidth: contentW - 6 });
+      } catch (solarPdfErr) {
+        console.error('Solar report PDF section failed; skipping. Error:', solarPdfErr);
+      }
     }
     // ========= /SOLAR PROJECT REPORT =========
 
