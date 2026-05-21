@@ -11,11 +11,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Checkbox } from '../components/ui/checkbox';
 import { Progress } from '../components/ui/progress';
 import { ComboInput } from '../components/ui/combo-input';
+import SolarReportSection from '../components/SolarReportSection';
 import { 
   User, MapPin, Zap, ArrowRight, ArrowLeft, Loader2, CheckCircle2,
   Sparkles, Plus, Trash2, Package, FolderOpen, X, Percent, FolderPlus, ExternalLink, CheckCircle, Link2,
   Ruler, ChevronDown, ChevronRight, Home, Compass, Eye, PlugZap, Gauge, Settings2, HardHat, Shield, Layers,
-  Crosshair, AlertCircle, Sun
+  Crosshair, AlertCircle
 } from 'lucide-react';
 
 const SYSTEM_SLUGS = ['customer', 'location', 'site_electrical', 'materials', 'site_docs'];
@@ -86,7 +87,8 @@ export default function SiteVisitForm() {
       inverter: { location: '', wall_space: '', earthing_available: '', earthing_distance: '' },
       access: { type: '', working_space: '', notes: '' }
     },
-    custom_fields: {}
+    custom_fields: {},
+    solar_report: null
   });
 
   const loadProject = useCallback(async () => {
@@ -129,7 +131,8 @@ export default function SiteVisitForm() {
           inverter: { location: '', wall_space: '', earthing_available: '', earthing_distance: '', ...(p.site_measurements?.inverter || {}) },
           access: { type: '', working_space: '', notes: '', ...(p.site_measurements?.access || {}) }
         },
-        custom_fields: p.custom_fields || {}
+        custom_fields: p.custom_fields || {},
+        solar_report: p.solar_report || null
       });
     } catch (err) {
       setError('Failed to load project for editing');
@@ -503,7 +506,8 @@ export default function SiteVisitForm() {
           inverter: formData.site_measurements.inverter,
           access: formData.site_measurements.access
         },
-        custom_fields: formData.custom_fields || {}
+        custom_fields: formData.custom_fields || {},
+        solar_report: formData.solar_report || null
       };
 
       if (isEditMode) {
@@ -617,25 +621,6 @@ export default function SiteVisitForm() {
                 </div>
                 <div className="space-y-2"><Label>Email</Label><Input type="email" value={formData.customer.email} onChange={(e) => updateField('customer', 'email', e.target.value)} placeholder="Email (optional)" className="h-11" data-testid="customer-email-input" /></div>
                 <div className="space-y-2"><Label>Address *</Label><Textarea rows={3} value={formData.customer.address} onChange={(e) => updateField('customer', 'address', e.target.value)} placeholder="Full address" className="min-h-[80px]" data-testid="customer-address-input" /></div>
-
-                {/* TNEB Auto-fetch CTA — opens the Solar Report tool pre-filled */}
-                <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg" data-testid="tneb-cta-block">
-                  <div className="flex items-start justify-between gap-3 flex-wrap">
-                    <div>
-                      <h3 className="font-semibold text-amber-800 flex items-center gap-1.5"><Sun className="h-4 w-4" />TNEB Auto-fetch & Solar Report</h3>
-                      <p className="text-sm text-amber-700">Have a TNEB service number? Auto-fetch consumer data and generate a branded solar project report (sizing + ROI + 25-yr savings + PDF).</p>
-                    </div>
-                    <Button type="button" variant="outline" className="gap-1 border-amber-300 hover:bg-amber-100" onClick={() => {
-                      const phone = (formData.customer.phone || '').replace(/\D/g, '');
-                      const params = new URLSearchParams();
-                      if (phone) params.set('phone', phone);
-                      if (formData.customer.name) params.set('name', formData.customer.name);
-                      if (formData.customer.address) params.set('address', formData.customer.address);
-                      window.open(`/dashboard/solar-report?${params.toString()}`, '_blank');
-                    }} data-testid="open-solar-report-btn"><Sun className="h-4 w-4" />Open Solar Report Tool</Button>
-                  </div>
-                </div>
-
                 {renderExtraFields('customer')}
               </div>
             )}
@@ -685,8 +670,7 @@ export default function SiteVisitForm() {
                   <button type="button" onClick={() => toggleSection('grid_electrical')} className="w-full flex items-center justify-between p-3 bg-slate-50 hover:bg-slate-100 transition-colors">
                     <span className="flex items-center gap-2 font-semibold text-sm text-slate-800"><Zap className="h-4 w-4 text-yellow-500" />Grid & Load <span className="text-[10px] font-normal text-red-400 ml-1">Required</span></span>
                     {openSections.grid_electrical ? <ChevronDown className="h-4 w-4 text-slate-400" /> : <ChevronRight className="h-4 w-4 text-slate-400" />}
-                  </button>
-                  {openSections.grid_electrical && (
+                  </button>                  {openSections.grid_electrical && (
                     <div className="p-4 space-y-3">
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <div className="space-y-1"><Label className="text-xs">Service Type</Label>
@@ -716,6 +700,13 @@ export default function SiteVisitForm() {
                     </div>
                   )}
                 </div>
+
+                {/* Solar Project Report (TNEB Auto-Fetch) */}
+                <SolarReportSection
+                  value={formData.solar_report}
+                  onChange={(sr) => setFormData(prev => ({ ...prev, solar_report: sr }))}
+                  customerDefaults={{ name: formData.customer.name, phone: formData.customer.phone, address: formData.customer.address }}
+                />
 
                 {/* Roof Details */}
                 <div className="border border-slate-200 rounded-lg overflow-hidden" data-testid="section-roof">

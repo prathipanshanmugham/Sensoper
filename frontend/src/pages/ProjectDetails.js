@@ -380,6 +380,117 @@ export default function ProjectDetails() {
       didDrawPage: (data) => { drawHeader(data.doc); },
     });
 
+    // ========= SOLAR PROJECT REPORT (TNEB Auto-Fetch + Sizing) =========
+    const sr = project.solar_report;
+    if (sr && sr.sizing && sr.financials) {
+      doc.addPage(); drawHeader(doc); let sy = 48;
+
+      // Section banner
+      doc.setFillColor(...pRgb);
+      doc.rect(m, sy - 4, contentW, 9, 'F');
+      doc.setFont(FONT, 'bold'); doc.setFontSize(12); doc.setTextColor(255, 255, 255);
+      doc.text('Solar Project Report (TNEB / Sizing / 25-Year Projection)', m + 3, sy + 2);
+      doc.setTextColor(50, 50, 50); sy += 12;
+
+      // Consumer block
+      doc.setFont(FONT, 'bold'); doc.setFontSize(10); doc.setTextColor(80, 80, 80);
+      doc.text('Consumer (TNEB)', m, sy); doc.line(m, sy + 1.5, m + 40, sy + 1.5); sy += 5;
+      autoTable(doc, { startY: sy, margin: { left: m, right: m }, theme: 'plain',
+        styles: { font: FONT, fontSize: 9, cellPadding: 1.5 },
+        columnStyles: { 0: { fontStyle: 'bold', cellWidth: 55, textColor: [110, 110, 110] }, 1: { textColor: [40, 40, 40] } },
+        body: [
+          ['Consumer Name', sr.consumer_name || '-'],
+          ['TNEB Service Number', sr.service_number || '-'],
+          ['Registered Phone', sr.phone || '-'],
+          ['Address', sr.address || project.customer?.address || '-'],
+          ['Sanctioned Load', sr.sanctioned_load_kw ? `${sr.sanctioned_load_kw} kW` : '-'],
+          ['Tariff Category', sr.tariff_category || '-'],
+          ['Connection Type', sr.connection_type || '-'],
+          ['Avg Monthly Consumption', `${sr.avg_monthly_consumption || 0} units`],
+          ['Avg Monthly Bill', sr.avg_monthly_bill ? currency(parseFloat(sr.avg_monthly_bill)) : '-'],
+          ['Solar Irradiation', `${sr.irradiation_kwh_m2_day || 5.0} kWh/m²/day`],
+        ]
+      });
+      sy = (doc.lastAutoTable?.finalY || sy) + 6;
+
+      // Recommended system
+      if (sy > pageHeight - 50) { doc.addPage(); drawHeader(doc); sy = 48; }
+      doc.setFont(FONT, 'bold'); doc.setFontSize(10);
+      doc.text('Recommended Solar System', m, sy); doc.line(m, sy + 1.5, m + 60, sy + 1.5); sy += 5;
+      autoTable(doc, { startY: sy, margin: { left: m, right: m }, theme: 'striped',
+        styles: { font: FONT, fontSize: 9 },
+        headStyles: { fillColor: [16, 185, 129], textColor: 255 },
+        head: [['Item', 'Value']],
+        body: [
+          ['Capacity', `${sr.sizing.kwp_recommended} kWp`],
+          ['Panels', `${sr.sizing.num_panels} × ${sr.sizing.panel_wattage_w}W`],
+          ['Inverter', `${sr.sizing.inverter_capacity_kw} kW`],
+          ...(sr.sizing.battery_ah > 0 ? [['Battery', `${sr.sizing.battery_ah} Ah @ ${sr.sizing.battery_voltage}V`]] : []),
+          ['System Type', (sr.system_type || 'on-grid').toUpperCase()],
+        ]
+      });
+      sy = (doc.lastAutoTable?.finalY || sy) + 6;
+
+      // Financial Projection
+      if (sy > pageHeight - 70) { doc.addPage(); drawHeader(doc); sy = 48; }
+      doc.setFont(FONT, 'bold'); doc.setFontSize(10);
+      doc.text('Financial Projection', m, sy); doc.line(m, sy + 1.5, m + 55, sy + 1.5); sy += 5;
+      const f = sr.financials;
+      autoTable(doc, { startY: sy, margin: { left: m, right: m }, theme: 'striped',
+        styles: { font: FONT, fontSize: 9 },
+        headStyles: { fillColor: [59, 130, 246], textColor: 255 },
+        head: [['Item', 'Value']],
+        body: [
+          ['Tariff', `${currency(f.tariff_per_unit)}/unit`],
+          ['Total Project Cost', currency(f.total_cost)],
+          ['Govt Subsidy (PM Surya Ghar)', currency(f.subsidy)],
+          ['Net Cost After Subsidy', currency(f.net_cost)],
+          ['Monthly Generation', `${f.monthly_generation_units} units`],
+          ['Monthly Savings', currency(f.monthly_savings)],
+          ['Annual Savings', currency(f.annual_savings)],
+          ['Payback Period', f.payback_years ? `${f.payback_years} years` : '-'],
+          ['ROI (25 years)', f.roi_pct != null ? `${f.roi_pct}%` : '-'],
+          ['Total 25-Year Savings', currency(f.total_25yr_savings)],
+        ]
+      });
+      sy = (doc.lastAutoTable?.finalY || sy) + 6;
+
+      // Technical KPIs
+      if (sy > pageHeight - 60) { doc.addPage(); drawHeader(doc); sy = 48; }
+      doc.setFont(FONT, 'bold'); doc.setFontSize(10);
+      doc.text('Technical KPIs', m, sy); doc.line(m, sy + 1.5, m + 40, sy + 1.5); sy += 5;
+      const t = sr.technical;
+      autoTable(doc, { startY: sy, margin: { left: m, right: m }, theme: 'striped',
+        styles: { font: FONT, fontSize: 9 },
+        headStyles: { fillColor: [139, 92, 246], textColor: 255 },
+        head: [['KPI', 'Value']],
+        body: [
+          ['Performance Ratio (PR)', String(t.performance_ratio)],
+          ['Capacity Utilization Factor', `${t.cuf_pct}%`],
+          ['Annual Generation', `${t.annual_generation_units} units`],
+          ['CO₂ Offset per Year', `${t.co2_offset_kg_per_year} kg`],
+          ['Panel Degradation', `${t.degradation_pct_per_year}% per year`],
+        ]
+      });
+      sy = (doc.lastAutoTable?.finalY || sy) + 6;
+
+      // 25-Year savings (5-year snapshots)
+      if (f.yearly_breakdown && f.yearly_breakdown.length) {
+        if (sy > pageHeight - 60) { doc.addPage(); drawHeader(doc); sy = 48; }
+        doc.setFont(FONT, 'bold'); doc.setFontSize(10);
+        doc.text('25-Year Savings Snapshot', m, sy); doc.line(m, sy + 1.5, m + 50, sy + 1.5); sy += 5;
+        const rows = f.yearly_breakdown.filter(r => r.year === 1 || r.year % 5 === 0)
+          .map(r => [`Year ${r.year}`, `${r.generation_units} units`, `${currency(r.tariff)}/unit`, currency(r.savings), currency(r.cumulative)]);
+        autoTable(doc, { startY: sy, margin: { left: m, right: m }, theme: 'grid',
+          styles: { font: FONT, fontSize: 8 },
+          headStyles: { fillColor: [245, 158, 11], textColor: 255 },
+          head: [['Year', 'Generation', 'Tariff', 'Savings', 'Cumulative']],
+          body: rows
+        });
+      }
+    }
+    // ========= /SOLAR PROJECT REPORT =========
+
     const totalPages = doc.internal.getNumberOfPages();
     for (let i = 1; i <= totalPages; i++) { doc.setPage(i); if (i > 1) drawHeader(doc); drawFooter(doc, i, totalPages); }
     doc.save(`Quotation-${project.customer?.name || 'Customer'}-${new Date().toISOString().split('T')[0]}.pdf`);

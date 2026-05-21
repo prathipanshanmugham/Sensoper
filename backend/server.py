@@ -165,6 +165,7 @@ class ProjectCreate(BaseModel):
     drive_folder_id: Optional[str] = None
     site_measurements: Optional[dict] = None
     custom_fields: Optional[dict] = None
+    solar_report: Optional[dict] = None
 
 class ProjectUpdate(BaseModel):
     customer: Optional[CustomerDetails] = None
@@ -181,6 +182,7 @@ class ProjectUpdate(BaseModel):
     drive_folder_id: Optional[str] = None
     site_measurements: Optional[dict] = None
     custom_fields: Optional[dict] = None
+    solar_report: Optional[dict] = None
     status: Optional[Literal["draft", "submitted", "approved", "rejected", "completed", "deletion_requested"]] = None
 
 class AIRecommendationRequest(BaseModel):
@@ -1684,6 +1686,7 @@ async def create_project(project: ProjectCreate, request: Request):
         "drive_folder_id": project.drive_folder_id or "",
         "site_measurements": project.site_measurements or {},
         "custom_fields": project.custom_fields or {},
+        "solar_report": project.solar_report or None,
         "status": "draft",
         "created_by": user["id"],
         "created_by_name": user["name"],
@@ -1785,6 +1788,7 @@ async def get_project(project_id: str, request: Request):
         "drive_folder_id": project.get("drive_folder_id", ""),
         "site_measurements": project.get("site_measurements", {}),
         "custom_fields": project.get("custom_fields", {}),
+        "solar_report": project.get("solar_report"),
         "completion_media": project.get("completion_media", []),
         "customer_feedback": project.get("customer_feedback"),
         "status": project["status"],
@@ -1847,6 +1851,8 @@ async def update_project(project_id: str, updates: ProjectUpdate, request: Reque
         update_data["site_measurements"] = updates.site_measurements
     if updates.custom_fields is not None:
         update_data["custom_fields"] = updates.custom_fields
+    if updates.solar_report is not None:
+        update_data["solar_report"] = updates.solar_report
     if updates.selected_items is not None:
         update_data["selected_items"] = [si.model_dump() for si in updates.selected_items]
     if updates.manual_costs is not None:
