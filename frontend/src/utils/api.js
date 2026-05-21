@@ -147,6 +147,7 @@ export const aiAPI = {
 export const termsAPI = {
   getAll: () => api.get('/terms'),
   getActive: (language = 'en') => api.get('/terms/active', { params: { language } }),
+  getById: (id) => api.get(`/terms/${id}`),
   create: (data) => api.post('/terms', data),
   update: (id, data) => api.put(`/terms/${id}`, data),
   delete: (id) => api.delete(`/terms/${id}`)

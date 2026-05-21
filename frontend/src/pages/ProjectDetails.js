@@ -95,13 +95,25 @@ export default function ProjectDetails() {
       const margins = {};
       (res.data.selected_items || []).forEach((item, idx) => { margins[idx] = item.margin_percentage || 0; });
       setItemMargins(margins);
+      // Load terms — prefer project's selected template, fall back to active
+      try {
+        if (res.data.terms_id) {
+          const tRes = await termsAPI.getById(res.data.terms_id);
+          setTerms(tRes.data);
+        } else {
+          const tRes = await termsAPI.getActive();
+          setTerms(tRes.data);
+        }
+      } catch (e) {
+        // Fall back to active if the specific terms_id lookup fails (e.g., template deleted)
+        try { const fb = await termsAPI.getActive(); setTerms(fb.data); } catch (e2) { console.error('Failed to fetch terms:', e2); }
+      }
     } catch (error) { navigate('/dashboard/projects'); }
     finally { setLoading(false); }
   }, [id, navigate]);
 
-  useEffect(() => { fetchProject(); fetchTerms(); fetchCompanyProfile(); }, [fetchProject]);
+  useEffect(() => { fetchProject(); fetchCompanyProfile(); }, [fetchProject]);
 
-  const fetchTerms = async () => { try { const res = await termsAPI.getActive(); setTerms(res.data); } catch (e) { console.error('Failed to fetch terms:', e); } };
   const fetchCompanyProfile = async () => { try { const res = await companyAPI.getActive(); setCompanyProfile(res.data); } catch (e) { console.error('Failed to fetch company profile:', e); } };
 
   const handleSubmit = async () => { setActionLoading(true); try { await projectsAPI.submit(id); fetchProject(); } catch (e) { alert(e.response?.data?.detail || 'Failed'); } finally { setActionLoading(false); } };
@@ -626,7 +638,7 @@ export default function ProjectDetails() {
           ['Address', (sr.address || project.customer?.address || '-').slice(0, 60)],
           ['Tariff', `${sr.tariff_category || '-'}  ·  ${sr.connection_type || '-'}`],
           ['Avg Bill', sr.avg_monthly_bill ? currency(parseFloat(sr.avg_monthly_bill)) + '/mo' : '-'],
-          ['Avg Units', `${sr.avg_monthly_consumption || 0} units/mo`],
+          ['Avg Units', `${sr.avg_monthly_consumption_units || sr.avg_monthly_consumption || 0} units/mo`],
           ['Sanctioned', sr.sanctioned_load_kw ? `${sr.sanctioned_load_kw} kW` : '-'],
           ['Irradiation', `${sr.irradiation_kwh_m2_day || 5.0} kWh/m²/day`],
         ]
@@ -668,8 +680,8 @@ export default function ProjectDetails() {
       doc.setFont(FONT, 'bold'); doc.setFontSize(9.5); doc.setTextColor(80, 80, 80);
       doc.text('Energy Source Mix (After Solar)', pieX, sy);
       doc.line(pieX, sy + 1.5, pieX + 55, sy + 1.5);
-      const solarUnits = Math.min(f.monthly_generation_units, sr.avg_monthly_consumption || f.monthly_generation_units);
-      const gridUnits = Math.max((sr.avg_monthly_consumption || 0) - solarUnits, 0);
+      const solarUnits = Math.min(f.monthly_generation_units, (sr.avg_monthly_consumption_units || sr.avg_monthly_consumption || f.monthly_generation_units));
+      const gridUnits = Math.max(((sr.avg_monthly_consumption_units || sr.avg_monthly_consumption) || 0) - solarUnits, 0);
       const energySlices = [
         { label: 'Solar (Free)', value: solarUnits, color: COLORS.emerald, fmt: v => Math.round(v) + ' units' },
         { label: 'Grid (Paid)', value: gridUnits, color: COLORS.slate, fmt: v => Math.round(v) + ' units' },

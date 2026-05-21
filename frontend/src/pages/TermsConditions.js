@@ -10,7 +10,6 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../co
 import { Badge } from '../components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../components/ui/dialog';
-import { Switch } from '../components/ui/switch';
 import { 
   ArrowLeft,
   Plus,
@@ -18,7 +17,6 @@ import {
   Trash2,
   Loader2,
   FileText,
-  Check,
   Eye
 } from 'lucide-react';
 
@@ -94,18 +92,6 @@ export default function TermsConditions() {
     }
   };
 
-  const handleToggleActive = async (term) => {
-    setActionLoading(true);
-    try {
-      await termsAPI.update(term.id, { is_active: !term.is_active });
-      fetchTerms();
-    } catch (err) {
-      console.error('Failed to toggle active:', err);
-    } finally {
-      setActionLoading(false);
-    }
-  };
-
   const handleDelete = async (term) => {
     if (!window.confirm('Are you sure you want to delete this version?')) return;
     
@@ -113,7 +99,7 @@ export default function TermsConditions() {
       await termsAPI.delete(term.id);
       fetchTerms();
     } catch (err) {
-      alert(err.response?.data?.detail || 'Cannot delete active terms');
+      alert(err.response?.data?.detail || 'Failed to delete terms');
     }
   };
 
@@ -165,7 +151,7 @@ export default function TermsConditions() {
         <Card className="border-blue-200 bg-blue-50 mb-6">
           <CardContent className="p-4">
             <p className="text-sm text-blue-800">
-              <strong>Note:</strong> Only one version can be active at a time. The active version will be used in all PDF quotations.
+              <strong>Note:</strong> Create multiple Terms & Conditions templates. While creating a project you can pick which template to attach to that quotation.
               Use HTML tags for formatting (ol, li, strong, em, etc.)
             </p>
           </CardContent>
@@ -201,30 +187,12 @@ export default function TermsConditions() {
                         <Badge className={term.language === 'en' ? 'bg-blue-100 text-blue-800' : 'bg-purple-100 text-purple-800'}>
                           {term.language === 'en' ? 'English' : 'Tamil'}
                         </Badge>
-                        {term.is_active && (
-                          <Badge className="bg-emerald-100 text-emerald-800">
-                            <Check className="h-3 w-3 mr-1" />
-                            Active
-                          </Badge>
-                        )}
                       </div>
                       <p className="text-sm text-slate-500">
                         Created by {term.created_by_name} • {new Date(term.created_at).toLocaleDateString('en-IN')}
                       </p>
                     </div>
                     <div className="flex items-center gap-3">
-                      <div className="flex items-center gap-2">
-                        <Label htmlFor={`active-${term.id}`} className="text-sm text-slate-500">
-                          Active
-                        </Label>
-                        <Switch
-                          id={`active-${term.id}`}
-                          checked={term.is_active}
-                          onCheckedChange={() => handleToggleActive(term)}
-                          disabled={actionLoading}
-                          data-testid={`toggle-active-${term.id}`}
-                        />
-                      </div>
                       <Button
                         variant="outline"
                         size="icon"
@@ -241,17 +209,15 @@ export default function TermsConditions() {
                       >
                         <Edit className="h-4 w-4" />
                       </Button>
-                      {!term.is_active && (
-                        <Button
-                          variant="outline"
-                          size="icon"
-                          className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                          onClick={() => handleDelete(term)}
-                          data-testid={`delete-terms-${term.id}`}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      )}
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                        onClick={() => handleDelete(term)}
+                        data-testid={`delete-terms-${term.id}`}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
                     </div>
                   </div>
                 </CardContent>

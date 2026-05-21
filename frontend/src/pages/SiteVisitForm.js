@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { projectsAPI, inventoryAPI, formTabsAPI } from '../utils/api';
+import { projectsAPI, inventoryAPI, formTabsAPI, termsAPI } from '../utils/api';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
@@ -15,8 +15,8 @@ import SolarReportSection from '../components/SolarReportSection';
 import { 
   User, MapPin, Zap, ArrowRight, ArrowLeft, Loader2, CheckCircle2,
   Sparkles, Plus, Trash2, Package, FolderOpen, X, Percent, FolderPlus, ExternalLink, CheckCircle, Link2,
-  Ruler, ChevronDown, ChevronRight, Home, Compass, Eye, PlugZap, Gauge, Settings2, HardHat, Shield, Layers,
-  Crosshair, AlertCircle
+  Ruler, ChevronDown, ChevronRight, Home, Compass, Eye, PlugZap, Settings2, HardHat, Shield, Layers,
+  Crosshair, AlertCircle, FileText
 } from 'lucide-react';
 
 const SYSTEM_SLUGS = ['customer', 'location', 'site_electrical', 'materials', 'site_docs'];
@@ -60,6 +60,7 @@ export default function SiteVisitForm() {
   const [driveLinkValid, setDriveLinkValid] = useState(null);
   const [openSections, setOpenSections] = useState({ grid_electrical: true, roof: true, orientation: false, shadow: false, obstructions: false, electrical_m: false, load_m: false, inverter: false, access: false });
   const [allTabs, setAllTabs] = useState([]);
+  const [termsList, setTermsList] = useState([]);
   const [draftId, setDraftId] = useState(null);
   const autoSaveTimer = useRef(null);
   const lastSaved = useRef('');
@@ -88,7 +89,8 @@ export default function SiteVisitForm() {
       access: { type: '', working_space: '', notes: '' }
     },
     custom_fields: {},
-    solar_report: null
+    solar_report: null,
+    terms_id: ''
   });
 
   const loadProject = useCallback(async () => {
@@ -132,7 +134,8 @@ export default function SiteVisitForm() {
           access: { type: '', working_space: '', notes: '', ...(p.site_measurements?.access || {}) }
         },
         custom_fields: p.custom_fields || {},
-        solar_report: p.solar_report || null
+        solar_report: p.solar_report || null,
+        terms_id: p.terms_id || ''
       });
     } catch (err) {
       setError('Failed to load project for editing');
@@ -151,13 +154,17 @@ export default function SiteVisitForm() {
   const fetchDynamicTabs = useCallback(async () => {
     try { const res = await formTabsAPI.getAll(); setAllTabs((res.data || []).filter(t => t.active !== false)); } catch (err) { console.error(err); }
   }, []);
+  const fetchTermsList = useCallback(async () => {
+    try { const res = await termsAPI.getAll(); setTermsList(res.data || []); } catch (err) { console.error(err); }
+  }, []);
 
   useEffect(() => {
     fetchInventory();
     fetchCategories();
     fetchDynamicTabs();
+    fetchTermsList();
     if (editId) loadProject();
-  }, [editId, fetchInventory, fetchCategories, fetchDynamicTabs, loadProject]);
+  }, [editId, fetchInventory, fetchCategories, fetchDynamicTabs, fetchTermsList, loadProject]);
 
   // Auto-save as draft when form has customer name
   useEffect(() => {
@@ -210,7 +217,8 @@ export default function SiteVisitForm() {
           drive_folder_name: formData.drive_folder_name,
           drive_folder_link: formData.drive_folder_link || 'https://drive.google.com/drive/folders/draft',
           site_measurements: formData.site_measurements,
-          custom_fields: formData.custom_fields
+          custom_fields: formData.custom_fields,
+          terms_id: formData.terms_id || null
         };
         if (draftId) {
           await projectsAPI.update(draftId, payload);
@@ -435,7 +443,7 @@ export default function SiteVisitForm() {
     switch (slug) {
       case 'customer': if (!formData.customer.name || !formData.customer.phone || !formData.customer.address) { setError('Please fill all required fields'); return false; } return validateExtraFields();
       case 'location': if (!formData.location.site_location_words && !formData.location.address) { setError('Enter What3Words or site address'); return false; } return validateExtraFields();
-      case 'site_electrical': if (!formData.electrical.sanction_load_kw || !formData.electrical.monthly_consumption_units) { setError('Fill in Sanction Load and Monthly Consumption (in Grid & Load section)'); return false; } return validateExtraFields();
+      case 'site_electrical': return validateExtraFields();
       case 'materials': if (formData.selected_items.length === 0) { setError('Add at least one inventory item'); return false; } return validateExtraFields();
       case 'site_docs': if (!formData.drive_folder_link || !formData.drive_folder_link.includes('drive.google.com/drive/folders/')) { setError('Please enter a valid Google Drive folder link'); return false; } return validateExtraFields();
       default: return validateExtraFields();
@@ -502,7 +510,8 @@ export default function SiteVisitForm() {
           access: formData.site_measurements.access
         },
         custom_fields: formData.custom_fields || {},
-        solar_report: formData.solar_report || null
+        solar_report: formData.solar_report || null,
+        terms_id: formData.terms_id || null
       };
 
       if (isEditMode) {
@@ -784,28 +793,6 @@ export default function SiteVisitForm() {
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <div className="space-y-1"><Label className="text-xs">Distance Roof to DB (ft)</Label><Input type="number" step="0.1" min="0" value={formData.site_measurements.electrical.db_distance} onChange={(e) => updateMeasurement('electrical', 'db_distance', e.target.value)} placeholder="e.g., 25" className="h-10" data-testid="db-distance-input" /></div>
                         <div className="space-y-1"><Label className="text-xs">Estimated Cable Length (ft)</Label><Input type="number" step="0.1" min="0" value={formData.site_measurements.electrical.cable_length} onChange={(e) => updateMeasurement('electrical', 'cable_length', e.target.value)} placeholder="e.g., 50" className="h-10" data-testid="meas-cable-length-input" /></div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                {/* Load Details */}
-                <div className="border border-slate-200 rounded-lg overflow-hidden" data-testid="section-load-m">
-                  <button type="button" onClick={() => toggleSection('load_m')} className="w-full flex items-center justify-between p-3 bg-slate-50 hover:bg-slate-100 transition-colors">
-                    <span className="flex items-center gap-2 font-semibold text-sm text-slate-800"><Gauge className="h-4 w-4 text-emerald-500" />Load Details</span>
-                    {openSections.load_m ? <ChevronDown className="h-4 w-4 text-slate-400" /> : <ChevronRight className="h-4 w-4 text-slate-400" />}
-                  </button>
-                  {openSections.load_m && (
-                    <div className="p-4 space-y-3">
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                        <div className="space-y-1"><Label className="text-xs">Monthly EB Units</Label><Input type="number" min="0" value={formData.site_measurements.load.monthly_units} onChange={(e) => updateMeasurement('load', 'monthly_units', e.target.value)} placeholder="e.g., 500" className="h-10" data-testid="meas-monthly-units-input" /></div>
-                        <div className="space-y-1"><Label className="text-xs">Connected Load (kW)</Label><Input type="number" step="0.1" min="0" value={formData.site_measurements.load.connected_load} onChange={(e) => updateMeasurement('load', 'connected_load', e.target.value)} placeholder="e.g., 5" className="h-10" data-testid="meas-connected-load-input" /></div>
-                        <div className="space-y-1"><Label className="text-xs">Connection Type</Label>
-                          <Select value={formData.site_measurements.load.connection_type} onValueChange={(v) => updateMeasurement('load', 'connection_type', v)}>
-                            <SelectTrigger className="h-10" data-testid="connection-type-select"><SelectValue placeholder="Select" /></SelectTrigger>
-                            <SelectContent><SelectItem value="Residential">Residential</SelectItem><SelectItem value="Commercial">Commercial</SelectItem><SelectItem value="Industrial">Industrial</SelectItem></SelectContent>
-                          </Select>
-                        </div>
                       </div>
                     </div>
                   )}
@@ -1114,6 +1101,31 @@ export default function SiteVisitForm() {
                     </a>
                   </div>
                 )}
+
+                <div className="space-y-2">
+                  <Label className="flex items-center gap-2"><FileText className="h-4 w-4 text-emerald-600" />Terms & Conditions Template</Label>
+                  <Select 
+                    value={formData.terms_id || 'none'} 
+                    onValueChange={(v) => setFormData(prev => ({ ...prev, terms_id: v === 'none' ? '' : v }))}
+                  >
+                    <SelectTrigger className="h-11" data-testid="terms-select">
+                      <SelectValue placeholder="Select T&C template (optional)" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">— Use default Standard Terms —</SelectItem>
+                      {termsList.map(t => (
+                        <SelectItem key={t.id} value={t.id} data-testid={`terms-option-${t.id}`}>
+                          {t.title} (v{t.version}, {t.language === 'en' ? 'EN' : 'TA'})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-[11px] text-slate-500">
+                    {termsList.length === 0 
+                      ? 'No templates yet — create one from the Terms & Conditions page.'
+                      : 'This template will be embedded in the project quotation PDF.'}
+                  </p>
+                </div>
 
                 <div className="space-y-2">
                   <Label>Shadow Analysis Notes (Optional)</Label>

@@ -166,6 +166,7 @@ class ProjectCreate(BaseModel):
     site_measurements: Optional[dict] = None
     custom_fields: Optional[dict] = None
     solar_report: Optional[dict] = None
+    terms_id: Optional[str] = None
 
 class ProjectUpdate(BaseModel):
     customer: Optional[CustomerDetails] = None
@@ -183,6 +184,7 @@ class ProjectUpdate(BaseModel):
     site_measurements: Optional[dict] = None
     custom_fields: Optional[dict] = None
     solar_report: Optional[dict] = None
+    terms_id: Optional[str] = None
     status: Optional[Literal["draft", "submitted", "approved", "rejected", "completed", "deletion_requested"]] = None
 
 class AIRecommendationRequest(BaseModel):
@@ -1124,6 +1126,25 @@ async def get_active_terms(language: str = "en"):
         "version": terms["version"]
     }
 
+@api_router.get("/terms/{terms_id}")
+async def get_terms_by_id(terms_id: str, request: Request):
+    """Get a specific terms & conditions by ID — used when a project has a selected terms_id."""
+    await get_current_user(request)
+    try:
+        oid = ObjectId(terms_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid terms id")
+    terms = await db.terms_conditions.find_one({"_id": oid})
+    if not terms:
+        raise HTTPException(status_code=404, detail="Terms not found")
+    return {
+        "id": str(terms["_id"]),
+        "title": terms["title"],
+        "content": terms["content"],
+        "version": terms["version"],
+        "language": terms.get("language", "en")
+    }
+
 @api_router.post("/terms")
 async def create_terms(terms_data: TermsConditionsCreate, request: Request):
     current_user = await require_role("admin", "manager")(request)
@@ -1208,9 +1229,6 @@ async def delete_terms(terms_id: str, request: Request):
     terms = await db.terms_conditions.find_one({"_id": ObjectId(terms_id)})
     if not terms:
         raise HTTPException(status_code=404, detail="Terms not found")
-    
-    if terms.get("is_active"):
-        raise HTTPException(status_code=400, detail="Cannot delete active terms")
     
     await db.terms_conditions.delete_one({"_id": ObjectId(terms_id)})
     
@@ -1933,6 +1951,7 @@ async def create_project(project: ProjectCreate, request: Request):
         "site_measurements": project.site_measurements or {},
         "custom_fields": project.custom_fields or {},
         "solar_report": project.solar_report or None,
+        "terms_id": project.terms_id or None,
         "status": "draft",
         "created_by": user["id"],
         "created_by_name": user["name"],
@@ -2035,6 +2054,7 @@ async def get_project(project_id: str, request: Request):
         "site_measurements": project.get("site_measurements", {}),
         "custom_fields": project.get("custom_fields", {}),
         "solar_report": project.get("solar_report"),
+        "terms_id": project.get("terms_id"),
         "completion_media": project.get("completion_media", []),
         "completion_drive_link": project.get("completion_drive_link", ""),
         "inverter_login": project.get("inverter_login", {}),
@@ -2101,6 +2121,8 @@ async def update_project(project_id: str, updates: ProjectUpdate, request: Reque
         update_data["custom_fields"] = updates.custom_fields
     if updates.solar_report is not None:
         update_data["solar_report"] = updates.solar_report
+    if updates.terms_id is not None:
+        update_data["terms_id"] = updates.terms_id or None
     if updates.selected_items is not None:
         update_data["selected_items"] = [si.model_dump() for si in updates.selected_items]
     if updates.manual_costs is not None:
@@ -2620,9 +2642,10 @@ async def get_dashboard_stats(request: Request):
     revenue_result = await db.projects.aggregate(revenue_pipeline).to_list(1)
     stats["total_revenue"] = revenue_result[0]["total"] if revenue_result else 0
     
-    # Conversion rate
-    if stats["total"] > 0:
-        stats["conversion_rate"] = round((stats["completed"] / stats["total"]) * 100, 1)
+    # Conversion rate — based on real leads (drafts excluded; they are work-in-progress, not leads)
+    leads = stats["total"] - stats["draft"]
+    if leads > 0:
+        stats["conversion_rate"] = round((stats["completed"] / leads) * 100, 1)
     else:
         stats["conversion_rate"] = 0
     
@@ -2669,9 +2692,11 @@ async def get_ceo_dashboard(request: Request):
     total_revenue = sum(p.get("cost_estimation", {}).get("total_cost", 0) for p in all_projects if p.get("status") in ["completed", "approved"])
     total_margin = sum(p.get("cost_estimation", {}).get("margin_total", 0) for p in all_projects if p.get("status") in ["completed", "approved"])
     
-    # Conversion rate — proportion of leads that became wins (approved + completed)
+    # Conversion rate — proportion of real leads (drafts excluded) that became wins (approved + completed)
+    drafts = status_counts.get("draft", 0)
+    leads = total - drafts
     wins = approved + completed
-    conversion_rate = round((wins / total) * 100, 1) if total > 0 else 0
+    conversion_rate = round((wins / leads) * 100, 1) if leads > 0 else 0
     
     # Monthly revenue trend (last 12 months)
     from collections import defaultdict
@@ -2690,7 +2715,7 @@ async def get_ceo_dashboard(request: Request):
     
     # Sales funnel
     funnel = {
-        "total_leads": total,
+        "total_leads": total - drafts,
         "quotes_generated": sum(1 for p in all_projects if p.get("status") != "draft"),
         "approved": approved + completed,
         "completed": completed
