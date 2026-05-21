@@ -2669,9 +2669,9 @@ async def get_ceo_dashboard(request: Request):
     total_revenue = sum(p.get("cost_estimation", {}).get("total_cost", 0) for p in all_projects if p.get("status") in ["completed", "approved"])
     total_margin = sum(p.get("cost_estimation", {}).get("margin_total", 0) for p in all_projects if p.get("status") in ["completed", "approved"])
     
-    # Conversion rate
-    submitted_plus = sum(1 for p in all_projects if p.get("status") in ["submitted", "approved", "completed", "rejected"])
-    conversion_rate = round((completed / submitted_plus) * 100, 1) if submitted_plus > 0 else 0
+    # Conversion rate — proportion of leads that became wins (approved + completed)
+    wins = approved + completed
+    conversion_rate = round((wins / total) * 100, 1) if total > 0 else 0
     
     # Monthly revenue trend (last 12 months)
     from collections import defaultdict
@@ -2741,6 +2741,8 @@ async def get_ceo_dashboard(request: Request):
             "total_revenue": round(total_revenue),
             "total_profit": round(total_margin),
             "conversion_rate": conversion_rate,
+            "wins": wins,
+            "approved_projects": approved,
             "active_projects": status_counts.get("submitted", 0) + status_counts.get("approved", 0),
             "completed_projects": completed,
             "pending_approvals": pending_approvals,

@@ -660,40 +660,11 @@ export default function SiteVisitForm() {
             {STEPS[currentStep - 1]?.slug === 'site_electrical' && (
               <div className="space-y-3">
 
-                {/* Grid & Load (from old Electrical step) */}
-                <div className="border border-slate-200 rounded-lg overflow-hidden" data-testid="section-grid-electrical">
-                  <button type="button" onClick={() => toggleSection('grid_electrical')} className="w-full flex items-center justify-between p-3 bg-slate-50 hover:bg-slate-100 transition-colors">
-                    <span className="flex items-center gap-2 font-semibold text-sm text-slate-800"><Zap className="h-4 w-4 text-yellow-500" />Grid & Load <span className="text-[10px] font-normal text-red-400 ml-1">Required</span></span>
-                    {openSections.grid_electrical ? <ChevronDown className="h-4 w-4 text-slate-400" /> : <ChevronRight className="h-4 w-4 text-slate-400" />}
-                  </button>                  {openSections.grid_electrical && (
-                    <div className="p-4 space-y-3">
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        <div className="space-y-1"><Label className="text-xs">Service Type</Label>
-                          <ComboInput value={formData.electrical.service_type} onChange={(v) => updateField('electrical', 'service_type', v)} options={SERVICE_TYPE_OPTIONS} placeholder="Type or select" data-testid="service-type-input" />
-                        </div>
-                        <div className="space-y-1"><Label className="text-xs">Sanction Load (kW) *</Label><Input type="number" step="0.1" value={formData.electrical.sanction_load_kw} onChange={(e) => updateField('electrical', 'sanction_load_kw', e.target.value)} placeholder="e.g., 5" className="h-10" data-testid="sanction-load-input" /></div>
-                      </div>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        <div className="space-y-1"><Label className="text-xs">Connected Load (kW)</Label><Input type="number" step="0.1" value={formData.electrical.connected_load_kw} onChange={(e) => updateField('electrical', 'connected_load_kw', e.target.value)} placeholder="e.g., 4" className="h-10" data-testid="connected-load-input" /></div>
-                        <div className="space-y-1"><Label className="text-xs">Monthly Consumption (units) *</Label><Input type="number" value={formData.electrical.monthly_consumption_units} onChange={(e) => updateField('electrical', 'monthly_consumption_units', e.target.value)} placeholder="e.g., 500" className="h-10" data-testid="monthly-consumption-input" /></div>
-                      </div>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        <div className="space-y-1"><Label className="text-xs">EB Tariff (₹/unit)</Label><Input type="number" step="0.1" value={formData.electrical.eb_tariff} onChange={(e) => updateField('electrical', 'eb_tariff', e.target.value)} placeholder="e.g., 7" className="h-10" data-testid="eb-tariff-input" /></div>
-                        <div className="space-y-1"><Label className="text-xs">Complexity</Label>
-                          <ComboInput value={formData.additional.installation_complexity} onChange={(v) => updateField('additional', 'installation_complexity', v)} options={COMPLEXITY_OPTIONS} placeholder="Select" data-testid="complexity-input" />
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                {/* Solar Project Report (TNEB Auto-Fetch) */}
+                {/* Solar Project Report — fully editable calculator */}
                 <SolarReportSection
                   value={formData.solar_report}
                   onChange={(sr) => setFormData(prev => ({ ...prev, solar_report: sr }))}
                   customerDefaults={{ name: formData.customer.name, phone: formData.customer.phone, address: formData.customer.address }}
-                  electricalDefaults={formData.electrical}
-                  solarSystemDefaults={formData.solar_system}
                 />
 
                 {/* Roof Details */}

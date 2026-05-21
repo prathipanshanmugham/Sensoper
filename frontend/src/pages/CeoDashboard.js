@@ -87,7 +87,7 @@ export default function CeoDashboard() {
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6" data-testid="kpi-grid">
           <KpiCard title="Total Revenue" value={`₹${(kpis.total_revenue || 0).toLocaleString('en-IN')}`} icon={IndianRupee} color="emerald" subtitle="Approved + Completed" onClick={() => navigate('/dashboard/reports?type=sales')} />
           <KpiCard title="Total Profit" value={`₹${(kpis.total_profit || 0).toLocaleString('en-IN')}`} icon={TrendingUp} color="blue" subtitle="Internal margins" onClick={() => navigate('/dashboard/reports?type=profit')} />
-          <KpiCard title="Conversion Rate" value={`${kpis.conversion_rate}%`} icon={BarChart3} color="violet" subtitle={`${kpis.completed_projects} of ${kpis.total_projects} projects`} />
+          <KpiCard title="Conversion Rate" value={`${kpis.conversion_rate}%`} icon={BarChart3} color="violet" subtitle={`${kpis.wins || 0} won of ${kpis.total_projects} leads`} />
           <KpiCard title="Active Projects" value={kpis.active_projects} icon={Clock} color="amber" onClick={() => navigate('/dashboard/projects')} />
           <KpiCard title="Completed" value={kpis.completed_projects} icon={CheckCircle2} color="emerald" onClick={() => navigate('/dashboard/reports?type=execution')} />
           <KpiCard title="Pending Approvals" value={kpis.pending_approvals} icon={ClipboardCheck} color="red" onClick={() => navigate('/dashboard/approvals')} />
