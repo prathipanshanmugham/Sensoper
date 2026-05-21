@@ -1790,6 +1790,8 @@ async def get_project(project_id: str, request: Request):
         "custom_fields": project.get("custom_fields", {}),
         "solar_report": project.get("solar_report"),
         "completion_media": project.get("completion_media", []),
+        "completion_drive_link": project.get("completion_drive_link", ""),
+        "inverter_login": project.get("inverter_login", {}),
         "customer_feedback": project.get("customer_feedback"),
         "status": project["status"],
         "cost_estimation": project.get("cost_estimation", {}),
@@ -1976,41 +1978,52 @@ async def reject_project(project_id: str, request: Request):
 @api_router.post("/projects/{project_id}/complete")
 async def complete_project(project_id: str, request: Request):
     user = await require_role("admin", "manager")(request)
-    
+
     try:
         body = await request.json()
     except Exception:
         body = {}
-    
+
+    # New schema: completion_drive_link + inverter_login (manual entry).
+    # completion_media kept for backward-compat.
     completion_media = body.get("completion_media", [])
+    completion_drive_link = (body.get("completion_drive_link") or "").strip()
+    inverter_login = body.get("inverter_login") or {}
     customer_feedback = body.get("customer_feedback", "")
-    
-    if not completion_media or len(completion_media) == 0:
-        raise HTTPException(status_code=400, detail="At least one photo or video is required for project completion")
-    
+
+    # At least one proof of completion: drive link OR legacy media
+    if not completion_drive_link and (not completion_media or len(completion_media) == 0):
+        raise HTTPException(status_code=400, detail="Completion Drive link is required")
+    # Validate drive link format if provided
+    if completion_drive_link and not (completion_drive_link.startswith("http://") or completion_drive_link.startswith("https://")):
+        raise HTTPException(status_code=400, detail="Completion Drive link must be a valid URL")
+    # inverter_login must be a dict if provided
+    if inverter_login and not isinstance(inverter_login, dict):
+        raise HTTPException(status_code=400, detail="inverter_login must be an object")
+
     project = await db.projects.find_one({"_id": ObjectId(project_id), "deleted_at": {"$exists": False}})
-    
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
-    
     if project["status"] != "approved":
         raise HTTPException(status_code=400, detail="Only approved projects can be completed")
-    
-    await db.projects.update_one(
-        {"_id": ObjectId(project_id)},
-        {"$set": {
-            "status": "completed",
-            "completion_media": completion_media,
-            "customer_feedback": customer_feedback,
-            "completed_at": datetime.now(timezone.utc).isoformat(),
-            "updated_at": datetime.now(timezone.utc).isoformat()
-        }}
-    )
-    
-    await create_audit_log(
-        user["id"], user["name"], "complete", "project", project_id
-    )
-    
+
+    update_doc = {
+        "status": "completed",
+        "completion_media": completion_media,
+        "completion_drive_link": completion_drive_link,
+        "inverter_login": {
+            "url": (inverter_login.get("url") or "").strip(),
+            "username": (inverter_login.get("username") or "").strip(),
+            "password": (inverter_login.get("password") or "").strip(),
+            "notes": (inverter_login.get("notes") or "").strip(),
+        } if inverter_login else {},
+        "customer_feedback": customer_feedback,
+        "completed_at": datetime.now(timezone.utc).isoformat(),
+        "updated_at": datetime.now(timezone.utc).isoformat()
+    }
+
+    await db.projects.update_one({"_id": ObjectId(project_id)}, {"$set": update_doc})
+    await create_audit_log(user["id"], user["name"], "complete", "project", project_id)
     return {"message": "Project marked as completed"}
 
 @api_router.put("/projects/{project_id}/reference")

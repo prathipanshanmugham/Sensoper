@@ -14,7 +14,7 @@ import {
   ArrowLeft, Loader2, User, MapPin, Zap, Sun, Clock, CheckCircle2, XCircle, 
   AlertCircle, Download, Share2, Trash2, Send, AlertTriangle, Package, Percent, 
   Video, Upload, Film, Pencil, Save, X, MessageSquare, QrCode, FolderOpen, Camera, Ruler,
-  ExternalLink, Copy, FileSpreadsheet
+  ExternalLink, Copy, FileSpreadsheet, Lock, Eye, EyeOff
 } from 'lucide-react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -74,9 +74,10 @@ export default function ProjectDetails() {
   const [itemMargins, setItemMargins] = useState({});
   const [marginLoading, setMarginLoading] = useState(false);
   const [showCompleteDialog, setShowCompleteDialog] = useState(false);
-  const [completionMedia, setCompletionMedia] = useState([]);
+  const [completionDriveLink, setCompletionDriveLink] = useState('');
+  const [inverterLogin, setInverterLogin] = useState({ url: '', username: '', password: '', notes: '' });
+  const [showInverterPwd, setShowInverterPwd] = useState(false);
   const [customerFeedback, setCustomerFeedback] = useState('');
-  const [uploadingMedia, setUploadingMedia] = useState(false);
   // Editable ref and status
   const [editingRef, setEditingRef] = useState(false);
   const [refValue, setRefValue] = useState('');
@@ -117,28 +118,22 @@ export default function ProjectDetails() {
     catch (e) { alert(e.response?.data?.detail || 'Failed'); }
   };
 
-  const handleMediaUpload = async (e) => {
-    const files = Array.from(e.target.files || []);
-    if (files.length === 0) return;
-    setUploadingMedia(true);
-    for (const file of files) {
-      try {
-        const res = await uploadAPI.uploadMedia(file);
-        setCompletionMedia(prev => [...prev, { storage_path: res.data.storage_path, media_type: res.data.media_type, filename: res.data.filename, content_type: res.data.content_type }]);
-      } catch (err) { alert(err.response?.data?.detail || `Failed to upload ${file.name}`); break; }
-    }
-    setUploadingMedia(false);
-    e.target.value = '';
-  };
-
-  const removeCompletionMedia = (index) => setCompletionMedia(prev => prev.filter((_, i) => i !== index));
-
   const handleComplete = async () => {
-    if (completionMedia.length === 0) { alert('Please upload at least one photo or video.'); return; }
+    const link = completionDriveLink.trim();
+    if (!link) { alert('Please enter the Completion Google Drive link.'); return; }
+    if (!(link.startsWith('http://') || link.startsWith('https://'))) { alert('Drive link must start with http:// or https://'); return; }
     setActionLoading(true);
     try {
-      await projectsAPI.complete(id, completionMedia.map(m => ({ storage_path: m.storage_path, media_type: m.media_type, filename: m.filename, content_type: m.content_type })), customerFeedback);
-      setShowCompleteDialog(false); setCompletionMedia([]); setCustomerFeedback(''); fetchProject();
+      await projectsAPI.complete(id, {
+        completion_drive_link: link,
+        inverter_login: inverterLogin,
+        customer_feedback: customerFeedback
+      });
+      setShowCompleteDialog(false);
+      setCompletionDriveLink('');
+      setInverterLogin({ url: '', username: '', password: '', notes: '' });
+      setCustomerFeedback('');
+      fetchProject();
     } catch (e) { alert(e.response?.data?.detail || 'Failed'); }
     finally { setActionLoading(false); }
   };
@@ -549,7 +544,7 @@ export default function ProjectDetails() {
       const t = sr.technical;
       const sz = sr.sizing;
 
-      // ===== PAGE 1: Header + KPI strip + Consumer + Cost Pie + Monthly bar =====
+      // ===== PAGE 1: Header + Plain-English Summary + KPI strip + Consumer + Cost Pie =====
       doc.addPage(); drawHeader(doc); let sy = 48;
 
       // Banner
@@ -557,6 +552,40 @@ export default function ProjectDetails() {
       doc.setFont(FONT, 'bold'); doc.setFontSize(12); doc.setTextColor(255, 255, 255);
       doc.text('Solar Project Report (TNEB / Sizing / 25-Year Projection)', m + 3, sy + 2);
       doc.setTextColor(50, 50, 50); sy += 12;
+
+      // ===== Plain-English Hero Summary (Apple-style, layman-friendly) =====
+      const monthlyBill = parseFloat(sr.avg_monthly_bill || 0);
+      const monthlyAfter = Math.max(monthlyBill - f.monthly_savings, 0);
+      const heroH = 36;
+      doc.setFillColor(248, 250, 252); doc.roundedRect(m, sy, contentW, heroH, 2, 2, 'F');
+      doc.setDrawColor(226, 232, 240); doc.setLineWidth(0.2);
+      doc.roundedRect(m, sy, contentW, heroH, 2, 2, 'S');
+      doc.setFont(FONT, 'bold'); doc.setFontSize(11); doc.setTextColor(30, 41, 59);
+      doc.text('At a Glance — What this means for you', m + 4, sy + 6);
+
+      const heroBoxW = (contentW - 8) / 4;
+      const heroRows = [
+        { label: 'You invest', value: currency(f.net_cost), sub: `after ${currency(f.subsidy)} subsidy`, color: COLORS.blue },
+        { label: 'You save monthly', value: currency(f.monthly_savings), sub: `from ₹${Math.round(monthlyBill)}/mo bill`, color: COLORS.emerald },
+        { label: 'Cost recovered in', value: f.payback_years ? `${f.payback_years} years` : '-', sub: 'breaks even after this', color: COLORS.amber },
+        { label: 'Total saved (25 yrs)', value: currency(f.total_25yr_savings), sub: `ROI ${f.roi_pct || 0}%`, color: COLORS.rose },
+      ];
+      heroRows.forEach((row, i) => {
+        const hx = m + 4 + i * heroBoxW;
+        // small color dot
+        doc.setFillColor(...row.color); doc.circle(hx + 2, sy + 13, 1.2, 'F');
+        doc.setFont(FONT, 'normal'); doc.setFontSize(7.5); doc.setTextColor(100, 116, 139);
+        doc.text(row.label.toUpperCase(), hx + 5, sy + 13.5);
+        doc.setFont(FONT, 'bold'); doc.setFontSize(13.5); doc.setTextColor(15, 23, 42);
+        doc.text(String(row.value), hx + 5, sy + 22);
+        doc.setFont(FONT, 'normal'); doc.setFontSize(6.5); doc.setTextColor(100, 116, 139);
+        doc.text(row.sub, hx + 5, sy + 28, { maxWidth: heroBoxW - 6 });
+      });
+      // Narrative line at bottom
+      doc.setFont(FONT, 'normal'); doc.setFontSize(7); doc.setTextColor(71, 85, 105);
+      doc.text(`In plain English: A solar system of ${sz.kwp_recommended} kWp (${sz.num_panels} panels) installed on your roof will cut your electricity bill from about ${currency(monthlyBill)} to ${currency(monthlyAfter)} every month. After ${f.payback_years || '-'} years, every rupee you save is pure profit — for the next ~20+ years.`, m + 4, sy + 33, { maxWidth: contentW - 8 });
+      sy += heroH + 6;
+      // ===== /Plain-English Hero =====
 
       // KPI strip — 5 colored boxes
       const kpiH = 14; const kpiGap = 2.2; const kpiW = (contentW - kpiGap * 4) / 5;
@@ -601,6 +630,9 @@ export default function ProjectDetails() {
       ];
       drawPie(pieCx, pieCy, pieR, costSlices, currency(f.total_cost).replace('₹', '₹'));
       drawPieLegend(pieX + 46, sy + 14, costSlices, f.total_cost);
+      // Plain-English caption under cost pie
+      doc.setFont(FONT, 'normal'); doc.setFontSize(6.5); doc.setTextColor(100, 116, 139);
+      doc.text(`Out of every ₹100 of project cost, government pays ₹${Math.round((f.subsidy / Math.max(f.total_cost, 1)) * 100)} as subsidy — you pay ₹${Math.round((f.net_cost / Math.max(f.total_cost, 1)) * 100)}.`, pieX, sy + 53, { maxWidth: halfW });
       sy = Math.max(sy + 60, doc.lastAutoTable?.finalY || sy) + 6;
 
       // ===== Monthly economics bar + Sizing donut =====
@@ -616,6 +648,9 @@ export default function ProjectDetails() {
         { label: 'Net Bill', value: Math.max(parseFloat(sr.avg_monthly_bill || 0) - f.monthly_savings, 0), color: COLORS.amber },
       ];
       drawBarChartV(m, sy + 4, halfW, 50, barData, { valueFormat: (v) => '₹' + Math.round(v).toLocaleString('en-IN') });
+      // Caption under monthly bar
+      doc.setFont(FONT, 'normal'); doc.setFontSize(6.5); doc.setTextColor(100, 116, 139);
+      doc.text(`Your monthly bill drops from ${currency(monthlyBill)} to about ${currency(monthlyAfter)} — that is ${currency(f.monthly_savings)} back in your pocket every month.`, m, sy + 58, { maxWidth: halfW });
       // RIGHT: Energy mix donut (Solar vs Grid)
       doc.setFont(FONT, 'bold'); doc.setFontSize(9.5); doc.setTextColor(80, 80, 80);
       doc.text('Energy Source Mix (After Solar)', pieX, sy);
@@ -629,7 +664,10 @@ export default function ProjectDetails() {
       const pieCy2 = sy + 28;
       drawPie(pieCx, pieCy2, pieR, energySlices, Math.round(solarUnits + gridUnits) + ' u');
       drawPieLegend(pieX + 46, sy + 14, energySlices, solarUnits + gridUnits);
-      sy += 60;
+      // Caption under energy mix pie
+      doc.setFont(FONT, 'normal'); doc.setFontSize(6.5); doc.setTextColor(100, 116, 139);
+      doc.text(`Sun powers ${Math.round(solarUnits)} units of your ${Math.round(solarUnits + gridUnits)} units / month. The grid only fills the gap.`, pieX, sy + 58, { maxWidth: halfW });
+      sy += 65;
 
       // ===== Technical KPI gauges =====
       if (sy > pageHeight - 50) { doc.addPage(); drawHeader(doc); sy = 48; }
@@ -668,6 +706,10 @@ export default function ProjectDetails() {
           yAxisFormat: (v) => v >= 100000 ? `${(v / 100000).toFixed(1)}L` : v >= 1000 ? `${(v / 1000).toFixed(0)}K` : Math.round(v),
         });
         sy += 70;
+        // Caption under 25-yr line
+        doc.setFont(FONT, 'normal'); doc.setFontSize(7); doc.setTextColor(71, 85, 105);
+        doc.text(`Year-on-year, your savings grow because electricity tariffs typically increase ~2.5% a year. Over 25 years you save a total of ${currency(f.total_25yr_savings)} — that is roughly ${Math.round(f.total_25yr_savings / Math.max(f.net_cost, 1))}× what you invested.`, m, sy, { maxWidth: contentW });
+        sy += 6;
 
         // Yearly snapshot bars (Y1, Y5, Y10, Y15, Y20, Y25)
         const snapshots = yb.filter(r => r.year === 1 || r.year % 5 === 0);
@@ -1182,39 +1224,42 @@ export default function ProjectDetails() {
         </DialogContent>
       </Dialog>
 
-      {/* Complete Dialog */}
+      {/* Complete Dialog — Drive link + Inverter login (manual) */}
       <Dialog open={showCompleteDialog} onOpenChange={setShowCompleteDialog}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader><DialogTitle>Complete Project</DialogTitle></DialogHeader>
           <div className="py-4 space-y-4">
-            <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg"><p className="text-sm font-medium text-amber-800">Upload mandatory completion photos/videos and provide customer feedback.</p></div>
-            <label className="block cursor-pointer" data-testid="completion-media-upload-area">
-              <div className="border-2 border-dashed border-slate-300 rounded-xl p-6 text-center hover:border-emerald-400 hover:bg-emerald-50/50 transition-colors">
-                {uploadingMedia ? (<><Loader2 className="h-8 w-8 animate-spin mx-auto text-emerald-600 mb-2" /><p className="text-sm text-slate-600">Uploading...</p></>) :
-                (<><Upload className="h-8 w-8 mx-auto text-slate-400 mb-2" /><p className="font-medium text-slate-700">Upload photos & videos</p><p className="text-xs text-slate-500">JPG, PNG, MP4, MOV (max 50MB each)</p></>)}
-              </div>
-              <input type="file" accept="image/*,video/*" multiple className="hidden" onChange={handleMediaUpload} disabled={uploadingMedia} data-testid="completion-media-input" />
-            </label>
-            {completionMedia.length > 0 && (
-              <div className="space-y-2">
-                <p className="text-sm font-medium text-slate-700">{completionMedia.length} file(s) uploaded</p>
-                {completionMedia.map((media, idx) => (
-                  <div key={media.filename || `upload-${idx}`} className="flex items-center gap-2 p-2 bg-slate-50 rounded-lg border border-slate-200" data-testid={`completion-file-${idx}`}>
-                    {media.media_type === 'videos' ? <Video className="h-4 w-4 text-blue-500 shrink-0" /> : <Camera className="h-4 w-4 text-emerald-500 shrink-0" />}
-                    <span className="text-sm text-slate-700 truncate flex-1">{media.filename}</span>
-                    <Button variant="ghost" size="icon" className="h-7 w-7 text-red-500 shrink-0" onClick={() => removeCompletionMedia(idx)}><Trash2 className="h-3.5 w-3.5" /></Button>
+            <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg"><p className="text-sm font-medium text-amber-800">Provide the completion proof Drive link and inverter login details for handover.</p></div>
+
+            <div className="space-y-1.5">
+              <Label className="text-sm font-medium text-slate-700">Completion Photos / Videos — Google Drive Link <span className="text-red-500">*</span></Label>
+              <Input value={completionDriveLink} onChange={(e) => setCompletionDriveLink(e.target.value)} placeholder="https://drive.google.com/drive/folders/..." className="h-10" data-testid="completion-drive-link-input" />
+              <p className="text-[11px] text-slate-500">Paste the shared Drive folder link containing all completion photos / videos.</p>
+            </div>
+
+            <div className="rounded-lg border border-slate-200 p-3 space-y-3" data-testid="inverter-login-block">
+              <h4 className="text-sm font-semibold text-slate-800 flex items-center gap-2"><Lock className="h-4 w-4 text-blue-600" />Inverter Login Details (for handover)</h4>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-1"><Label className="text-xs">Portal URL / IP</Label><Input value={inverterLogin.url} onChange={(e) => setInverterLogin(p => ({ ...p, url: e.target.value }))} placeholder="https://app.inverter.com or 192.168.1.10" className="h-9" data-testid="inverter-url-input" /></div>
+                <div className="space-y-1"><Label className="text-xs">Username / Email</Label><Input value={inverterLogin.username} onChange={(e) => setInverterLogin(p => ({ ...p, username: e.target.value }))} placeholder="admin@example.com" className="h-9" data-testid="inverter-username-input" /></div>
+                <div className="space-y-1 sm:col-span-2"><Label className="text-xs">Password</Label>
+                  <div className="relative">
+                    <Input type={showInverterPwd ? 'text' : 'password'} value={inverterLogin.password} onChange={(e) => setInverterLogin(p => ({ ...p, password: e.target.value }))} className="h-9 pr-10" data-testid="inverter-password-input" />
+                    <button type="button" onClick={() => setShowInverterPwd(s => !s)} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700" aria-label={showInverterPwd ? 'Hide password' : 'Show password'} data-testid="inverter-password-toggle">{showInverterPwd ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}</button>
                   </div>
-                ))}
+                </div>
+                <div className="space-y-1 sm:col-span-2"><Label className="text-xs">Notes (Wi-Fi SSID, serial number, etc.)</Label><Textarea rows={2} value={inverterLogin.notes} onChange={(e) => setInverterLogin(p => ({ ...p, notes: e.target.value }))} placeholder="Optional — anything the customer should know" className="min-h-[44px]" data-testid="inverter-notes-input" /></div>
               </div>
-            )}
+            </div>
+
             <div className="space-y-2">
               <Label className="text-sm font-medium text-slate-700">Customer Feedback</Label>
               <Textarea value={customerFeedback} onChange={(e) => setCustomerFeedback(e.target.value)} placeholder="Enter customer's feedback about the installation..." rows={3} data-testid="customer-feedback-input" />
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => { setShowCompleteDialog(false); setCompletionMedia([]); setCustomerFeedback(''); }}>Cancel</Button>
-            <Button onClick={handleComplete} disabled={actionLoading || completionMedia.length === 0} className="bg-emerald-600 hover:bg-emerald-700 text-white gap-2" data-testid="confirm-complete-btn">
+            <Button variant="outline" onClick={() => { setShowCompleteDialog(false); setCompletionDriveLink(''); setInverterLogin({ url: '', username: '', password: '', notes: '' }); setCustomerFeedback(''); }}>Cancel</Button>
+            <Button onClick={handleComplete} disabled={actionLoading || !completionDriveLink.trim()} className="bg-emerald-600 hover:bg-emerald-700 text-white gap-2" data-testid="confirm-complete-btn">
               {actionLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}Complete Project
             </Button>
           </DialogFooter>

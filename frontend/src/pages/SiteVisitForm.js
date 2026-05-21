@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { projectsAPI, aiAPI, inventoryAPI, formTabsAPI } from '../utils/api';
+import { projectsAPI, inventoryAPI, formTabsAPI } from '../utils/api';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
@@ -381,19 +381,6 @@ export default function SiteVisitForm() {
     finally { setCreatingCategory(false); }
   };
 
-  const getAIRecommendation = async () => {
-    setAiLoading(true);
-    try {
-      const res = await aiAPI.getRecommendations({
-        monthly_consumption_units: parseFloat(formData.electrical.monthly_consumption_units) || 0,
-        sanction_load_kw: parseFloat(formData.electrical.sanction_load_kw) || 0,
-        roof_type: formData.mounting.roof_type, budget_range: null
-      });
-      setAiRecommendation(res.data.recommendation);
-    } catch (err) { setError('Failed to get AI recommendation'); }
-    finally { setAiLoading(false); }
-  };
-
   const getItemsByCategory = (cat) => inventoryItems.filter(i => i.category === cat && i.quantity > 0);
   const getCategoryLabel = (slug) => categories.find(c => c.slug === slug)?.name || slug;
 
@@ -403,19 +390,6 @@ export default function SiteVisitForm() {
     const gstTotal = formData.selected_items.reduce((sum, i) => sum + i.unit_price * i.quantity * (i.gst_percentage / 100), 0);
     const marginTotal = formData.selected_items.reduce((sum, i) => sum + i.unit_price * i.quantity * ((i.margin_percentage || 0) / 100), 0);
     return { itemsTotal, manualTotal, gstTotal, marginTotal, total: itemsTotal + manualTotal + gstTotal + marginTotal };
-  };
-
-  const getSmartSuggestions = () => {
-    const monthly = parseFloat(formData.electrical.monthly_consumption_units) || 0;
-    const roofArea = parseFloat(formData.site_measurements.roof.area) || 0;
-    const panelW = parseInt(formData.solar_system.panel_wattage) || 540;
-    if (!monthly) return null;
-    const systemKw = Math.round((monthly / 120) * 10) / 10;
-    const panelCount = Math.ceil((systemKw * 1000) / panelW);
-    const panelArea = panelCount * 21.5;
-    const inverterKw = [1, 2, 3, 4, 5, 6, 8, 10, 15, 20, 25, 50].find(s => s >= systemKw) || systemKw;
-    const fitsRoof = roofArea ? panelArea <= roofArea * 0.7 : null;
-    return { systemKw, panelCount, panelArea, inverterKw, fitsRoof, roofArea };
   };
 
   const getTotalSteps = () => allTabs.length || 5;
@@ -688,15 +662,6 @@ export default function SiteVisitForm() {
                           <ComboInput value={formData.additional.installation_complexity} onChange={(v) => updateField('additional', 'installation_complexity', v)} options={COMPLEXITY_OPTIONS} placeholder="Select" data-testid="complexity-input" />
                         </div>
                       </div>
-                      <div className="p-3 bg-sky-50 rounded-lg border border-sky-200">
-                        <div className="flex items-center justify-between flex-wrap gap-2">
-                          <h3 className="font-semibold text-sky-800 flex items-center gap-2 text-sm"><Sparkles className="h-4 w-4" />AI Recommendation</h3>
-                          <Button type="button" onClick={getAIRecommendation} disabled={aiLoading || !formData.electrical.monthly_consumption_units} variant="outline" size="sm" className="border-sky-300 text-sky-700 hover:bg-sky-100 h-8 text-xs" data-testid="ai-recommendation-btn">
-                            {aiLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : <Sparkles className="h-3.5 w-3.5 mr-1" />}Advice
-                          </Button>
-                        </div>
-                        {aiRecommendation && <div className="mt-2 p-2 bg-white rounded border border-sky-200"><pre className="text-xs text-slate-700 whitespace-pre-wrap font-sans">{aiRecommendation}</pre></div>}
-                      </div>
                     </div>
                   )}
                 </div>
@@ -927,42 +892,19 @@ export default function SiteVisitForm() {
                   </div>
                 </div>
 
-                {(() => {
-                  const suggestions = getSmartSuggestions();
-                  if (!suggestions) return null;
-                  return (
-                    <Card className="border-sky-200 bg-sky-50" data-testid="smart-suggestions-card">
-                      <CardContent className="p-4">
-                        <h3 className="font-semibold text-sky-800 flex items-center gap-2 text-sm mb-3"><Sparkles className="h-4 w-4" />Smart System Suggestions</h3>
-                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                          <div className="bg-white rounded-lg p-2.5 border border-sky-200 text-center">
-                            <p className="text-[10px] uppercase tracking-wider text-slate-500 mb-0.5">System Size</p>
-                            <p className="text-lg font-bold text-sky-700">{suggestions.systemKw} kW</p>
-                          </div>
-                          <div className="bg-white rounded-lg p-2.5 border border-sky-200 text-center">
-                            <p className="text-[10px] uppercase tracking-wider text-slate-500 mb-0.5">Panels Needed</p>
-                            <p className="text-lg font-bold text-sky-700">{suggestions.panelCount}</p>
-                            <p className="text-[10px] text-slate-400">{formData.solar_system.panel_wattage}W each</p>
-                          </div>
-                          <div className="bg-white rounded-lg p-2.5 border border-sky-200 text-center">
-                            <p className="text-[10px] uppercase tracking-wider text-slate-500 mb-0.5">Inverter</p>
-                            <p className="text-lg font-bold text-sky-700">{suggestions.inverterKw} kW</p>
-                          </div>
-                          <div className="bg-white rounded-lg p-2.5 border border-sky-200 text-center">
-                            <p className="text-[10px] uppercase tracking-wider text-slate-500 mb-0.5">Panel Area</p>
-                            <p className="text-lg font-bold text-sky-700">{suggestions.panelArea.toFixed(0)} sq ft</p>
-                            {suggestions.fitsRoof !== null && (
-                              <p className={`text-[10px] font-medium ${suggestions.fitsRoof ? 'text-emerald-600' : 'text-red-500'}`}>
-                                {suggestions.fitsRoof ? 'Fits on roof' : 'Exceeds 70% roof area'}
-                              </p>
-                            )}
-                          </div>
-                        </div>
-                        <p className="text-[10px] text-slate-500 mt-2">Based on {formData.electrical.monthly_consumption_units} units/month consumption{suggestions.roofArea ? ` and ${suggestions.roofArea} sq ft roof area` : ''}</p>
-                      </CardContent>
-                    </Card>
-                  );
-                })()}
+                {/* Proposed Solution — Manual entry (replaces removed AI/Smart Suggestions) */}
+                <Card className="border-slate-200" data-testid="proposed-solution-card">
+                  <CardContent className="p-4">
+                    <h3 className="font-semibold text-slate-900 flex items-center gap-2 text-sm mb-3"><Package className="h-4 w-4 text-emerald-600" />Proposed Solution (Manual Entry)</h3>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                      <div className="space-y-1"><Label className="text-xs">Proposed System Size (kW)</Label><Input type="number" step="0.1" value={formData.custom_fields?.proposed_solution?.system_kw || ''} onChange={(e) => updateField('custom_fields', 'proposed_solution', { ...(formData.custom_fields?.proposed_solution || {}), system_kw: e.target.value })} placeholder="e.g., 5" className="h-10" data-testid="proposed-system-kw-input" /></div>
+                      <div className="space-y-1"><Label className="text-xs">Panels Count</Label><Input type="number" value={formData.custom_fields?.proposed_solution?.panel_count || ''} onChange={(e) => updateField('custom_fields', 'proposed_solution', { ...(formData.custom_fields?.proposed_solution || {}), panel_count: e.target.value })} placeholder="e.g., 10" className="h-10" data-testid="proposed-panel-count-input" /></div>
+                      <div className="space-y-1"><Label className="text-xs">Inverter Size (kW)</Label><Input type="number" step="0.1" value={formData.custom_fields?.proposed_solution?.inverter_kw || ''} onChange={(e) => updateField('custom_fields', 'proposed_solution', { ...(formData.custom_fields?.proposed_solution || {}), inverter_kw: e.target.value })} placeholder="e.g., 5" className="h-10" data-testid="proposed-inverter-kw-input" /></div>
+                      <div className="space-y-1"><Label className="text-xs">Total Panel Area (sq ft)</Label><Input type="number" step="1" value={formData.custom_fields?.proposed_solution?.panel_area || ''} onChange={(e) => updateField('custom_fields', 'proposed_solution', { ...(formData.custom_fields?.proposed_solution || {}), panel_area: e.target.value })} placeholder="e.g., 215" className="h-10" data-testid="proposed-panel-area-input" /></div>
+                    </div>
+                    <div className="mt-3 space-y-1"><Label className="text-xs">Notes / Justification</Label><Textarea rows={2} value={formData.custom_fields?.proposed_solution?.notes || ''} onChange={(e) => updateField('custom_fields', 'proposed_solution', { ...(formData.custom_fields?.proposed_solution || {}), notes: e.target.value })} placeholder="Why this configuration?" className="min-h-[60px]" data-testid="proposed-notes-input" /></div>
+                  </CardContent>
+                </Card>
 
                 <div>
                   <div className="flex items-center justify-between mb-3">
