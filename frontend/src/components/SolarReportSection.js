@@ -11,6 +11,10 @@ import {
   Loader2, Search, Crosshair, RefreshCw, Sun, Zap, IndianRupee,
   Leaf, Calendar, AlertCircle, Edit3, CheckCircle2, ChevronDown, ChevronRight
 } from 'lucide-react';
+import {
+  BarChart, Bar, LineChart, Line, AreaChart, Area,
+  XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend
+} from 'recharts';
 
 const INDIA_AVG_IRRADIATION = 5.0;
 
@@ -225,22 +229,152 @@ export default function SolarReportSection({ value, onChange, customerDefaults =
               Calculate Solar Sizing & Financials
             </Button>
 
-            {/* Results */}
+            {/* Results — charts & graphs */}
             {data.sizing && (
               <div className="space-y-3 border-t border-amber-200 pt-3" data-testid="sr-results">
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                  <Card className="border-emerald-200 bg-white"><CardContent className="p-3"><Sun className="h-4 w-4 text-emerald-600 mb-1" /><p className="text-[10px] uppercase tracking-wider text-slate-500">Recommended</p><p className="text-xl font-bold text-slate-900">{data.sizing.kwp_recommended} kWp</p></CardContent></Card>
-                  <Card className="border-blue-200 bg-white"><CardContent className="p-3"><Zap className="h-4 w-4 text-blue-600 mb-1" /><p className="text-[10px] uppercase tracking-wider text-slate-500">Panels</p><p className="text-xl font-bold text-slate-900">{data.sizing.num_panels} × {data.sizing.panel_wattage_w}W</p></CardContent></Card>
-                  <Card className="border-amber-200 bg-white"><CardContent className="p-3"><Zap className="h-4 w-4 text-amber-600 mb-1" /><p className="text-[10px] uppercase tracking-wider text-slate-500">Inverter</p><p className="text-xl font-bold text-slate-900">{data.sizing.inverter_capacity_kw} kW</p></CardContent></Card>
-                  <Card className="border-violet-200 bg-white"><CardContent className="p-3"><Leaf className="h-4 w-4 text-violet-600 mb-1" /><p className="text-[10px] uppercase tracking-wider text-slate-500">CO₂/yr</p><p className="text-xl font-bold text-slate-900">{data.technical.co2_offset_kg_per_year.toLocaleString('en-IN')} kg</p></CardContent></Card>
+                {/* KPI Strip */}
+                <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
+                  <div className="rounded-lg p-2.5 bg-emerald-600 text-white" data-testid="sr-kpi-kwp">
+                    <p className="text-[9px] uppercase tracking-wider opacity-90">Capacity</p>
+                    <p className="text-base font-bold leading-tight">{data.sizing.kwp_recommended} kWp</p>
+                  </div>
+                  <div className="rounded-lg p-2.5 bg-blue-600 text-white">
+                    <p className="text-[9px] uppercase tracking-wider opacity-90">Panels</p>
+                    <p className="text-base font-bold leading-tight">{data.sizing.num_panels} × {data.sizing.panel_wattage_w}W</p>
+                  </div>
+                  <div className="rounded-lg p-2.5 bg-amber-500 text-white">
+                    <p className="text-[9px] uppercase tracking-wider opacity-90">Inverter</p>
+                    <p className="text-base font-bold leading-tight">{data.sizing.inverter_capacity_kw} kW</p>
+                  </div>
+                  <div className="rounded-lg p-2.5 bg-violet-600 text-white">
+                    <p className="text-[9px] uppercase tracking-wider opacity-90">Payback</p>
+                    <p className="text-base font-bold leading-tight">{data.financials.payback_years} yrs</p>
+                  </div>
+                  <div className="rounded-lg p-2.5 bg-rose-600 text-white">
+                    <p className="text-[9px] uppercase tracking-wider opacity-90">25-Yr Savings</p>
+                    <p className="text-base font-bold leading-tight">₹{(data.financials.total_25yr_savings / 100000).toFixed(1)}L</p>
+                  </div>
                 </div>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                  <Card className="border-slate-200 bg-white"><CardContent className="p-3"><IndianRupee className="h-4 w-4 text-slate-600 mb-1" /><p className="text-[10px] uppercase tracking-wider text-slate-500">Total Cost</p><p className="text-lg font-bold text-slate-900">₹{data.financials.total_cost.toLocaleString('en-IN')}</p><p className="text-[10px] text-emerald-600">Subsidy ₹{data.financials.subsidy.toLocaleString('en-IN')}</p></CardContent></Card>
-                  <Card className="border-emerald-200 bg-white"><CardContent className="p-3"><IndianRupee className="h-4 w-4 text-emerald-600 mb-1" /><p className="text-[10px] uppercase tracking-wider text-slate-500">Net Cost</p><p className="text-lg font-bold text-emerald-700">₹{data.financials.net_cost.toLocaleString('en-IN')}</p></CardContent></Card>
-                  <Card className="border-blue-200 bg-white"><CardContent className="p-3"><Calendar className="h-4 w-4 text-blue-600 mb-1" /><p className="text-[10px] uppercase tracking-wider text-slate-500">Payback</p><p className="text-lg font-bold text-blue-700">{data.financials.payback_years} yrs</p><p className="text-[10px] text-slate-500">ROI {data.financials.roi_pct}%</p></CardContent></Card>
-                  <Card className="border-amber-200 bg-white"><CardContent className="p-3"><IndianRupee className="h-4 w-4 text-amber-600 mb-1" /><p className="text-[10px] uppercase tracking-wider text-slate-500">25-Yr Savings</p><p className="text-lg font-bold text-amber-700">₹{(data.financials.total_25yr_savings / 100000).toFixed(1)}L</p></CardContent></Card>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {/* Cost Breakdown — conic-gradient donut (no Recharts Cell) */}
+                  <div className="bg-white border border-slate-200 rounded-lg p-3" data-testid="sr-chart-cost-pie">
+                    <p className="text-xs font-semibold text-slate-600 mb-2">Cost Breakdown</p>
+                    <div className="flex items-center gap-4">
+                      {(() => {
+                        const total = Math.max(data.financials.total_cost, 1);
+                        const subsidyPct = (data.financials.subsidy / total) * 100;
+                        const netPct = 100 - subsidyPct;
+                        const gradient = `conic-gradient(#10b981 0% ${subsidyPct}%, #3b82f6 ${subsidyPct}% 100%)`;
+                        return (
+                          <div className="relative w-28 h-28 rounded-full" style={{ background: gradient }}>
+                            <div className="absolute inset-3 bg-white rounded-full flex flex-col items-center justify-center text-center">
+                              <p className="text-[9px] uppercase tracking-wider text-slate-500">Total</p>
+                              <p className="text-sm font-bold text-slate-900 leading-none">₹{(data.financials.total_cost/100000).toFixed(2)}L</p>
+                            </div>
+                            <span className="sr-only">subsidy {subsidyPct.toFixed(1)}% net {netPct.toFixed(1)}%</span>
+                          </div>
+                        );
+                      })()}
+                      <div className="flex-1 space-y-2 text-xs">
+                        <div className="flex items-center gap-2"><span className="w-3 h-3 rounded-sm bg-emerald-500" /><span className="text-slate-700">Subsidy</span><span className="ml-auto font-bold text-slate-900">₹{data.financials.subsidy.toLocaleString('en-IN')}</span></div>
+                        <div className="flex items-center gap-2"><span className="w-3 h-3 rounded-sm bg-blue-500" /><span className="text-slate-700">Net Cost</span><span className="ml-auto font-bold text-slate-900">₹{data.financials.net_cost.toLocaleString('en-IN')}</span></div>
+                        <div className="pt-1.5 border-t border-slate-100 flex items-center gap-2"><span className="text-slate-500">Tariff</span><span className="ml-auto font-medium text-slate-700">₹{data.financials.tariff_per_unit}/unit</span></div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Energy Source Mix — conic donut */}
+                  <div className="bg-white border border-slate-200 rounded-lg p-3" data-testid="sr-chart-energy-pie">
+                    <p className="text-xs font-semibold text-slate-600 mb-2">Energy Source Mix (Monthly)</p>
+                    {(() => {
+                      const consumption = parseFloat(data.avg_monthly_consumption) || data.financials.monthly_generation_units;
+                      const solar = Math.min(data.financials.monthly_generation_units, consumption);
+                      const grid = Math.max(consumption - solar, 0);
+                      const totalU = Math.max(solar + grid, 1);
+                      const solarPct = (solar / totalU) * 100;
+                      const gradient = `conic-gradient(#10b981 0% ${solarPct}%, #64748b ${solarPct}% 100%)`;
+                      return (
+                        <div className="flex items-center gap-4">
+                          <div className="relative w-28 h-28 rounded-full" style={{ background: gradient }}>
+                            <div className="absolute inset-3 bg-white rounded-full flex flex-col items-center justify-center">
+                              <p className="text-[9px] uppercase tracking-wider text-slate-500">Total</p>
+                              <p className="text-sm font-bold text-slate-900 leading-none">{Math.round(totalU)} u</p>
+                            </div>
+                          </div>
+                          <div className="flex-1 space-y-2 text-xs">
+                            <div className="flex items-center gap-2"><span className="w-3 h-3 rounded-sm bg-emerald-500" /><span className="text-slate-700">Solar</span><span className="ml-auto font-bold text-slate-900">{Math.round(solar)} u</span></div>
+                            <div className="flex items-center gap-2"><span className="w-3 h-3 rounded-sm bg-slate-500" /><span className="text-slate-700">Grid</span><span className="ml-auto font-bold text-slate-900">{Math.round(grid)} u</span></div>
+                            <div className="pt-1.5 border-t border-slate-100 flex items-center gap-2"><span className="text-slate-500">CO₂/yr</span><span className="ml-auto font-medium text-emerald-700">{data.technical.co2_offset_kg_per_year.toLocaleString('en-IN')} kg</span></div>
+                          </div>
+                        </div>
+                      );
+                    })()}
+                  </div>
                 </div>
-                <p className="text-[11px] text-emerald-700 flex items-center gap-1"><CheckCircle2 className="h-3 w-3" />Saved with project. The Quotation PDF will include a full solar-report section.</p>
+
+                {/* Monthly Economics Bar */}
+                <div className="bg-white border border-slate-200 rounded-lg p-3" data-testid="sr-chart-monthly-bar">
+                  <p className="text-xs font-semibold text-slate-600 mb-1">Monthly Economics</p>
+                  <ResponsiveContainer width="100%" height={170}>
+                    <BarChart data={[
+                      { name: 'Avg Bill', value: parseFloat(data.avg_monthly_bill) || 0 },
+                      { name: 'Solar Savings', value: data.financials.monthly_savings },
+                      { name: 'Generation ₹', value: Math.round(data.financials.monthly_generation_units * data.financials.tariff_per_unit) },
+                      { name: 'Net Bill', value: Math.max((parseFloat(data.avg_monthly_bill) || 0) - data.financials.monthly_savings, 0) }
+                    ]} margin={{ top: 16, right: 8, bottom: 4, left: 4 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                      <XAxis dataKey="name" tick={{ fontSize: 10 }} stroke="#94a3b8" />
+                      <YAxis tick={{ fontSize: 9 }} stroke="#94a3b8" tickFormatter={(v) => v >= 1000 ? `${(v / 1000).toFixed(0)}K` : v} />
+                      <Tooltip formatter={(v) => [`₹${v.toLocaleString('en-IN')}`, '']} />
+                      <Bar dataKey="value" fill="#3b82f6" radius={[6, 6, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+
+                {/* 25-Year Cumulative Savings Area */}
+                <div className="bg-white border border-slate-200 rounded-lg p-3" data-testid="sr-chart-25yr-line">
+                  <p className="text-xs font-semibold text-slate-600 mb-1">25-Year Savings Projection</p>
+                  <ResponsiveContainer width="100%" height={200}>
+                    <AreaChart data={data.financials.yearly_breakdown} margin={{ top: 8, right: 8, bottom: 4, left: 4 }}>
+                      <defs>
+                        <linearGradient id="cumGrad" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.45} />
+                          <stop offset="95%" stopColor="#f59e0b" stopOpacity={0.04} />
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                      <XAxis dataKey="year" tick={{ fontSize: 9 }} stroke="#94a3b8" />
+                      <YAxis tick={{ fontSize: 9 }} stroke="#94a3b8" tickFormatter={(v) => v >= 100000 ? `${(v / 100000).toFixed(1)}L` : `${(v / 1000).toFixed(0)}K`} />
+                      <Tooltip formatter={(v) => [`₹${v.toLocaleString('en-IN')}`, '']} labelFormatter={(y) => `Year ${y}`} />
+                      <Legend wrapperStyle={{ fontSize: 11 }} />
+                      <Area type="monotone" dataKey="cumulative" stroke="#f59e0b" strokeWidth={2.5} fill="url(#cumGrad)" name="Cumulative Savings" />
+                      <Line type="monotone" dataKey="savings" stroke="#3b82f6" strokeWidth={1.5} dot={false} name="Yearly Savings" />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </div>
+
+                {/* Technical KPI gauge bars */}
+                <div className="bg-white border border-slate-200 rounded-lg p-3" data-testid="sr-chart-tech-gauges">
+                  <p className="text-xs font-semibold text-slate-600 mb-2">Technical Performance</p>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {[
+                      { label: 'Performance Ratio (PR)', value: data.technical.performance_ratio, max: 1, fmt: (v) => v.toFixed(2), color: 'bg-violet-500' },
+                      { label: 'Capacity Utilization Factor (CUF)', value: data.technical.cuf_pct, max: 25, fmt: (v) => `${v}%`, color: 'bg-sky-500' },
+                      { label: 'Annual Generation (units)', value: data.technical.annual_generation_units, max: data.technical.annual_generation_units * 1.2, fmt: (v) => v.toLocaleString('en-IN'), color: 'bg-blue-500' },
+                      { label: 'CO₂ Offset / Year (kg)', value: data.technical.co2_offset_kg_per_year, max: data.technical.co2_offset_kg_per_year * 1.2, fmt: (v) => v.toLocaleString('en-IN'), color: 'bg-emerald-500' },
+                      { label: 'ROI (25-Year)', value: data.financials.roi_pct || 0, max: Math.max(data.financials.roi_pct || 0, 500), fmt: (v) => `${v}%`, color: 'bg-amber-500' },
+                      { label: 'Panel Efficiency', value: 100 - data.technical.degradation_pct_per_year, max: 100, fmt: (v) => `${v.toFixed(1)}%`, color: 'bg-emerald-500' },
+                    ].map((g, i) => (
+                      <div key={i} className="space-y-1">
+                        <div className="flex justify-between text-[11px]"><span className="text-slate-600">{g.label}</span><span className="font-bold text-slate-900">{g.fmt(g.value)}</span></div>
+                        <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden"><div className={`h-full rounded-full ${g.color}`} style={{ width: `${Math.min((g.value / g.max) * 100, 100)}%` }} /></div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <p className="text-[11px] text-emerald-700 flex items-center gap-1"><CheckCircle2 className="h-3 w-3" />Saved with project. The Quotation PDF will include all these charts & graphs in the solar-report section.</p>
               </div>
             )}
           </>

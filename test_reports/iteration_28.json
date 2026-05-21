@@ -1,0 +1,43 @@
+{
+  "summary": "Iteration 28 — Chart-based Solar Report (live wizard + PDF). Backend: 36/36 pytest pass (iter26 + iter27 + new iter28). New iter28 verified: /api/solar/sizing returns exactly 25 yearly_breakdown entries with monotonically increasing cumulative; last cumulative ≈ total_25yr_savings (delta<₹2); year-25 savings > year-1 (tariff escalation > degradation); full solar_report dict with 25 yearly_breakdown round-trips through MongoDB (POST→GET intact, _id not leaked, kwp_recommended/subsidy/net_cost/yearly_breakdown[24].year=25 verified). Frontend: SolarReportSection.js code reviewed — NO Recharts <Cell> anywhere (uses CSS conic-gradient for cost-pie + energy-pie donuts, single-fill <Bar> for monthly-bar, AreaChart with defs#cumGrad for 25yr-line, plain divs for tech-gauges). All 6 chart data-testids exist in code: sr-kpi-kwp, sr-chart-cost-pie, sr-chart-energy-pie, sr-chart-monthly-bar, sr-chart-25yr-line, sr-chart-tech-gauges. Wizard navigation Customer→Location→Site&Electrical works and solar-report-section mounts. Console FREE of Recharts/Cell errors during navigation (only unrelated 401 from a background auth probe). HOWEVER live chart rendering NOT visually validated: in the wizard, clicking [data-testid='solar-report-toggle'] in collapsed state did not expand the inner form (sr-service-input remained hidden after click) so sizing-calc + chart-render path was not interactively driven.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/projects", "issue": "Response from POST does not echo solar_report (it IS persisted — GET returns it intact). Likely ProjectResponse model omits solar_report. Cosmetic; clients should GET after create."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "SolarReportSection in SiteVisitForm (site_electrical step)", "issue": "Clicking [data-testid='solar-report-toggle'] while section is collapsed does NOT expand inner form — sr-service-input / sr-phone-input / sr-calculate-btn etc remain hidden, blocking E2E sizing+chart flow. Could be: (a) section nested inside an outer collapsed wrapper, (b) duplicate toggle id between tneb-cta-block and SolarReportSection causing wrong-element click, (c) state.collapsed default not flipping. Code review: SolarReportSection.js uses local useState collapsed default true; toggle handler sets it false — should work. Recommend defaulting collapsed=false on this step OR auto-expanding when user lands on site_electrical.", "selector": "[data-testid='solar-report-toggle']", "priority": "HIGH"}
+    ],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration28_solar_full_report.py",
+    "/app/test_reports/pytest/iteration28.xml"
+  ],
+  "action_items": [
+    "FIX (HIGH): SolarReportSection in the wizard fails to expand on data-testid='solar-report-toggle' click — please default collapsed=false on the site_electrical step (or auto-expand on mount inside this wizard), so user can actually fill sizing inputs and see the 6 charts. Repro: login → /dashboard/projects/new → Customer step (name+phone+address) → Next → Location (what3words=index.home.raft) → Next → Site & Electrical → click the orange 'Solar Project Report (TNEB Auto-Fetch)' card → form does NOT appear; sr-service-input stays hidden.",
+    "Self-test PDF download: open any project that has solar_report saved, click 'Download PDF' on /dashboard/projects/<id>, confirm download triggers without console errors and PDF contains the 5-box KPI strip + 2 donuts + monthly bar + 25-yr line + tech gauges + 5-year snapshot bar. (Could not interactively reach this because of the toggle bug above.)",
+    "OPTIONAL: Include solar_report in ProjectResponse on POST /api/projects so clients don't need a follow-up GET to confirm persistence."
+  ],
+  "critical_code_review_comments": [
+    "GOOD: SolarReportSection.js (385 lines) is clean — no Recharts <Cell>, CSS conic-gradient for multi-color donuts, single-fill <Bar>, AreaChart with cumGrad defs. Safe under Recharts v3.8.",
+    "ProjectDetails.js is 1225 lines — exceeds 700-line guideline. Recommend extracting the jsPDF chart helpers (drawPie/drawBarChartV/drawLineChart/drawHGauge/drawKpiBox) and the solar-report PDF section (~line 383-492) to /app/frontend/src/utils/solarReportPdf.js.",
+    "SiteVisitForm.js is 1206 lines — exceeds 700-line guideline. Split into step components.",
+    "server.py still > 4670 lines — carry-over recommendation to split solar/TNEB routes.",
+    "SolarReportSection useEffect prefill only runs on mount (deps=[]); if user navigates back and edits Customer then returns, prefill won't re-run.",
+    "SolarReportSection default `collapsed=true` is the root cause of the wizard E2E block — for the embedded wizard usage it should default to expanded."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration28_solar_full_report.py (new — 7 tests, all pass)"
+  ],
+  "success_rate": {"backend": "100% (36/36 including iter26+iter27+iter28 regression)", "frontend": "Partial — section mounts, no console errors, all chart data-testids present in code, BUT toggle-to-expand blocked interactive verification of chart visual rendering"},
+  "test_credentials": "admin@sensoper.com / Admin@123 (cookie auth — login OK, /api/auth/me OK, /api/accounts OK)",
+  "seed_data_creation": "Test project (customer.name='TEST_SolarIter28') created with full 25-entry yearly_breakdown solar_report dict, then deleted in teardown_class.",
+  "retest_needed": true,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend chart-data contract is 100% verified by /app/backend/tests/test_iteration28_solar_full_report.py — /api/solar/sizing returns 25 yearly_breakdown entries with monotonic cumulative, and full solar_report dict round-trips through MongoDB without _id leak. The blocker for full E2E is that SolarReportSection inside the wizard does NOT expand on first toggle-click — defaults to collapsed=true and the click either targets a wrong element or state doesn't update. Once main agent flips default collapsed=false (or auto-expands on site_electrical step), the next agent should drive: fill sr-service-input='012345678901', sr-phone-input='9876543210', sr-consumer-name, sr-consumption='500', sr-bill='3500' → click sr-calculate-btn → assert sr-results visible → assert sr-kpi-kwp + sr-chart-cost-pie (contains 'conic-gradient' in inner HTML) + sr-chart-energy-pie + sr-chart-monthly-bar (recharts <svg>) + sr-chart-25yr-line (recharts <svg> with defs id='cumGrad') + sr-chart-tech-gauges (6 rows with text PR/CUF/Annual/CO/ROI/Efficiency). Then save project, open /dashboard/projects/<id>, click Download PDF (page.expect_download).",
+  "rca of the issue": "Backend: all data shapes for the new chart-based Solar Report are correct (verified by iter28 pytest). The frontend SolarReportSection renders inside the wizard but defaults to collapsed=true; the toggle click in our test did not expand it — possibly because the wizard layout overlays the toggle button with another card (likely the orange 'Solar Project Report (TNEB Auto-Fetch)' CTA from tneb-cta-block at SiteVisitForm.js line 700-705 sitting next to the SolarReportSection's own header), so playwright's click went to the CTA card instead of the section's toggle button. Recommend (a) remove the duplicate orange CTA card on the site_electrical step since the section itself already shows the title, OR (b) make SolarReportSection default to collapsed=false when embedded in the wizard step."
+}

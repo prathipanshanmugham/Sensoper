@@ -383,111 +383,314 @@ export default function ProjectDetails() {
     // ========= SOLAR PROJECT REPORT (TNEB Auto-Fetch + Sizing) =========
     const sr = project.solar_report;
     if (sr && sr.sizing && sr.financials) {
+      // ---------- Chart helpers (jsPDF primitives, no external libs) ----------
+      const COLORS = {
+        emerald: [16, 185, 129], blue: [59, 130, 246], amber: [245, 158, 11],
+        violet: [139, 92, 246], rose: [244, 63, 94], slate: [100, 116, 139],
+        sky: [14, 165, 233], emeraldL: [167, 243, 208], blueL: [191, 219, 254],
+      };
+
+      const drawPie = (cx, cy, radius, slices, totalLabel = '') => {
+        const total = slices.reduce((s, x) => s + (x.value || 0), 0);
+        if (total <= 0) {
+          doc.setFillColor(230, 230, 230); doc.circle(cx, cy, radius, 'F'); return;
+        }
+        let angle = -Math.PI / 2;
+        slices.forEach(slice => {
+          const fr = (slice.value || 0) / total;
+          if (fr <= 0) return;
+          const sliceAngle = fr * Math.PI * 2;
+          const steps = Math.max(12, Math.ceil(sliceAngle * 24));
+          doc.setFillColor(...slice.color);
+          for (let i = 0; i < steps; i++) {
+            const a1 = angle + (sliceAngle * i / steps);
+            const a2 = angle + (sliceAngle * (i + 1) / steps);
+            doc.triangle(
+              cx, cy,
+              cx + radius * Math.cos(a1), cy + radius * Math.sin(a1),
+              cx + radius * Math.cos(a2), cy + radius * Math.sin(a2),
+              'F'
+            );
+          }
+          angle += sliceAngle;
+        });
+        // Donut hole + center label
+        doc.setFillColor(255, 255, 255);
+        doc.circle(cx, cy, radius * 0.55, 'F');
+        if (totalLabel) {
+          doc.setFont(FONT, 'bold'); doc.setFontSize(8); doc.setTextColor(40, 40, 40);
+          doc.text(totalLabel, cx, cy + 1, { align: 'center' });
+        }
+      };
+
+      const drawPieLegend = (x, yy, slices, total) => {
+        doc.setFont(FONT, 'normal'); doc.setFontSize(7.5); doc.setTextColor(60, 60, 60);
+        slices.forEach((s, i) => {
+          const ly = yy + i * 5;
+          doc.setFillColor(...s.color); doc.rect(x, ly - 2.2, 3, 3, 'F');
+          const pct = total > 0 ? ((s.value / total) * 100).toFixed(1) : '0';
+          doc.text(`${s.label}`, x + 4.5, ly);
+          doc.setFont(FONT, 'bold');
+          doc.text(`${s.fmt ? s.fmt(s.value) : s.value}  (${pct}%)`, x + 4.5, ly + 3);
+          doc.setFont(FONT, 'normal');
+        });
+      };
+
+      const drawBarChartV = (x, yy, w, h, data, opts = {}) => {
+        const padTop = 6, padBot = 13, padL = 3;
+        const maxVal = Math.max(...data.map(d => d.value), 1);
+        const chartH = h - padTop - padBot;
+        const chartW = w - padL;
+        const barW = (chartW / data.length) * 0.65;
+        const gap = (chartW / data.length) * 0.35;
+        // X-axis
+        doc.setDrawColor(200, 200, 200); doc.setLineWidth(0.2);
+        doc.line(x + padL, yy + padTop + chartH, x + w, yy + padTop + chartH);
+        data.forEach((d, i) => {
+          const bx = x + padL + gap / 2 + i * (barW + gap);
+          const bh = (d.value / maxVal) * chartH;
+          const by = yy + padTop + chartH - bh;
+          doc.setFillColor(...(d.color || COLORS.blue));
+          doc.rect(bx, by, barW, bh, 'F');
+          doc.setFont(FONT, 'bold'); doc.setFontSize(6.5); doc.setTextColor(40, 40, 40);
+          doc.text(opts.valueFormat ? opts.valueFormat(d.value) : String(d.value), bx + barW / 2, by - 0.8, { align: 'center' });
+          doc.setFont(FONT, 'normal'); doc.setFontSize(6.5); doc.setTextColor(80, 80, 80);
+          doc.text(d.label, bx + barW / 2, yy + padTop + chartH + 4, { align: 'center', maxWidth: barW + gap });
+        });
+      };
+
+      const drawLineChart = (x, yy, w, h, series, opts = {}) => {
+        const padTop = 7, padBot = 10, padL = 16, padR = 4;
+        const chartW = w - padL - padR;
+        const chartH = h - padTop - padBot;
+        const allYs = series.flatMap(s => s.data.map(p => p.y));
+        const maxY = Math.max(...allYs, 1);
+        const xCount = series[0].data.length;
+        // Axes
+        doc.setDrawColor(220, 220, 220); doc.setLineWidth(0.2);
+        doc.line(x + padL, yy + padTop, x + padL, yy + padTop + chartH);
+        doc.line(x + padL, yy + padTop + chartH, x + padL + chartW, yy + padTop + chartH);
+        // Gridlines + Y labels
+        for (let g = 1; g <= 4; g++) {
+          const gy = yy + padTop + chartH - (chartH * g / 4);
+          doc.setDrawColor(240, 240, 240); doc.line(x + padL, gy, x + padL + chartW, gy);
+          doc.setFont(FONT, 'normal'); doc.setFontSize(5.5); doc.setTextColor(130, 130, 130);
+          doc.text((opts.yAxisFormat ? opts.yAxisFormat(maxY * g / 4) : String(Math.round(maxY * g / 4))), x + padL - 1, gy + 1, { align: 'right' });
+        }
+        // Series lines + filled area
+        series.forEach(s => {
+          if (s.fill) {
+            const pts = s.data.map((p, i) => [
+              x + padL + chartW * (i / (xCount - 1)),
+              yy + padTop + chartH - chartH * (p.y / maxY)
+            ]);
+            doc.setFillColor(...(s.fillColor || s.color));
+            // Build polygon
+            for (let i = 0; i < pts.length - 1; i++) {
+              doc.triangle(
+                pts[i][0], pts[i][1], pts[i + 1][0], pts[i + 1][1],
+                pts[i + 1][0], yy + padTop + chartH, 'F'
+              );
+              doc.triangle(
+                pts[i][0], pts[i][1], pts[i + 1][0], yy + padTop + chartH,
+                pts[i][0], yy + padTop + chartH, 'F'
+              );
+            }
+          }
+          doc.setDrawColor(...(s.color || COLORS.blue));
+          doc.setLineWidth(s.lineWidth || 0.6);
+          for (let i = 1; i < s.data.length; i++) {
+            const x1 = x + padL + chartW * ((i - 1) / (xCount - 1));
+            const y1 = yy + padTop + chartH - chartH * (s.data[i - 1].y / maxY);
+            const x2 = x + padL + chartW * (i / (xCount - 1));
+            const y2 = yy + padTop + chartH - chartH * (s.data[i].y / maxY);
+            doc.line(x1, y1, x2, y2);
+          }
+        });
+        // X labels
+        const xLabels = opts.xLabels || [];
+        doc.setFont(FONT, 'normal'); doc.setFontSize(5.5); doc.setTextColor(130, 130, 130);
+        xLabels.forEach((lbl, i) => {
+          const lx = x + padL + chartW * (i / (xCount - 1));
+          doc.text(String(lbl), lx, yy + padTop + chartH + 4, { align: 'center' });
+        });
+        // Legend (top-right)
+        let lx = x + w - padR;
+        [...series].reverse().forEach(s => {
+          const tw = doc.getTextWidth(s.name);
+          lx -= (tw + 6);
+          doc.setFillColor(...s.color); doc.rect(lx, yy + 2, 3, 3, 'F');
+          doc.setFontSize(6); doc.setTextColor(80, 80, 80); doc.text(s.name, lx + 4, yy + 4.5);
+          lx -= 4;
+        });
+      };
+
+      const drawHGauge = (x, yy, w, label, value, max, color, valFmt) => {
+        const h = 4;
+        doc.setFillColor(238, 238, 238); doc.rect(x, yy, w, h, 'F');
+        const fillW = Math.min((value / max) * w, w);
+        doc.setFillColor(...color); doc.rect(x, yy, fillW, h, 'F');
+        doc.setFont(FONT, 'normal'); doc.setFontSize(7); doc.setTextColor(80, 80, 80);
+        doc.text(label, x, yy - 1.2);
+        doc.setFont(FONT, 'bold'); doc.setTextColor(40, 40, 40);
+        doc.text(valFmt ? valFmt(value) : String(value), x + w, yy - 1.2, { align: 'right' });
+      };
+
+      const drawKpiBox = (x, yy, w, h, label, value, color) => {
+        doc.setFillColor(...color); doc.setDrawColor(...color); doc.roundedRect(x, yy, w, h, 1.2, 1.2, 'FD');
+        doc.setFont(FONT, 'normal'); doc.setFontSize(6.5); doc.setTextColor(255, 255, 255);
+        doc.text(label.toUpperCase(), x + w / 2, yy + 4, { align: 'center' });
+        doc.setFont(FONT, 'bold'); doc.setFontSize(11); doc.setTextColor(255, 255, 255);
+        doc.text(String(value), x + w / 2, yy + h - 2.5, { align: 'center' });
+      };
+      // ---------- /Chart helpers ----------
+
+      const f = sr.financials;
+      const t = sr.technical;
+      const sz = sr.sizing;
+
+      // ===== PAGE 1: Header + KPI strip + Consumer + Cost Pie + Monthly bar =====
       doc.addPage(); drawHeader(doc); let sy = 48;
 
-      // Section banner
-      doc.setFillColor(...pRgb);
-      doc.rect(m, sy - 4, contentW, 9, 'F');
+      // Banner
+      doc.setFillColor(...pRgb); doc.rect(m, sy - 4, contentW, 9, 'F');
       doc.setFont(FONT, 'bold'); doc.setFontSize(12); doc.setTextColor(255, 255, 255);
       doc.text('Solar Project Report (TNEB / Sizing / 25-Year Projection)', m + 3, sy + 2);
       doc.setTextColor(50, 50, 50); sy += 12;
 
-      // Consumer block
-      doc.setFont(FONT, 'bold'); doc.setFontSize(10); doc.setTextColor(80, 80, 80);
-      doc.text('Consumer (TNEB)', m, sy); doc.line(m, sy + 1.5, m + 40, sy + 1.5); sy += 5;
-      autoTable(doc, { startY: sy, margin: { left: m, right: m }, theme: 'plain',
-        styles: { font: FONT, fontSize: 9, cellPadding: 1.5 },
-        columnStyles: { 0: { fontStyle: 'bold', cellWidth: 55, textColor: [110, 110, 110] }, 1: { textColor: [40, 40, 40] } },
+      // KPI strip — 5 colored boxes
+      const kpiH = 14; const kpiGap = 2.2; const kpiW = (contentW - kpiGap * 4) / 5;
+      drawKpiBox(m + 0 * (kpiW + kpiGap), sy, kpiW, kpiH, 'Capacity', `${sz.kwp_recommended} kWp`, COLORS.emerald);
+      drawKpiBox(m + 1 * (kpiW + kpiGap), sy, kpiW, kpiH, 'Panels', `${sz.num_panels} × ${sz.panel_wattage_w}W`, COLORS.blue);
+      drawKpiBox(m + 2 * (kpiW + kpiGap), sy, kpiW, kpiH, 'Inverter', `${sz.inverter_capacity_kw} kW`, COLORS.amber);
+      drawKpiBox(m + 3 * (kpiW + kpiGap), sy, kpiW, kpiH, 'Payback', f.payback_years ? `${f.payback_years} yrs` : '-', COLORS.violet);
+      drawKpiBox(m + 4 * (kpiW + kpiGap), sy, kpiW, kpiH, '25-Yr Savings', `${currency(f.total_25yr_savings)}`, COLORS.rose);
+      sy += kpiH + 8;
+
+      // Consumer mini-table (compact, left half) + Pie (right half)
+      const halfW = (contentW - 4) / 2;
+      // LEFT: Consumer
+      doc.setFont(FONT, 'bold'); doc.setFontSize(9.5); doc.setTextColor(80, 80, 80);
+      doc.text('Consumer Details (TNEB)', m, sy);
+      doc.setDrawColor(180, 180, 180); doc.line(m, sy + 1.5, m + 50, sy + 1.5);
+      autoTable(doc, { startY: sy + 3, margin: { left: m },
+        tableWidth: halfW, theme: 'plain',
+        styles: { font: FONT, fontSize: 8, cellPadding: 1.2 },
+        columnStyles: { 0: { fontStyle: 'bold', cellWidth: 38, textColor: [110, 110, 110] }, 1: { textColor: [40, 40, 40] } },
         body: [
-          ['Consumer Name', sr.consumer_name || '-'],
-          ['TNEB Service Number', sr.service_number || '-'],
-          ['Registered Phone', sr.phone || '-'],
-          ['Address', sr.address || project.customer?.address || '-'],
-          ['Sanctioned Load', sr.sanctioned_load_kw ? `${sr.sanctioned_load_kw} kW` : '-'],
-          ['Tariff Category', sr.tariff_category || '-'],
-          ['Connection Type', sr.connection_type || '-'],
-          ['Avg Monthly Consumption', `${sr.avg_monthly_consumption || 0} units`],
-          ['Avg Monthly Bill', sr.avg_monthly_bill ? currency(parseFloat(sr.avg_monthly_bill)) : '-'],
-          ['Solar Irradiation', `${sr.irradiation_kwh_m2_day || 5.0} kWh/m²/day`],
+          ['Consumer', sr.consumer_name || '-'],
+          ['Service No.', sr.service_number || '-'],
+          ['Phone', sr.phone || '-'],
+          ['Address', (sr.address || project.customer?.address || '-').slice(0, 60)],
+          ['Tariff', `${sr.tariff_category || '-'}  ·  ${sr.connection_type || '-'}`],
+          ['Avg Bill', sr.avg_monthly_bill ? currency(parseFloat(sr.avg_monthly_bill)) + '/mo' : '-'],
+          ['Avg Units', `${sr.avg_monthly_consumption || 0} units/mo`],
+          ['Sanctioned', sr.sanctioned_load_kw ? `${sr.sanctioned_load_kw} kW` : '-'],
+          ['Irradiation', `${sr.irradiation_kwh_m2_day || 5.0} kWh/m²/day`],
         ]
       });
-      sy = (doc.lastAutoTable?.finalY || sy) + 6;
+      // RIGHT: Cost Breakdown Donut
+      const pieX = m + halfW + 4;
+      doc.setFont(FONT, 'bold'); doc.setFontSize(9.5); doc.setTextColor(80, 80, 80);
+      doc.text('Cost Breakdown', pieX, sy);
+      doc.line(pieX, sy + 1.5, pieX + 30, sy + 1.5);
+      const pieCx = pieX + 22; const pieCy = sy + 28; const pieR = 18;
+      const costSlices = [
+        { label: 'Govt Subsidy', value: f.subsidy, color: COLORS.emerald, fmt: currency },
+        { label: 'Net Cost (You Pay)', value: f.net_cost, color: COLORS.blue, fmt: currency },
+      ];
+      drawPie(pieCx, pieCy, pieR, costSlices, currency(f.total_cost).replace('₹', '₹'));
+      drawPieLegend(pieX + 46, sy + 14, costSlices, f.total_cost);
+      sy = Math.max(sy + 60, doc.lastAutoTable?.finalY || sy) + 6;
 
-      // Recommended system
-      if (sy > pageHeight - 50) { doc.addPage(); drawHeader(doc); sy = 48; }
-      doc.setFont(FONT, 'bold'); doc.setFontSize(10);
-      doc.text('Recommended Solar System', m, sy); doc.line(m, sy + 1.5, m + 60, sy + 1.5); sy += 5;
-      autoTable(doc, { startY: sy, margin: { left: m, right: m }, theme: 'striped',
-        styles: { font: FONT, fontSize: 9 },
-        headStyles: { fillColor: [16, 185, 129], textColor: 255 },
-        head: [['Item', 'Value']],
-        body: [
-          ['Capacity', `${sr.sizing.kwp_recommended} kWp`],
-          ['Panels', `${sr.sizing.num_panels} × ${sr.sizing.panel_wattage_w}W`],
-          ['Inverter', `${sr.sizing.inverter_capacity_kw} kW`],
-          ...(sr.sizing.battery_ah > 0 ? [['Battery', `${sr.sizing.battery_ah} Ah @ ${sr.sizing.battery_voltage}V`]] : []),
-          ['System Type', (sr.system_type || 'on-grid').toUpperCase()],
-        ]
-      });
-      sy = (doc.lastAutoTable?.finalY || sy) + 6;
-
-      // Financial Projection
+      // ===== Monthly economics bar + Sizing donut =====
       if (sy > pageHeight - 70) { doc.addPage(); drawHeader(doc); sy = 48; }
-      doc.setFont(FONT, 'bold'); doc.setFontSize(10);
-      doc.text('Financial Projection', m, sy); doc.line(m, sy + 1.5, m + 55, sy + 1.5); sy += 5;
-      const f = sr.financials;
-      autoTable(doc, { startY: sy, margin: { left: m, right: m }, theme: 'striped',
-        styles: { font: FONT, fontSize: 9 },
-        headStyles: { fillColor: [59, 130, 246], textColor: 255 },
-        head: [['Item', 'Value']],
-        body: [
-          ['Tariff', `${currency(f.tariff_per_unit)}/unit`],
-          ['Total Project Cost', currency(f.total_cost)],
-          ['Govt Subsidy (PM Surya Ghar)', currency(f.subsidy)],
-          ['Net Cost After Subsidy', currency(f.net_cost)],
-          ['Monthly Generation', `${f.monthly_generation_units} units`],
-          ['Monthly Savings', currency(f.monthly_savings)],
-          ['Annual Savings', currency(f.annual_savings)],
-          ['Payback Period', f.payback_years ? `${f.payback_years} years` : '-'],
-          ['ROI (25 years)', f.roi_pct != null ? `${f.roi_pct}%` : '-'],
-          ['Total 25-Year Savings', currency(f.total_25yr_savings)],
-        ]
-      });
-      sy = (doc.lastAutoTable?.finalY || sy) + 6;
+      // LEFT: Monthly economics bar
+      doc.setFont(FONT, 'bold'); doc.setFontSize(9.5); doc.setTextColor(80, 80, 80);
+      doc.text('Monthly Economics', m, sy);
+      doc.line(m, sy + 1.5, m + 38, sy + 1.5);
+      const barData = [
+        { label: 'Avg Bill', value: parseFloat(sr.avg_monthly_bill || 0), color: COLORS.rose },
+        { label: 'Solar Savings', value: f.monthly_savings, color: COLORS.emerald },
+        { label: 'Generation', value: f.monthly_generation_units * f.tariff_per_unit, color: COLORS.blue },
+        { label: 'Net Bill', value: Math.max(parseFloat(sr.avg_monthly_bill || 0) - f.monthly_savings, 0), color: COLORS.amber },
+      ];
+      drawBarChartV(m, sy + 4, halfW, 50, barData, { valueFormat: (v) => '₹' + Math.round(v).toLocaleString('en-IN') });
+      // RIGHT: Energy mix donut (Solar vs Grid)
+      doc.setFont(FONT, 'bold'); doc.setFontSize(9.5); doc.setTextColor(80, 80, 80);
+      doc.text('Energy Source Mix (After Solar)', pieX, sy);
+      doc.line(pieX, sy + 1.5, pieX + 55, sy + 1.5);
+      const solarUnits = Math.min(f.monthly_generation_units, sr.avg_monthly_consumption || f.monthly_generation_units);
+      const gridUnits = Math.max((sr.avg_monthly_consumption || 0) - solarUnits, 0);
+      const energySlices = [
+        { label: 'Solar (Free)', value: solarUnits, color: COLORS.emerald, fmt: v => Math.round(v) + ' units' },
+        { label: 'Grid', value: gridUnits, color: COLORS.slate, fmt: v => Math.round(v) + ' units' },
+      ];
+      const pieCy2 = sy + 28;
+      drawPie(pieCx, pieCy2, pieR, energySlices, Math.round(solarUnits + gridUnits) + ' u');
+      drawPieLegend(pieX + 46, sy + 14, energySlices, solarUnits + gridUnits);
+      sy += 60;
 
-      // Technical KPIs
-      if (sy > pageHeight - 60) { doc.addPage(); drawHeader(doc); sy = 48; }
-      doc.setFont(FONT, 'bold'); doc.setFontSize(10);
-      doc.text('Technical KPIs', m, sy); doc.line(m, sy + 1.5, m + 40, sy + 1.5); sy += 5;
-      const t = sr.technical;
-      autoTable(doc, { startY: sy, margin: { left: m, right: m }, theme: 'striped',
-        styles: { font: FONT, fontSize: 9 },
-        headStyles: { fillColor: [139, 92, 246], textColor: 255 },
-        head: [['KPI', 'Value']],
-        body: [
-          ['Performance Ratio (PR)', String(t.performance_ratio)],
-          ['Capacity Utilization Factor', `${t.cuf_pct}%`],
-          ['Annual Generation', `${t.annual_generation_units} units`],
-          ['CO₂ Offset per Year', `${t.co2_offset_kg_per_year} kg`],
-          ['Panel Degradation', `${t.degradation_pct_per_year}% per year`],
-        ]
-      });
-      sy = (doc.lastAutoTable?.finalY || sy) + 6;
+      // ===== Technical KPI gauges =====
+      if (sy > pageHeight - 50) { doc.addPage(); drawHeader(doc); sy = 48; }
+      doc.setFont(FONT, 'bold'); doc.setFontSize(9.5); doc.setTextColor(80, 80, 80);
+      doc.text('Technical Performance', m, sy);
+      doc.line(m, sy + 1.5, m + 45, sy + 1.5); sy += 8;
+      const gaugeW = (contentW - 6) / 2;
+      drawHGauge(m, sy, gaugeW, 'Performance Ratio (PR)', t.performance_ratio, 1, COLORS.violet, v => v.toFixed(2));
+      drawHGauge(m + gaugeW + 6, sy, gaugeW, 'CUF', t.cuf_pct, 25, COLORS.sky, v => v + '%'); sy += 9;
+      drawHGauge(m, sy, gaugeW, 'Panel Efficiency (1 - Degradation)', 100 - t.degradation_pct_per_year, 100, COLORS.emerald, v => v.toFixed(1) + '%');
+      drawHGauge(m + gaugeW + 6, sy, gaugeW, 'Annual Generation', t.annual_generation_units, t.annual_generation_units * 1.2, COLORS.blue, v => Math.round(v).toLocaleString('en-IN') + ' units'); sy += 9;
+      drawHGauge(m, sy, gaugeW, 'CO₂ Offset / Year', t.co2_offset_kg_per_year, t.co2_offset_kg_per_year * 1.2, COLORS.emerald, v => v.toLocaleString('en-IN') + ' kg');
+      drawHGauge(m + gaugeW + 6, sy, gaugeW, 'ROI (25-Year)', f.roi_pct || 0, Math.max(f.roi_pct || 0, 500), COLORS.amber, v => v + '%'); sy += 12;
 
-      // 25-Year savings (5-year snapshots)
+      // ===== 25-Year Cumulative Savings Line + Yearly Bar =====
       if (f.yearly_breakdown && f.yearly_breakdown.length) {
-        if (sy > pageHeight - 60) { doc.addPage(); drawHeader(doc); sy = 48; }
-        doc.setFont(FONT, 'bold'); doc.setFontSize(10);
-        doc.text('25-Year Savings Snapshot', m, sy); doc.line(m, sy + 1.5, m + 50, sy + 1.5); sy += 5;
-        const rows = f.yearly_breakdown.filter(r => r.year === 1 || r.year % 5 === 0)
-          .map(r => [`Year ${r.year}`, `${r.generation_units} units`, `${currency(r.tariff)}/unit`, currency(r.savings), currency(r.cumulative)]);
-        autoTable(doc, { startY: sy, margin: { left: m, right: m }, theme: 'grid',
-          styles: { font: FONT, fontSize: 8 },
-          headStyles: { fillColor: [245, 158, 11], textColor: 255 },
-          head: [['Year', 'Generation', 'Tariff', 'Savings', 'Cumulative']],
-          body: rows
+        // Always start on a new page for chart clarity
+        if (sy > pageHeight - 110) { doc.addPage(); drawHeader(doc); sy = 48; }
+        doc.setFont(FONT, 'bold'); doc.setFontSize(11); doc.setTextColor(40, 40, 40);
+        doc.text('25-Year Savings Projection', m, sy);
+        doc.line(m, sy + 1.5, m + 60, sy + 1.5); sy += 5;
+
+        const yb = f.yearly_breakdown;
+        const lineSeries = [{
+          name: 'Cumulative Savings (₹)',
+          data: yb.map(r => ({ x: r.year, y: r.cumulative })),
+          color: COLORS.amber, fill: true, fillColor: [254, 243, 199], lineWidth: 0.8,
+        }, {
+          name: 'Yearly Savings (₹)',
+          data: yb.map(r => ({ x: r.year, y: r.savings })),
+          color: COLORS.blue, lineWidth: 0.6,
+        }];
+        const xLabels = yb.map((r, i) => (i === 0 || (i + 1) % 5 === 0) ? `Y${r.year}` : '');
+        drawLineChart(m, sy + 2, contentW, 65, lineSeries, {
+          xLabels,
+          yAxisFormat: (v) => v >= 100000 ? `${(v / 100000).toFixed(1)}L` : v >= 1000 ? `${(v / 1000).toFixed(0)}K` : Math.round(v),
         });
+        sy += 70;
+
+        // Yearly snapshot bars (Y1, Y5, Y10, Y15, Y20, Y25)
+        const snapshots = yb.filter(r => r.year === 1 || r.year % 5 === 0);
+        if (sy > pageHeight - 60) { doc.addPage(); drawHeader(doc); sy = 48; }
+        doc.setFont(FONT, 'bold'); doc.setFontSize(9.5); doc.setTextColor(80, 80, 80);
+        doc.text('5-Year Savings Snapshots', m, sy);
+        doc.line(m, sy + 1.5, m + 45, sy + 1.5); sy += 4;
+        drawBarChartV(m, sy, contentW, 45,
+          snapshots.map(r => ({
+            label: `Y${r.year}`,
+            value: r.savings,
+            color: r.year === 1 ? COLORS.blue : r.year <= 10 ? COLORS.emerald : r.year <= 20 ? COLORS.amber : COLORS.rose,
+          })),
+          { valueFormat: (v) => '₹' + (v >= 100000 ? (v / 100000).toFixed(1) + 'L' : (v / 1000).toFixed(0) + 'K') }
+        );
+        sy += 50;
       }
+
+      // Closing note
+      if (sy > pageHeight - 20) { doc.addPage(); drawHeader(doc); sy = 48; }
+      doc.setFillColor(245, 245, 245); doc.roundedRect(m, sy, contentW, 11, 1.5, 1.5, 'F');
+      doc.setFont(FONT, 'normal'); doc.setFontSize(7.5); doc.setTextColor(80, 80, 80);
+      doc.text('All financial projections assume 2.5% annual tariff escalation and 0.7% annual panel degradation. PM Surya Ghar subsidy applies only to residential domestic on-grid systems (capped at ₹78,000 for ≥3 kWp). Actual savings may vary with shading, weather, and site conditions.', m + 3, sy + 4, { maxWidth: contentW - 6 });
     }
     // ========= /SOLAR PROJECT REPORT =========
 
