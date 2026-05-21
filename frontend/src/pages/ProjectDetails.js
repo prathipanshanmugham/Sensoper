@@ -1090,7 +1090,47 @@ export default function ProjectDetails() {
               </Card>
             )}
 
-            {/* Completion Media */}
+            {/* Completion & Handover (Drive link + Inverter login) */}
+            {(project.completion_drive_link || (project.inverter_login && (project.inverter_login.url || project.inverter_login.username || project.inverter_login.notes))) && (
+              <Card className="border-slate-200" data-testid="completion-handover-card">
+                <CardHeader className="pb-3"><CardTitle className="text-lg font-['Outfit'] flex items-center gap-2"><CheckCircle2 className="h-5 w-5 text-emerald-600" />Completion & Handover</CardTitle></CardHeader>
+                <CardContent className="space-y-4">
+                  {project.completion_drive_link && (
+                    <div>
+                      <p className="text-xs uppercase tracking-wider text-slate-500 mb-1">Completion Photos / Videos (Drive)</p>
+                      <a href={project.completion_drive_link} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 text-sm text-blue-700 hover:text-blue-900 hover:underline break-all" data-testid="completion-drive-link">
+                        <FolderOpen className="h-4 w-4 shrink-0" />{project.completion_drive_link}
+                        <ExternalLink className="h-3 w-3 shrink-0" />
+                      </a>
+                    </div>
+                  )}
+                  {project.inverter_login && (project.inverter_login.url || project.inverter_login.username || project.inverter_login.notes) && (
+                    <div className="rounded-lg bg-slate-50 border border-slate-200 p-3 space-y-1.5" data-testid="inverter-login-display">
+                      <p className="text-xs uppercase tracking-wider text-slate-500 mb-1 flex items-center gap-1"><Lock className="h-3.5 w-3.5" />Inverter Login Details</p>
+                      {project.inverter_login.url && (
+                        <p className="text-sm text-slate-700"><span className="font-medium text-slate-500 inline-block w-24">URL:</span> <a href={project.inverter_login.url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline" data-testid="inverter-login-url">{project.inverter_login.url}</a></p>
+                      )}
+                      {project.inverter_login.username && (
+                        <p className="text-sm text-slate-700"><span className="font-medium text-slate-500 inline-block w-24">Username:</span> <span className="font-mono" data-testid="inverter-login-username">{project.inverter_login.username}</span></p>
+                      )}
+                      {project.inverter_login.password && (
+                        <p className="text-sm text-slate-700 flex items-center gap-2"><span className="font-medium text-slate-500 inline-block w-24">Password:</span>
+                          <span className="font-mono" data-testid="inverter-login-password">{showInverterPwd ? project.inverter_login.password : '••••••••'}</span>
+                          <button type="button" onClick={() => setShowInverterPwd(s => !s)} className="text-slate-400 hover:text-slate-700" aria-label={showInverterPwd ? 'Hide password' : 'Show password'} data-testid="reveal-inverter-pwd">{showInverterPwd ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}</button>
+                          <button type="button" onClick={() => { navigator.clipboard.writeText(project.inverter_login.password); setLinkCopied(true); setTimeout(() => setLinkCopied(false), 1500); }} className="text-slate-400 hover:text-slate-700" aria-label="Copy password" data-testid="copy-inverter-pwd"><Copy className="h-3.5 w-3.5" /></button>
+                          {linkCopied && <span className="text-[10px] text-emerald-600">Copied!</span>}
+                        </p>
+                      )}
+                      {project.inverter_login.notes && (
+                        <p className="text-sm text-slate-600 whitespace-pre-wrap"><span className="font-medium text-slate-500 inline-block w-24 align-top">Notes:</span> {project.inverter_login.notes}</p>
+                      )}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Completion Media (legacy — kept for backward compat) */}
             {project.completion_media && project.completion_media.length > 0 && (
               <Card className="border-slate-200">
                 <CardHeader className="pb-3"><CardTitle className="text-lg font-['Outfit'] flex items-center gap-2"><Film className="h-5 w-5 text-emerald-600" />Completion Media ({project.completion_media.length})</CardTitle></CardHeader>
