@@ -473,6 +473,12 @@ export default function SiteVisitForm() {
     setLoading(true);
     setError('');
     try {
+      // Pull electrical defaults from the Proposed Solution calculator if not set elsewhere
+      const ps = (formData.custom_fields && formData.custom_fields.proposed_solution) || {};
+      const psMonthlyUnits = parseFloat(ps.monthly_eb_units) || 0;
+      const psSanctionLoad = parseFloat(ps.sanctioned_load_kw) || parseFloat(ps.system_size_kw) || 0;
+      const psTariff = parseFloat(ps.tariff_per_unit) || 0;
+
       const payload = {
         customer: formData.customer,
         location: {
@@ -481,21 +487,21 @@ export default function SiteVisitForm() {
           address: formData.location.address, site_location_words: formData.location.site_location_words
         },
         electrical: {
-          sanction_load_kw: parseFloat(formData.electrical.sanction_load_kw),
+          sanction_load_kw: parseFloat(formData.electrical.sanction_load_kw) || psSanctionLoad || 0,
           connected_load_kw: parseFloat(formData.electrical.connected_load_kw) || 0,
-          monthly_consumption_units: parseFloat(formData.electrical.monthly_consumption_units),
-          eb_tariff: parseFloat(formData.electrical.eb_tariff) || 0,
-          service_type: formData.electrical.service_type || null
+          monthly_consumption_units: parseFloat(formData.electrical.monthly_consumption_units) || psMonthlyUnits || 0,
+          eb_tariff: parseFloat(formData.electrical.eb_tariff) || psTariff || 0,
+          service_type: formData.electrical.service_type || ps.connection_type || null
         },
         solar_system: {
           ...formData.solar_system, panel_wattage: parseInt(formData.solar_system.panel_wattage) || 540,
           battery_capacity_ah: formData.solar_system.battery_required ? parseInt(formData.solar_system.battery_capacity_ah) || 0 : null
         },
-        mounting: { ...formData.mounting, tilt_angle: parseInt(formData.mounting.tilt_angle) },
+        mounting: { ...formData.mounting, tilt_angle: parseInt(formData.mounting.tilt_angle) || 15 },
         additional: {
           ...formData.additional,
-          cable_length_meters: parseFloat(formData.additional.cable_length_meters),
-          inverter_to_panel_distance: parseFloat(formData.additional.inverter_to_panel_distance)
+          cable_length_meters: parseFloat(formData.additional.cable_length_meters) || 0,
+          inverter_to_panel_distance: parseFloat(formData.additional.inverter_to_panel_distance) || 0
         },
         selected_items: formData.selected_items.map(si => ({
           inventory_item_id: si.inventory_item_id, name: si.name, category: si.category,
