@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Checkbox } from '../components/ui/checkbox';
 import { Progress } from '../components/ui/progress';
 import { ComboInput } from '../components/ui/combo-input';
-import SolarReportSection from '../components/SolarReportSection';
+import ProposedSolutionSection from '../components/ProposedSolutionSection';
 import { 
   User, MapPin, Zap, ArrowRight, ArrowLeft, Loader2, CheckCircle2,
   Sparkles, Plus, Trash2, Package, FolderOpen, X, Percent, FolderPlus, ExternalLink, CheckCircle, Link2,
@@ -90,7 +90,8 @@ export default function SiteVisitForm() {
     },
     custom_fields: {},
     solar_report: null,
-    terms_id: ''
+    terms_id: '',
+    notes: ''
   });
 
   const loadProject = useCallback(async () => {
@@ -135,7 +136,10 @@ export default function SiteVisitForm() {
         },
         custom_fields: p.custom_fields || {},
         solar_report: p.solar_report || null,
-        terms_id: p.terms_id || ''
+        terms_id: p.terms_id || '',
+        notes: (p.notes !== undefined && p.notes !== null && p.notes !== '')
+          ? p.notes
+          : (p.additional?.shadow_analysis_notes || '')
       });
     } catch (err) {
       setError('Failed to load project for editing');
@@ -218,7 +222,8 @@ export default function SiteVisitForm() {
           drive_folder_link: formData.drive_folder_link || 'https://drive.google.com/drive/folders/draft',
           site_measurements: formData.site_measurements,
           custom_fields: formData.custom_fields,
-          terms_id: formData.terms_id || null
+          terms_id: formData.terms_id || null,
+          notes: formData.notes || ''
         };
         if (draftId) {
           await projectsAPI.update(draftId, payload);
@@ -511,7 +516,8 @@ export default function SiteVisitForm() {
         },
         custom_fields: formData.custom_fields || {},
         solar_report: formData.solar_report || null,
-        terms_id: formData.terms_id || null
+        terms_id: formData.terms_id || null,
+        notes: formData.notes || ''
       };
 
       if (isEditMode) {
@@ -533,7 +539,7 @@ export default function SiteVisitForm() {
 
   const STEPS = allTabs.map((tab, idx) => ({
     id: idx + 1,
-    title: tab.name,
+    title: tab.slug === 'materials' ? 'Proposed Solution & Materials' : tab.name,
     icon: SLUG_ICON_MAP[tab.slug] || Layers,
     slug: tab.slug,
     fields: tab.fields,
@@ -600,14 +606,14 @@ export default function SiteVisitForm() {
 
         <Card className="border-slate-200 shadow-lg">
           <CardHeader className="border-b border-slate-200 py-4">
-            <CardTitle className="font-['Outfit'] text-lg">{STEPS[currentStep - 1]?.title || ''}</CardTitle>
+            <CardTitle className="font-['Outfit'] text-lg">{STEPS[currentStep - 1]?.slug === 'materials' ? 'Proposed Solution & Materials' : (STEPS[currentStep - 1]?.title || '')}</CardTitle>
             <CardDescription className="text-sm">
               {(() => {
                 const slug = STEPS[currentStep - 1]?.slug;
                 if (slug === 'customer') return 'Customer contact details';
                 if (slug === 'location') return 'Site location and roof details';
                 if (slug === 'site_electrical') return 'Site measurements, electrical & load information';
-                if (slug === 'materials') return 'Select materials & add costs';
+                if (slug === 'materials') return 'Define the proposed solution, select materials & view live ROI / payback metrics';
                 if (slug === 'site_docs') return 'Link your Google Drive folder for site documentation';
                 return `Fill in ${STEPS[currentStep - 1]?.title || ''} details`;
               })()}
@@ -668,13 +674,6 @@ export default function SiteVisitForm() {
             {/* Step: Site & Electrical (Merged) */}
             {STEPS[currentStep - 1]?.slug === 'site_electrical' && (
               <div className="space-y-3">
-
-                {/* Solar Project Report — fully editable calculator */}
-                <SolarReportSection
-                  value={formData.solar_report}
-                  onChange={(sr) => setFormData(prev => ({ ...prev, solar_report: sr }))}
-                  customerDefaults={{ name: formData.customer.name, phone: formData.customer.phone, address: formData.customer.address }}
-                />
 
                 {/* Roof Details */}
                 <div className="border border-slate-200 rounded-lg overflow-hidden" data-testid="section-roof">
@@ -859,8 +858,18 @@ export default function SiteVisitForm() {
             )}
 
             {/* Step: Materials */}
+            {/* Step: Materials → Proposed Solution & Materials */}
             {STEPS[currentStep - 1]?.slug === 'materials' && (
               <div className="space-y-5">
+                {/* Combined Proposed Solution + Solar Calculator (manual inputs + live metrics) */}
+                <ProposedSolutionSection
+                  value={formData.custom_fields?.proposed_solution}
+                  onChange={(ps) => setFormData(prev => ({
+                    ...prev,
+                    custom_fields: { ...(prev.custom_fields || {}), proposed_solution: ps }
+                  }))}
+                />
+
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-2"><Label>System Type</Label>
                     <ComboInput value={formData.solar_system.system_type} onChange={(v) => updateField('solar_system', 'system_type', v)} options={SYSTEM_TYPE_OPTIONS} placeholder="Type or select system type" data-testid="system-type-input" />
@@ -872,20 +881,6 @@ export default function SiteVisitForm() {
                     </div>
                   </div>
                 </div>
-
-                {/* Proposed Solution — Manual entry (replaces removed AI/Smart Suggestions) */}
-                <Card className="border-slate-200" data-testid="proposed-solution-card">
-                  <CardContent className="p-4">
-                    <h3 className="font-semibold text-slate-900 flex items-center gap-2 text-sm mb-3"><Package className="h-4 w-4 text-emerald-600" />Proposed Solution (Manual Entry)</h3>
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                      <div className="space-y-1"><Label className="text-xs">Proposed System Size (kW)</Label><Input type="number" step="0.1" value={formData.custom_fields?.proposed_solution?.system_kw || ''} onChange={(e) => updateField('custom_fields', 'proposed_solution', { ...(formData.custom_fields?.proposed_solution || {}), system_kw: e.target.value })} placeholder="e.g., 5" className="h-10" data-testid="proposed-system-kw-input" /></div>
-                      <div className="space-y-1"><Label className="text-xs">Panels Count</Label><Input type="number" value={formData.custom_fields?.proposed_solution?.panel_count || ''} onChange={(e) => updateField('custom_fields', 'proposed_solution', { ...(formData.custom_fields?.proposed_solution || {}), panel_count: e.target.value })} placeholder="e.g., 10" className="h-10" data-testid="proposed-panel-count-input" /></div>
-                      <div className="space-y-1"><Label className="text-xs">Inverter Size (kW)</Label><Input type="number" step="0.1" value={formData.custom_fields?.proposed_solution?.inverter_kw || ''} onChange={(e) => updateField('custom_fields', 'proposed_solution', { ...(formData.custom_fields?.proposed_solution || {}), inverter_kw: e.target.value })} placeholder="e.g., 5" className="h-10" data-testid="proposed-inverter-kw-input" /></div>
-                      <div className="space-y-1"><Label className="text-xs">Total Panel Area (sq ft)</Label><Input type="number" step="1" value={formData.custom_fields?.proposed_solution?.panel_area || ''} onChange={(e) => updateField('custom_fields', 'proposed_solution', { ...(formData.custom_fields?.proposed_solution || {}), panel_area: e.target.value })} placeholder="e.g., 215" className="h-10" data-testid="proposed-panel-area-input" /></div>
-                    </div>
-                    <div className="mt-3 space-y-1"><Label className="text-xs">Notes / Justification</Label><Textarea rows={2} value={formData.custom_fields?.proposed_solution?.notes || ''} onChange={(e) => updateField('custom_fields', 'proposed_solution', { ...(formData.custom_fields?.proposed_solution || {}), notes: e.target.value })} placeholder="Why this configuration?" className="min-h-[60px]" data-testid="proposed-notes-input" /></div>
-                  </CardContent>
-                </Card>
 
                 <div>
                   <div className="flex items-center justify-between mb-3">
@@ -1128,8 +1123,16 @@ export default function SiteVisitForm() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label>Shadow Analysis Notes (Optional)</Label>
-                  <Textarea rows={2} value={formData.additional.shadow_analysis_notes} onChange={(e) => updateField('additional', 'shadow_analysis_notes', e.target.value)} placeholder="Observations about shadows, obstructions..." data-testid="shadow-notes-input" />
+                  <Label className="flex items-center gap-2"><FileText className="h-4 w-4 text-slate-600" />Notes</Label>
+                  <Textarea
+                    rows={3}
+                    value={formData.notes}
+                    onChange={(e) => setFormData(prev => ({ ...prev, notes: e.target.value }))}
+                    placeholder="Any general notes about this project — shadow observations, customer remarks, follow-ups, special instructions..."
+                    className="min-h-[80px]"
+                    data-testid="project-notes-input"
+                  />
+                  <p className="text-[11px] text-slate-500">You can keep editing these notes (and append timestamped updates) from the project details page even after the project is completed.</p>
                 </div>
                 {renderExtraFields('site_docs')}
               </div>

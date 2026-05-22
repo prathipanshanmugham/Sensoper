@@ -85,6 +85,12 @@ export default function ProjectDetails() {
   const [statusValue, setStatusValue] = useState('');
   const [linkCopied, setLinkCopied] = useState(false);
   const [showDriveQR, setShowDriveQR] = useState(false);
+  // Project Notes (universal — editable at any status, history of appends)
+  const [editingNotes, setEditingNotes] = useState(false);
+  const [notesDraft, setNotesDraft] = useState('');
+  const [notesSaving, setNotesSaving] = useState(false);
+  const [newNoteText, setNewNoteText] = useState('');
+  const [appendingNote, setAppendingNote] = useState(false);
 
   const fetchProject = useCallback(async () => {
     try {
@@ -128,6 +134,35 @@ export default function ProjectDetails() {
   const handleSaveStatus = async () => {
     try { await projectsAPI.updateStatus(id, statusValue); setEditingStatus(false); fetchProject(); }
     catch (e) { alert(e.response?.data?.detail || 'Failed'); }
+  };
+
+  // ---------- Universal project notes ----------
+  const startEditNotes = () => {
+    setNotesDraft(project?.notes || '');
+    setEditingNotes(true);
+  };
+  const cancelEditNotes = () => { setEditingNotes(false); setNotesDraft(''); };
+  const handleSaveNotes = async () => {
+    setNotesSaving(true);
+    try {
+      await projectsAPI.updateNotes(id, notesDraft);
+      setEditingNotes(false);
+      fetchProject();
+    } catch (e) {
+      alert(e.response?.data?.detail || 'Failed to save notes');
+    } finally { setNotesSaving(false); }
+  };
+  const handleAppendNote = async () => {
+    const text = newNoteText.trim();
+    if (!text) return;
+    setAppendingNote(true);
+    try {
+      await projectsAPI.appendNote(id, text);
+      setNewNoteText('');
+      fetchProject();
+    } catch (e) {
+      alert(e.response?.data?.detail || 'Failed to append note');
+    } finally { setAppendingNote(false); }
   };
 
   const handleComplete = async () => {
@@ -969,7 +1004,98 @@ export default function ProjectDetails() {
               <CardContent>
                 <InfoRow label="System Type" value={project.solar_system?.system_type?.toUpperCase()} />
                 {project.solar_system?.battery_required && <InfoRow label="Battery Required" value="Yes" />}
-                {project.additional?.shadow_analysis_notes && <div className="mt-4 p-3 bg-slate-50 rounded-lg"><p className="text-sm font-medium text-slate-700">Shadow Analysis Notes:</p><p className="text-sm text-slate-600">{project.additional.shadow_analysis_notes}</p></div>}
+              </CardContent>
+            </Card>
+
+            {/* Universal Project Notes — editable at any status, with timestamped history */}
+            <Card className="border-slate-200" data-testid="project-notes-card">
+              <CardHeader className="pb-3 flex flex-row items-center justify-between space-y-0">
+                <CardTitle className="text-lg font-['Outfit'] flex items-center gap-2">
+                  <MessageSquare className="h-5 w-5 text-indigo-600" />Notes
+                </CardTitle>
+                {!editingNotes && (
+                  <Button variant="outline" size="sm" onClick={startEditNotes} className="h-8 gap-1.5" data-testid="edit-notes-btn">
+                    <Pencil className="h-3.5 w-3.5" /> Edit
+                  </Button>
+                )}
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {/* Main notes block */}
+                {editingNotes ? (
+                  <div className="space-y-2">
+                    <Textarea
+                      rows={4}
+                      value={notesDraft}
+                      onChange={(e) => setNotesDraft(e.target.value)}
+                      placeholder="General notes about this project — observations, customer remarks, follow-ups, instructions…"
+                      className="min-h-[100px]"
+                      data-testid="notes-edit-textarea"
+                    />
+                    <div className="flex gap-2 justify-end">
+                      <Button variant="ghost" size="sm" onClick={cancelEditNotes} disabled={notesSaving} data-testid="notes-cancel-btn">Cancel</Button>
+                      <Button size="sm" onClick={handleSaveNotes} disabled={notesSaving} className="gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white" data-testid="notes-save-btn">
+                        {notesSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />} Save
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="p-3 bg-slate-50 rounded-lg min-h-[60px]" data-testid="notes-display">
+                    {project.notes
+                      ? <p className="text-sm text-slate-700 whitespace-pre-wrap">{project.notes}</p>
+                      : <p className="text-sm text-slate-400 italic">No notes yet — click Edit to add some.</p>}
+                  </div>
+                )}
+
+                {/* Append a timestamped update */}
+                <div className="space-y-2 pt-2 border-t border-slate-100">
+                  <Label className="text-xs uppercase tracking-wider text-slate-500">Append timestamped update</Label>
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <Textarea
+                      rows={2}
+                      value={newNoteText}
+                      onChange={(e) => setNewNoteText(e.target.value)}
+                      placeholder="e.g., 21-May 2026 — Visited site, customer happy with installation."
+                      className="min-h-[44px] flex-1"
+                      data-testid="notes-append-textarea"
+                    />
+                    <Button
+                      size="sm"
+                      onClick={handleAppendNote}
+                      disabled={appendingNote || !newNoteText.trim()}
+                      className="gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white sm:self-end"
+                      data-testid="notes-append-btn"
+                    >
+                      {appendingNote ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />} Append
+                    </Button>
+                  </div>
+                  <p className="text-[10px] text-slate-400">Timestamped entries are kept forever — useful for service visits, follow-ups, customer feedback (even after the project is completed).</p>
+                </div>
+
+                {/* History */}
+                {(project.notes_history && project.notes_history.length > 0) && (
+                  <div className="pt-2 border-t border-slate-100">
+                    <Label className="text-xs uppercase tracking-wider text-slate-500 mb-2 block">History ({project.notes_history.length})</Label>
+                    <div className="space-y-2 max-h-64 overflow-y-auto pr-1" data-testid="notes-history-list">
+                      {[...project.notes_history].reverse().map((h) => (
+                        <div key={h.id || h.timestamp} className="p-2.5 bg-indigo-50/50 border border-indigo-100 rounded-md" data-testid={`notes-history-entry-${h.id || h.timestamp}`}>
+                          <div className="flex items-center justify-between gap-2 mb-1">
+                            <span className="text-[10px] font-semibold text-indigo-700">{h.author_name || 'User'}</span>
+                            <span className="text-[10px] text-slate-500">{new Date(h.timestamp).toLocaleString('en-IN')}</span>
+                          </div>
+                          <p className="text-sm text-slate-700 whitespace-pre-wrap">{h.text}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Legacy display: original shadow_analysis_notes if no migrated notes yet */}
+                {!project.notes && project.additional?.shadow_analysis_notes && (
+                  <div className="mt-2 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                    <p className="text-[10px] uppercase tracking-wider font-semibold text-amber-800 mb-1">Legacy shadow notes (auto-migrated)</p>
+                    <p className="text-sm text-slate-700">{project.additional.shadow_analysis_notes}</p>
+                  </div>
+                )}
               </CardContent>
             </Card>
 

@@ -1,0 +1,47 @@
+{
+  "summary": "Iteration 33 (Solar ERP — Universal Notes + Materials/Solar refactor). Backend: 8/8 pytest passed covering (a) POST /api/projects accepts `notes`+`terms_id`; GET returns `notes` + `notes_history`. (b) POST /api/projects/{id}/notes appends timestamped entry; empty/whitespace → 400. (c) PUT /api/projects/{id} with ONLY `notes` allowed on completed; PUT with `customer` on completed → 400. (d) Legacy `additional.shadow_analysis_notes` auto-migrates to `notes` on GET when notes missing. (e) Terms_id persistence regression. (f) Dashboard /stats conversion_rate regression. Frontend: SolarReportSection.js DELETED — verified file absent. Site & Electrical wizard step has 0 instances of [data-testid='solar-report-section'] ✓. Materials step renamed to 'Proposed Solution & Materials' — title verified in DOM. ProposedSolutionSection.js component present with all required testids (ps-total-cost, ps-subsidy, ps-est-gen, ps-eb-cons, ps-tariff, ps-net-cost, ps-out-payback, ps-out-roi, ps-out-monthly, ps-out-annual, ps-out-lifetime, ps-out-co2, ps-out-gen, ps-out-diesel, ps-panel-model, ps-inverter-model, ps-degr, ps-solution-notes etc.) via source-code grep. Universal Notes card on a completed project fully working end-to-end via Playwright: edit-notes-btn → notes-edit-textarea → notes-save-btn updates the main notes; notes-append-textarea + notes-append-btn appends a timestamped entry to notes-history-list (screenshot confirms 'System Admin … 22/5/2026 … Service log #1 via UI ITER33'). Site Docs step (final): project-notes-input present, shadow-notes-input removed (verified by source grep). Backward-compat lazy migration verified via direct backend test.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration33.py",
+    "/app/test_reports/pytest/iter33_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "SiteVisitForm.js is now >1100 lines — strongly recommend splitting per-step components for maintainability (carried over from iter-32).",
+    "ProposedSolutionSection.js computes derived metrics on every keystroke via useMemo — efficient. Live calc verified deterministic: net_cost = total_cost - subsidy, payback = net_cost / (annual_eb_savings + annual_diesel_savings). Net cost field is readonly+auto, which is correct UX.",
+    "Backend update_project notes_only detection list correctly covers all non-notes fields including selected_items/manual_costs/status. Status preserved on notes-only PUT for completed projects — verified.",
+    "Lazy migration in GET /projects/{id} reads `additional.shadow_analysis_notes` only when `notes` is None/empty. Does NOT auto-write back to `notes` field — purely read-time projection. That's safe and lossless, but if a user appends notes via POST /notes (without first calling Edit→Save), the original `notes` field stays empty in DB while history accumulates. Recommend writing back on first edit (already happens in Edit→Save flow since handleSaveNotes calls updateNotes)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration33.py"
+  ],
+  "success_rate": {"backend": "100% (8/8)", "frontend": "95% (all critical refactor verifications green; ProposedSolutionSection live-metric in-page interaction skipped because wizard validation on Site & Electrical step prevented playwright auto-advance to Materials. Section code & testids verified via source grep.)"},
+  "test_credentials": "admin@sensoper.com / Admin@123",
+  "seed_data_creation": "Backend pytest creates TEST_ITER33_* projects (one per test) and cleans them up at teardown. A throwaway completed project (id 6a106ba9468021116468ed68, customer TEST_ITER33_COMPLETED) was created + force-set to status=completed in Mongo for the Playwright universal-Notes test on completed status. All test data deleted at end of run.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "main_agent_can_self_test": true,
+  "verified_evidence": {
+    "backend_create_with_notes": "POST /api/projects with notes='hello-from-create' → GET returns notes='hello-from-create', notes_history=[] ✓",
+    "backend_append_note": "POST /api/projects/{id}/notes {text:'First service follow-up'} → entry returned with author_name, timestamp; GET notes_history has 1 entry with matching text ✓",
+    "backend_append_empty": "POST /api/projects/{id}/notes {text:'   '} → 400 ✓",
+    "backend_notes_only_put_completed": "Direct Mongo set status=completed, PUT {notes:'updated-after-completion'} → 200, GET returns updated notes and status preserved ✓",
+    "backend_customer_put_completed_blocked": "PUT {customer:{...}, notes:'x'} on completed → 400, response mentions 'draft, approved' ✓",
+    "backend_legacy_migration": "Set notes=None, additional.shadow_analysis_notes='LEGACY-shadow-content' → GET returns notes='LEGACY-shadow-content' ✓",
+    "regression_terms_id": "POST with terms_id persists, GET returns same terms_id ✓",
+    "regression_dashboard_stats": "GET /api/dashboard/stats has total, draft, completed, conversion_rate keys ✓",
+    "frontend_site_electrical_no_solar_report": "[data-testid='solar-report-section'] count = 0 on Site & Electrical wizard step ✓",
+    "frontend_materials_title_renamed": "'Proposed Solution & Materials' present in DOM (stepper + CardTitle) ✓",
+    "frontend_solar_report_section_js_deleted": "/app/frontend/src/components/SolarReportSection.js — does NOT exist (verified via ls) ✓",
+    "frontend_proposed_solution_section_component": "/app/frontend/src/components/ProposedSolutionSection.js exists with all 18+ required testids (ps-system-size, ps-panel-count, ps-panel-w, ps-panel-model, ps-inverter-kw, ps-inverter-model, ps-battery-kwh, ps-battery-count, ps-est-gen, ps-eb-cons, ps-tariff, ps-total-cost, ps-subsidy, ps-net-cost, ps-diesel-l, ps-diesel-price, ps-life, ps-degr, ps-solution-notes) + 8 ps-out-* derived metric cards ✓",
+    "frontend_universal_notes_on_completed": "project-notes-card visible on completed-status project. Edit→Save persists 'Completed project notes via UI ITER33' to notes-display. Append → notes-history-list shows entry with author 'System Admin', timestamp '22/5/2026, 2:46:38 pm', text 'Service log #1 via UI ITER33' ✓ (screenshot captured)",
+    "frontend_site_docs_notes_label": "[data-testid='project-notes-input'] present at line 1133 of SiteVisitForm.js; [data-testid='shadow-notes-input'] not found in source ✓",
+    "frontend_terms_select": "data-testid='terms-select' still present at line 1106 of SiteVisitForm.js (regression OK) ✓"
+  },
+  "context_for_next_testing_agent": "All ITER33 backend tests in /app/backend/tests/test_iteration33.py (8 passed). ProjectCreate Pydantic schema requires: mounting.structure_type, additional.cable_length_meters, additional.inverter_to_panel_distance — include these in any future create payloads. The ProposedSolutionSection live derived metrics were not exercised end-to-end via Playwright because Site & Electrical step's required-field validation blocked auto-advance to Materials (sanction_load_kw, connected_load_kw, monthly_consumption_units, eb_tariff). To test live calc end-to-end, fill those fields with real numbers before clicking next-step-btn from site_electrical. The completed-project Notes flow works fully — edit-notes-btn / notes-edit-textarea / notes-save-btn / notes-append-textarea / notes-append-btn / notes-history-list all functional regardless of project status. Wizard order from form_tabs collection in this DB is: customer → location → site_electrical → materials → customer-preferences → subsidy → finance → site_docs (last)."
+}

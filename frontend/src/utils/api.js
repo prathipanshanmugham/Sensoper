@@ -34,6 +34,8 @@ export const projectsAPI = {
   forceDelete: (id) => api.delete(`/projects/${id}/force`),
   updateReference: (id, refNumber) => api.put(`/projects/${id}/reference`, { reference_number: refNumber }),
   updateStatus: (id, status) => api.put(`/projects/${id}/status`, { status }),
+  updateNotes: (id, notes) => api.put(`/projects/${id}`, { notes }),
+  appendNote: (id, text) => api.post(`/projects/${id}/notes`, { text }),
   galleryUrl: (id) => `${API_URL}/api/projects/${id}/gallery`
 };
 

@@ -167,6 +167,7 @@ class ProjectCreate(BaseModel):
     custom_fields: Optional[dict] = None
     solar_report: Optional[dict] = None
     terms_id: Optional[str] = None
+    notes: Optional[str] = None
 
 class ProjectUpdate(BaseModel):
     customer: Optional[CustomerDetails] = None
@@ -185,7 +186,11 @@ class ProjectUpdate(BaseModel):
     custom_fields: Optional[dict] = None
     solar_report: Optional[dict] = None
     terms_id: Optional[str] = None
+    notes: Optional[str] = None
     status: Optional[Literal["draft", "submitted", "approved", "rejected", "completed", "deletion_requested"]] = None
+
+class ProjectNoteAppend(BaseModel):
+    text: str
 
 class AIRecommendationRequest(BaseModel):
     monthly_consumption_units: float
@@ -1952,6 +1957,8 @@ async def create_project(project: ProjectCreate, request: Request):
         "custom_fields": project.custom_fields or {},
         "solar_report": project.solar_report or None,
         "terms_id": project.terms_id or None,
+        "notes": project.notes or "",
+        "notes_history": [],
         "status": "draft",
         "created_by": user["id"],
         "created_by_name": user["name"],
@@ -2055,6 +2062,8 @@ async def get_project(project_id: str, request: Request):
         "custom_fields": project.get("custom_fields", {}),
         "solar_report": project.get("solar_report"),
         "terms_id": project.get("terms_id"),
+        "notes": (project.get("notes") if project.get("notes") is not None else (project.get("additional", {}) or {}).get("shadow_analysis_notes") or ""),
+        "notes_history": project.get("notes_history", []),
         "completion_media": project.get("completion_media", []),
         "completion_drive_link": project.get("completion_drive_link", ""),
         "inverter_login": project.get("inverter_login", {}),
@@ -2082,15 +2091,24 @@ async def update_project(project_id: str, updates: ProjectUpdate, request: Reque
         raise HTTPException(status_code=404, detail="Project not found")
     
     editable_statuses = ["draft", "approved"]
+    # Detect a notes-only update — those are allowed for any status (incl. completed/rejected)
+    notes_only = (
+        updates.notes is not None
+        and all(getattr(updates, f) is None for f in [
+            "customer", "location", "electrical", "solar_system", "mounting", "additional",
+            "selected_items", "manual_costs", "site_images", "drive_folder_name", "drive_folder_link",
+            "drive_folder_id", "site_measurements", "custom_fields", "solar_report", "terms_id", "status"
+        ])
+    )
     
-    # Staff can only edit their own draft projects
+    # Staff can only edit their own draft projects (notes are exception — see below)
     if user["role"] == "staff":
         if project["created_by"] != user["id"]:
             raise HTTPException(status_code=403, detail="Access denied")
-        if project["status"] != "draft":
+        if project["status"] != "draft" and not notes_only:
             raise HTTPException(status_code=400, detail="Can only edit draft projects")
     elif user["role"] in ["admin", "manager"]:
-        if project["status"] not in editable_statuses:
+        if project["status"] not in editable_statuses and not notes_only:
             raise HTTPException(status_code=400, detail=f"Can only edit projects in: {', '.join(editable_statuses)}")
     
     update_data = {"updated_at": datetime.now(timezone.utc).isoformat()}
@@ -2123,6 +2141,8 @@ async def update_project(project_id: str, updates: ProjectUpdate, request: Reque
         update_data["solar_report"] = updates.solar_report
     if updates.terms_id is not None:
         update_data["terms_id"] = updates.terms_id or None
+    if updates.notes is not None:
+        update_data["notes"] = updates.notes
     if updates.selected_items is not None:
         update_data["selected_items"] = [si.model_dump() for si in updates.selected_items]
     if updates.manual_costs is not None:
@@ -2152,6 +2172,36 @@ async def update_project(project_id: str, updates: ProjectUpdate, request: Reque
     )
     
     return {"message": "Project updated successfully"}
+
+@api_router.post("/projects/{project_id}/notes")
+async def append_project_note(project_id: str, payload: ProjectNoteAppend, request: Request):
+    """Append a timestamped note entry to the project's notes_history.
+    Allowed for any project status — including completed — so the team can keep
+    adding service / handover / follow-up updates after delivery."""
+    user = await get_current_user(request)
+    project = await db.projects.find_one({"_id": ObjectId(project_id), "deleted_at": {"$exists": False}})
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    # Staff may only append to their own projects; admin/manager can touch any
+    if user["role"] == "staff" and project["created_by"] != user["id"]:
+        raise HTTPException(status_code=403, detail="Access denied")
+    text = (payload.text or "").strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="Note text is required")
+    entry = {
+        "id": str(ObjectId()),
+        "text": text,
+        "author_id": user["id"],
+        "author_name": user["name"],
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.projects.update_one(
+        {"_id": ObjectId(project_id)},
+        {"$push": {"notes_history": entry},
+         "$set": {"updated_at": datetime.now(timezone.utc).isoformat()}}
+    )
+    await create_audit_log(user["id"], user["name"], "append_note", "project", project_id, None, {"len": len(text)})
+    return {"message": "Note appended", "entry": entry}
 
 @api_router.post("/projects/{project_id}/submit")
 async def submit_project(project_id: str, request: Request):
