@@ -1140,7 +1140,7 @@ export default function SiteVisitForm() {
                       if (!ref) return (
                         <div className="p-3 rounded-lg border border-slate-200 bg-slate-50 flex items-center justify-between">
                           <span className="text-sm text-slate-600">Reference project loaded</span>
-                          <Button type="button" size="sm" variant="ghost" onClick={() => setFormData(prev => ({ ...prev, reference_project_id: '' }))} data-testid="ref-site-clear">Change</Button>
+                          <Button type="button" size="sm" variant="ghost" onClick={() => setFormData(prev => ({ ...prev, reference_project_id: '' }))} data-testid="ref-site-clear-fallback">Change</Button>
                         </div>
                       );
                       return (
