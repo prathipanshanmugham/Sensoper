@@ -168,6 +168,7 @@ class ProjectCreate(BaseModel):
     solar_report: Optional[dict] = None
     terms_id: Optional[str] = None
     notes: Optional[str] = None
+    reference_project_id: Optional[str] = None
 
 class ProjectUpdate(BaseModel):
     customer: Optional[CustomerDetails] = None
@@ -187,6 +188,7 @@ class ProjectUpdate(BaseModel):
     solar_report: Optional[dict] = None
     terms_id: Optional[str] = None
     notes: Optional[str] = None
+    reference_project_id: Optional[str] = None
     status: Optional[Literal["draft", "submitted", "approved", "rejected", "completed", "deletion_requested"]] = None
 
 class ProjectNoteAppend(BaseModel):
@@ -1957,6 +1959,7 @@ async def create_project(project: ProjectCreate, request: Request):
         "custom_fields": project.custom_fields or {},
         "solar_report": project.solar_report or None,
         "terms_id": project.terms_id or None,
+        "reference_project_id": project.reference_project_id or None,
         "notes": project.notes or "",
         "notes_history": [],
         "status": "draft",
@@ -1986,6 +1989,106 @@ async def create_project(project: ProjectCreate, request: Request):
     return {
         "id": str(result.inserted_id),
         "message": "Project created successfully"
+    }
+
+@api_router.get("/projects/reference-candidates")
+async def get_reference_candidates(request: Request, q: Optional[str] = None):
+    """Return completed projects suitable to attach as a reference to a new quotation.
+    Lightweight summary — customer name, system size, location, key metrics.
+    Used by the New Project wizard's 'Reference Site' dropdown."""
+    await get_current_user(request)
+    query = {"deleted_at": {"$exists": False}, "status": "completed"}
+    projects = await db.projects.find(query).sort("updated_at", -1).limit(200).to_list(200)
+    out = []
+    for p in projects:
+        cust = p.get("customer", {}) or {}
+        loc = p.get("location", {}) or {}
+        cf = p.get("custom_fields", {}) or {}
+        ps = cf.get("proposed_solution", {}) or {}
+        derived = ps.get("_derived", {}) or {}
+        # Pull system size from proposed_solution or legacy solar_report
+        sr = p.get("solar_report", {}) or {}
+        system_size = ps.get("system_size_kw") or (sr.get("sizing") or {}).get("kwp_recommended") or None
+        # Image preference: completion_media first, then site_images, then drive folder
+        image_url = None
+        for m in (p.get("completion_media") or []):
+            if m.get("type") == "image" and m.get("url"):
+                image_url = m["url"]; break
+        if not image_url:
+            for s in (p.get("site_images") or []):
+                if s:
+                    image_url = s; break
+        item = {
+            "id": str(p["_id"]),
+            "reference_number": p.get("reference_number", f"SCR-{str(p['_id'])[-6:].upper()}"),
+            "name": p.get("project_name") or cust.get("name", "Unnamed"),
+            "customer_name": cust.get("name", ""),
+            "phone": cust.get("phone", ""),
+            "location": loc.get("address", ""),
+            "system_size_kw": system_size,
+            "image_url": image_url,
+            "completed_at": p.get("updated_at"),
+            "metrics": {
+                "monthly_savings": derived.get("monthly_savings"),
+                "annual_savings": derived.get("annual_savings"),
+                "lifetime_savings": derived.get("lifetime_savings"),
+                "roi_pct": derived.get("roi_pct"),
+                "payback_years": derived.get("payback_years"),
+                "annual_generation_units": derived.get("annual_generation_units"),
+                "co2_kg_year": derived.get("co2_kg_year"),
+                "diesel_petrol_saved_liters_yearly": derived.get("diesel_petrol_saved_liters_yearly"),
+            }
+        }
+        # Filter by q (search by customer/location/reference number)
+        if q:
+            qlow = q.lower()
+            hay = " ".join([
+                str(item.get("name") or ""),
+                str(item.get("customer_name") or ""),
+                str(item.get("location") or ""),
+                str(item.get("reference_number") or ""),
+            ]).lower()
+            if qlow not in hay:
+                continue
+        out.append(item)
+    return out
+
+@api_router.get("/projects/{project_id}/reference-summary")
+async def get_reference_summary(project_id: str, request: Request):
+    """Full reference summary for a project — used to render the
+    'Reference Project Performance' section in PDFs / preview modal."""
+    await get_current_user(request)
+    p = await db.projects.find_one({"_id": ObjectId(project_id), "deleted_at": {"$exists": False}})
+    if not p:
+        raise HTTPException(status_code=404, detail="Reference project not found")
+    cust = p.get("customer", {}) or {}
+    loc = p.get("location", {}) or {}
+    cf = p.get("custom_fields", {}) or {}
+    ps = cf.get("proposed_solution", {}) or {}
+    derived = ps.get("_derived", {}) or {}
+    image_url = None
+    for m in (p.get("completion_media") or []):
+        if m.get("type") == "image" and m.get("url"):
+            image_url = m["url"]; break
+    if not image_url:
+        for s in (p.get("site_images") or []):
+            if s:
+                image_url = s; break
+    return {
+        "id": str(p["_id"]),
+        "reference_number": p.get("reference_number", f"SCR-{str(p['_id'])[-6:].upper()}"),
+        "customer_name": cust.get("name", ""),
+        "phone": cust.get("phone", ""),
+        "location": loc.get("address", ""),
+        "system_size_kw": ps.get("system_size_kw") or (p.get("solar_report", {}) or {}).get("sizing", {}).get("kwp_recommended"),
+        "panel_count": ps.get("panel_count"),
+        "inverter_kw": ps.get("inverter_kw"),
+        "total_cost": ps.get("total_cost"),
+        "subsidy": ps.get("subsidy"),
+        "completed_at": p.get("updated_at"),
+        "image_url": image_url,
+        "metrics": derived,
+        "notes": p.get("notes", ""),
     }
 
 @api_router.get("/projects")
@@ -2062,6 +2165,7 @@ async def get_project(project_id: str, request: Request):
         "custom_fields": project.get("custom_fields", {}),
         "solar_report": project.get("solar_report"),
         "terms_id": project.get("terms_id"),
+        "reference_project_id": project.get("reference_project_id"),
         "notes": (project.get("notes") if project.get("notes") is not None else (project.get("additional", {}) or {}).get("shadow_analysis_notes") or ""),
         "notes_history": project.get("notes_history", []),
         "completion_media": project.get("completion_media", []),
@@ -2097,7 +2201,8 @@ async def update_project(project_id: str, updates: ProjectUpdate, request: Reque
         and all(getattr(updates, f) is None for f in [
             "customer", "location", "electrical", "solar_system", "mounting", "additional",
             "selected_items", "manual_costs", "site_images", "drive_folder_name", "drive_folder_link",
-            "drive_folder_id", "site_measurements", "custom_fields", "solar_report", "terms_id", "status"
+            "drive_folder_id", "site_measurements", "custom_fields", "solar_report", "terms_id",
+            "reference_project_id", "status"
         ])
     )
     
@@ -2141,6 +2246,8 @@ async def update_project(project_id: str, updates: ProjectUpdate, request: Reque
         update_data["solar_report"] = updates.solar_report
     if updates.terms_id is not None:
         update_data["terms_id"] = updates.terms_id or None
+    if updates.reference_project_id is not None:
+        update_data["reference_project_id"] = updates.reference_project_id or None
     if updates.notes is not None:
         update_data["notes"] = updates.notes
     if updates.selected_items is not None:

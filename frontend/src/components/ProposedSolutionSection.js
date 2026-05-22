@@ -234,6 +234,64 @@ const AUTO_FIELDS = [
   'inverter_kw', 'battery_kwh', 'battery_count', 'total_cost', 'subsidy',
 ];
 
+// ───── Sub-components (module-scoped → stable identity, no remount on parent re-render) ─────
+
+function Badge({ override }) {
+  return override
+    ? <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 font-semibold">Manual Override</span>
+    : <span className="text-[9px] px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 font-semibold">Auto Calculated</span>;
+}
+
+function AutoField({ label, field, type = 'number', step = 'any', placeholder, suffix, value, override, onChange, onReset }) {
+  return (
+    <div className="space-y-1">
+      <div className="flex items-center justify-between gap-1">
+        <Label className="text-xs">{label}</Label>
+        <div className="flex items-center gap-1">
+          <Badge override={override} />
+          {override && (
+            <button type="button" onClick={onReset} title="Reset to auto-calculated value" className="text-[10px] text-slate-400 hover:text-emerald-600" data-testid={`reset-${field}`}>
+              <RotateCcw className="h-3 w-3" />
+            </button>
+          )}
+        </div>
+      </div>
+      <div className="relative">
+        <Input
+          type={type}
+          step={step}
+          value={value ?? ''}
+          onChange={(e) => onChange(field, e.target.value)}
+          placeholder={placeholder}
+          className={`h-10 ${override ? 'bg-amber-50 border-amber-200' : 'bg-emerald-50/40 border-emerald-200'} ${suffix ? 'pr-12' : ''}`}
+          data-testid={`ps-${field.replace(/_/g, '-')}`}
+        />
+        {suffix && <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-slate-400">{suffix}</span>}
+      </div>
+    </div>
+  );
+}
+
+function DriverField({ label, field, type = 'number', step = 'any', placeholder, suffix, value, onChange }) {
+  return (
+    <div className="space-y-1">
+      <Label className="text-xs">{label}</Label>
+      <div className="relative">
+        <Input
+          type={type}
+          step={step}
+          value={value ?? ''}
+          onChange={(e) => onChange(field, e.target.value)}
+          placeholder={placeholder}
+          className={`h-10 bg-white ${suffix ? 'pr-12' : ''}`}
+          data-testid={`ps-${field.replace(/_/g, '-')}`}
+        />
+        {suffix && <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-slate-400">{suffix}</span>}
+      </div>
+    </div>
+  );
+}
+
 // ───────────────────────── component ─────────────────────────
 export default function ProposedSolutionSection({ value, onChange }) {
   const data = { ...blank, ...(value || {}) };
@@ -317,58 +375,6 @@ export default function ProposedSolutionSection({ value, onChange }) {
     setRecomputing(false);
   };
 
-  // ───── Sub-components ─────
-  const Badge = ({ field }) =>
-    overrides[field]
-      ? <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 font-semibold">Manual Override</span>
-      : <span className="text-[9px] px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 font-semibold">Auto Calculated</span>;
-
-  const AutoField = ({ label, field, type = 'number', step = 'any', placeholder, suffix }) => (
-    <div className="space-y-1">
-      <div className="flex items-center justify-between gap-1">
-        <Label className="text-xs">{label}</Label>
-        <div className="flex items-center gap-1">
-          <Badge field={field} />
-          {overrides[field] && (
-            <button type="button" onClick={() => resetField(field)} title="Reset to auto-calculated value" className="text-[10px] text-slate-400 hover:text-emerald-600" data-testid={`reset-${field}`}>
-              <RotateCcw className="h-3 w-3" />
-            </button>
-          )}
-        </div>
-      </div>
-      <div className="relative">
-        <Input
-          type={type}
-          step={step}
-          value={data[field] ?? ''}
-          onChange={(e) => updateAutoField(field, e.target.value)}
-          placeholder={placeholder}
-          className={`h-10 ${overrides[field] ? 'bg-amber-50 border-amber-200' : 'bg-emerald-50/40 border-emerald-200'} ${suffix ? 'pr-12' : ''}`}
-          data-testid={`ps-${field.replace(/_/g, '-')}`}
-        />
-        {suffix && <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-slate-400">{suffix}</span>}
-      </div>
-    </div>
-  );
-
-  const DriverField = ({ label, field, type = 'number', step = 'any', placeholder, suffix }) => (
-    <div className="space-y-1">
-      <Label className="text-xs">{label}</Label>
-      <div className="relative">
-        <Input
-          type={type}
-          step={step}
-          value={data[field] ?? ''}
-          onChange={(e) => updateDriver(field, e.target.value)}
-          placeholder={placeholder}
-          className={`h-10 bg-white ${suffix ? 'pr-12' : ''}`}
-          data-testid={`ps-${field.replace(/_/g, '-')}`}
-        />
-        {suffix && <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-slate-400">{suffix}</span>}
-      </div>
-    </div>
-  );
-
   return (
     <Card className="border-emerald-200 bg-emerald-50/30" data-testid="proposed-solution-section">
       <CardContent className="p-4 space-y-5">
@@ -396,10 +402,10 @@ export default function ProposedSolutionSection({ value, onChange }) {
         <div>
           <p className="text-[11px] uppercase tracking-wider text-slate-600 font-semibold mb-2 flex items-center gap-1.5"><Zap className="h-3.5 w-3.5" /> Driver Inputs</p>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <DriverField label="Monthly EB Bill (₹)" field="monthly_eb_bill" placeholder="e.g., 3500" />
-            <DriverField label="Monthly EB Units" field="monthly_eb_units" placeholder="e.g., 500" />
-            <DriverField label="Roof Area (sq ft)" field="roof_area_sqft" placeholder="e.g., 600" />
-            <DriverField label="Tariff (₹ / unit)" field="tariff_per_unit" placeholder={`auto: ₹${engine.resolved_tariff}/unit`} />
+            <DriverField label="Monthly EB Bill (₹)" field="monthly_eb_bill" placeholder="e.g., 3500" value={data.monthly_eb_bill} onChange={updateDriver} />
+            <DriverField label="Monthly EB Units" field="monthly_eb_units" placeholder="e.g., 500" value={data.monthly_eb_units} onChange={updateDriver} />
+            <DriverField label="Roof Area (sq ft)" field="roof_area_sqft" placeholder="e.g., 600" value={data.roof_area_sqft} onChange={updateDriver} />
+            <DriverField label="Tariff (₹ / unit)" field="tariff_per_unit" placeholder={`auto: ₹${engine.resolved_tariff}/unit`} value={data.tariff_per_unit} onChange={updateDriver} />
 
             <div className="space-y-1">
               <Label className="text-xs">Connection Type</Label>
@@ -444,7 +450,7 @@ export default function ProposedSolutionSection({ value, onChange }) {
               </Select>
             </div>
             {(data.system_type === 'hybrid' || data.system_type === 'off-grid') && (
-              <DriverField label="Backup Required (hrs / day)" field="power_backup_hours" placeholder="e.g., 4" />
+              <DriverField label="Backup Required (hrs / day)" field="power_backup_hours" placeholder="e.g., 4" value={data.power_backup_hours} onChange={updateDriver} />
             )}
           </div>
           <p className="text-[10px] text-slate-500 mt-2">Specific yield resolved from location: <strong>{engine.resolved_yield} kWh/kWp/day</strong>. Tariff resolved: <strong>₹{engine.resolved_tariff}/unit</strong>. Auto-calc uses these.</p>
@@ -454,22 +460,22 @@ export default function ProposedSolutionSection({ value, onChange }) {
         <div>
           <p className="text-[11px] uppercase tracking-wider text-slate-600 font-semibold mb-2 flex items-center gap-1.5"><Package className="h-3.5 w-3.5" /> System Hardware</p>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <AutoField label="System Size (kW)" field="system_size_kw" placeholder="auto" />
-            <AutoField label="Panel Count" field="panel_count" placeholder="auto" />
-            <DriverField label="Panel Wattage (W)" field="panel_wattage_w" placeholder="540" />
+            <AutoField label="System Size (kW)" field="system_size_kw" placeholder="auto" value={data.system_size_kw} override={!!overrides.system_size_kw} onChange={updateAutoField} onReset={() => resetField('system_size_kw')} />
+            <AutoField label="Panel Count" field="panel_count" placeholder="auto" value={data.panel_count} override={!!overrides.panel_count} onChange={updateAutoField} onReset={() => resetField('panel_count')} />
+            <DriverField label="Panel Wattage (W)" field="panel_wattage_w" placeholder="540" value={data.panel_wattage_w} onChange={updateDriver} />
             <div className="space-y-1">
               <Label className="text-xs">Panel Model</Label>
               <Input type="text" value={data.panel_model} onChange={(e) => updateDriver('panel_model', e.target.value)} placeholder="e.g., Adani 540W Mono PERC" className="h-10 bg-white" data-testid="ps-panel-model" />
             </div>
-            <AutoField label="Panel Area (sq ft)" field="panel_area_sqft" placeholder="auto" />
-            <AutoField label="Roof Utilization (%)" field="roof_utilization_pct" placeholder="auto" suffix="%" />
-            <AutoField label="Inverter (kW)" field="inverter_kw" placeholder="auto" />
+            <AutoField label="Panel Area (sq ft)" field="panel_area_sqft" placeholder="auto" value={data.panel_area_sqft} override={!!overrides.panel_area_sqft} onChange={updateAutoField} onReset={() => resetField('panel_area_sqft')} />
+            <AutoField label="Roof Utilization (%)" field="roof_utilization_pct" placeholder="auto" suffix="%" value={data.roof_utilization_pct} override={!!overrides.roof_utilization_pct} onChange={updateAutoField} onReset={() => resetField('roof_utilization_pct')} />
+            <AutoField label="Inverter (kW)" field="inverter_kw" placeholder="auto" value={data.inverter_kw} override={!!overrides.inverter_kw} onChange={updateAutoField} onReset={() => resetField('inverter_kw')} />
             <div className="space-y-1">
               <Label className="text-xs">Inverter Model</Label>
               <Input type="text" value={data.inverter_model} onChange={(e) => updateDriver('inverter_model', e.target.value)} placeholder="e.g., Sungrow SG5K-D" className="h-10 bg-white" data-testid="ps-inverter-model" />
             </div>
-            <AutoField label="Battery (kWh each)" field="battery_kwh" placeholder="auto" />
-            <AutoField label="Battery Count" field="battery_count" placeholder="auto" />
+            <AutoField label="Battery (kWh each)" field="battery_kwh" placeholder="auto" value={data.battery_kwh} override={!!overrides.battery_kwh} onChange={updateAutoField} onReset={() => resetField('battery_kwh')} />
+            <AutoField label="Battery Count" field="battery_count" placeholder="auto" value={data.battery_count} override={!!overrides.battery_count} onChange={updateAutoField} onReset={() => resetField('battery_count')} />
           </div>
         </div>
 
@@ -477,10 +483,10 @@ export default function ProposedSolutionSection({ value, onChange }) {
         <div>
           <p className="text-[11px] uppercase tracking-wider text-slate-600 font-semibold mb-2 flex items-center gap-1.5"><Sun className="h-3.5 w-3.5" /> Generation &amp; Financials</p>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <AutoField label="Est. Generation (units / month)" field="estimated_generation_units_monthly" placeholder="auto" />
-            <AutoField label="Est. Generation (units / year)" field="estimated_generation_units_annual" placeholder="auto" />
-            <AutoField label="Total Project Cost (₹)" field="total_cost" placeholder="auto" />
-            <AutoField label="Govt Subsidy (₹)" field="subsidy" placeholder="auto" />
+            <AutoField label="Est. Generation (units / month)" field="estimated_generation_units_monthly" placeholder="auto" value={data.estimated_generation_units_monthly} override={!!overrides.estimated_generation_units_monthly} onChange={updateAutoField} onReset={() => resetField('estimated_generation_units_monthly')} />
+            <AutoField label="Est. Generation (units / year)" field="estimated_generation_units_annual" placeholder="auto" value={data.estimated_generation_units_annual} override={!!overrides.estimated_generation_units_annual} onChange={updateAutoField} onReset={() => resetField('estimated_generation_units_annual')} />
+            <AutoField label="Total Project Cost (₹)" field="total_cost" placeholder="auto" value={data.total_cost} override={!!overrides.total_cost} onChange={updateAutoField} onReset={() => resetField('total_cost')} />
+            <AutoField label="Govt Subsidy (₹)" field="subsidy" placeholder="auto" value={data.subsidy} override={!!overrides.subsidy} onChange={updateAutoField} onReset={() => resetField('subsidy')} />
             <div className="space-y-1 md:col-span-1">
               <Label className="text-xs">Net Cost (auto)</Label>
               <Input value={inr(engine.net_cost)} readOnly className="h-10 bg-slate-50 font-medium" data-testid="ps-net-cost" />
@@ -492,8 +498,8 @@ export default function ProposedSolutionSection({ value, onChange }) {
         <div>
           <p className="text-[11px] uppercase tracking-wider text-slate-600 font-semibold mb-2 flex items-center gap-1.5"><Fuel className="h-3.5 w-3.5" /> Diesel / Petrol Offset (optional)</p>
           <div className="grid grid-cols-2 gap-3">
-            <DriverField label="Litres Saved per Year" field="diesel_offset_liters_yearly" placeholder="e.g., 200" />
-            <DriverField label="Fuel Price (₹ / litre)" field="diesel_price_per_liter" placeholder="e.g., 95" />
+            <DriverField label="Litres Saved per Year" field="diesel_offset_liters_yearly" placeholder="e.g., 200" value={data.diesel_offset_liters_yearly} onChange={updateDriver} />
+            <DriverField label="Fuel Price (₹ / litre)" field="diesel_price_per_liter" placeholder="e.g., 95" value={data.diesel_price_per_liter} onChange={updateDriver} />
           </div>
         </div>
 
@@ -501,8 +507,8 @@ export default function ProposedSolutionSection({ value, onChange }) {
         <div>
           <p className="text-[11px] uppercase tracking-wider text-slate-600 font-semibold mb-2 flex items-center gap-1.5"><Calendar className="h-3.5 w-3.5" /> ROI Assumptions</p>
           <div className="grid grid-cols-2 gap-3">
-            <DriverField label="System Life (years)" field="system_life_years" placeholder="25" />
-            <DriverField label="Panel Degradation (% / year)" field="panel_degradation_pct_per_year" placeholder="0.7" />
+            <DriverField label="System Life (years)" field="system_life_years" placeholder="25" value={data.system_life_years} onChange={updateDriver} />
+            <DriverField label="Panel Degradation (% / year)" field="panel_degradation_pct_per_year" placeholder="0.7" value={data.panel_degradation_pct_per_year} onChange={updateDriver} />
           </div>
         </div>
 

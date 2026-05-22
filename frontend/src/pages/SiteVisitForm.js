@@ -61,6 +61,8 @@ export default function SiteVisitForm() {
   const [openSections, setOpenSections] = useState({ grid_electrical: true, roof: true, orientation: false, shadow: false, obstructions: false, electrical_m: false, load_m: false, inverter: false, access: false });
   const [allTabs, setAllTabs] = useState([]);
   const [termsList, setTermsList] = useState([]);
+  const [refCandidates, setRefCandidates] = useState([]);
+  const [refSearch, setRefSearch] = useState('');
   const [draftId, setDraftId] = useState(null);
   const autoSaveTimer = useRef(null);
   const lastSaved = useRef('');
@@ -91,6 +93,7 @@ export default function SiteVisitForm() {
     custom_fields: {},
     solar_report: null,
     terms_id: '',
+    reference_project_id: '',
     notes: ''
   });
 
@@ -137,6 +140,7 @@ export default function SiteVisitForm() {
         custom_fields: p.custom_fields || {},
         solar_report: p.solar_report || null,
         terms_id: p.terms_id || '',
+        reference_project_id: p.reference_project_id || '',
         notes: (p.notes !== undefined && p.notes !== null && p.notes !== '')
           ? p.notes
           : (p.additional?.shadow_analysis_notes || '')
@@ -161,14 +165,18 @@ export default function SiteVisitForm() {
   const fetchTermsList = useCallback(async () => {
     try { const res = await termsAPI.getAll(); setTermsList(res.data || []); } catch (err) { console.error(err); }
   }, []);
+  const fetchRefCandidates = useCallback(async () => {
+    try { const res = await projectsAPI.getReferenceCandidates(); setRefCandidates(res.data || []); } catch (err) { console.error(err); }
+  }, []);
 
   useEffect(() => {
     fetchInventory();
     fetchCategories();
     fetchDynamicTabs();
     fetchTermsList();
+    fetchRefCandidates();
     if (editId) loadProject();
-  }, [editId, fetchInventory, fetchCategories, fetchDynamicTabs, fetchTermsList, loadProject]);
+  }, [editId, fetchInventory, fetchCategories, fetchDynamicTabs, fetchTermsList, fetchRefCandidates, loadProject]);
 
   // Auto-save as draft when form has customer name
   useEffect(() => {
@@ -223,6 +231,7 @@ export default function SiteVisitForm() {
           site_measurements: formData.site_measurements,
           custom_fields: formData.custom_fields,
           terms_id: formData.terms_id || null,
+          reference_project_id: formData.reference_project_id || null,
           notes: formData.notes || ''
         };
         if (draftId) {
@@ -517,6 +526,7 @@ export default function SiteVisitForm() {
         custom_fields: formData.custom_fields || {},
         solar_report: formData.solar_report || null,
         terms_id: formData.terms_id || null,
+        reference_project_id: formData.reference_project_id || null,
         notes: formData.notes || ''
       };
 
@@ -1120,6 +1130,74 @@ export default function SiteVisitForm() {
                       ? 'No templates yet — create one from the Terms & Conditions page.'
                       : 'This template will be embedded in the project quotation PDF.'}
                   </p>
+                </div>
+
+                <div className="space-y-2" data-testid="ref-site-section">
+                  <Label className="flex items-center gap-2"><FolderOpen className="h-4 w-4 text-emerald-600" />Reference Site (optional)</Label>
+                  {formData.reference_project_id ? (
+                    (() => {
+                      const ref = refCandidates.find(r => r.id === formData.reference_project_id);
+                      if (!ref) return (
+                        <div className="p-3 rounded-lg border border-slate-200 bg-slate-50 flex items-center justify-between">
+                          <span className="text-sm text-slate-600">Reference project loaded</span>
+                          <Button type="button" size="sm" variant="ghost" onClick={() => setFormData(prev => ({ ...prev, reference_project_id: '' }))} data-testid="ref-site-clear">Change</Button>
+                        </div>
+                      );
+                      return (
+                        <div className="p-3 rounded-lg border border-emerald-200 bg-emerald-50/60 flex items-start gap-3" data-testid="ref-site-selected">
+                          {ref.image_url
+                            ? <img src={ref.image_url} alt="" className="w-16 h-16 rounded object-cover border border-emerald-200" />
+                            : <div className="w-16 h-16 rounded bg-emerald-100 flex items-center justify-center text-emerald-600"><FolderOpen className="h-6 w-6" /></div>}
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-semibold text-emerald-900 truncate">{ref.customer_name || ref.name} <span className="text-[10px] text-emerald-600">({ref.reference_number})</span></p>
+                            <p className="text-[11px] text-emerald-700 truncate">{ref.location || '—'}</p>
+                            <p className="text-[11px] text-emerald-700">Size: <strong>{ref.system_size_kw ? `${ref.system_size_kw} kW` : '—'}</strong> · Payback: <strong>{ref.metrics?.payback_years ? `${Number(ref.metrics.payback_years).toFixed(1)} yrs` : '—'}</strong> · ROI: <strong>{ref.metrics?.roi_pct ? `${Math.round(ref.metrics.roi_pct)}%` : '—'}</strong></p>
+                          </div>
+                          <Button type="button" size="sm" variant="outline" onClick={() => setFormData(prev => ({ ...prev, reference_project_id: '' }))} data-testid="ref-site-clear">Change</Button>
+                        </div>
+                      );
+                    })()
+                  ) : (
+                    <div className="space-y-2">
+                      <Input
+                        type="text"
+                        value={refSearch}
+                        onChange={(e) => setRefSearch(e.target.value)}
+                        placeholder="Search completed projects by customer, location or reference no…"
+                        className="h-10"
+                        data-testid="ref-site-search"
+                      />
+                      <div className="max-h-56 overflow-y-auto border border-slate-200 rounded-md divide-y divide-slate-100" data-testid="ref-site-list">
+                        {refCandidates
+                          .filter(r => {
+                            if (!refSearch.trim()) return true;
+                            const q = refSearch.toLowerCase();
+                            return [r.customer_name, r.name, r.location, r.reference_number]
+                              .filter(Boolean).some(s => String(s).toLowerCase().includes(q));
+                          })
+                          .slice(0, 20)
+                          .map(r => (
+                            <button
+                              key={r.id}
+                              type="button"
+                              onClick={() => setFormData(prev => ({ ...prev, reference_project_id: r.id }))}
+                              className="w-full px-3 py-2 hover:bg-emerald-50 transition-colors flex items-center gap-3 text-left"
+                              data-testid={`ref-site-item-${r.id}`}
+                            >
+                              {r.image_url
+                                ? <img src={r.image_url} alt="" className="w-10 h-10 rounded object-cover border border-slate-200 shrink-0" />
+                                : <div className="w-10 h-10 rounded bg-slate-100 flex items-center justify-center text-slate-400 shrink-0"><FolderOpen className="h-4 w-4" /></div>}
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm font-medium text-slate-800 truncate">{r.customer_name || r.name} <span className="text-[10px] text-slate-500">({r.reference_number})</span></p>
+                                <p className="text-[11px] text-slate-500 truncate">{r.location || '—'} · {r.system_size_kw ? `${r.system_size_kw} kW` : 'size n/a'}</p>
+                              </div>
+                            </button>
+                          ))}
+                        {refCandidates.length === 0 && <p className="px-3 py-3 text-xs text-slate-400">No completed projects yet.</p>}
+                      </div>
+                      <p className="text-[11px] text-slate-500">Attach a similar finished project. Its actual savings + ROI will be added to the customer's quotation PDF as social proof.</p>
+                    </div>
+                  )}
                 </div>
 
                 <div className="space-y-2">

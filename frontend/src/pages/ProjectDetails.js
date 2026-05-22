@@ -799,6 +799,217 @@ export default function ProjectDetails() {
     }
     // ========= /SOLAR PROJECT REPORT =========
 
+    // ========= PROJECT METRICS SUMMARY (from Proposed Solution & Materials) =========
+    try {
+      const ps = project.custom_fields?.proposed_solution;
+      if (ps && (ps._derived || ps.system_size_kw)) {
+        const d = ps._derived || {};
+        doc.addPage(); drawHeader(doc);
+        let y = 50;
+        // Section title
+        doc.setFillColor(...pRgb);
+        doc.rect(m, y, contentW, 9, 'F');
+        doc.setTextColor(255, 255, 255); doc.setFont(FONT, 'bold'); doc.setFontSize(11.5);
+        doc.text('PROJECT METRICS SUMMARY', m + 3, y + 6.2);
+        y += 14;
+        doc.setTextColor(70, 70, 70); doc.setFont(FONT, 'normal'); doc.setFontSize(8.5);
+        doc.text('Live calculated outcomes for the proposed system, derived from the inputs in the Proposed Solution & Materials step.', m, y, { maxWidth: contentW });
+        y += 8;
+
+        // 8-tile grid
+        const tile = (col, row, label, value, hex) => {
+          const tw = (contentW - 9) / 4;
+          const th = 22;
+          const x = m + col * (tw + 3);
+          const ty = y + row * (th + 3);
+          const [r, g, b] = hexToRgb(hex);
+          doc.setFillColor(r, g, b);
+          doc.roundedRect(x, ty, tw, th, 2, 2, 'F');
+          doc.setTextColor(255, 255, 255);
+          doc.setFont(FONT, 'normal'); doc.setFontSize(6.6);
+          doc.text(String(label).toUpperCase(), x + 3, ty + 6);
+          doc.setFont(FONT, 'bold'); doc.setFontSize(11);
+          doc.text(String(value || '—'), x + 3, ty + 15);
+        };
+        const fmtInr = (v) => v ? `₹${Math.round(v).toLocaleString('en-IN')}` : '—';
+        const fmtL = (v) => v ? `₹${(v / 100000).toFixed(2)} L` : '—';
+        tile(0, 0, 'System Size', ps.system_size_kw ? `${ps.system_size_kw} kW` : '—', '#10b981');
+        tile(1, 0, 'Monthly Savings', fmtInr(d.monthly_savings), '#f59e0b');
+        tile(2, 0, 'Annual Savings', fmtInr(d.annual_savings), '#8b5cf6');
+        tile(3, 0, 'Payback', d.payback_years ? `${d.payback_years.toFixed(1)} yrs` : '—', '#3b82f6');
+        tile(0, 1, 'ROI (Lifetime)', d.roi_pct ? `${Math.round(d.roi_pct)}%` : '—', '#0ea5e9');
+        tile(1, 1, 'Lifetime Savings', fmtL(d.lifetime_savings), '#e11d48');
+        tile(2, 1, 'CO₂ Saved', d.co2_kg_year ? `${Math.round(d.co2_kg_year).toLocaleString('en-IN')} kg/yr` : '—', '#059669');
+        tile(3, 1, 'Diesel Saved', d.diesel_petrol_saved_liters_yearly ? `${Math.round(d.diesel_petrol_saved_liters_yearly)} L/yr` : '—', '#0284c7');
+        y += 2 * (22 + 3) + 6;
+
+        // Generation line
+        const ag = d.annual_generation_units;
+        const mg = d.annual_generation_units ? Math.round(d.annual_generation_units / 12) : null;
+        doc.setFillColor(245, 247, 250);
+        doc.roundedRect(m, y, contentW, 16, 2, 2, 'F');
+        doc.setTextColor(50, 50, 50); doc.setFont(FONT, 'bold'); doc.setFontSize(8.5);
+        doc.text('Estimated Generation', m + 3, y + 6);
+        doc.setFont(FONT, 'normal'); doc.setFontSize(8);
+        doc.text(`Monthly: ${mg ? mg.toLocaleString('en-IN') + ' units' : '—'}    ·    Annual: ${ag ? Math.round(ag).toLocaleString('en-IN') + ' units' : '—'}    ·    Specific Yield: ${d.resolved_yield || 4.2} kWh/kWp/day`, m + 3, y + 12);
+        y += 22;
+
+        // ───── Tiny visual charts (jsPDF primitives) ─────
+        // Bar — Monthly vs Annual savings
+        if (d.monthly_savings || d.annual_savings) {
+          doc.setFont(FONT, 'bold'); doc.setFontSize(9); doc.setTextColor(60, 60, 60);
+          doc.text('Monthly vs Annual Savings', m, y);
+          y += 4;
+          const chartH = 26;
+          const labels = ['Monthly', 'Annual'];
+          const values = [d.monthly_savings || 0, d.annual_savings || 0];
+          const maxV = Math.max(...values, 1);
+          const colsW = (contentW - 10) / 2;
+          values.forEach((v, i) => {
+            const bx = m + i * (colsW + 10);
+            const bh = (v / maxV) * chartH;
+            doc.setFillColor(i === 0 ? 245 : 139, i === 0 ? 158 : 92, i === 0 ? 11 : 246);
+            doc.rect(bx, y + chartH - bh, colsW, bh, 'F');
+            doc.setFont(FONT, 'normal'); doc.setFontSize(7); doc.setTextColor(80, 80, 80);
+            doc.text(labels[i], bx, y + chartH + 5);
+            doc.setFont(FONT, 'bold'); doc.setFontSize(8); doc.setTextColor(40, 40, 40);
+            doc.text(fmtInr(v), bx, y + chartH + 11);
+          });
+          y += chartH + 16;
+        }
+
+        // Payback timeline bar
+        if (d.payback_years && d.payback_years > 0) {
+          if (y > pageHeight - 40) { doc.addPage(); drawHeader(doc); y = 50; }
+          doc.setFont(FONT, 'bold'); doc.setFontSize(9); doc.setTextColor(60, 60, 60);
+          doc.text(`Payback Timeline — ${d.payback_years.toFixed(1)} years out of ${ps.system_life_years || 25}-year life`, m, y);
+          y += 4;
+          const trackH = 7;
+          const life = Math.max(ps.system_life_years || 25, 1);
+          const fillW = Math.min((d.payback_years / life) * contentW, contentW);
+          doc.setFillColor(229, 231, 235); doc.roundedRect(m, y, contentW, trackH, 2, 2, 'F');
+          doc.setFillColor(239, 68, 68); doc.roundedRect(m, y, fillW, trackH, 2, 2, 'F');
+          doc.setFillColor(16, 185, 129); doc.roundedRect(m + fillW, y, contentW - fillW, trackH, 2, 2, 'F');
+          y += trackH + 5;
+          doc.setFont(FONT, 'normal'); doc.setFontSize(7); doc.setTextColor(120, 120, 120);
+          doc.text(`After ${d.payback_years.toFixed(1)} years the system has paid for itself; remaining ${Math.max(life - d.payback_years, 0).toFixed(1)} years are pure savings.`, m, y, { maxWidth: contentW });
+          y += 8;
+        }
+      }
+    } catch (metricsErr) {
+      console.error('Project metrics PDF section failed; skipping. Error:', metricsErr);
+    }
+    // ========= /PROJECT METRICS SUMMARY =========
+
+    // ========= REFERENCE PROJECT PERFORMANCE =========
+    try {
+      if (project.reference_project_id) {
+        const refRes = await projectsAPI.getReferenceSummary(project.reference_project_id);
+        const ref = refRes.data;
+        if (ref) {
+          doc.addPage(); drawHeader(doc);
+          let y = 50;
+          doc.setFillColor(...sRgb);
+          doc.rect(m, y, contentW, 9, 'F');
+          doc.setTextColor(255, 255, 255); doc.setFont(FONT, 'bold'); doc.setFontSize(11.5);
+          doc.text('REFERENCE PROJECT PERFORMANCE', m + 3, y + 6.2);
+          y += 14;
+          doc.setTextColor(70, 70, 70); doc.setFont(FONT, 'normal'); doc.setFontSize(8.5);
+          doc.text('Actual delivered project — performance metrics shown here are from a real installation, not estimates.', m, y, { maxWidth: contentW });
+          y += 8;
+
+          // Header card with image + customer info
+          const headerH = 38;
+          doc.setFillColor(241, 245, 249);
+          doc.roundedRect(m, y, contentW, headerH, 2, 2, 'F');
+          let textX = m + 4;
+          if (ref.image_url) {
+            try {
+              // Convert image url → dataURL via fetch (CORS-friendly via backend)
+              const imgRes = await fetch(ref.image_url, { credentials: 'omit' });
+              if (imgRes.ok) {
+                const blob = await imgRes.blob();
+                const dataUrl = await new Promise((rs, rj) => { const r = new FileReader(); r.onload = () => rs(r.result); r.onerror = rj; r.readAsDataURL(blob); });
+                const ext = (blob.type && blob.type.split('/')[1] || 'JPEG').toUpperCase();
+                doc.addImage(dataUrl, ext === 'PNG' ? 'PNG' : 'JPEG', m + 3, y + 3, 32, 32);
+                textX = m + 38;
+              }
+            } catch (imgErr) { console.warn('Reference image embed failed:', imgErr); }
+          }
+          doc.setFont(FONT, 'bold'); doc.setFontSize(11); doc.setTextColor(30, 30, 30);
+          doc.text(ref.customer_name || 'Reference Customer', textX, y + 8);
+          doc.setFont(FONT, 'normal'); doc.setFontSize(7.5); doc.setTextColor(100, 100, 100);
+          doc.text(`Ref No: ${ref.reference_number}`, textX, y + 14);
+          doc.setFontSize(8); doc.setTextColor(60, 60, 60);
+          doc.text(`Location: ${ref.location || '—'}`, textX, y + 21);
+          doc.text(`System: ${ref.system_size_kw ? ref.system_size_kw + ' kW' : '—'} · Panels: ${ref.panel_count || '—'} · Inverter: ${ref.inverter_kw ? ref.inverter_kw + ' kW' : '—'}`, textX, y + 27);
+          if (ref.completed_at) {
+            doc.setFontSize(7); doc.setTextColor(120, 120, 120);
+            doc.text(`Commissioned: ${new Date(ref.completed_at).toLocaleDateString('en-IN')}`, textX, y + 33);
+          }
+          y += headerH + 6;
+
+          // Actual metrics — same tile style, but blue palette
+          const rm = ref.metrics || {};
+          const rtile = (col, row, label, value, hex) => {
+            const tw = (contentW - 9) / 4;
+            const th = 22;
+            const x = m + col * (tw + 3);
+            const ty = y + row * (th + 3);
+            const [r, g, b] = hexToRgb(hex);
+            doc.setFillColor(r, g, b);
+            doc.roundedRect(x, ty, tw, th, 2, 2, 'F');
+            doc.setTextColor(255, 255, 255);
+            doc.setFont(FONT, 'normal'); doc.setFontSize(6.6);
+            doc.text(String(label).toUpperCase(), x + 3, ty + 6);
+            doc.setFont(FONT, 'bold'); doc.setFontSize(11);
+            doc.text(String(value || '—'), x + 3, ty + 15);
+          };
+          const fmtInr = (v) => v ? `₹${Math.round(v).toLocaleString('en-IN')}` : '—';
+          const fmtL = (v) => v ? `₹${(v / 100000).toFixed(2)} L` : '—';
+          rtile(0, 0, 'Monthly Savings', fmtInr(rm.monthly_savings), '#3b82f6');
+          rtile(1, 0, 'Annual Savings', fmtInr(rm.annual_savings), '#8b5cf6');
+          rtile(2, 0, 'ROI Achieved', rm.roi_pct ? `${Math.round(rm.roi_pct)}%` : '—', '#0ea5e9');
+          rtile(3, 0, 'Payback', rm.payback_years ? `${rm.payback_years.toFixed(1)} yrs` : '—', '#10b981');
+          rtile(0, 1, 'Lifetime Savings', fmtL(rm.lifetime_savings), '#e11d48');
+          rtile(1, 1, 'CO₂ Reduction', rm.co2_kg_year ? `${Math.round(rm.co2_kg_year).toLocaleString('en-IN')} kg/yr` : '—', '#059669');
+          rtile(2, 1, 'Diesel Saved', rm.diesel_petrol_saved_liters_yearly ? `${Math.round(rm.diesel_petrol_saved_liters_yearly)} L/yr` : '—', '#0284c7');
+          rtile(3, 1, 'Annual Generation', rm.annual_generation_units ? `${Math.round(rm.annual_generation_units).toLocaleString('en-IN')} u` : '—', '#475569');
+          y += 2 * (22 + 3) + 8;
+
+          // Comparison table — proposed vs reference
+          const myPs = project.custom_fields?.proposed_solution || {};
+          const md = myPs._derived || {};
+          const rows = [
+            ['Metric', 'Proposed (this quote)', 'Reference (actual)', 'Delta'],
+            ['System Size (kW)', myPs.system_size_kw || '—', ref.system_size_kw || '—', null],
+            ['Monthly Savings', fmtInr(md.monthly_savings), fmtInr(rm.monthly_savings), null],
+            ['Annual Savings', fmtInr(md.annual_savings), fmtInr(rm.annual_savings), null],
+            ['ROI (lifetime)', md.roi_pct ? `${Math.round(md.roi_pct)}%` : '—', rm.roi_pct ? `${Math.round(rm.roi_pct)}%` : '—', null],
+            ['Payback (yrs)', md.payback_years ? md.payback_years.toFixed(1) : '—', rm.payback_years ? rm.payback_years.toFixed(1) : '—', null],
+            ['Annual Generation', md.annual_generation_units ? Math.round(md.annual_generation_units).toLocaleString('en-IN') : '—', rm.annual_generation_units ? Math.round(rm.annual_generation_units).toLocaleString('en-IN') : '—', null],
+          ];
+          if (y > pageHeight - 60) { doc.addPage(); drawHeader(doc); y = 50; }
+          doc.setFont(FONT, 'bold'); doc.setFontSize(9); doc.setTextColor(60, 60, 60);
+          doc.text('Proposed vs Reference — Side by Side', m, y);
+          y += 4;
+          autoTable(doc, {
+            startY: y,
+            head: [rows[0]],
+            body: rows.slice(1),
+            theme: 'grid',
+            margin: { left: m, right: m },
+            headStyles: { fillColor: pRgb, textColor: 255, fontSize: 8 },
+            bodyStyles: { fontSize: 8, textColor: [50, 50, 50] },
+            styles: { font: FONT },
+          });
+        }
+      }
+    } catch (refErr) {
+      console.error('Reference project PDF section failed; skipping. Error:', refErr);
+    }
+    // ========= /REFERENCE PROJECT PERFORMANCE =========
+
     const totalPages = doc.internal.getNumberOfPages();
     for (let i = 1; i <= totalPages; i++) { doc.setPage(i); if (i > 1) drawHeader(doc); drawFooter(doc, i, totalPages); }
     doc.save(`Quotation-${project.customer?.name || 'Customer'}-${new Date().toISOString().split('T')[0]}.pdf`);
