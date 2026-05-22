@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { usersAPI } from '../utils/api';
+import { formatApiErrorDetail } from '../contexts/AuthContext';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
@@ -99,7 +100,7 @@ export default function UserManagement() {
       setShowDialog(false);
       fetchUsers();
     } catch (err) {
-      setError(err.response?.data?.detail || 'Operation failed');
+      setError(formatApiErrorDetail(err.response?.data?.detail) || 'Operation failed');
     } finally {
       setActionLoading(false);
     }

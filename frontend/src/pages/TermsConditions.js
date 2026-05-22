@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { termsAPI } from '../utils/api';
+import { formatApiErrorDetail } from '../contexts/AuthContext';
 import DOMPurify from 'dompurify';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
@@ -86,7 +87,7 @@ export default function TermsConditions() {
       setShowDialog(false);
       fetchTerms();
     } catch (err) {
-      setError(err.response?.data?.detail || 'Operation failed');
+      setError(formatApiErrorDetail(err.response?.data?.detail) || 'Operation failed');
     } finally {
       setActionLoading(false);
     }

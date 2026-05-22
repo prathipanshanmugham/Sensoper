@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { accountsAPI } from '../utils/api';
+import { formatApiErrorDetail } from '../contexts/AuthContext';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
@@ -60,7 +61,7 @@ export default function AccountsSection() {
       else await accountsAPI.create(payload);
       setShowForm(false);
       await load();
-    } catch (e) { setError(e.response?.data?.detail || 'Save failed'); }
+    } catch (e) { setError(formatApiErrorDetail(e.response?.data?.detail) || 'Save failed'); }
     finally { setSaving(false); }
   };
 

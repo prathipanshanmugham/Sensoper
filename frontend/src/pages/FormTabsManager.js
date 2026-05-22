@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { formTabsAPI } from '../utils/api';
+import { formatApiErrorDetail } from '../contexts/AuthContext';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
@@ -146,7 +147,7 @@ export default function FormTabsManager() {
       setFormState(emptyTab);
       await fetchTabs();
     } catch (err) {
-      setError(err.response?.data?.detail || 'Failed to save tab');
+      setError(formatApiErrorDetail(err.response?.data?.detail) || 'Failed to save tab');
     } finally {
       setSaving(false);
     }
@@ -165,7 +166,7 @@ export default function FormTabsManager() {
       await formTabsAPI.delete(tab.id);
       await fetchTabs();
     } catch (err) {
-      setError(err.response?.data?.detail || 'Failed to delete tab');
+      setError(formatApiErrorDetail(err.response?.data?.detail) || 'Failed to delete tab');
     }
   };
 
@@ -174,7 +175,7 @@ export default function FormTabsManager() {
       await formTabsAPI.update(tab.id, { active: !tab.active });
       await fetchTabs();
     } catch (err) {
-      setError(err.response?.data?.detail || 'Failed to toggle tab');
+      setError(formatApiErrorDetail(err.response?.data?.detail) || 'Failed to toggle tab');
     }
   };
 

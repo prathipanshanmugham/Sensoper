@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { companyAPI } from '../utils/api';
+import { formatApiErrorDetail } from '../contexts/AuthContext';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
@@ -155,7 +156,7 @@ export default function CompanyProfile() {
       setShowDialog(false);
       fetchProfiles();
     } catch (err) {
-      setError(err.response?.data?.detail || 'Operation failed');
+      setError(formatApiErrorDetail(err.response?.data?.detail) || 'Operation failed');
     } finally {
       setActionLoading(false);
     }
@@ -517,7 +518,7 @@ export default function CompanyProfile() {
                               const res = await companyAPI.uploadLogo(file);
                               updateField('logo_url', res.data.logo_url);
                             } catch (err) {
-                              setError(err.response?.data?.detail || 'Logo upload failed');
+                              setError(formatApiErrorDetail(err.response?.data?.detail) || 'Logo upload failed');
                             } finally {
                               setUploading(false);
                             }

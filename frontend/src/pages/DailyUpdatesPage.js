@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { dailyUpdatesAPI, paymentsAPI, materialUsageAPI, projectsAPI } from '../utils/api';
+import { formatApiErrorDetail } from '../contexts/AuthContext';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
@@ -118,7 +119,7 @@ export default function DailyUpdatesPage() {
       if (isGlobal) await fetchGlobalUpdates();
       else await fetchUpdates();
     } catch (err) {
-      setError(err.response?.data?.detail || 'Failed to save');
+      setError(formatApiErrorDetail(err.response?.data?.detail) || 'Failed to save');
     } finally { setSaving(false); }
   };
 

@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { inventoryAPI } from '../utils/api';
+import { formatApiErrorDetail } from '../contexts/AuthContext';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
@@ -64,7 +65,7 @@ export default function InventoryManagement() {
       const res = await inventoryAPI.importItems(importFile);
       setImportResult(res.data);
       fetchData();
-    } catch (e) { setError(e.response?.data?.detail || 'Import failed'); }
+    } catch (e) { setError(formatApiErrorDetail(e.response?.data?.detail) || 'Import failed'); }
     finally { setImporting(false); }
   };
 
@@ -149,7 +150,7 @@ export default function InventoryManagement() {
       setShowItemDialog(false);
       fetchData();
     } catch (err) {
-      setError(err.response?.data?.detail || 'Operation failed');
+      setError(formatApiErrorDetail(err.response?.data?.detail) || 'Operation failed');
     } finally { setActionLoading(false); }
   };
 
@@ -166,7 +167,7 @@ export default function InventoryManagement() {
       setNewCat({ name: '', slug: '', description: '' });
       setShowCatDialog(false);
       fetchData();
-    } catch (err) { setError(err.response?.data?.detail || 'Failed'); }
+    } catch (err) { setError(formatApiErrorDetail(err.response?.data?.detail) || 'Failed'); }
   };
 
   const handleDeleteCategory = async (id) => {

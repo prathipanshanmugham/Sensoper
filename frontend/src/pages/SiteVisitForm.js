@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { projectsAPI, inventoryAPI, formTabsAPI, termsAPI } from '../utils/api';
+import { formatApiErrorDetail } from '../contexts/AuthContext';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
@@ -420,7 +421,7 @@ export default function SiteVisitForm() {
       await fetchCategories();
       setNewCategoryName('');
       setShowAddCategory(false);
-    } catch (err) { setError(err.response?.data?.detail || 'Failed to create category'); }
+    } catch (err) { setError(formatApiErrorDetail(err.response?.data?.detail) || 'Failed to create category'); }
     finally { setCreatingCategory(false); }
   };
 
@@ -541,7 +542,7 @@ export default function SiteVisitForm() {
         navigate(`/dashboard/projects/${res.data.id}`);
       }
     } catch (err) {
-      setError(err.response?.data?.detail || `Failed to ${isEditMode ? 'update' : 'create'} project`);
+      setError(formatApiErrorDetail(err.response?.data?.detail) || `Failed to ${isEditMode ? 'update' : 'create'} project`);
     } finally { setLoading(false); }
   };
 

@@ -43,8 +43,9 @@ const blank = {
   total_cost: '',
   subsidy: '',
 
-  // ───── Diesel offset (optional) ─────
-  diesel_offset_liters_yearly: '',
+  // ───── Fuel offset (auto-calculated from generation) ─────
+  fuel_type: 'Diesel',
+  diesel_offset_liters_yearly: '',   // legacy key kept for backward-compat
   diesel_price_per_liter: '',
 
   // ───── ROI assumptions ─────
@@ -55,7 +56,7 @@ const blank = {
   notes: '',
 
   // ───── Internal state ─────
-  _overrides: {},   // { fieldName: true } when user has manually overridden
+  _overrides: {},
   _derived: {},
 };
 
@@ -176,7 +177,14 @@ function autoCalc(d) {
   const offsetUnits = Math.min(monthlyGen, monthlyUnits > 0 ? monthlyUnits : monthlyGen);
   const monthlyElec = offsetUnits * tariff;
   const annualElec = monthlyElec * 12;
-  const dieselL = num(d.diesel_offset_liters_yearly);
+
+  // Fuel saved — auto-calc from annual generation × fuel factor
+  // Diesel genset ≈ 3.6 kWh/L → ~0.28 L per kWh saved.
+  // Petrol genset ≈ 2.8 kWh/L → ~0.36 L per kWh saved.
+  const FUEL_LITRES_PER_KWH = (d.fuel_type === 'Petrol') ? 0.36 : 0.28;
+  const dieselL = ov.diesel_offset_liters_yearly
+    ? num(d.diesel_offset_liters_yearly)
+    : Math.round(annualGen * FUEL_LITRES_PER_KWH);
   const dieselP = num(d.diesel_price_per_liter);
   const annualDiesel = dieselL * dieselP;
   const annualSavings = annualElec + annualDiesel;
@@ -212,6 +220,7 @@ function autoCalc(d) {
     battery_count: batteryCount,
     total_cost: totalCost,
     subsidy: subsidy,
+    diesel_offset_liters_yearly: dieselL,
     // derived outputs
     net_cost: netCost,
     monthly_savings: monthlySavings,
@@ -232,6 +241,7 @@ const AUTO_FIELDS = [
   'system_size_kw', 'panel_count', 'panel_area_sqft', 'roof_utilization_pct',
   'estimated_generation_units_monthly', 'estimated_generation_units_annual',
   'inverter_kw', 'battery_kwh', 'battery_count', 'total_cost', 'subsidy',
+  'diesel_offset_liters_yearly',
 ];
 
 // ───── Sub-components (module-scoped → stable identity, no remount on parent re-render) ─────
@@ -304,12 +314,13 @@ export default function ProposedSolutionSection({ value, onChange }) {
     data.connection_type, data.tariff_category, data.tariff_per_unit,
     data.location, data.power_backup_hours, data.system_type,
     data.panel_wattage_w, data.system_life_years, data.panel_degradation_pct_per_year,
-    data.diesel_offset_liters_yearly, data.diesel_price_per_liter,
+    data.fuel_type, data.diesel_price_per_liter,
     // override-honoured fields:
     data.system_size_kw, data.panel_count, data.panel_area_sqft,
     data.roof_utilization_pct, data.estimated_generation_units_monthly,
     data.estimated_generation_units_annual, data.inverter_kw,
     data.battery_kwh, data.battery_count, data.total_cost, data.subsidy,
+    data.diesel_offset_liters_yearly,
     JSON.stringify(overrides),
   ]);
 
@@ -494,13 +505,32 @@ export default function ProposedSolutionSection({ value, onChange }) {
           </div>
         </div>
 
-        {/* ───── 4. Diesel / Petrol Offset ───── */}
+        {/* ───── 4. Fuel Offset (auto-calculated from generation) ───── */}
         <div>
-          <p className="text-[11px] uppercase tracking-wider text-slate-600 font-semibold mb-2 flex items-center gap-1.5"><Fuel className="h-3.5 w-3.5" /> Diesel / Petrol Offset (optional)</p>
-          <div className="grid grid-cols-2 gap-3">
-            <DriverField label="Litres Saved per Year" field="diesel_offset_liters_yearly" placeholder="e.g., 200" value={data.diesel_offset_liters_yearly} onChange={updateDriver} />
+          <p className="text-[11px] uppercase tracking-wider text-slate-600 font-semibold mb-2 flex items-center gap-1.5"><Fuel className="h-3.5 w-3.5" /> Fuel Saved <span className="font-normal text-slate-400">(auto-calculated from generation)</span></p>
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+            <div className="space-y-1">
+              <Label className="text-xs">Fuel Type</Label>
+              <Select value={data.fuel_type} onValueChange={(v) => updateDriver('fuel_type', v)}>
+                <SelectTrigger className="h-10 bg-white" data-testid="ps-fuel-type"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Diesel">Diesel (0.28 L / kWh)</SelectItem>
+                  <SelectItem value="Petrol">Petrol (0.36 L / kWh)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <AutoField
+              label="Fuel Saved (litres / year)"
+              field="diesel_offset_liters_yearly"
+              placeholder="auto"
+              value={data.diesel_offset_liters_yearly}
+              override={!!overrides.diesel_offset_liters_yearly}
+              onChange={updateAutoField}
+              onReset={() => resetField('diesel_offset_liters_yearly')}
+            />
             <DriverField label="Fuel Price (₹ / litre)" field="diesel_price_per_liter" placeholder="e.g., 95" value={data.diesel_price_per_liter} onChange={updateDriver} />
           </div>
+          <p className="text-[10px] text-slate-500 mt-2">Litres saved = Annual generation × {data.fuel_type === 'Petrol' ? '0.36' : '0.28'} L/kWh (typical {data.fuel_type?.toLowerCase()} genset). Override the litres field if you have a measured value.</p>
         </div>
 
         {/* ───── 5. ROI Assumptions ───── */}
@@ -550,7 +580,7 @@ export default function ProposedSolutionSection({ value, onChange }) {
               <p className="text-base font-bold leading-tight">{engine.lifetime_savings > 0 ? inrL(engine.lifetime_savings) : '—'}</p>
             </div>
             <div className="rounded-lg p-2.5 bg-sky-600 text-white" data-testid="ps-out-diesel">
-              <p className="text-[9px] uppercase tracking-wider opacity-90">Petrol / Diesel Saved</p>
+              <p className="text-[9px] uppercase tracking-wider opacity-90">{data.fuel_type === 'Petrol' ? 'Petrol' : 'Diesel'} Saved</p>
               <p className="text-base font-bold leading-tight">{engine.diesel_petrol_saved_liters_yearly > 0 ? `${Math.round(engine.diesel_petrol_saved_liters_yearly)} L/yr` : '—'}</p>
             </div>
             <div className="rounded-lg p-2.5 bg-emerald-700 text-white" data-testid="ps-out-co2">
