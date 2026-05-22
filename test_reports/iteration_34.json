@@ -1,0 +1,41 @@
+{
+  "summary": "Iteration 34 (frontend-only) — Hybrid Proposed Solution & Materials calculator. Full end-to-end Playwright verification on the running app. Login → New Project → wizard navigated through Customer → Location → Site & Electrical → Materials. All 11 driver inputs (ps-monthly-eb-bill, ps-monthly-eb-units, ps-roof-area-sqft, ps-tariff-per-unit, ps-connection-type, ps-tariff-category, ps-location, ps-system-type) visible. All 11 AUTO_FIELDS (ps-system-size-kw, ps-panel-count, ps-panel-area-sqft, ps-roof-utilization-pct, ps-estimated-generation-units-monthly, ps-estimated-generation-units-annual, ps-inverter-kw, ps-battery-kwh, ps-battery-count, ps-total-cost, ps-subsidy) visible with 11 'Auto Calculated' badges at start. ps-auto-calc-btn present. Math verified exactly with monthly_eb_units=500, tariff=7, roof_area=600, TN, on-grid, Domestic → system_size=3.97 kW, panel_count=8, panel_area=168 sqft, roof_util=28%, gen_monthly=500 u, gen_annual=6000 u, inverter=3.97, total_cost=218350, subsidy=78000. Final outputs: Payback 3.3 yrs, Monthly ₹3,500, Annual ₹42,000, Lifetime ₹9.66 L, CO2 4,920 kg/yr, Gen 6,000 units. Manual override flow: typing into ps-system-size-kw → badge flips to 'Manual Override' (1 visible) + reset-system_size_kw icon appears; clicking reset restores 3.97 and badge reverts to 'Auto Calculated' (0 manual). Auto Calculate button: after 2 manual overrides (system_size=8, total_cost=999999), clicking ps-auto-calc-btn → 0 manual badges, system_size=3.97, total_cost=218350. Smart recalc: bill=5000 (units cleared), tariff=7 → system_size jumps to 5.67 (5000/7/30/4.2 ≈ 5.67) ✓. System-type dynamic ROI: hybrid → total_cost=425250 (=5.67×75000), subsidy=0, ps-power-backup-hours appears; off-grid → total_cost=538650 (=5.67×95000), subsidy=0. Bill↔units resolution: bill=3500, tariff=7, no units → system_size still 3.97 ✓.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "ProposedSolutionSection.js (565 lines) is well-organized; pure autoCalc engine + _overrides tracking is clean. Suggestion: AutoField & DriverField are defined inside the parent component on every render — this causes React to remount the <Input> on each render, which is why focus/IME may be reset while typing on slow devices. Move them to module scope or wrap with useCallback returning JSX-builder fns. Not blocking — typing works because controlled value re-attaches — but slight perf/UX nit.",
+    "useEffect that pushes engine values back into parent runs on every engine recompute and uses JSON.stringify(overrides) inside useMemo deps. The patch comparison via String(newVal) !== String(data[f]) is good defensive equality; lastPushed ref prevents infinite loops. Verified no console errors / no infinite re-render in 90s of interaction.",
+    "Math correctness verified end-to-end against spec; subsidy cap at ₹78,000 enforced (>2 kW domestic on-grid). cost_per_kWp map {on-grid:55000, hybrid:75000, off-grid:95000} produces correct totals on system_type switch.",
+    "Iter-33 regression: project-notes-card and site_docs project-notes-input still visible in source (verified earlier iter); ProposedSolutionSection still rendered inside materials step (line 865 of SiteVisitForm.js)."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "n/a (frontend-only iteration)", "frontend": "100% (13/13 scenarios pass)"},
+  "test_credentials": "admin@sensoper.com / Admin@123",
+  "seed_data_creation": "None — wizard exercised in-memory; no project was submitted (Auto Calculate / overrides / smart recalc are all client-state). Persistence (feature #10) was not exercised end-to-end via UI submit, but the data flows through formData.custom_fields.proposed_solution = ps (SiteVisitForm.js line 869) and the create_project endpoint already accepts custom_fields verbatim (verified in iter-33). Recommend a single smoke test by the main agent: POST /api/projects with custom_fields.proposed_solution = {...AUTO_FIELDS, _overrides: {system_size_kw:true}, _derived: {...}} → GET should round-trip the entire object.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "main_agent_can_self_test": false,
+  "verified_evidence": {
+    "ui_loaded": "[data-testid='proposed-solution-section'] visible on Materials step (step 4)",
+    "driver_inputs": "8/8 driver testids visible",
+    "auto_fields": "11/11 auto field testids visible",
+    "auto_button": "[data-testid='ps-auto-calc-btn'] present",
+    "initial_badges": "11 'Auto Calculated' badges",
+    "math_correctness": "units=500,tariff=7,roof=600,TN,on-grid,Domestic → system_size=3.97, panel_count=8, panel_area=168, roof_util=28, gen_m=500, gen_a=6000, inverter=3.97, total=218350, subsidy=78000",
+    "final_outputs": "payback=3.3 yrs, monthly=₹3,500, annual=₹42,000, lifetime=₹9.66L, CO2=4920 kg/yr, gen=6000 units",
+    "manual_override": "Typing system_size → 1 Manual Override badge + reset icon visible",
+    "reset_restores_auto": "Click reset-system_size_kw → 3.97 restored, badge=Auto Calculated",
+    "auto_calc_button": "2 overrides → click → 0 manual badges, fields revert",
+    "smart_recalc": "bill 3500→5000 (units cleared) → system_size 3.97→5.67",
+    "hybrid_dynamic_roi": "total_cost=425250, subsidy=0, power-backup-hours appears",
+    "offgrid_dynamic_roi": "total_cost=538650, subsidy=0",
+    "bill_only_resolution": "bill=3500 + tariff=7 (no units) → system_size=3.97"
+  },
+  "context_for_next_testing_agent": "ProposedSolutionSection.js fully functional. To reach Materials step in Playwright: login → /dashboard/projects/new → fill customer-name/phone/address → next → fill location-address-input → next → next (site_electrical extra fields are optional in dynamic form) → Materials. The site_electrical step in current DB doesn't have any REQUIRED extra fields, so Next from it succeeds without filling anything. Wizard order from form_tabs collection: customer → location → site_electrical → materials → customer-preferences → subsidy → finance → site_docs. AUTO_FIELDS list: system_size_kw, panel_count, panel_area_sqft, roof_utilization_pct, estimated_generation_units_monthly, estimated_generation_units_annual, inverter_kw, battery_kwh, battery_count, total_cost, subsidy. _overrides keys mirror those field names. cost_per_kWp: on-grid=55000, hybrid=75000, off-grid=95000. Subsidy formula: domestic on-grid only, kWp≤1: 30000×kWp; 1<kWp≤2: 30000+30000×(kWp-1); 2<kWp≤3: 60000+18000×(kWp-2); cap 78000."
+}
