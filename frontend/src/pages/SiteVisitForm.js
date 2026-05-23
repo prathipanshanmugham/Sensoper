@@ -891,21 +891,15 @@ export default function SiteVisitForm() {
                   value={formData.custom_fields?.proposed_solution}
                   onChange={(ps) => setFormData(prev => ({
                     ...prev,
-                    custom_fields: { ...(prev.custom_fields || {}), proposed_solution: ps }
+                    custom_fields: { ...(prev.custom_fields || {}), proposed_solution: ps },
+                    // Keep legacy solar_system fields in sync for any downstream code that still reads them
+                    solar_system: {
+                      ...prev.solar_system,
+                      system_type: ps?.system_type || prev.solar_system?.system_type,
+                      battery_required: (ps?.system_type === 'hybrid' || ps?.system_type === 'off-grid')
+                    }
                   }))}
                 />
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div className="space-y-2"><Label>System Type</Label>
-                    <ComboInput value={formData.solar_system.system_type} onChange={(v) => updateField('solar_system', 'system_type', v)} options={SYSTEM_TYPE_OPTIONS} placeholder="Type or select system type" data-testid="system-type-input" />
-                  </div>
-                  <div className="flex items-end pb-2">
-                    <div className="flex items-center space-x-3">
-                      <Checkbox id="batteryRequired" checked={formData.solar_system.battery_required} onCheckedChange={(c) => updateField('solar_system', 'battery_required', c)} data-testid="battery-checkbox" />
-                      <Label htmlFor="batteryRequired">Battery Backup</Label>
-                    </div>
-                  </div>
-                </div>
 
                 <div>
                   <div className="flex items-center justify-between mb-3">

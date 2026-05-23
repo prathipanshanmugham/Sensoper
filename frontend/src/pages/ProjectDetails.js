@@ -238,10 +238,19 @@ export default function ProjectDetails() {
 
     let upiQR = null;
     const upiId = cp.bank_details?.upi_id;
-    if (upiId) {
-      const totalAmt = project.cost_estimation?.total_cost || 0;
-      const upiString = `upi://pay?pa=${upiId}&pn=${encodeURIComponent(cp.company_name || 'Sensoper')}&am=${totalAmt}&cu=INR&tn=${encodeURIComponent(`Payment for ${project.reference_number || ''}`)}`;
-      try { upiQR = await QRCode.toDataURL(upiString, { width: 150, margin: 1 }); } catch (e) { console.error('Failed to generate UPI QR:', e); }
+    // Compute balance due — total - payments already received
+    const totalAmt = project.cost_estimation?.total_cost || 0;
+    const totalPaid = (project.payments || []).reduce((a, p) => a + (p.amount || 0), 0);
+    const balanceDue = Math.max(totalAmt - totalPaid, 0);
+    const payStatus = totalAmt <= 0 ? 'pending' : (totalPaid >= totalAmt ? 'paid' : (totalPaid > 0 ? 'partial' : 'pending'));
+    const upiAmount = balanceDue > 0 ? balanceDue : totalAmt;
+    const invoiceRef = project.reference_number || project.id || '';
+    const upiNote = `Invoice ${invoiceRef} - ${(project.customer?.name || '').slice(0, 20)}`;
+    const upiString = upiId
+      ? `upi://pay?pa=${upiId}&pn=${encodeURIComponent(cp.company_name || 'Sensoper')}&am=${upiAmount}&cu=INR&tn=${encodeURIComponent(upiNote)}`
+      : null;
+    if (upiString) {
+      try { upiQR = await QRCode.toDataURL(upiString, { width: 220, margin: 1, errorCorrectionLevel: 'M' }); } catch (e) { console.error('Failed to generate UPI QR:', e); }
     }
 
     const drawHeader = (d) => {
@@ -371,12 +380,12 @@ export default function ProjectDetails() {
       didDrawCell: (data) => { if (data.row.index === 0 && data.column.index === 0) { doc.setDrawColor(...pRgb); doc.setLineWidth(0.8); doc.line(data.cell.x, data.cell.y, data.cell.x + contentW, data.cell.y); } },
     }); y = doc.lastAutoTable.finalY + 12;
 
-    // Bank Details with UPI QR
+    // Bank Details with UPI QR + Pay Now button
     const bank = cp.bank_details;
     if (bank && bank.account_name) {
-      if (y > pageHeight - 70) { doc.addPage(); drawHeader(doc); y = 48; }
-      y = sectionHead('Bank Details for Payment', y);
-      const bankTableWidth = upiQR ? contentW * 0.6 : contentW;
+      if (y > pageHeight - 90) { doc.addPage(); drawHeader(doc); y = 48; }
+      y = sectionHead('Pay Now — Bank Transfer or UPI', y);
+      const bankTableWidth = upiQR ? contentW * 0.55 : contentW;
       autoTable(doc, { startY: y, margin: { left: m, right: m }, theme: 'plain',
         styles: { font: FONT, fontSize: 9, cellPadding: 2, textColor: [50, 50, 50] },
         columnStyles: { 0: { fontStyle: 'bold', cellWidth: 45, textColor: [100, 100, 100] } },
@@ -385,14 +394,55 @@ export default function ProjectDetails() {
       });
       if (upiQR) {
         try {
-          const qrX = m + bankTableWidth + 10;
+          const qrX = m + bankTableWidth + 6;
           const qrY = y - 2;
-          doc.addImage(upiQR, 'PNG', qrX, qrY, 35, 35);
+          // Card background behind QR
+          doc.setFillColor(245, 247, 250);
+          doc.roundedRect(qrX - 3, qrY - 3, 55, 64, 2, 2, 'F');
+          doc.addImage(upiQR, 'PNG', qrX + 4, qrY, 42, 42);
           doc.setFontSize(7); doc.setTextColor(100, 100, 100); doc.setFont(FONT, 'normal');
-          doc.text('Scan to Pay (UPI)', qrX + 17.5, qrY + 39, { align: 'center' });
+          doc.text('Scan with any UPI app', qrX + 25, qrY + 46, { align: 'center' });
+          // Amount line
+          doc.setFontSize(8); doc.setFont(FONT, 'bold'); doc.setTextColor(...pRgb);
+          doc.text(currency(upiAmount), qrX + 25, qrY + 52, { align: 'center' });
+          // Clickable "PAY NOW VIA UPI" button — opens UPI deep link on mobile
+          if (upiString) {
+            try {
+              doc.setFillColor(16, 185, 129);
+              doc.roundedRect(qrX - 3, qrY + 56, 55, 7, 1.5, 1.5, 'F');
+              doc.setFontSize(7.5); doc.setFont(FONT, 'bold'); doc.setTextColor(255, 255, 255);
+              doc.textWithLink('PAY NOW VIA UPI', qrX + 25, qrY + 60.5, { align: 'center', url: upiString });
+            } catch (linkErr) { console.warn('UPI link button failed:', linkErr); }
+          }
         } catch (e) { console.error('UPI QR PDF render failed:', e); }
       }
-      y = doc.lastAutoTable.finalY + 12;
+      y = doc.lastAutoTable.finalY + 4;
+
+      // Payment status + amount breakdown strip
+      try {
+        const stripY = y + 1;
+        // Status badge
+        const statusColors = { paid: [16, 185, 129], partial: [245, 158, 11], pending: [148, 163, 184] };
+        const statusLabels = { paid: 'PAID', partial: 'PARTIALLY PAID', pending: 'PAYMENT PENDING' };
+        const sc = statusColors[payStatus] || statusColors.pending;
+        doc.setFillColor(sc[0], sc[1], sc[2]);
+        doc.roundedRect(m, stripY, 38, 8, 2, 2, 'F');
+        doc.setTextColor(255, 255, 255); doc.setFont(FONT, 'bold'); doc.setFontSize(7.5);
+        doc.text(statusLabels[payStatus] || 'PENDING', m + 19, stripY + 5.4, { align: 'center' });
+        // Breakdown
+        doc.setFont(FONT, 'normal'); doc.setFontSize(8); doc.setTextColor(80, 80, 80);
+        const breakdown = `Total: ${currency(totalAmt)}    Paid: ${currency(totalPaid)}    Balance Due: ${currency(balanceDue)}`;
+        doc.text(breakdown, m + 42, stripY + 5.4);
+        y += 12;
+      } catch (sErr) { console.warn('Payment status strip failed:', sErr); }
+
+      // Trust line + due date
+      doc.setFontSize(7); doc.setFont(FONT, 'normal'); doc.setTextColor(120, 120, 120);
+      doc.text(
+        `Secure payment — UPI is bank-grade and goes directly to ${cp.company_name || 'us'}. No third-party processing fees.`,
+        m, y, { maxWidth: contentW }
+      );
+      y += 8;
     }
 
     // Site Documentation QR
