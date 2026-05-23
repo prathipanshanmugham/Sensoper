@@ -949,6 +949,52 @@ export default function ProjectDetails() {
           }
           y += headerH + 6;
 
+          // ───── Live Reference Site Performance ─────
+          const till = ref.till_date;
+          if (till && till.years_elapsed > 0) {
+            if (y > pageHeight - 60) { doc.addPage(); drawHeader(doc); y = 50; }
+            // Highlighted banner
+            doc.setFillColor(16, 185, 129);
+            doc.roundedRect(m, y, contentW, 14, 2, 2, 'F');
+            doc.setTextColor(255, 255, 255); doc.setFont(FONT, 'bold'); doc.setFontSize(10);
+            doc.text('LIVE REFERENCE SITE PERFORMANCE', m + 3, y + 6);
+            doc.setFont(FONT, 'normal'); doc.setFontSize(8);
+            const dateStr = till.installation_date ? new Date(till.installation_date).toLocaleDateString('en-IN') : '—';
+            doc.text(`Installed ${dateStr} · ${till.years_elapsed.toFixed(1)} years operational`, m + 3, y + 12);
+            y += 18;
+
+            // Snapshot tiles
+            const stile = (col, row, label, value, hex) => {
+              const tw = (contentW - 9) / 4;
+              const th = 22;
+              const x = m + col * (tw + 3);
+              const ty = y + row * (th + 3);
+              const [r, g, b] = hexToRgb(hex);
+              doc.setFillColor(r, g, b);
+              doc.roundedRect(x, ty, tw, th, 2, 2, 'F');
+              doc.setTextColor(255, 255, 255);
+              doc.setFont(FONT, 'normal'); doc.setFontSize(6.6);
+              doc.text(String(label).toUpperCase(), x + 3, ty + 6);
+              doc.setFont(FONT, 'bold'); doc.setFontSize(10.5);
+              doc.text(String(value || '—'), x + 3, ty + 15);
+            };
+            const inrSnap = (v) => v ? `₹${Math.round(v).toLocaleString('en-IN')}` : '—';
+            stile(0, 0, 'Project Age', `${till.years_elapsed.toFixed(1)} yrs`, '#10b981');
+            stile(1, 0, 'Savings Till Date', inrSnap(till.savings_inr), '#f59e0b');
+            stile(2, 0, 'Units Generated', till.units_generated ? `${Math.round(till.units_generated).toLocaleString('en-IN')}` : '—', '#3b82f6');
+            stile(3, 0, 'CO₂ Offset Till Date', till.co2_kg ? `${Math.round(till.co2_kg).toLocaleString('en-IN')} kg` : '—', '#059669');
+            y += 22 + 6;
+            // Second row — payback progress + fuel saved
+            const paybackProg = ref.metrics?.payback_years && till.years_elapsed > 0
+              ? Math.min((till.years_elapsed / ref.metrics.payback_years) * 100, 100)
+              : 0;
+            stile(0, 0, 'Lifetime Projected', ref.metrics?.lifetime_savings ? `₹${(ref.metrics.lifetime_savings / 100000).toFixed(2)} L` : '—', '#e11d48');
+            stile(1, 0, 'ROI Achieved', ref.metrics?.roi_pct ? `${Math.round(ref.metrics.roi_pct)}%` : '—', '#0ea5e9');
+            stile(2, 0, 'Payback Progress', paybackProg ? `${Math.round(paybackProg)}%` : '—', '#8b5cf6');
+            stile(3, 0, 'Fuel Saved Till Date', till.fuel_litres ? `${Math.round(till.fuel_litres).toLocaleString('en-IN')} L` : '—', '#0284c7');
+            y += 22 + 8;
+          }
+
           // Actual metrics — same tile style, but blue palette
           const rm = ref.metrics || {};
           const rtile = (col, row, label, value, hex) => {
@@ -988,6 +1034,7 @@ export default function ProjectDetails() {
             ['ROI (lifetime)', md.roi_pct ? `${Math.round(md.roi_pct)}%` : '—', rm.roi_pct ? `${Math.round(rm.roi_pct)}%` : '—', null],
             ['Payback (yrs)', md.payback_years ? md.payback_years.toFixed(1) : '—', rm.payback_years ? rm.payback_years.toFixed(1) : '—', null],
             ['Annual Generation', md.annual_generation_units ? Math.round(md.annual_generation_units).toLocaleString('en-IN') : '—', rm.annual_generation_units ? Math.round(rm.annual_generation_units).toLocaleString('en-IN') : '—', null],
+            ['Savings Till Date', '— (new)', ref.till_date && ref.till_date.savings_inr ? `₹${Math.round(ref.till_date.savings_inr).toLocaleString('en-IN')}` : '—', null],
           ];
           if (y > pageHeight - 60) { doc.addPage(); drawHeader(doc); y = 50; }
           doc.setFont(FONT, 'bold'); doc.setFontSize(9); doc.setTextColor(60, 60, 60);

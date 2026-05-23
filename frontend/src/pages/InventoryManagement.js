@@ -31,7 +31,7 @@ export default function InventoryManagement() {
   const [itemForm, setItemForm] = useState({
     name: '', sku_code: '', category: '',
     zone: '', aisle: '', shelf: '', rack: '', bin_location: '',
-    quantity: 0, unit_price: 0, supplier: '', gst_percentage: 18, reorder_level: 10,
+    quantity: 0, unit_price: 0, supplier: '', gst_percentage: 18, hsn_code: '', reorder_level: 10,
     image_url: '', active: true, qc_checklist: [], procurement_date: ''
   });
   const [newQcItem, setNewQcItem] = useState('');
@@ -102,6 +102,7 @@ export default function InventoryManagement() {
         rack: item.rack || '', bin_location: item.bin_location || '',
         quantity: item.quantity, unit_price: item.unit_price,
         supplier: item.supplier || '', gst_percentage: item.gst_percentage || 18,
+        hsn_code: item.hsn_code || '',
         reorder_level: item.reorder_level || 10, image_url: item.image_url || '',
         active: item.active !== undefined ? item.active : true,
         qc_checklist: Array.isArray(item.qc_checklist) ? item.qc_checklist : [],
@@ -112,7 +113,7 @@ export default function InventoryManagement() {
       setItemForm({
         name: '', sku_code: '', category: categories[0]?.slug || '',
         zone: '', aisle: '', shelf: '', rack: '', bin_location: '',
-        quantity: 0, unit_price: 0, supplier: '', gst_percentage: 18, reorder_level: 10,
+        quantity: 0, unit_price: 0, supplier: '', gst_percentage: 18, hsn_code: '', reorder_level: 10,
         image_url: '', active: true, qc_checklist: [], procurement_date: ''
       });
     }
@@ -255,6 +256,7 @@ export default function InventoryManagement() {
                     <th className="text-right py-3 px-4 text-xs font-semibold uppercase text-slate-500">Qty</th>
                     <th className="text-right py-3 px-4 text-xs font-semibold uppercase text-slate-500">Price</th>
                     <th className="text-right py-3 px-4 text-xs font-semibold uppercase text-slate-500">GST</th>
+                    <th className="text-left py-3 px-4 text-xs font-semibold uppercase text-slate-500">HSN</th>
                     <th className="text-right py-3 px-4 text-xs font-semibold uppercase text-slate-500">Actions</th>
                   </tr>
                 </thead>
@@ -289,6 +291,7 @@ export default function InventoryManagement() {
                       <td className="py-3 px-4 text-right"><span className={item.quantity <= item.reorder_level ? 'text-red-600 font-semibold' : 'text-slate-900'}>{item.quantity}</span>{item.quantity <= item.reorder_level && <AlertTriangle className="h-3 w-3 inline ml-1 text-red-500" />}</td>
                       <td className="py-3 px-4 text-right font-medium text-slate-900">₹{item.unit_price.toLocaleString('en-IN')}</td>
                       <td className="py-3 px-4 text-right text-slate-600">{item.gst_percentage}%</td>
+                      <td className="py-3 px-4 text-xs font-mono text-slate-600" data-testid={`hsn-${item.id}`}>{item.hsn_code || '—'}</td>
                       <td className="py-3 px-4 text-right">
                         <div className="flex justify-end gap-1">
                           <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openItemDialog(item)} data-testid={`edit-item-${item.id}`}><Edit className="h-4 w-4" /></Button>
@@ -432,6 +435,7 @@ export default function InventoryManagement() {
               <div className="space-y-2"><Label>Quantity</Label><Input type="number" min="0" value={itemForm.quantity} onChange={(e) => setItemForm(p => ({ ...p, quantity: parseInt(e.target.value) || 0 }))} className="h-11" data-testid="item-quantity-input" /></div>
               <div className="space-y-2"><Label>Unit Price (₹)</Label><Input type="number" min="0" value={itemForm.unit_price} onChange={(e) => setItemForm(p => ({ ...p, unit_price: parseFloat(e.target.value) || 0 }))} className="h-11" data-testid="item-price-input" /></div>
               <div className="space-y-2"><Label>GST %</Label><Input type="number" min="0" max="100" value={itemForm.gst_percentage} onChange={(e) => setItemForm(p => ({ ...p, gst_percentage: parseFloat(e.target.value) || 0 }))} className="h-11" data-testid="item-gst-input" /></div>
+              <div className="space-y-2"><Label>HSN Code</Label><Input type="text" maxLength={10} value={itemForm.hsn_code} onChange={(e) => setItemForm(p => ({ ...p, hsn_code: e.target.value.trim() }))} placeholder="e.g., 85414011" className="h-11" data-testid="item-hsn-input" /></div>
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2"><Label>Supplier</Label><Input value={itemForm.supplier} onChange={(e) => setItemForm(p => ({ ...p, supplier: e.target.value }))} placeholder="Supplier name" className="h-11" data-testid="item-supplier-input" /></div>
@@ -576,7 +580,7 @@ export default function InventoryManagement() {
               <Input type="file" accept=".xlsx,.csv" onChange={(e) => { setImportFile(e.target.files?.[0] || null); setImportResult(null); }} data-testid="import-file-input" />
               {importFile && <p className="text-xs text-slate-500">{importFile.name} ({(importFile.size / 1024).toFixed(1)} KB)</p>}
             </div>
-            <p className="text-[11px] text-slate-500">Required columns: <code className="bg-slate-100 px-1 rounded">name, sku_code, category, quantity, unit_price</code>. Optional: reorder_level, supplier, gst_percentage, margin_pct, zone, aisle, shelf, rack, bin_location, procurement_date, active.</p>
+            <p className="text-[11px] text-slate-500">Required columns: <code className="bg-slate-100 px-1 rounded">name, sku_code, category, quantity, unit_price</code>. Optional: reorder_level, supplier, gst_percentage, hsn_code, margin_pct, zone, aisle, shelf, rack, bin_location, procurement_date, active.</p>
             {error && <div className="p-2 bg-red-50 text-red-700 text-xs rounded">{error}</div>}
             {importResult && (
               <div className="p-3 rounded-lg bg-emerald-50 border border-emerald-200 text-sm" data-testid="import-result">

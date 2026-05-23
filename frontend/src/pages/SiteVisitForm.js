@@ -95,6 +95,8 @@ export default function SiteVisitForm() {
     solar_report: null,
     terms_id: '',
     reference_project_id: '',
+    installation_date: '',
+    commissioning_date: '',
     notes: ''
   });
 
@@ -142,6 +144,8 @@ export default function SiteVisitForm() {
         solar_report: p.solar_report || null,
         terms_id: p.terms_id || '',
         reference_project_id: p.reference_project_id || '',
+        installation_date: p.installation_date || '',
+        commissioning_date: p.commissioning_date || '',
         notes: (p.notes !== undefined && p.notes !== null && p.notes !== '')
           ? p.notes
           : (p.additional?.shadow_analysis_notes || '')
@@ -233,6 +237,8 @@ export default function SiteVisitForm() {
           custom_fields: formData.custom_fields,
           terms_id: formData.terms_id || null,
           reference_project_id: formData.reference_project_id || null,
+          installation_date: formData.installation_date || null,
+          commissioning_date: formData.commissioning_date || null,
           notes: formData.notes || ''
         };
         if (draftId) {
@@ -534,6 +540,8 @@ export default function SiteVisitForm() {
         solar_report: formData.solar_report || null,
         terms_id: formData.terms_id || null,
         reference_project_id: formData.reference_project_id || null,
+        installation_date: formData.installation_date || null,
+        commissioning_date: formData.commissioning_date || null,
         notes: formData.notes || ''
       };
 
@@ -1159,6 +1167,11 @@ export default function SiteVisitForm() {
                             <p className="text-sm font-semibold text-emerald-900 truncate">{ref.customer_name || ref.name} <span className="text-[10px] text-emerald-600">({ref.reference_number})</span></p>
                             <p className="text-[11px] text-emerald-700 truncate">{ref.location || '—'}</p>
                             <p className="text-[11px] text-emerald-700">Size: <strong>{ref.system_size_kw ? `${ref.system_size_kw} kW` : '—'}</strong> · Payback: <strong>{ref.metrics?.payback_years ? `${Number(ref.metrics.payback_years).toFixed(1)} yrs` : '—'}</strong> · ROI: <strong>{ref.metrics?.roi_pct ? `${Math.round(ref.metrics.roi_pct)}%` : '—'}</strong></p>
+                            {ref.till_date && (ref.till_date.savings_inr > 0 || ref.till_date.units_generated > 0) && (
+                              <p className="text-[11px] text-emerald-800 mt-1" data-testid="ref-site-till-date">
+                                <strong>Live snapshot:</strong> ₹{Math.round(ref.till_date.savings_inr).toLocaleString('en-IN')} saved · {Math.round(ref.till_date.units_generated).toLocaleString('en-IN')} units · {ref.till_date.years_elapsed.toFixed(1)} yrs running
+                              </p>
+                            )}
                           </div>
                           <Button type="button" size="sm" variant="outline" onClick={() => setFormData(prev => ({ ...prev, reference_project_id: '' }))} data-testid="ref-site-clear">Change</Button>
                         </div>
@@ -1205,6 +1218,30 @@ export default function SiteVisitForm() {
                       <p className="text-[11px] text-slate-500">Attach a similar finished project. Its actual savings + ROI will be added to the customer's quotation PDF as social proof.</p>
                     </div>
                   )}
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3" data-testid="install-dates-section">
+                  <div className="space-y-2">
+                    <Label className="flex items-center gap-2 text-xs">Installation Date <span className="text-slate-400 font-normal">(optional)</span></Label>
+                    <Input
+                      type="date"
+                      value={formData.installation_date}
+                      onChange={(e) => setFormData(prev => ({ ...prev, installation_date: e.target.value }))}
+                      className="h-10"
+                      data-testid="install-date-input"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="flex items-center gap-2 text-xs">Commissioning Date <span className="text-slate-400 font-normal">(optional)</span></Label>
+                    <Input
+                      type="date"
+                      value={formData.commissioning_date}
+                      onChange={(e) => setFormData(prev => ({ ...prev, commissioning_date: e.target.value }))}
+                      className="h-10"
+                      data-testid="commission-date-input"
+                    />
+                  </div>
+                  <p className="text-[11px] text-slate-500 col-span-full">Once filled, the system uses these dates to auto-calculate "savings till date", units generated, CO₂ offset and fuel saved — useful when this project is later picked as a Reference Site for a future quote.</p>
                 </div>
 
                 <div className="space-y-2">

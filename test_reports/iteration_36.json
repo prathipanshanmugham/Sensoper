@@ -1,0 +1,44 @@
+{
+  "summary": "Iter-36 backend + frontend testing complete. Backend: 9/9 pytest cases PASS — HSN field on inventory create/list/update, inventory template xlsx contains hsn_code column directly after gst_percentage (10th col index after gst_percentage at idx 9), seeded HSN-TEST-001 returns hsn_code='85414011', Project installation_date+commissioning_date persist via POST/PUT, reference-candidates and reference-summary emit `till_date` object with all 7 keys, seeded project 6a0f4d9c... has till_date.savings_inr=282287 / years_elapsed=2.35 / implied_annual ≈ 120120 (within ±20% of expected ₹1,20,000), notes-only PUT on completed projects still works. Frontend (Inventory): HSN column header present, 14 hsn-* table cells render, Add New Item dialog exposes data-testid='item-hsn-input' (HSN Code field with placeholder 'e.g., 85414011'), Import dialog hint text includes 'hsn_code'. Frontend (SiteVisitForm wizard source-verified): data-testid='install-dates-section' at line 1223, 'install-date-input' line 1231, 'commission-date-input' line 1241, 'ref-site-till-date' line 1171 all present. ProjectDetails.js PDF code: 'LIVE REFERENCE SITE PERFORMANCE' banner @ line 960, 'Savings Till Date' tile @ line 983, comparison-table 'Savings Till Date' row @ line 1037. PDF download was not E2E-tested live — code-level verification only (prior iter-35 documented wizard-step navigation limitation from Playwright). Till-date math sanity check: 2.35 yrs × ₹1.2L = ₹2,82,000 ≈ returned ₹2,82,287 (Δ < 0.2%). Inventory search bar searches name/SKU only, NOT hsn_code value — minor enhancement opportunity.",
+  "backend_issues": {"critical": [], "minor": [
+    {"endpoint": "GET /api/inventory/items?q=<hsn>", "issue": "Search query does not match against hsn_code field — searching by HSN value returns no items even when items have that HSN. Frontend filtering same. Low priority enhancement."}
+  ]},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration36.py",
+    "/app/test_reports/pytest/iter36_results.xml"
+  ],
+  "action_items": [
+    "(Optional minor) Extend inventory list search to also match hsn_code field — currently only name/sku_code matched.",
+    "(Cleanup) 6 TEST_Iter36_DateProject draft projects left in DB from pytest fixture (delete call returned non-success during cleanup, likely auth-cookie scope on DELETE). Admin can bulk-delete TEST_ prefixed drafts from Projects list."
+  ],
+  "critical_code_review_comments": [
+    "compute_till_date_metrics fallback order is installation_date -> commissioning_date -> updated_at. The updated_at fallback can produce misleading 'savings till date' for projects that were never installed (e.g., draft / quote-only). Suggest restricting fallback to projects with status='completed' only, or returning till_date=None unless one of the two explicit dates is set.",
+    "POST /api/inventory/items returns only {id, message} on success — does not echo the persisted document. Frontend has to do a follow-up list call to render the new row. Consider returning the full item.",
+    "Inventory search (server.py inventory_list q-param) does a regex match on name & sku_code only; does not search hsn_code. Once HSN becomes a primary lookup key for accountants/GST, this should be extended.",
+    "SiteVisitForm.js has TWO elements with data-testid='ref-site-clear' (lines 1143 and 1156 per iter-35 RCA). Still unresolved this iteration — duplicate testids violate unique-selector contract.",
+    "PDF generation in ProjectDetails.js LIVE REFERENCE SITE PERFORMANCE block (line 960+) relies on ref.till_date being truthy. Since the back-end returns till_date=None when install/commission/updated all missing, the early-return null-check is correctly in place — verified by reading the code. No regression risk."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration36.py (new — 9 pytest cases across 5 classes)"
+  ],
+  "success_rate": {"backend": "100% (9/9)", "frontend": "100% on Inventory UI checks (HSN column, HSN input, Import hint). Wizard install-dates + PDF banner verified via source-code presence (testids + code blocks) — same E2E nav limitation as iter-35 prevents click-through of full wizard."},
+  "test_credentials": "admin@sensoper.com / Admin@123",
+  "seed_data_creation": "Pytest fixture created 1 inventory item TEST_HSN_NEW_36X (deleted in same test) and 6 project drafts named TEST_Iter36_DateProject (cleanup attempt failed — see action_items).",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "main_agent_can_self_test": true,
+  "verified_evidence": {
+    "backend_pytest": "9 passed in 3.12s — TestInventoryHSN(2), TestInventoryTemplate(1), TestProjectDates(2), TestTillDateMetrics(3), TestNotesOnlyOnCompleted(1)",
+    "till_date_seeded_project": "{installation_date: '2024-01-15', months_elapsed: 28.2, years_elapsed: 2.35, savings_inr: 282287, units_generated: 14114, co2_kg: 11574, fuel_litres: 3952} — math: 282287/2.35 = 120,122 ≈ ₹1.2L/yr (per _derived.annual_savings)",
+    "inventory_template_xlsx": "Header row reads: …, gst_percentage, hsn_code, … — hsn_code positioned directly after gst_percentage as specced.",
+    "inventory_frontend_hsn": "HSN column header rendered. 14 hsn-* testid cells. HSN-TEST-001 row shows '85414011'. Add Item dialog renders [data-testid='item-hsn-input'] with placeholder 'e.g., 85414011'. Import dialog body contains 'hsn_code' string.",
+    "wizard_source_grep": "SiteVisitForm.js: install-dates-section(1223), install-date-input(1231), commission-date-input(1241), ref-site-till-date(1171). ProjectDetails.js: 'LIVE REFERENCE SITE PERFORMANCE' @ 960, 'Savings Till Date' tile @ 983 + comparison row @ 1037."
+  },
+  "context_for_next_testing_agent": "Iter-36 backend & inventory-frontend are clean. Wizard E2E click-through to site_docs step still blocked by Materials-step Warranty Type required select (documented since iter-35). To E2E verify install-date inputs + PDF banner, suggest: (1) seed a draft project via POST /api/projects with status='pending_quote' that has all wizard fields pre-filled, then navigate to /dashboard/edit-project/{id} to land directly on the wizard final step, OR (2) main agent click-through one happy path manually. All backend support endpoints for these features verified working. Seeded project 6a0f4d9c857a4325028296d2 with installation_date=2024-01-15 + _derived.annual_savings=120000 is the canonical test fixture for till-date math.",
+  "rca_of_the_issue": "N/A — no defects found. All iter-36 backend behaviours work as specced. Minor observations: (a) inventory list q-param does not search hsn_code; (b) compute_till_date_metrics will produce non-zero savings for projects that were never actually installed (fallback to updated_at) — both reported as minor / enhancement-class items."
+}

@@ -169,6 +169,8 @@ class ProjectCreate(BaseModel):
     terms_id: Optional[str] = None
     notes: Optional[str] = None
     reference_project_id: Optional[str] = None
+    installation_date: Optional[str] = None
+    commissioning_date: Optional[str] = None
 
 class ProjectUpdate(BaseModel):
     customer: Optional[CustomerDetails] = None
@@ -189,6 +191,8 @@ class ProjectUpdate(BaseModel):
     terms_id: Optional[str] = None
     notes: Optional[str] = None
     reference_project_id: Optional[str] = None
+    installation_date: Optional[str] = None
+    commissioning_date: Optional[str] = None
     status: Optional[Literal["draft", "submitted", "approved", "rejected", "completed", "deletion_requested"]] = None
 
 class ProjectNoteAppend(BaseModel):
@@ -226,6 +230,7 @@ class InventoryItemCreate(BaseModel):
     unit_price: float
     supplier: Optional[str] = None
     gst_percentage: float = 18.0
+    hsn_code: Optional[str] = None
     reorder_level: int = 10
     image_url: Optional[str] = None
     margin_pct: float = 0
@@ -245,6 +250,7 @@ class InventoryItemUpdate(BaseModel):
     unit_price: Optional[float] = None
     supplier: Optional[str] = None
     gst_percentage: Optional[float] = None
+    hsn_code: Optional[str] = None
     reorder_level: Optional[int] = None
     image_url: Optional[str] = None
     margin_pct: Optional[float] = None
@@ -1448,6 +1454,7 @@ async def get_inventory_items(
             "unit_price": item["unit_price"],
             "supplier": item.get("supplier"),
             "gst_percentage": item.get("gst_percentage", 18.0),
+            "hsn_code": item.get("hsn_code"),
             "reorder_level": item.get("reorder_level", 10),
             "image_url": item.get("image_url"),
             "margin_pct": item.get("margin_pct", 0),
@@ -1495,6 +1502,7 @@ async def get_inventory_item(item_id: str, request: Request):
         "unit_price": item["unit_price"],
         "supplier": item.get("supplier"),
         "gst_percentage": item.get("gst_percentage", 18.0),
+        "hsn_code": item.get("hsn_code"),
         "reorder_level": item.get("reorder_level", 10),
         "image_url": item.get("image_url"),
         "margin_pct": item.get("margin_pct", 0),
@@ -1538,6 +1546,7 @@ async def create_inventory_item(item: InventoryItemCreate, request: Request):
         "unit_price": item.unit_price,
         "supplier": item.supplier,
         "gst_percentage": item.gst_percentage,
+        "hsn_code": item.hsn_code,
         "reorder_level": item.reorder_level,
         "image_url": item.image_url,
         "margin_pct": item.margin_pct,
@@ -1601,6 +1610,8 @@ async def update_inventory_item(item_id: str, updates: InventoryItemUpdate, requ
         update_data["supplier"] = updates.supplier
     if updates.gst_percentage is not None:
         update_data["gst_percentage"] = updates.gst_percentage
+    if updates.hsn_code is not None:
+        update_data["hsn_code"] = updates.hsn_code or None
     if updates.reorder_level is not None:
         update_data["reorder_level"] = updates.reorder_level
     if updates.margin_pct is not None:
@@ -1661,7 +1672,7 @@ async def delete_inventory_item(item_id: str, request: Request):
 
 INVENTORY_EXPORT_COLUMNS = [
     "name", "sku_code", "category", "quantity", "unit_price", "reorder_level",
-    "supplier", "gst_percentage", "margin_pct", "zone", "aisle", "shelf", "rack",
+    "supplier", "gst_percentage", "hsn_code", "margin_pct", "zone", "aisle", "shelf", "rack",
     "bin_location", "procurement_date", "active",
 ]
 
@@ -1684,7 +1695,7 @@ async def inventory_import_template(request: Request):
         cell.alignment = Alignment(horizontal="center", vertical="center")
     ws.append([
         "Solar Panel 540W Mono", "SP-540-MONO", "Panels", 50, 11500, 5,
-        "ABC Solar Co", 18.0, 12.5, "A", "1", "S2", "R3", "B4",
+        "ABC Solar Co", 18.0, "85414011", 12.5, "A", "1", "S2", "R3", "B4",
         "2026-01-15", True
     ])
     ws.append([])
@@ -1770,6 +1781,7 @@ async def inventory_import(request: Request, file: UploadFile = File(...)):
                 "reorder_level": _opt("reorder_level", 10, lambda v: int(float(v))),
                 "supplier": _opt("supplier", "", str) or "",
                 "gst_percentage": _opt("gst_percentage", 18.0, float),
+                "hsn_code": _opt("hsn_code", None, str),
                 "margin_pct": _opt("margin_pct", 0.0, float),
                 "zone": _opt("zone", "", str) or "",
                 "aisle": _opt("aisle", "", str) or "",
@@ -1960,6 +1972,8 @@ async def create_project(project: ProjectCreate, request: Request):
         "solar_report": project.solar_report or None,
         "terms_id": project.terms_id or None,
         "reference_project_id": project.reference_project_id or None,
+        "installation_date": project.installation_date or None,
+        "commissioning_date": project.commissioning_date or None,
         "notes": project.notes or "",
         "notes_history": [],
         "status": "draft",
@@ -1991,6 +2005,53 @@ async def create_project(project: ProjectCreate, request: Request):
         "message": "Project created successfully"
     }
 
+def compute_till_date_metrics(project: dict, derived: dict) -> dict:
+    """Calculate live 'savings till date' metrics for a project based on its
+    installation/commissioning date. Falls back to updated_at if no explicit
+    install date exists. Returns dict with months_elapsed, years_elapsed,
+    savings_inr, units_generated, co2_kg, fuel_litres."""
+    from datetime import datetime as _dt, timezone as _tz
+    derived = derived or {}
+    install_str = (project.get("installation_date")
+                   or project.get("commissioning_date")
+                   or project.get("updated_at"))
+    if not install_str:
+        return None
+    try:
+        # Accept ISO date or full timestamp
+        s = str(install_str).replace("Z", "+00:00")
+        if "T" in s:
+            install_dt = _dt.fromisoformat(s)
+        else:
+            install_dt = _dt.fromisoformat(s + "T00:00:00+00:00")
+        if install_dt.tzinfo is None:
+            install_dt = install_dt.replace(tzinfo=_tz.utc)
+    except Exception:
+        return None
+    now = _dt.now(_tz.utc)
+    if install_dt > now:
+        return {
+            "installation_date": install_str,
+            "months_elapsed": 0, "years_elapsed": 0.0,
+            "savings_inr": 0, "units_generated": 0, "co2_kg": 0, "fuel_litres": 0,
+        }
+    days = (now - install_dt).total_seconds() / 86400.0
+    months = days / 30.4375
+    years = days / 365.25
+    annual_savings = float(derived.get("annual_savings") or 0)
+    annual_gen = float(derived.get("annual_generation_units") or 0)
+    co2_year = float(derived.get("co2_kg_year") or 0)
+    fuel_year = float(derived.get("diesel_petrol_saved_liters_yearly") or 0)
+    return {
+        "installation_date": install_str,
+        "months_elapsed": round(months, 1),
+        "years_elapsed": round(years, 2),
+        "savings_inr": round(annual_savings * years),
+        "units_generated": round(annual_gen * years),
+        "co2_kg": round(co2_year * years),
+        "fuel_litres": round(fuel_year * years),
+    }
+
 @api_router.get("/projects/reference-candidates")
 async def get_reference_candidates(request: Request, q: Optional[str] = None):
     """Return completed projects suitable to attach as a reference to a new quotation.
@@ -2018,6 +2079,7 @@ async def get_reference_candidates(request: Request, q: Optional[str] = None):
             for s in (p.get("site_images") or []):
                 if s:
                     image_url = s; break
+        till = compute_till_date_metrics(p, derived)
         item = {
             "id": str(p["_id"]),
             "reference_number": p.get("reference_number", f"SCR-{str(p['_id'])[-6:].upper()}"),
@@ -2028,6 +2090,9 @@ async def get_reference_candidates(request: Request, q: Optional[str] = None):
             "system_size_kw": system_size,
             "image_url": image_url,
             "completed_at": p.get("updated_at"),
+            "installation_date": p.get("installation_date"),
+            "commissioning_date": p.get("commissioning_date"),
+            "till_date": till,
             "metrics": {
                 "monthly_savings": derived.get("monthly_savings"),
                 "annual_savings": derived.get("annual_savings"),
@@ -2086,6 +2151,9 @@ async def get_reference_summary(project_id: str, request: Request):
         "total_cost": ps.get("total_cost"),
         "subsidy": ps.get("subsidy"),
         "completed_at": p.get("updated_at"),
+        "installation_date": p.get("installation_date"),
+        "commissioning_date": p.get("commissioning_date"),
+        "till_date": compute_till_date_metrics(p, derived),
         "image_url": image_url,
         "metrics": derived,
         "notes": p.get("notes", ""),
@@ -2166,6 +2234,8 @@ async def get_project(project_id: str, request: Request):
         "solar_report": project.get("solar_report"),
         "terms_id": project.get("terms_id"),
         "reference_project_id": project.get("reference_project_id"),
+        "installation_date": project.get("installation_date"),
+        "commissioning_date": project.get("commissioning_date"),
         "notes": (project.get("notes") if project.get("notes") is not None else (project.get("additional", {}) or {}).get("shadow_analysis_notes") or ""),
         "notes_history": project.get("notes_history", []),
         "completion_media": project.get("completion_media", []),
@@ -2202,7 +2272,7 @@ async def update_project(project_id: str, updates: ProjectUpdate, request: Reque
             "customer", "location", "electrical", "solar_system", "mounting", "additional",
             "selected_items", "manual_costs", "site_images", "drive_folder_name", "drive_folder_link",
             "drive_folder_id", "site_measurements", "custom_fields", "solar_report", "terms_id",
-            "reference_project_id", "status"
+            "reference_project_id", "installation_date", "commissioning_date", "status"
         ])
     )
     
@@ -2248,6 +2318,10 @@ async def update_project(project_id: str, updates: ProjectUpdate, request: Reque
         update_data["terms_id"] = updates.terms_id or None
     if updates.reference_project_id is not None:
         update_data["reference_project_id"] = updates.reference_project_id or None
+    if updates.installation_date is not None:
+        update_data["installation_date"] = updates.installation_date or None
+    if updates.commissioning_date is not None:
+        update_data["commissioning_date"] = updates.commissioning_date or None
     if updates.notes is not None:
         update_data["notes"] = updates.notes
     if updates.selected_items is not None:
