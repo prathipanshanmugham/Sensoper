@@ -2007,14 +2007,12 @@ async def create_project(project: ProjectCreate, request: Request):
 
 def compute_till_date_metrics(project: dict, derived: dict) -> dict:
     """Calculate live 'savings till date' metrics for a project based on its
-    installation/commissioning date. Falls back to updated_at if no explicit
-    install date exists. Returns dict with months_elapsed, years_elapsed,
-    savings_inr, units_generated, co2_kg, fuel_litres."""
+    installation/commissioning date. Returns None if neither explicit date is set —
+    we never use `updated_at` as a stand-in because that would attribute savings
+    to projects that were never actually installed."""
     from datetime import datetime as _dt, timezone as _tz
     derived = derived or {}
-    install_str = (project.get("installation_date")
-                   or project.get("commissioning_date")
-                   or project.get("updated_at"))
+    install_str = project.get("installation_date") or project.get("commissioning_date")
     if not install_str:
         return None
     try:
