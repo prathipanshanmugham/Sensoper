@@ -6,8 +6,8 @@ import { Textarea } from '../components/ui/textarea';
 import { Button } from '../components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import {
-  Package, IndianRupee, Leaf, Calendar, TrendingUp, Fuel, Sun,
-  Wand2, Loader2, RotateCcw, MapPin, Zap
+  Package, Leaf, Calendar, TrendingUp, Fuel, Sun,
+  Wand2, Loader2, RotateCcw, MapPin, Zap, ChevronDown, ChevronUp
 } from 'lucide-react';
 
 // ───────────────────────── default form shape ─────────────────────────
@@ -178,10 +178,10 @@ function autoCalc(d) {
   const monthlyElec = offsetUnits * tariff;
   const annualElec = monthlyElec * 12;
 
-  // Fuel saved — auto-calc from annual generation × fuel factor
-  // Diesel genset ≈ 3.6 kWh/L → ~0.28 L per kWh saved.
-  // Petrol genset ≈ 2.8 kWh/L → ~0.36 L per kWh saved.
-  const FUEL_LITRES_PER_KWH = (d.fuel_type === 'Petrol') ? 0.36 : 0.28;
+  // Fuel saved — auto-calc from annual generation × fuel factor.
+  // We assume a typical diesel genset (~3.6 kWh/L → 0.28 L/kWh). The UI just
+  // calls it "Fuel" — internally still flexible if someone overrides via _overrides.
+  const FUEL_LITRES_PER_KWH = 0.28;
   const dieselL = ov.diesel_offset_liters_yearly
     ? num(d.diesel_offset_liters_yearly)
     : Math.round(annualGen * FUEL_LITRES_PER_KWH);
@@ -307,6 +307,7 @@ export default function ProposedSolutionSection({ value, onChange }) {
   const data = { ...blank, ...(value || {}) };
   const overrides = data._overrides || {};
   const [recomputing, setRecomputing] = useState(false);
+  const [showAdvanced, setShowAdvanced] = useState(false);
 
   // Engine output for current data
   const engine = useMemo(() => autoCalc(data), [
@@ -314,7 +315,7 @@ export default function ProposedSolutionSection({ value, onChange }) {
     data.connection_type, data.tariff_category, data.tariff_per_unit,
     data.location, data.power_backup_hours, data.system_type,
     data.panel_wattage_w, data.system_life_years, data.panel_degradation_pct_per_year,
-    data.fuel_type, data.diesel_price_per_liter,
+    data.diesel_price_per_liter,
     // override-honoured fields:
     data.system_size_kw, data.panel_count, data.panel_area_sqft,
     data.roof_utilization_pct, data.estimated_generation_units_monthly,
@@ -388,13 +389,15 @@ export default function ProposedSolutionSection({ value, onChange }) {
 
   return (
     <Card className="border-emerald-200 bg-emerald-50/30" data-testid="proposed-solution-section">
-      <CardContent className="p-4 space-y-5">
+      <CardContent className="p-4 space-y-4">
+
+        {/* ───── Header ───── */}
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2">
             <Sun className="h-5 w-5 text-emerald-600" />
             <div>
-              <h3 className="text-base font-semibold font-['Outfit'] text-emerald-800">Proposed Solution &amp; Materials</h3>
-              <p className="text-[11px] text-emerald-700">Hybrid calculator — fill the driver inputs, the system auto-suggests hardware &amp; financials. Override anything you like.</p>
+              <h3 className="text-base font-semibold font-['Outfit'] text-emerald-800">Solar Calculator</h3>
+              <p className="text-[11px] text-emerald-700">Type 1-3 inputs below — system size, savings &amp; ROI auto-fill instantly.</p>
             </div>
           </div>
           <Button
@@ -409,39 +412,44 @@ export default function ProposedSolutionSection({ value, onChange }) {
           </Button>
         </div>
 
-        {/* ───── 1. Driver Inputs ───── */}
-        <div>
-          <p className="text-[11px] uppercase tracking-wider text-slate-600 font-semibold mb-2 flex items-center gap-1.5"><Zap className="h-3.5 w-3.5" /> Driver Inputs</p>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <DriverField label="Monthly EB Bill (₹)" field="monthly_eb_bill" placeholder="e.g., 3500" value={data.monthly_eb_bill} onChange={updateDriver} />
-            <DriverField label="Monthly EB Units" field="monthly_eb_units" placeholder="e.g., 500" value={data.monthly_eb_units} onChange={updateDriver} />
-            <DriverField label="Roof Area (sq ft)" field="roof_area_sqft" placeholder="e.g., 600" value={data.roof_area_sqft} onChange={updateDriver} />
-            <DriverField label="Tariff (₹ / unit)" field="tariff_per_unit" placeholder={`auto: ₹${engine.resolved_tariff}/unit`} value={data.tariff_per_unit} onChange={updateDriver} />
+        {/* ───── HERO Outputs (always visible, big) ───── */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-2" data-testid="ps-hero-outputs">
+          <div className="rounded-lg p-3 bg-emerald-600 text-white">
+            <p className="text-[9px] uppercase tracking-wider opacity-90">System Size</p>
+            <p className="text-lg font-bold leading-tight">{data.system_size_kw ? `${data.system_size_kw} kW` : '—'}</p>
+          </div>
+          <div className="rounded-lg p-3 bg-amber-500 text-white" data-testid="ps-out-annual">
+            <p className="text-[9px] uppercase tracking-wider opacity-90">Annual Savings</p>
+            <p className="text-lg font-bold leading-tight">{engine.annual_savings > 0 ? inr(engine.annual_savings) : '—'}</p>
+          </div>
+          <div className="rounded-lg p-3 bg-blue-600 text-white" data-testid="ps-out-payback">
+            <p className="text-[9px] uppercase tracking-wider opacity-90">Payback</p>
+            <p className="text-lg font-bold leading-tight">{engine.payback_years > 0 ? `${engine.payback_years.toFixed(1)} yrs` : '—'}</p>
+          </div>
+          <div className="rounded-lg p-3 bg-violet-600 text-white" data-testid="ps-out-roi">
+            <p className="text-[9px] uppercase tracking-wider opacity-90">ROI (lifetime)</p>
+            <p className="text-lg font-bold leading-tight">{engine.roi_pct ? `${Math.round(engine.roi_pct)}%` : '—'}</p>
+          </div>
+        </div>
 
+        {/* ───── Quick Inputs (always visible — 3 essentials) ───── */}
+        <div data-testid="ps-quick-inputs">
+          <p className="text-[11px] uppercase tracking-wider text-slate-600 font-semibold mb-2 flex items-center gap-1.5"><Zap className="h-3.5 w-3.5" /> Quick Inputs</p>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <DriverField label="Monthly EB Bill (₹)" field="monthly_eb_bill" placeholder="e.g., 3500" value={data.monthly_eb_bill} onChange={updateDriver} />
             <div className="space-y-1">
-              <Label className="text-xs">Connection Type</Label>
-              <Select value={data.connection_type} onValueChange={(v) => updateDriver('connection_type', v)}>
-                <SelectTrigger className="h-10 bg-white" data-testid="ps-connection-type"><SelectValue /></SelectTrigger>
+              <Label className="text-xs">System Type</Label>
+              <Select value={data.system_type} onValueChange={(v) => updateDriver('system_type', v)}>
+                <SelectTrigger className="h-10 bg-white" data-testid="ps-system-type"><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="Single Phase">Single Phase</SelectItem>
-                  <SelectItem value="Three Phase">Three Phase</SelectItem>
-                  <SelectItem value="HT Service">HT Service</SelectItem>
+                  <SelectItem value="on-grid">On-Grid (no battery)</SelectItem>
+                  <SelectItem value="hybrid">Hybrid (with battery)</SelectItem>
+                  <SelectItem value="off-grid">Off-Grid (battery only)</SelectItem>
                 </SelectContent>
               </Select>
             </div>
             <div className="space-y-1">
-              <Label className="text-xs">Tariff Category</Label>
-              <Select value={data.tariff_category} onValueChange={(v) => updateDriver('tariff_category', v)}>
-                <SelectTrigger className="h-10 bg-white" data-testid="ps-tariff-category"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="Domestic">Domestic</SelectItem>
-                  <SelectItem value="Commercial">Commercial</SelectItem>
-                  <SelectItem value="Industrial">Industrial</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs flex items-center gap-1"><MapPin className="h-3 w-3" /> Location (state)</Label>
+              <Label className="text-xs flex items-center gap-1"><MapPin className="h-3 w-3" /> Location</Label>
               <Select value={data.location} onValueChange={(v) => updateDriver('location', v)}>
                 <SelectTrigger className="h-10 bg-white" data-testid="ps-location"><SelectValue /></SelectTrigger>
                 <SelectContent>
@@ -449,151 +457,168 @@ export default function ProposedSolutionSection({ value, onChange }) {
                 </SelectContent>
               </Select>
             </div>
-            <div className="space-y-1">
-              <Label className="text-xs">System Type</Label>
-              <Select value={data.system_type} onValueChange={(v) => updateDriver('system_type', v)}>
-                <SelectTrigger className="h-10 bg-white" data-testid="ps-system-type"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="on-grid">On-Grid</SelectItem>
-                  <SelectItem value="hybrid">Hybrid</SelectItem>
-                  <SelectItem value="off-grid">Off-Grid</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            {(data.system_type === 'hybrid' || data.system_type === 'off-grid') && (
-              <DriverField label="Backup Required (hrs / day)" field="power_backup_hours" placeholder="e.g., 4" value={data.power_backup_hours} onChange={updateDriver} />
-            )}
-          </div>
-          <p className="text-[10px] text-slate-500 mt-2">Specific yield resolved from location: <strong>{engine.resolved_yield} kWh/kWp/day</strong>. Tariff resolved: <strong>₹{engine.resolved_tariff}/unit</strong>. Auto-calc uses these.</p>
-        </div>
-
-        {/* ───── 2. System Hardware (auto-fillable, editable) ───── */}
-        <div>
-          <p className="text-[11px] uppercase tracking-wider text-slate-600 font-semibold mb-2 flex items-center gap-1.5"><Package className="h-3.5 w-3.5" /> System Hardware</p>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <AutoField label="System Size (kW)" field="system_size_kw" placeholder="auto" value={data.system_size_kw} override={!!overrides.system_size_kw} onChange={updateAutoField} onReset={() => resetField('system_size_kw')} />
-            <AutoField label="Panel Count" field="panel_count" placeholder="auto" value={data.panel_count} override={!!overrides.panel_count} onChange={updateAutoField} onReset={() => resetField('panel_count')} />
-            <DriverField label="Panel Wattage (W)" field="panel_wattage_w" placeholder="540" value={data.panel_wattage_w} onChange={updateDriver} />
-            <div className="space-y-1">
-              <Label className="text-xs">Panel Model</Label>
-              <Input type="text" value={data.panel_model} onChange={(e) => updateDriver('panel_model', e.target.value)} placeholder="e.g., Adani 540W Mono PERC" className="h-10 bg-white" data-testid="ps-panel-model" />
-            </div>
-            <AutoField label="Panel Area (sq ft)" field="panel_area_sqft" placeholder="auto" value={data.panel_area_sqft} override={!!overrides.panel_area_sqft} onChange={updateAutoField} onReset={() => resetField('panel_area_sqft')} />
-            <AutoField label="Roof Utilization (%)" field="roof_utilization_pct" placeholder="auto" suffix="%" value={data.roof_utilization_pct} override={!!overrides.roof_utilization_pct} onChange={updateAutoField} onReset={() => resetField('roof_utilization_pct')} />
-            <AutoField label="Inverter (kW)" field="inverter_kw" placeholder="auto" value={data.inverter_kw} override={!!overrides.inverter_kw} onChange={updateAutoField} onReset={() => resetField('inverter_kw')} />
-            <div className="space-y-1">
-              <Label className="text-xs">Inverter Model</Label>
-              <Input type="text" value={data.inverter_model} onChange={(e) => updateDriver('inverter_model', e.target.value)} placeholder="e.g., Sungrow SG5K-D" className="h-10 bg-white" data-testid="ps-inverter-model" />
-            </div>
-            <AutoField label="Battery (kWh each)" field="battery_kwh" placeholder="auto" value={data.battery_kwh} override={!!overrides.battery_kwh} onChange={updateAutoField} onReset={() => resetField('battery_kwh')} />
-            <AutoField label="Battery Count" field="battery_count" placeholder="auto" value={data.battery_count} override={!!overrides.battery_count} onChange={updateAutoField} onReset={() => resetField('battery_count')} />
           </div>
         </div>
 
-        {/* ───── 3. Generation & Financials ───── */}
-        <div>
-          <p className="text-[11px] uppercase tracking-wider text-slate-600 font-semibold mb-2 flex items-center gap-1.5"><Sun className="h-3.5 w-3.5" /> Generation &amp; Financials</p>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <AutoField label="Est. Generation (units / month)" field="estimated_generation_units_monthly" placeholder="auto" value={data.estimated_generation_units_monthly} override={!!overrides.estimated_generation_units_monthly} onChange={updateAutoField} onReset={() => resetField('estimated_generation_units_monthly')} />
-            <AutoField label="Est. Generation (units / year)" field="estimated_generation_units_annual" placeholder="auto" value={data.estimated_generation_units_annual} override={!!overrides.estimated_generation_units_annual} onChange={updateAutoField} onReset={() => resetField('estimated_generation_units_annual')} />
-            <AutoField label="Total Project Cost (₹)" field="total_cost" placeholder="auto" value={data.total_cost} override={!!overrides.total_cost} onChange={updateAutoField} onReset={() => resetField('total_cost')} />
-            <AutoField label="Govt Subsidy (₹)" field="subsidy" placeholder="auto" value={data.subsidy} override={!!overrides.subsidy} onChange={updateAutoField} onReset={() => resetField('subsidy')} />
-            <div className="space-y-1 md:col-span-1">
-              <Label className="text-xs">Net Cost (auto)</Label>
-              <Input value={inr(engine.net_cost)} readOnly className="h-10 bg-slate-50 font-medium" data-testid="ps-net-cost" />
+        {/* ───── Show / Hide advanced ───── */}
+        <button
+          type="button"
+          onClick={() => setShowAdvanced(s => !s)}
+          className="w-full flex items-center justify-center gap-1.5 text-xs text-emerald-700 hover:text-emerald-900 py-1.5 border border-dashed border-emerald-300 rounded-md"
+          data-testid="ps-toggle-advanced"
+        >
+          {showAdvanced ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+          {showAdvanced ? 'Hide advanced options' : 'Show more options (hardware, fuel, ROI assumptions)'}
+        </button>
+
+        {showAdvanced && (
+        <>
+          {/* ───── Extra Drivers ───── */}
+          <div>
+            <p className="text-[11px] uppercase tracking-wider text-slate-600 font-semibold mb-2">Optional Driver Inputs</p>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <DriverField label="Monthly EB Units" field="monthly_eb_units" placeholder="auto from bill" value={data.monthly_eb_units} onChange={updateDriver} />
+              <DriverField label="Roof Area (sq ft)" field="roof_area_sqft" placeholder="e.g., 600" value={data.roof_area_sqft} onChange={updateDriver} />
+              <DriverField label="Tariff (₹ / unit)" field="tariff_per_unit" placeholder={`auto: ₹${engine.resolved_tariff}/unit`} value={data.tariff_per_unit} onChange={updateDriver} />
+              <div className="space-y-1">
+                <Label className="text-xs">Connection Type</Label>
+                <Select value={data.connection_type} onValueChange={(v) => updateDriver('connection_type', v)}>
+                  <SelectTrigger className="h-10 bg-white" data-testid="ps-connection-type"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Single Phase">Single Phase</SelectItem>
+                    <SelectItem value="Three Phase">Three Phase</SelectItem>
+                    <SelectItem value="HT Service">HT Service</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Tariff Category</Label>
+                <Select value={data.tariff_category} onValueChange={(v) => updateDriver('tariff_category', v)}>
+                  <SelectTrigger className="h-10 bg-white" data-testid="ps-tariff-category"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Domestic">Domestic</SelectItem>
+                    <SelectItem value="Commercial">Commercial</SelectItem>
+                    <SelectItem value="Industrial">Industrial</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              {(data.system_type === 'hybrid' || data.system_type === 'off-grid') && (
+                <DriverField label="Backup (hrs / day)" field="power_backup_hours" placeholder="e.g., 4" value={data.power_backup_hours} onChange={updateDriver} />
+              )}
             </div>
           </div>
-        </div>
 
-        {/* ───── 4. Fuel Offset (auto-calculated from generation) ───── */}
-        <div>
-          <p className="text-[11px] uppercase tracking-wider text-slate-600 font-semibold mb-2 flex items-center gap-1.5"><Fuel className="h-3.5 w-3.5" /> Fuel Saved <span className="font-normal text-slate-400">(auto-calculated from generation)</span></p>
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-            <div className="space-y-1">
-              <Label className="text-xs">Fuel Type</Label>
-              <Select value={data.fuel_type} onValueChange={(v) => updateDriver('fuel_type', v)}>
-                <SelectTrigger className="h-10 bg-white" data-testid="ps-fuel-type"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="Diesel">Diesel (0.28 L / kWh)</SelectItem>
-                  <SelectItem value="Petrol">Petrol (0.36 L / kWh)</SelectItem>
-                </SelectContent>
-              </Select>
+          {/* ───── System Hardware ───── */}
+          <div>
+            <p className="text-[11px] uppercase tracking-wider text-slate-600 font-semibold mb-2 flex items-center gap-1.5"><Package className="h-3.5 w-3.5" /> System Hardware</p>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <AutoField label="System Size (kW)" field="system_size_kw" placeholder="auto" value={data.system_size_kw} override={!!overrides.system_size_kw} onChange={updateAutoField} onReset={() => resetField('system_size_kw')} />
+              <AutoField label="Panel Count" field="panel_count" placeholder="auto" value={data.panel_count} override={!!overrides.panel_count} onChange={updateAutoField} onReset={() => resetField('panel_count')} />
+              <DriverField label="Panel Wattage (W)" field="panel_wattage_w" placeholder="540" value={data.panel_wattage_w} onChange={updateDriver} />
+              <div className="space-y-1">
+                <Label className="text-xs">Panel Model</Label>
+                <Input type="text" value={data.panel_model} onChange={(e) => updateDriver('panel_model', e.target.value)} placeholder="e.g., Adani 540W Mono PERC" className="h-10 bg-white" data-testid="ps-panel-model" />
+              </div>
+              <AutoField label="Panel Area (sq ft)" field="panel_area_sqft" placeholder="auto" value={data.panel_area_sqft} override={!!overrides.panel_area_sqft} onChange={updateAutoField} onReset={() => resetField('panel_area_sqft')} />
+              <AutoField label="Roof Utilization (%)" field="roof_utilization_pct" placeholder="auto" suffix="%" value={data.roof_utilization_pct} override={!!overrides.roof_utilization_pct} onChange={updateAutoField} onReset={() => resetField('roof_utilization_pct')} />
+              <AutoField label="Inverter (kW)" field="inverter_kw" placeholder="auto" value={data.inverter_kw} override={!!overrides.inverter_kw} onChange={updateAutoField} onReset={() => resetField('inverter_kw')} />
+              <div className="space-y-1">
+                <Label className="text-xs">Inverter Model</Label>
+                <Input type="text" value={data.inverter_model} onChange={(e) => updateDriver('inverter_model', e.target.value)} placeholder="e.g., Sungrow SG5K-D" className="h-10 bg-white" data-testid="ps-inverter-model" />
+              </div>
+              {data.system_type !== 'on-grid' && (
+                <>
+                  <AutoField label="Battery (kWh each)" field="battery_kwh" placeholder="auto" value={data.battery_kwh} override={!!overrides.battery_kwh} onChange={updateAutoField} onReset={() => resetField('battery_kwh')} />
+                  <AutoField label="Battery Count" field="battery_count" placeholder="auto" value={data.battery_count} override={!!overrides.battery_count} onChange={updateAutoField} onReset={() => resetField('battery_count')} />
+                </>
+              )}
             </div>
-            <AutoField
-              label="Fuel Saved (litres / year)"
-              field="diesel_offset_liters_yearly"
-              placeholder="auto"
-              value={data.diesel_offset_liters_yearly}
-              override={!!overrides.diesel_offset_liters_yearly}
-              onChange={updateAutoField}
-              onReset={() => resetField('diesel_offset_liters_yearly')}
-            />
-            <DriverField label="Fuel Price (₹ / litre)" field="diesel_price_per_liter" placeholder="e.g., 95" value={data.diesel_price_per_liter} onChange={updateDriver} />
           </div>
-          <p className="text-[10px] text-slate-500 mt-2">Litres saved = Annual generation × {data.fuel_type === 'Petrol' ? '0.36' : '0.28'} L/kWh (typical {data.fuel_type?.toLowerCase()} genset). Override the litres field if you have a measured value.</p>
-        </div>
 
-        {/* ───── 5. ROI Assumptions ───── */}
-        <div>
-          <p className="text-[11px] uppercase tracking-wider text-slate-600 font-semibold mb-2 flex items-center gap-1.5"><Calendar className="h-3.5 w-3.5" /> ROI Assumptions</p>
-          <div className="grid grid-cols-2 gap-3">
-            <DriverField label="System Life (years)" field="system_life_years" placeholder="25" value={data.system_life_years} onChange={updateDriver} />
-            <DriverField label="Panel Degradation (% / year)" field="panel_degradation_pct_per_year" placeholder="0.7" value={data.panel_degradation_pct_per_year} onChange={updateDriver} />
+          {/* ───── Generation & Financials ───── */}
+          <div>
+            <p className="text-[11px] uppercase tracking-wider text-slate-600 font-semibold mb-2 flex items-center gap-1.5"><Sun className="h-3.5 w-3.5" /> Generation &amp; Financials</p>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <AutoField label="Generation (units / month)" field="estimated_generation_units_monthly" placeholder="auto" value={data.estimated_generation_units_monthly} override={!!overrides.estimated_generation_units_monthly} onChange={updateAutoField} onReset={() => resetField('estimated_generation_units_monthly')} />
+              <AutoField label="Generation (units / year)" field="estimated_generation_units_annual" placeholder="auto" value={data.estimated_generation_units_annual} override={!!overrides.estimated_generation_units_annual} onChange={updateAutoField} onReset={() => resetField('estimated_generation_units_annual')} />
+              <AutoField label="Total Cost (₹)" field="total_cost" placeholder="auto" value={data.total_cost} override={!!overrides.total_cost} onChange={updateAutoField} onReset={() => resetField('total_cost')} />
+              <AutoField label="Govt Subsidy (₹)" field="subsidy" placeholder="auto" value={data.subsidy} override={!!overrides.subsidy} onChange={updateAutoField} onReset={() => resetField('subsidy')} />
+              <div className="space-y-1">
+                <Label className="text-xs">Net Cost (auto)</Label>
+                <Input value={inr(engine.net_cost)} readOnly className="h-10 bg-slate-50 font-medium" data-testid="ps-net-cost" />
+              </div>
+            </div>
           </div>
-        </div>
 
-        {/* ───── 6. Notes ───── */}
+          {/* ───── Fuel saved (auto from generation) ───── */}
+          <div>
+            <p className="text-[11px] uppercase tracking-wider text-slate-600 font-semibold mb-2 flex items-center gap-1.5"><Fuel className="h-3.5 w-3.5" /> Fuel Saved <span className="font-normal text-slate-400">(auto from generation)</span></p>
+            <div className="grid grid-cols-2 gap-3">
+              <AutoField
+                label="Fuel Saved (litres / year)"
+                field="diesel_offset_liters_yearly"
+                placeholder="auto"
+                value={data.diesel_offset_liters_yearly}
+                override={!!overrides.diesel_offset_liters_yearly}
+                onChange={updateAutoField}
+                onReset={() => resetField('diesel_offset_liters_yearly')}
+              />
+              <DriverField label="Fuel Price (₹ / litre)" field="diesel_price_per_liter" placeholder="e.g., 95" value={data.diesel_price_per_liter} onChange={updateDriver} />
+            </div>
+            <p className="text-[10px] text-slate-500 mt-1.5">Litres saved = Annual generation × 0.28 L/kWh (typical genset). Override if you have a measured figure.</p>
+          </div>
+
+          {/* ───── ROI Assumptions ───── */}
+          <div>
+            <p className="text-[11px] uppercase tracking-wider text-slate-600 font-semibold mb-2 flex items-center gap-1.5"><Calendar className="h-3.5 w-3.5" /> ROI Assumptions</p>
+            <div className="grid grid-cols-2 gap-3">
+              <DriverField label="System Life (years)" field="system_life_years" placeholder="25" value={data.system_life_years} onChange={updateDriver} />
+              <DriverField label="Panel Degradation (% / year)" field="panel_degradation_pct_per_year" placeholder="0.7" value={data.panel_degradation_pct_per_year} onChange={updateDriver} />
+            </div>
+          </div>
+
+          {/* ───── Secondary outputs (in advanced area) ───── */}
+          <div data-testid="ps-derived">
+            <p className="text-[11px] uppercase tracking-wider text-slate-600 font-semibold mb-2 flex items-center gap-1.5"><TrendingUp className="h-3.5 w-3.5" /> All Outputs</p>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+              <div className="rounded-lg p-2.5 bg-amber-500 text-white" data-testid="ps-out-monthly">
+                <p className="text-[9px] uppercase tracking-wider opacity-90">Monthly Savings</p>
+                <p className="text-base font-bold leading-tight">{engine.monthly_savings > 0 ? inr(engine.monthly_savings) : '—'}</p>
+              </div>
+              <div className="rounded-lg p-2.5 bg-rose-600 text-white" data-testid="ps-out-lifetime">
+                <p className="text-[9px] uppercase tracking-wider opacity-90">25-Year Lifetime Savings</p>
+                <p className="text-base font-bold leading-tight">{engine.lifetime_savings > 0 ? inrL(engine.lifetime_savings) : '—'}</p>
+              </div>
+              <div className="rounded-lg p-2.5 bg-sky-600 text-white" data-testid="ps-out-diesel">
+                <p className="text-[9px] uppercase tracking-wider opacity-90">Fuel Saved</p>
+                <p className="text-base font-bold leading-tight">{engine.diesel_petrol_saved_liters_yearly > 0 ? `${Math.round(engine.diesel_petrol_saved_liters_yearly)} L/yr` : '—'}</p>
+              </div>
+              <div className="rounded-lg p-2.5 bg-emerald-700 text-white" data-testid="ps-out-co2">
+                <p className="text-[9px] uppercase tracking-wider opacity-90 flex items-center gap-1"><Leaf className="h-3 w-3" /> CO₂ Saved</p>
+                <p className="text-base font-bold leading-tight">{engine.co2_kg_year > 0 ? `${Math.round(engine.co2_kg_year).toLocaleString('en-IN')} kg/yr` : '—'}</p>
+              </div>
+              <div className="rounded-lg p-2.5 bg-slate-700 text-white col-span-2 md:col-span-1" data-testid="ps-out-gen">
+                <p className="text-[9px] uppercase tracking-wider opacity-90">Annual Generation</p>
+                <p className="text-base font-bold leading-tight">{engine.annual_generation_units > 0 ? `${Math.round(engine.annual_generation_units).toLocaleString('en-IN')} units` : '—'}</p>
+              </div>
+            </div>
+          </div>
+        </>
+        )}
+
+        {/* ───── Notes (always visible) ───── */}
         <div className="space-y-1">
-          <Label className="text-xs">Solution Notes / Justification</Label>
+          <Label className="text-xs">Solution Notes</Label>
           <Textarea
             rows={2}
             value={data.notes}
             onChange={(e) => updateDriver('notes', e.target.value)}
-            placeholder="Why this configuration? Any customer-specific tweaks…"
+            placeholder="Anything specific about this customer or installation…"
             className="min-h-[60px] bg-white"
             data-testid="ps-solution-notes"
           />
         </div>
 
-        {/* ───── Final Outputs ───── */}
-        <div data-testid="ps-derived">
-          <p className="text-[11px] uppercase tracking-wider text-slate-600 font-semibold mb-2 flex items-center gap-1.5"><TrendingUp className="h-3.5 w-3.5" /> Final Outputs (live)</p>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-            <div className="rounded-lg p-2.5 bg-emerald-600 text-white" data-testid="ps-out-payback">
-              <p className="text-[9px] uppercase tracking-wider opacity-90">Payback</p>
-              <p className="text-base font-bold leading-tight">{engine.payback_years > 0 ? `${engine.payback_years.toFixed(1)} yrs` : '—'}</p>
-            </div>
-            <div className="rounded-lg p-2.5 bg-blue-600 text-white" data-testid="ps-out-roi">
-              <p className="text-[9px] uppercase tracking-wider opacity-90">ROI (lifetime)</p>
-              <p className="text-base font-bold leading-tight">{engine.roi_pct ? `${Math.round(engine.roi_pct)}%` : '—'}</p>
-            </div>
-            <div className="rounded-lg p-2.5 bg-amber-500 text-white" data-testid="ps-out-monthly">
-              <p className="text-[9px] uppercase tracking-wider opacity-90">Monthly Savings</p>
-              <p className="text-base font-bold leading-tight">{engine.monthly_savings > 0 ? inr(engine.monthly_savings) : '—'}</p>
-            </div>
-            <div className="rounded-lg p-2.5 bg-violet-600 text-white" data-testid="ps-out-annual">
-              <p className="text-[9px] uppercase tracking-wider opacity-90">Annual Savings</p>
-              <p className="text-base font-bold leading-tight">{engine.annual_savings > 0 ? inr(engine.annual_savings) : '—'}</p>
-            </div>
-            <div className="rounded-lg p-2.5 bg-rose-600 text-white" data-testid="ps-out-lifetime">
-              <p className="text-[9px] uppercase tracking-wider opacity-90">25-Year Lifetime Savings</p>
-              <p className="text-base font-bold leading-tight">{engine.lifetime_savings > 0 ? inrL(engine.lifetime_savings) : '—'}</p>
-            </div>
-            <div className="rounded-lg p-2.5 bg-sky-600 text-white" data-testid="ps-out-diesel">
-              <p className="text-[9px] uppercase tracking-wider opacity-90">{data.fuel_type === 'Petrol' ? 'Petrol' : 'Diesel'} Saved</p>
-              <p className="text-base font-bold leading-tight">{engine.diesel_petrol_saved_liters_yearly > 0 ? `${Math.round(engine.diesel_petrol_saved_liters_yearly)} L/yr` : '—'}</p>
-            </div>
-            <div className="rounded-lg p-2.5 bg-emerald-700 text-white" data-testid="ps-out-co2">
-              <p className="text-[9px] uppercase tracking-wider opacity-90 flex items-center gap-1"><Leaf className="h-3 w-3" /> CO₂ Saved</p>
-              <p className="text-base font-bold leading-tight">{engine.co2_kg_year > 0 ? `${Math.round(engine.co2_kg_year).toLocaleString('en-IN')} kg/yr` : '—'}</p>
-            </div>
-            <div className="rounded-lg p-2.5 bg-slate-700 text-white" data-testid="ps-out-gen">
-              <p className="text-[9px] uppercase tracking-wider opacity-90">Annual Generation</p>
-              <p className="text-base font-bold leading-tight">{engine.annual_generation_units > 0 ? `${Math.round(engine.annual_generation_units).toLocaleString('en-IN')} units` : '—'}</p>
-            </div>
-          </div>
-          <p className="text-[10px] text-slate-500 mt-2">Outputs live-update as you type. Use <strong>Auto Calculate</strong> to refresh all auto fields at once (manual overrides are kept until you reset them).</p>
-        </div>
       </CardContent>
     </Card>
   );
