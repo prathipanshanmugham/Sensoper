@@ -383,45 +383,58 @@ export default function ProjectDetails() {
     // Bank Details with UPI QR + Pay Now button
     const bank = cp.bank_details;
     if (bank && bank.account_name) {
-      if (y > pageHeight - 90) { doc.addPage(); drawHeader(doc); y = 48; }
+      // Reserve enough room for the right-side QR card (≈ 70mm tall) so we
+      // never overflow the page or overlap the next section.
+      if (y > pageHeight - 95) { doc.addPage(); drawHeader(doc); y = 48; }
       y = sectionHead('Pay Now — Bank Transfer or UPI', y);
       const bankTableWidth = upiQR ? contentW * 0.55 : contentW;
+      const qrBlockStartY = y;
       autoTable(doc, { startY: y, margin: { left: m, right: m }, theme: 'plain',
         styles: { font: FONT, fontSize: 9, cellPadding: 2, textColor: [50, 50, 50] },
         columnStyles: { 0: { fontStyle: 'bold', cellWidth: 45, textColor: [100, 100, 100] } },
         tableWidth: bankTableWidth,
         body: [['Account Name', bank.account_name], ['Account No.', bank.account_number], ['IFSC Code', bank.ifsc_code], ['Bank Name', bank.bank_name], ['Branch', bank.branch], ...(bank.upi_id ? [['UPI ID', bank.upi_id]] : [])],
       });
+      const tableEndY = doc.lastAutoTable.finalY;
+      let qrEndY = tableEndY;  // default; will grow if QR card extends further
       if (upiQR) {
         try {
-          const qrX = m + bankTableWidth + 6;
-          const qrY = y - 2;
-          // Card background behind QR
+          // Card sits to the right of the table, vertically aligned with table top
+          const qrCardX = m + bankTableWidth + 6;
+          const qrCardY = qrBlockStartY;
+          const qrCardW = 55;
+          const qrCardH = 66;  // QR(42) + amount(6) + button(8) + padding
+          // Background card
           doc.setFillColor(245, 247, 250);
-          doc.roundedRect(qrX - 3, qrY - 3, 55, 64, 2, 2, 'F');
-          doc.addImage(upiQR, 'PNG', qrX + 4, qrY, 42, 42);
+          doc.roundedRect(qrCardX, qrCardY, qrCardW, qrCardH, 2, 2, 'F');
+          // QR image
+          doc.addImage(upiQR, 'PNG', qrCardX + 6.5, qrCardY + 3, 42, 42);
+          // Label
           doc.setFontSize(7); doc.setTextColor(100, 100, 100); doc.setFont(FONT, 'normal');
-          doc.text('Scan with any UPI app', qrX + 25, qrY + 46, { align: 'center' });
-          // Amount line
+          doc.text('Scan with any UPI app', qrCardX + qrCardW / 2, qrCardY + 49, { align: 'center' });
+          // Amount
           doc.setFontSize(8); doc.setFont(FONT, 'bold'); doc.setTextColor(...pRgb);
-          doc.text(currency(upiAmount), qrX + 25, qrY + 52, { align: 'center' });
-          // Clickable "PAY NOW VIA UPI" button — opens UPI deep link on mobile
+          doc.text(currency(upiAmount), qrCardX + qrCardW / 2, qrCardY + 55, { align: 'center' });
+          // Clickable PAY NOW button
           if (upiString) {
             try {
+              const btnH = 7;
+              const btnY = qrCardY + qrCardH - btnH - 1.5;
               doc.setFillColor(16, 185, 129);
-              doc.roundedRect(qrX - 3, qrY + 56, 55, 7, 1.5, 1.5, 'F');
+              doc.roundedRect(qrCardX + 3, btnY, qrCardW - 6, btnH, 1.5, 1.5, 'F');
               doc.setFontSize(7.5); doc.setFont(FONT, 'bold'); doc.setTextColor(255, 255, 255);
-              doc.textWithLink('PAY NOW VIA UPI', qrX + 25, qrY + 60.5, { align: 'center', url: upiString });
+              doc.textWithLink('PAY NOW VIA UPI', qrCardX + qrCardW / 2, btnY + btnH / 2 + 1.2, { align: 'center', url: upiString });
             } catch (linkErr) { console.warn('UPI link button failed:', linkErr); }
           }
+          qrEndY = qrCardY + qrCardH;
         } catch (e) { console.error('UPI QR PDF render failed:', e); }
       }
-      y = doc.lastAutoTable.finalY + 4;
+      // Always start the next sub-section BELOW both the table AND the QR card
+      y = Math.max(tableEndY, qrEndY) + 6;
 
       // Payment status + amount breakdown strip
       try {
-        const stripY = y + 1;
-        // Status badge
+        const stripY = y;
         const statusColors = { paid: [16, 185, 129], partial: [245, 158, 11], pending: [148, 163, 184] };
         const statusLabels = { paid: 'PAID', partial: 'PARTIALLY PAID', pending: 'PAYMENT PENDING' };
         const sc = statusColors[payStatus] || statusColors.pending;
@@ -429,20 +442,19 @@ export default function ProjectDetails() {
         doc.roundedRect(m, stripY, 38, 8, 2, 2, 'F');
         doc.setTextColor(255, 255, 255); doc.setFont(FONT, 'bold'); doc.setFontSize(7.5);
         doc.text(statusLabels[payStatus] || 'PENDING', m + 19, stripY + 5.4, { align: 'center' });
-        // Breakdown
         doc.setFont(FONT, 'normal'); doc.setFontSize(8); doc.setTextColor(80, 80, 80);
         const breakdown = `Total: ${currency(totalAmt)}    Paid: ${currency(totalPaid)}    Balance Due: ${currency(balanceDue)}`;
         doc.text(breakdown, m + 42, stripY + 5.4);
         y += 12;
       } catch (sErr) { console.warn('Payment status strip failed:', sErr); }
 
-      // Trust line + due date
+      // Trust line
       doc.setFontSize(7); doc.setFont(FONT, 'normal'); doc.setTextColor(120, 120, 120);
       doc.text(
         `Secure payment — UPI is bank-grade and goes directly to ${cp.company_name || 'us'}. No third-party processing fees.`,
         m, y, { maxWidth: contentW }
       );
-      y += 8;
+      y += 10;
     }
 
     // Site Documentation QR
@@ -1077,14 +1089,14 @@ export default function ProjectDetails() {
           const myPs = project.custom_fields?.proposed_solution || {};
           const md = myPs._derived || {};
           const rows = [
-            ['Metric', 'Proposed (this quote)', 'Reference (actual)', 'Delta'],
-            ['System Size (kW)', myPs.system_size_kw || '—', ref.system_size_kw || '—', null],
-            ['Monthly Savings', fmtInr(md.monthly_savings), fmtInr(rm.monthly_savings), null],
-            ['Annual Savings', fmtInr(md.annual_savings), fmtInr(rm.annual_savings), null],
-            ['ROI (lifetime)', md.roi_pct ? `${Math.round(md.roi_pct)}%` : '—', rm.roi_pct ? `${Math.round(rm.roi_pct)}%` : '—', null],
-            ['Payback (yrs)', md.payback_years ? md.payback_years.toFixed(1) : '—', rm.payback_years ? rm.payback_years.toFixed(1) : '—', null],
-            ['Annual Generation', md.annual_generation_units ? Math.round(md.annual_generation_units).toLocaleString('en-IN') : '—', rm.annual_generation_units ? Math.round(rm.annual_generation_units).toLocaleString('en-IN') : '—', null],
-            ['Savings Till Date', '— (new)', ref.till_date && ref.till_date.savings_inr ? `₹${Math.round(ref.till_date.savings_inr).toLocaleString('en-IN')}` : '—', null],
+            ['Metric', 'Proposed (this quote)', 'Reference (actual)'],
+            ['System Size (kW)', myPs.system_size_kw || '—', ref.system_size_kw || '—'],
+            ['Monthly Savings', fmtInr(md.monthly_savings), fmtInr(rm.monthly_savings)],
+            ['Annual Savings', fmtInr(md.annual_savings), fmtInr(rm.annual_savings)],
+            ['ROI (lifetime)', md.roi_pct ? `${Math.round(md.roi_pct)}%` : '—', rm.roi_pct ? `${Math.round(rm.roi_pct)}%` : '—'],
+            ['Payback (yrs)', md.payback_years ? md.payback_years.toFixed(1) : '—', rm.payback_years ? rm.payback_years.toFixed(1) : '—'],
+            ['Annual Generation', md.annual_generation_units ? Math.round(md.annual_generation_units).toLocaleString('en-IN') : '—', rm.annual_generation_units ? Math.round(rm.annual_generation_units).toLocaleString('en-IN') : '—'],
+            ['Savings Till Date', '— (new)', ref.till_date && ref.till_date.savings_inr ? `₹${Math.round(ref.till_date.savings_inr).toLocaleString('en-IN')}` : '—'],
           ];
           if (y > pageHeight - 60) { doc.addPage(); drawHeader(doc); y = 50; }
           doc.setFont(FONT, 'bold'); doc.setFontSize(9); doc.setTextColor(60, 60, 60);
