@@ -1422,6 +1422,13 @@ export default function SiteVisitForm() {
                 <p className="text-[10px] uppercase tracking-wider text-slate-500 font-semibold mb-1">Location</p>
                 <p className="text-xs text-slate-800 truncate">{formData.location.address || formData.location.site_location_words || '—'}</p>
                 {(formData.location.latitude && formData.location.longitude) && <p className="text-[11px] text-slate-500">{Number(formData.location.latitude).toFixed(4)}, {Number(formData.location.longitude).toFixed(4)}</p>}
+                {formData.location.pincode && formData.location.district ? (
+                  <p className="text-[11px] text-emerald-700 mt-1 flex items-center gap-1" data-testid="review-location-verified">
+                    <CheckCircle className="h-3 w-3" /> Location Verified · {formData.location.pincode} · {formData.location.district}, {formData.location.state}
+                  </p>
+                ) : formData.location.pincode ? (
+                  <p className="text-[11px] text-amber-700 mt-1 flex items-center gap-1"><AlertCircle className="h-3 w-3" /> PIN {formData.location.pincode} — district not resolved</p>
+                ) : null}
               </div>
               {(() => {
                 const ps = formData.custom_fields?.proposed_solution || {};

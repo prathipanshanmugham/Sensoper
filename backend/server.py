@@ -2408,6 +2408,108 @@ async def create_pincode(payload: Dict[str, Any], request: Request):
     return {"message": "PIN created"}
 
 
+@api_router.post("/calculate/pincodes/import")
+async def import_pincodes_csv(request: Request, file: UploadFile = File(...)):
+    """Bulk-import PINs from a CSV (up to 20 MB). Accepts the India-Post schema:
+        Pincode, StateName, District, Region, Country, ... — or a compact
+        schema: pincode, district, state, latitude, longitude, discom
+    De-duplicates by `pincode`. Skips rows with invalid PINs. Returns
+    { inserted, skipped_existing, skipped_invalid, total_after }.
+    """
+    import csv, io
+    await require_role("admin")(request)
+    content = await file.read()
+    if len(content) > 20 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="File exceeds 20 MB limit")
+    try:
+        text = content.decode("utf-8-sig", errors="replace")
+    except Exception:
+        raise HTTPException(status_code=400, detail="Could not decode CSV as UTF-8")
+
+    reader = csv.DictReader(io.StringIO(text))
+    # Normalise header aliases
+    def _get(row, *names):
+        for n in names:
+            for k in row:
+                if k and k.strip().lower() == n.lower():
+                    return (row[k] or "").strip()
+        return ""
+
+    # Preload existing PINs to skip
+    existing = await db.pincodes.find({}, {"pincode": 1}).to_list(200000)
+    existing_set = {d["pincode"] for d in existing}
+
+    # State → DISCOM fallback
+    from calculators.geo import STATE_FALLBACK
+    state_to_discom = {s: v["discom"] for s, v in STATE_FALLBACK.items()}
+    state_to_yield = {s: v["yield"] for s, v in STATE_FALLBACK.items()}
+
+    to_insert = []
+    inserted = 0
+    skipped_existing = 0
+    skipped_invalid = 0
+    now_iso = datetime.now(timezone.utc).isoformat()
+
+    for row in reader:
+        pin = _get(row, "Pincode", "pincode", "PIN Code", "PIN")
+        if not pin or len(pin) != 6 or not pin.isdigit():
+            skipped_invalid += 1
+            continue
+        if pin in existing_set:
+            skipped_existing += 1
+            continue
+        existing_set.add(pin)
+
+        district = _get(row, "District", "district", "Districtname", "DistrictName")
+        state = _get(row, "StateName", "State", "state")
+        # normalise state casing
+        state_norm = state.strip().title() if state else ""
+        # map common state name spellings
+        state_lookup = {"Tamilnadu": "Tamil Nadu", "Andhrapradesh": "Andhra Pradesh"}
+        state = state_lookup.get(state_norm.replace(" ", ""), state_norm)
+
+        lat = _get(row, "Latitude", "latitude", "lat")
+        lon = _get(row, "Longitude", "longitude", "lon", "lng")
+        try: lat_f = float(lat) if lat else None
+        except (ValueError, TypeError): lat_f = None
+        try: lon_f = float(lon) if lon else None
+        except (ValueError, TypeError): lon_f = None
+
+        discom = _get(row, "discom", "DISCOM") or state_to_discom.get(state) or None
+        sy = state_to_yield.get(state, 4.5)
+
+        to_insert.append({
+            "pincode": pin,
+            "district": district or "Unknown",
+            "state": state or "Unknown",
+            "discom": discom,
+            "latitude": lat_f, "longitude": lon_f,
+            "specific_yield_kwh_per_kwp_day": sy,
+            "peak_sun_hours": round(sy / 0.75, 2),
+            "region_cost_factor": 1.0,
+            "created_at": now_iso,
+        })
+
+        # Insert in chunks of 5000 for memory safety
+        if len(to_insert) >= 5000:
+            await db.pincodes.insert_many(to_insert, ordered=False)
+            inserted += len(to_insert)
+            to_insert = []
+
+    if to_insert:
+        await db.pincodes.insert_many(to_insert, ordered=False)
+        inserted += len(to_insert)
+
+    total = await db.pincodes.count_documents({})
+    return {
+        "inserted": inserted,
+        "skipped_existing": skipped_existing,
+        "skipped_invalid": skipped_invalid,
+        "total_after": total,
+        "file_size_kb": round(len(content) / 1024, 1),
+    }
+
+
 # ── Seed defaults (idempotent) ──────────────────────────────────────────
 @api_router.post("/calculate/seed-defaults")
 async def seed_calc_defaults(request: Request):

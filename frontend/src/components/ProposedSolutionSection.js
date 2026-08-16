@@ -623,11 +623,13 @@ export default function ProposedSolutionSection({ value, onChange }) {
           {pinInfo && (
             <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
               {pinInfo.resolved ? (
-                <UIBadge className="bg-emerald-100 text-emerald-700 border-emerald-200 border">
-                  <CheckCircle2 className="h-3 w-3 mr-1" /> {pinInfo.discom_name}
-                </UIBadge>
+                <>
+                  <UIBadge className="bg-emerald-100 text-emerald-700 border-emerald-200 border" data-testid="pin-verified-badge">
+                    <CheckCircle2 className="h-3 w-3 mr-1" /> Location Verified · {pinInfo.discom_name}
+                  </UIBadge>
+                </>
               ) : (
-                <UIBadge className="bg-amber-100 text-amber-700 border-amber-200 border">
+                <UIBadge className="bg-amber-100 text-amber-700 border-amber-200 border" data-testid="pin-unverified-badge">
                   <AlertTriangle className="h-3 w-3 mr-1" /> Estimated — verify tariff
                 </UIBadge>
               )}

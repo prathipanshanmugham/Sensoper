@@ -153,6 +153,25 @@ export default function AdvancedConfigSection() {
     finally { setSeeding(false); }
   };
 
+  const [importing, setImporting] = useState(false);
+  const [importResult, setImportResult] = useState(null);
+  const importCsv = async (file) => {
+    if (!file) return;
+    if (file.size > 20 * 1024 * 1024) { alert('CSV must be under 20 MB'); return; }
+    setImporting(true); setImportResult(null);
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      const res = await fetch(`${process.env.REACT_APP_BACKEND_URL}/api/calculate/pincodes/import`, {
+        method: 'POST', body: fd, credentials: 'include'
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.detail || 'Import failed');
+      setImportResult(data);
+    } catch (e) { alert(e.message || 'Import failed'); }
+    finally { setImporting(false); }
+  };
+
   const [backfilling, setBackfilling] = useState(false);
   const [backfillResult, setBackfillResult] = useState(null);
   const runBackfill = async (dryRun = false) => {
@@ -178,6 +197,11 @@ export default function AdvancedConfigSection() {
               {seeding ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : <Wand2 className="h-3.5 w-3.5 mr-1" />}
               Seed default DISCOMs &amp; PIN codes
             </Button>
+            <label className={`inline-flex items-center gap-1 h-9 px-3 rounded border border-slate-300 bg-white text-xs cursor-pointer hover:bg-slate-50 ${importing ? 'opacity-50 cursor-not-allowed' : ''}`}>
+              {importing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <MapPin className="h-3.5 w-3.5" />}
+              Import PIN CSV
+              <input type="file" accept=".csv" hidden onChange={(e) => importCsv(e.target.files?.[0])} disabled={importing} data-testid="import-pins-csv" />
+            </label>
             <Button size="sm" variant="outline" onClick={() => runBackfill(true)} disabled={backfilling} className="h-9" data-testid="backfill-dryrun-btn">
               {backfilling ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : <MapPin className="h-3.5 w-3.5 mr-1" />}
               Preview PIN backfill (dry run)
@@ -187,6 +211,18 @@ export default function AdvancedConfigSection() {
               Run PIN backfill
             </Button>
           </div>
+          {importResult && (
+            <div className="rounded-lg border border-emerald-200 bg-emerald-50/50 p-3 text-xs" data-testid="import-result">
+              <p className="font-semibold text-slate-800 mb-1">CSV import complete</p>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                <div><p className="text-[10px] text-slate-500">Inserted</p><p className="font-bold text-emerald-700">{importResult.inserted}</p></div>
+                <div><p className="text-[10px] text-slate-500">Skipped (existing)</p><p className="font-bold">{importResult.skipped_existing}</p></div>
+                <div><p className="text-[10px] text-slate-500">Skipped (invalid)</p><p className="font-bold text-amber-700">{importResult.skipped_invalid}</p></div>
+                <div><p className="text-[10px] text-slate-500">Total PINs now</p><p className="font-bold">{importResult.total_after}</p></div>
+              </div>
+              <p className="text-[10px] text-slate-500 mt-2">Uploaded {importResult.file_size_kb} KB · CSV headers accepted: Pincode, District, StateName, Latitude, Longitude, DISCOM (case-insensitive)</p>
+            </div>
+          )}
           {backfillResult && (
             <div className="rounded-lg border border-slate-200 bg-white p-3 text-xs" data-testid="backfill-result">
               <p className="font-semibold text-slate-800 mb-1">Backfill {backfillResult.dry_run ? 'preview' : 'complete'}</p>

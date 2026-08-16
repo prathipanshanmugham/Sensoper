@@ -11,6 +11,7 @@ import { Badge } from '../components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '../components/ui/dialog';
 import { expansionAPI } from '../utils/api';
+import IndiaChoropleth from '../components/IndiaChoropleth';
 import {
   Loader2, ArrowLeft, MapPin, TrendingUp, AlertTriangle, Plus, Trash2, Calculator,
   Layers, Info, Building2
@@ -81,13 +82,19 @@ export default function ExpansionPage() {
   const fetchAll = useCallback(async () => {
     setLoading(true);
     try {
-      const params = stateFilter === 'all' ? {} : { state: stateFilter };
-      const [ov, br] = await Promise.all([expansionAPI.overview(params), expansionAPI.listBranches()]);
+      const [ov, br] = await Promise.all([expansionAPI.overview({}), expansionAPI.listBranches()]);
       setOverview(ov.data); setBranches(br.data);
     } catch (e) { console.error(e); }
     finally { setLoading(false); }
-  }, [stateFilter]);
+  }, []);
   useEffect(() => { fetchAll(); }, [fetchAll]);
+
+  // Client-side filter so the map always shows the full country while the
+  // table narrows to the selected state.
+  const filteredDistricts = useMemo(() => {
+    const all = overview?.districts || [];
+    return stateFilter === 'all' ? all : all.filter(d => d.state === stateFilter);
+  }, [overview, stateFilter]);
 
   const availableStates = useMemo(() => {
     if (!overview?.districts) return [];
@@ -181,6 +188,16 @@ export default function ExpansionPage() {
               </CardContent>
             </Card>
 
+            {/* India state-level choropleth */}
+            <div className="mb-4">
+              <IndiaChoropleth
+                districts={overview?.districts || []}
+                branches={branches}
+                onStateSelect={(name) => setStateFilter(stateFilter === name ? 'all' : name)}
+                selectedState={stateFilter}
+              />
+            </div>
+
             {/* Opportunity table */}
             <Card className="border-slate-200" data-testid="expansion-table">
               <CardHeader className="pb-3"><CardTitle className="text-base font-['Outfit']">Ranked Opportunities</CardTitle></CardHeader>
@@ -190,7 +207,7 @@ export default function ExpansionPage() {
                     <tr><th className="text-left px-3 py-2">District</th><th className="text-left px-3 py-2">State</th><th className="text-right px-3 py-2">Score</th><th className="text-right px-3 py-2">Projects</th><th className="text-right px-3 py-2">Revenue</th><th className="text-right px-3 py-2">Margin</th><th className="text-right px-3 py-2">Nearest Branch</th><th></th></tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {overview?.districts?.map((d) => {
+                    {filteredDistricts.map((d) => {
                       const m = meta(d.band);
                       return (
                         <tr key={d.district+d.state} className={`hover:bg-slate-50 ${d.confidence_low ? 'opacity-60' : ''}`} data-testid={`district-row-${d.district}`}>
@@ -212,8 +229,10 @@ export default function ExpansionPage() {
                         </tr>
                       );
                     })}
-                    {overview?.districts?.length === 0 && (
-                      <tr><td colSpan={8} className="text-center text-slate-400 py-8">No projects with district data yet. Enter a PIN on the New Project form to start seeing districts here.</td></tr>
+                    {filteredDistricts.length === 0 && (
+                      <tr><td colSpan={8} className="text-center text-slate-400 py-8">
+                        {stateFilter === 'all' ? 'No projects with district data yet. Enter a PIN on the New Project form to start seeing districts here.' : `No districts in ${stateFilter} yet.`}
+                      </td></tr>
                     )}
                   </tbody>
                 </table>
