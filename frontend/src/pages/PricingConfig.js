@@ -1,10 +1,11 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
-import { pricingAPI } from '../utils/api';
+import { thresholdsAPI as pricingAPI } from '../utils/api';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card';
+import AdvancedConfigSection from '../components/AdvancedConfigSection';
 import { 
   ArrowLeft,
   Save,
@@ -47,7 +48,8 @@ export default function PricingConfig() {
   const fetchPricing = useCallback(async () => {
     try {
       const res = await pricingAPI.get();
-      setPricing(res.data);
+      // Merge into defaults so partial API responses (or unrelated threshold shape) don't crash the UI
+      setPricing(prev => ({ ...defaultPricing, ...prev, ...(res.data || {}) }));
     } catch (error) {
       console.error('Failed to fetch pricing:', error);
     } finally {
@@ -262,6 +264,11 @@ export default function PricingConfig() {
             </div>
           </div>
         )}
+
+        {/* Advanced admin configs — Calculator, Health, Expansion + PIN Backfill */}
+        <div className="mt-8">
+          <AdvancedConfigSection />
+        </div>
       </div>
     </div>
   );

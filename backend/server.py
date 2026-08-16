@@ -2436,6 +2436,129 @@ async def seed_calc_defaults(request: Request):
     }
 
 
+# ── PIN backfill migration ─────────────────────────────────────────────
+# Regex-based PIN detection from existing project addresses. When a PIN is
+# not present, we fall back to a keyword scan for state names — safer than
+# calling an external geocoder.
+STATE_HINTS = [
+    ("Tamil Nadu",       "TANGEDCO"),
+    ("TamilNadu",        "TANGEDCO"),
+    ("Kerala",           "KSEB"),
+    ("Karnataka",        "BESCOM"),
+    ("Bengaluru",        "BESCOM"), ("Bangalore", "BESCOM"),
+    ("Chennai",          "TANGEDCO"),
+    ("Coimbatore",       "TANGEDCO"),
+    ("Kochi",            "KSEB"), ("Ernakulam", "KSEB"),
+    ("Andhra Pradesh",   "APEPDCL"),
+    ("Telangana",        "TSSPDCL"), ("Hyderabad", "TSSPDCL"),
+    ("Maharashtra",      "MSEDCL"), ("Mumbai", "MSEDCL"), ("Pune", "MSEDCL"),
+    ("Gujarat",          "MGVCL"),
+    ("Rajasthan",        "JVVNL"),
+    ("Delhi",            "BSES"),
+]
+
+
+class BackfillLocationsRequest(BaseModel):
+    dry_run: bool = False
+    only_missing: bool = True   # only touch projects without pincode/district
+
+
+@api_router.post("/projects/backfill-locations")
+async def backfill_project_locations(payload: BackfillLocationsRequest, request: Request):
+    """One-shot admin migration: extract PIN codes from every project's stored
+    addresses (customer.address / location.address / location.site_location_words)
+    and autofill location.{pincode,district,state,discom_id} from db.pincodes
+    where possible. Projects that only contain a state hint get partial fill.
+    """
+    import re
+    user = await require_role("admin")(request)
+
+    query = {"deleted_at": {"$exists": False}}
+    if payload.only_missing:
+        query["$or"] = [
+            {"location.pincode": {"$in": [None, ""]}},
+            {"location.pincode": {"$exists": False}},
+        ]
+
+    projects = await db.projects.find(query).to_list(10000)
+
+    # Preload PIN + DISCOM lookups once
+    pin_docs = await db.pincodes.find({}).to_list(10000)
+    pincodes_map = {p["pincode"]: p for p in pin_docs}
+    all_discoms = await db.discoms.find({}).to_list(500)
+    discoms_by_code = {d["id"]: d for d in all_discoms}
+
+    pin_regex = re.compile(r"\b[1-9]\d{5}\b")
+
+    resolved = 0
+    partial = 0
+    unresolved = 0
+    updated_ids = []
+    unresolved_ids = []
+
+    for p in projects:
+        loc = p.get("location") or {}
+        text_bits = " ".join([
+            (p.get("customer") or {}).get("address") or "",
+            loc.get("address") or "",
+            loc.get("site_location_words") or "",
+        ])
+        update = {}
+
+        # PIN extraction
+        m = pin_regex.search(text_bits)
+        if m:
+            pin = m.group(0)
+            update["location.pincode"] = pin
+            rec = pincodes_map.get(pin)
+            if rec:
+                update["location.district"] = rec.get("district")
+                update["location.state"] = rec.get("state")
+                update["location.discom_id"] = rec.get("discom") or rec.get("discom_id")
+                resolved += 1
+            else:
+                partial += 1
+
+        if "location.state" not in update:
+            # Fallback: state keyword hint
+            lowered = text_bits.lower()
+            for name, discom in STATE_HINTS:
+                if name.lower() in lowered:
+                    update["location.state"] = name if name not in ("TamilNadu", "Bengaluru", "Bangalore",
+                                                                    "Chennai", "Coimbatore", "Kochi", "Ernakulam",
+                                                                    "Hyderabad", "Mumbai", "Pune") else \
+                        {"TamilNadu": "Tamil Nadu", "Bengaluru": "Karnataka", "Bangalore": "Karnataka",
+                         "Chennai": "Tamil Nadu", "Coimbatore": "Tamil Nadu",
+                         "Kochi": "Kerala", "Ernakulam": "Kerala",
+                         "Hyderabad": "Telangana", "Mumbai": "Maharashtra", "Pune": "Maharashtra"}.get(name, name)
+                    update["location.discom_id"] = discom
+                    if "location.pincode" not in update:
+                        partial += 1
+                    break
+            else:
+                if "location.pincode" not in update:
+                    unresolved += 1
+                    unresolved_ids.append(str(p.get("_id")))
+
+        if update and not payload.dry_run:
+            update["updated_at"] = datetime.now(timezone.utc).isoformat()
+            await db.projects.update_one({"_id": p["_id"]}, {"$set": update})
+        if update:
+            updated_ids.append(str(p.get("_id")))
+
+    return {
+        "scanned": len(projects),
+        "resolved_full": resolved,
+        "resolved_partial": partial,
+        "unresolved": unresolved,
+        "dry_run": payload.dry_run,
+        "updated_project_ids": updated_ids[:200],
+        "unresolved_sample": unresolved_ids[:20],
+        "run_by": user["email"],
+        "completed_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+
 class BillSavingsRequest(BaseModel):
     monthly_units_pre: float
     monthly_generation: float

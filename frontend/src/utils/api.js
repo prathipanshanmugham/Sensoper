@@ -38,6 +38,7 @@ export const projectsAPI = {
   appendNote: (id, text) => api.post(`/projects/${id}/notes`, { text }),
   getReferenceCandidates: (q) => api.get('/projects/reference-candidates', { params: q ? { q } : {} }),
   getReferenceSummary: (id) => api.get(`/projects/${id}/reference-summary`),
+  backfillLocations: (payload = {}) => api.post('/projects/backfill-locations', payload),
   galleryUrl: (id) => `${API_URL}/api/projects/${id}/gallery`
 };
 
