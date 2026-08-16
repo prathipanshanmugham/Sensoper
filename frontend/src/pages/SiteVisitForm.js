@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { projectsAPI, inventoryAPI, formTabsAPI, termsAPI } from '../utils/api';
+import { projectsAPI, inventoryAPI, formTabsAPI, termsAPI, materialKitsAPI } from '../utils/api';
 import { formatApiErrorDetail } from '../contexts/AuthContext';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
@@ -12,12 +12,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Checkbox } from '../components/ui/checkbox';
 import { Progress } from '../components/ui/progress';
 import { ComboInput } from '../components/ui/combo-input';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '../components/ui/dialog';
 import ProposedSolutionSection from '../components/ProposedSolutionSection';
 import { 
   User, MapPin, Zap, ArrowRight, ArrowLeft, Loader2, CheckCircle2,
   Sparkles, Plus, Trash2, Package, FolderOpen, X, Percent, FolderPlus, ExternalLink, CheckCircle, Link2,
   Ruler, ChevronDown, ChevronRight, Home, Compass, Eye, PlugZap, Settings2, HardHat, Shield, Layers,
-  AlertCircle, FileText
+  AlertCircle, FileText, Wand2, RefreshCw
 } from 'lucide-react';
 
 const SYSTEM_SLUGS = ['customer', 'location', 'site_electrical', 'materials', 'site_docs'];
@@ -26,7 +27,8 @@ const SLUG_ICON_MAP = { customer: User, location: MapPin, site_electrical: Zap, 
 const SYSTEM_TYPE_OPTIONS = [
   { value: 'on-grid', label: 'On-Grid (Grid-Tied)' },
   { value: 'off-grid', label: 'Off-Grid (Standalone)' },
-  { value: 'hybrid', label: 'Hybrid' }
+  { value: 'hybrid', label: 'Hybrid' },
+  { value: 'solar-pump', label: 'Solar Pump (Agri / Borewell)' }
 ];
 const COMPLEXITY_OPTIONS = [
   { value: 'simple', label: 'Simple' },
@@ -66,6 +68,14 @@ export default function SiteVisitForm() {
   const [draftId, setDraftId] = useState(null);
   const autoSaveTimer = useRef(null);
   const lastSaved = useRef('');
+
+  // Material Kits state
+  const [availableKits, setAvailableKits] = useState([]);
+  const [suggestedKit, setSuggestedKit] = useState(null);
+  const [appliedKitId, setAppliedKitId] = useState(null);
+  const [kitDismissed, setKitDismissed] = useState(false);
+  const [showReview, setShowReview] = useState(false);
+  const [showResumeBanner, setShowResumeBanner] = useState(false);
 
   const canSetMargin = isAdmin || isManager;
 
@@ -172,6 +182,9 @@ export default function SiteVisitForm() {
   const fetchRefCandidates = useCallback(async () => {
     try { const res = await projectsAPI.getReferenceCandidates(); setRefCandidates(res.data || []); } catch (err) { console.error(err); }
   }, []);
+  const fetchMaterialKits = useCallback(async () => {
+    try { const res = await materialKitsAPI.getAll(); setAvailableKits(res.data || []); } catch (err) { console.error(err); }
+  }, []);
 
   useEffect(() => {
     fetchInventory();
@@ -179,8 +192,93 @@ export default function SiteVisitForm() {
     fetchDynamicTabs();
     fetchTermsList();
     fetchRefCandidates();
+    fetchMaterialKits();
     if (editId) loadProject();
-  }, [editId, fetchInventory, fetchCategories, fetchDynamicTabs, fetchTermsList, fetchRefCandidates, loadProject]);
+  }, [editId, fetchInventory, fetchCategories, fetchDynamicTabs, fetchTermsList, fetchRefCandidates, fetchMaterialKits, loadProject]);
+
+  // Auto-suggest a Material Kit when system_type/capacity changes on the Proposed Solution
+  useEffect(() => {
+    if (editId || kitDismissed) return;
+    if (!availableKits.length) return;
+    const ps = formData.custom_fields?.proposed_solution || {};
+    const st = ps.system_type;
+    const kw = parseFloat(ps.system_size_kw) || 0;
+    if (!st || kw <= 0) { setSuggestedKit(null); return; }
+    const candidates = availableKits.filter(k => k.system_type === st);
+    if (candidates.length === 0) { setSuggestedKit(null); return; }
+    // Prefer range match
+    const within = candidates.filter(k =>
+      k.capacity_min_kw != null && k.capacity_max_kw != null &&
+      kw >= k.capacity_min_kw && kw <= k.capacity_max_kw
+    );
+    const pool = within.length ? within : candidates;
+    const best = pool.reduce((a, b) =>
+      Math.abs((a.capacity_kw||0) - kw) <= Math.abs((b.capacity_kw||0) - kw) ? a : b
+    );
+    setSuggestedKit(best);
+  }, [availableKits, formData.custom_fields, editId, kitDismissed]);
+
+  const applyKit = (kit) => {
+    if (!kit) return;
+    // Convert kit lines into selected_items (using inventory info when linked)
+    const newItems = kit.lines.map(line => {
+      const inv = line.inventory_item_id ? inventoryItems.find(i => i.id === line.inventory_item_id) : null;
+      if (inv) {
+        return {
+          inventory_item_id: inv.id, name: inv.name, category: inv.category,
+          unit_price: inv.unit_price, gst_percentage: inv.gst_percentage || 18,
+          quantity: parseInt(line.quantity) || 1, margin_percentage: 0
+        };
+      }
+      // Free-text line — no inventory ref
+      return {
+        inventory_item_id: null, name: line.name, category: line.category || 'kit_line',
+        unit_price: 0, gst_percentage: 18,
+        quantity: parseInt(line.quantity) || 1, margin_percentage: 0
+      };
+    });
+    setFormData(prev => ({ ...prev, selected_items: newItems }));
+    setAppliedKitId(kit.id);
+  };
+
+  // Draft resume banner — check localStorage on mount
+  useEffect(() => {
+    if (editId) return;
+    try {
+      const saved = localStorage.getItem('site_visit_draft');
+      if (saved) {
+        const draft = JSON.parse(saved);
+        if (draft && draft.customer?.name && Date.now() - (draft._savedAt || 0) < 7 * 24 * 3600 * 1000) {
+          setShowResumeBanner(true);
+        }
+      }
+    } catch { /* ignore */ }
+  }, [editId]);
+
+  const resumeDraft = () => {
+    try {
+      const saved = localStorage.getItem('site_visit_draft');
+      if (saved) {
+        const draft = JSON.parse(saved);
+        const { _savedAt, ...rest } = draft;
+        setFormData(prev => ({ ...prev, ...rest }));
+        setShowResumeBanner(false);
+      }
+    } catch { setShowResumeBanner(false); }
+  };
+  const discardDraft = () => {
+    try { localStorage.removeItem('site_visit_draft'); } catch { /* ignore */ }
+    setShowResumeBanner(false);
+  };
+  // Persist current form to localStorage every 3s while editing
+  useEffect(() => {
+    if (editId) return;
+    if (!formData.customer.name.trim()) return;
+    const t = setTimeout(() => {
+      try { localStorage.setItem('site_visit_draft', JSON.stringify({ ...formData, _savedAt: Date.now() })); } catch { /* ignore */ }
+    }, 3000);
+    return () => clearTimeout(t);
+  }, [formData, editId]);
 
   // Auto-save as draft when form has customer name
   useEffect(() => {
@@ -558,6 +656,18 @@ export default function SiteVisitForm() {
           <p className="text-sm text-slate-500">{isEditMode ? 'Update project details' : 'Collect site data for an accurate solar project estimate'}</p>
         </div>
 
+        {showResumeBanner && (
+          <div className="mb-4 rounded-lg border border-amber-300 bg-amber-50 p-3 flex items-center gap-3" data-testid="resume-draft-banner">
+            <RefreshCw className="h-5 w-5 text-amber-600 shrink-0" />
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold text-amber-900">Continue where you left off?</p>
+              <p className="text-[11px] text-amber-700">You have an unfinished draft in this browser.</p>
+            </div>
+            <Button type="button" size="sm" onClick={resumeDraft} className="h-8 bg-amber-600 hover:bg-amber-700 text-white" data-testid="resume-draft-btn">Resume</Button>
+            <Button type="button" size="sm" variant="ghost" onClick={discardDraft} className="h-8 text-amber-700" data-testid="discard-draft-btn">Discard</Button>
+          </div>
+        )}
+
         <div className="mb-6">
           <Progress value={progress} className="h-2 mb-3" />
           <div className="flex justify-between overflow-x-auto gap-1">
@@ -859,6 +969,60 @@ export default function SiteVisitForm() {
                     }
                   }))}
                 />
+
+                {/* ═════ Material Kit Suggestion ═════ */}
+                {suggestedKit && !kitDismissed && appliedKitId !== suggestedKit.id && (
+                  <div className="rounded-lg border-2 border-emerald-300 bg-gradient-to-br from-emerald-50 to-white p-4" data-testid="kit-suggestion">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex items-start gap-3 flex-1 min-w-0">
+                        <div className="w-10 h-10 rounded-lg bg-emerald-600 text-white flex items-center justify-center shrink-0">
+                          <Layers className="h-5 w-5" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs uppercase tracking-wider text-emerald-700 font-semibold">Matched Solution Kit</p>
+                          <p className="font-semibold text-slate-900 text-sm truncate">{suggestedKit.name}</p>
+                          <p className="text-[11px] text-slate-500 mt-0.5">{suggestedKit.lines.length} material lines · fits your {suggestedKit.system_type} @ {suggestedKit.capacity_kw} kW</p>
+                          {suggestedKit.description && <p className="text-[11px] text-slate-500 mt-1 line-clamp-2">{suggestedKit.description}</p>}
+                        </div>
+                      </div>
+                      <div className="flex flex-col gap-1.5 shrink-0">
+                        <Button type="button" size="sm" onClick={() => applyKit(suggestedKit)} className="bg-emerald-600 hover:bg-emerald-700 text-white gap-1 h-9" data-testid="apply-kit-btn">
+                          <Wand2 className="h-3.5 w-3.5" /> Apply Kit
+                        </Button>
+                        <button type="button" onClick={() => setKitDismissed(true)} className="text-[10px] text-slate-500 hover:text-slate-700" data-testid="dismiss-kit-btn">
+                          Dismiss
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+                {appliedKitId && suggestedKit?.id === appliedKitId && (
+                  <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-2.5 flex items-center gap-2" data-testid="kit-applied-banner">
+                    <CheckCircle className="h-4 w-4 text-emerald-600" />
+                    <span className="text-xs text-emerald-800 flex-1">Applied kit: <strong>{suggestedKit.name}</strong>. Adjust quantities or add more items below.</span>
+                    <Button type="button" size="sm" variant="ghost" className="h-7 text-xs" onClick={() => { setAppliedKitId(null); setFormData(prev => ({ ...prev, selected_items: [] })); }} data-testid="clear-kit-btn">
+                      <RefreshCw className="h-3 w-3 mr-1" /> Clear
+                    </Button>
+                  </div>
+                )}
+                {/* Kit browser (compact) */}
+                <details className="rounded-lg border border-slate-200 bg-white" data-testid="kit-browser">
+                  <summary className="px-3 py-2 cursor-pointer flex items-center gap-1.5 text-xs font-medium text-slate-700">
+                    <Layers className="h-3.5 w-3.5 text-emerald-600" /> Browse all kits ({availableKits.length})
+                  </summary>
+                  <div className="p-2 max-h-56 overflow-y-auto space-y-1.5 border-t border-slate-200">
+                    {availableKits.length === 0 && <p className="text-[11px] text-slate-400 px-2">No kits yet. Ask an admin to add kits from Inventory → Solution Kits.</p>}
+                    {availableKits.map(k => (
+                      <div key={k.id} className="flex items-center justify-between gap-2 px-2 py-1.5 rounded hover:bg-slate-50">
+                        <div className="min-w-0 flex-1">
+                          <p className="text-xs font-medium text-slate-800 truncate">{k.name}</p>
+                          <p className="text-[10px] text-slate-500">{k.system_type} · {k.capacity_kw} kW · {k.lines.length} lines</p>
+                        </div>
+                        <Button type="button" size="sm" variant="outline" className="h-7 text-[11px] px-2" onClick={() => { applyKit(k); setKitDismissed(false); }} data-testid={`browse-apply-${k.id}`}>Apply</Button>
+                      </div>
+                    ))}
+                  </div>
+                </details>
 
                 <div>
                   <div className="flex items-center justify-between mb-3">
@@ -1219,13 +1383,69 @@ export default function SiteVisitForm() {
               {currentStep < totalSteps ? (
                 <Button type="button" onClick={nextStep} className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white h-12" data-testid="next-step-btn">Next <ArrowRight className="h-4 w-4" /></Button>
               ) : (
-                <Button type="button" onClick={handleSubmit} disabled={loading} className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white h-12" data-testid="submit-project-btn">
-                  {loading ? <><Loader2 className="h-4 w-4 animate-spin" />{isEditMode ? 'Saving...' : 'Creating...'}</> : <><CheckCircle2 className="h-4 w-4" />{isEditMode ? 'Save Changes' : 'Create Project'}</>}
+                <Button type="button" onClick={() => { if (validateStep()) setShowReview(true); }} disabled={loading} className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white h-12" data-testid="submit-project-btn">
+                  {loading ? <><Loader2 className="h-4 w-4 animate-spin" />{isEditMode ? 'Saving...' : 'Creating...'}</> : <><CheckCircle2 className="h-4 w-4" />Review &amp; {isEditMode ? 'Save' : 'Create'}</>}
                 </Button>
               )}
             </div>
           </CardContent>
         </Card>
+
+        {/* ═════ Review & Submit Dialog ═════ */}
+        <Dialog open={showReview} onOpenChange={setShowReview}>
+          <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto" data-testid="review-dialog">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2"><CheckCircle2 className="h-5 w-5 text-emerald-600" /> Review Project Summary</DialogTitle>
+              <DialogDescription>Confirm the key details below. You can go back to edit any step, or submit to create the project.</DialogDescription>
+            </DialogHeader>
+            <div className="space-y-3 text-sm" data-testid="review-summary">
+              <div className="rounded-lg border border-slate-200 p-3">
+                <p className="text-[10px] uppercase tracking-wider text-slate-500 font-semibold mb-1">Customer</p>
+                <p className="font-medium text-slate-900">{formData.customer.name || '—'}</p>
+                <p className="text-xs text-slate-500">{formData.customer.phone} · {formData.customer.email || 'no email'}</p>
+                <p className="text-xs text-slate-500 mt-0.5 truncate">{formData.customer.address}</p>
+              </div>
+              <div className="rounded-lg border border-slate-200 p-3">
+                <p className="text-[10px] uppercase tracking-wider text-slate-500 font-semibold mb-1">Location</p>
+                <p className="text-xs text-slate-800 truncate">{formData.location.address || formData.location.site_location_words || '—'}</p>
+                {(formData.location.latitude && formData.location.longitude) && <p className="text-[11px] text-slate-500">{Number(formData.location.latitude).toFixed(4)}, {Number(formData.location.longitude).toFixed(4)}</p>}
+              </div>
+              {(() => {
+                const ps = formData.custom_fields?.proposed_solution || {};
+                if (!ps.system_type) return null;
+                return (
+                  <div className="rounded-lg border border-emerald-200 bg-emerald-50/40 p-3">
+                    <p className="text-[10px] uppercase tracking-wider text-emerald-700 font-semibold mb-1">Proposed Solution</p>
+                    <p className="text-xs text-slate-800"><strong>{ps.system_type}</strong> · {ps.system_size_kw ? `${ps.system_size_kw} kW` : '—'} · {ps.panel_count || '—'} panels</p>
+                    {ps._derived?.annual_savings > 0 && (
+                      <p className="text-[11px] text-emerald-700 mt-0.5">
+                        Annual Savings: ₹{Math.round(ps._derived.annual_savings).toLocaleString('en-IN')} · Payback: {ps._derived.payback_years?.toFixed(1)} yrs · ROI: {Math.round(ps._derived.roi_pct || 0)}%
+                      </p>
+                    )}
+                    {ps.system_type === 'solar-pump' && (
+                      <p className="text-[11px] text-slate-600 mt-0.5">{ps.pump_hp || '—'} HP · {ps.pump_type} · Head {ps.pump_head_m || '—'}m · {ps.pump_discharge_lph || '—'} LPH</p>
+                    )}
+                  </div>
+                );
+              })()}
+              <div className="rounded-lg border border-slate-200 p-3">
+                <p className="text-[10px] uppercase tracking-wider text-slate-500 font-semibold mb-1">Materials</p>
+                <p className="text-xs text-slate-800">{formData.selected_items.length} items selected {appliedKitId && suggestedKit ? `(from kit: ${suggestedKit.name})` : ''}</p>
+                <p className="text-[11px] text-slate-500">Total: ₹{totals.total.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</p>
+              </div>
+              <div className="rounded-lg border border-slate-200 p-3">
+                <p className="text-[10px] uppercase tracking-wider text-slate-500 font-semibold mb-1">Documentation</p>
+                <p className="text-xs text-slate-800">Drive: {formData.drive_folder_link ? '✓ linked' : '— not set'} · T&amp;C: {formData.terms_id ? '✓ selected' : '— default'} · Reference: {formData.reference_project_id ? '✓ attached' : '— none'}</p>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setShowReview(false)} disabled={loading} data-testid="review-back-btn">Back to Edit</Button>
+              <Button onClick={async () => { await handleSubmit(); if (!error) { try { localStorage.removeItem('site_visit_draft'); } catch { /* ignore */ } } setShowReview(false); }} disabled={loading} className="bg-emerald-600 hover:bg-emerald-700 text-white" data-testid="review-submit-btn">
+                {loading ? <><Loader2 className="h-4 w-4 animate-spin mr-1" />Submitting...</> : <><CheckCircle2 className="h-4 w-4 mr-1" />{isEditMode ? 'Save Changes' : 'Create Project'}</>}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </div>
   );

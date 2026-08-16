@@ -1,0 +1,42 @@
+{
+  "summary": "Iteration 40 — Phase 2 (Solar Pump + per-system fields), Phase 3 (Material Kits CRUD + seed-starter + auto-match), and Phase 4 (Draft Resume + Review dialog) tested end-to-end. Backend: 10/10 pytest cases passed. Frontend: MaterialKitsPage renders 8 seeded kits, filters work, Add Kit dialog opens, Inventory has Solution Kits link, New Project wizard shows Solar Pump option, pump-details block, kit-suggestion → Apply Kit populates selected_items and shows applied-banner, draft resume banner appears & restores form, discard clears. Review dialog testids exist in code and materials/apply-kit flow reaches it (full end-to-end submit blocked only by an unrelated required custom form-builder field 'Warranty Type').",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {
+        "screen": "New Project wizard - Location step",
+        "issues": [
+          "Phase 1 was supposed to teardown What3Words — but the 'What3Words Address' card + validation error 'Enter What3Words or site address' is still visible on the Location step. Per this iteration's scope this was NOT re-tested (phase 1) but is worth noting as a residual UI element. Not a blocker."
+        ]
+      }
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration40_material_kits.py",
+    "/app/test_reports/pytest/iter40.xml"
+  ],
+  "action_items": [
+    "OPTIONAL: The auto-calc for 3 HP produced ~2.2 kW (kit suggestion shows 'fits your solar-pump @ 2.2 kW'). Review request expected ~2.7 kW. Verify intended HP→kW conversion factor in ProposedSolutionSection.js (currently ~0.75 kW/HP, arguably correct at 0.746 kW/HP × pump efficiency). Cosmetic mismatch to spec, not a bug.",
+    "OPTIONAL: Confirm whether 'Enter What3Words or site address' validation on Location step is intentionally kept after Phase 1 teardown."
+  ],
+  "critical_code_review_comments": [
+    "server.py is 5434 lines — flag for future modularization (>700-line guideline)",
+    "MaterialKit endpoints correctly exclude Mongo _id (using _serialize_kit)",
+    "MaterialKit seed-starter idempotency verified: running twice keeps count stable",
+    "MaterialKit /match endpoint correctly falls back to nearest capacity when outside all ranges",
+    "Project POST/GET/PUT accept and persist solar_system.system_type='solar-pump' without regression",
+    "Inventory endpoints (/api/inventory/items, /api/inventory/alerts) still functional after refactor"
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration40_material_kits.py (new)"
+  ],
+  "success_rate": { "backend": "100%", "frontend": "95%" },
+  "test_credentials": "admin@sensoper.com / Admin@123",
+  "seed_data_creation": "None persisted (test_crud_flow creates and deletes TEST_KIT_iter40; test_create_project_solar_pump creates and deletes TEST_iter40_pump project).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend material-kits fully validated. Frontend wizard flow validated up to review dialog. If retesting the full review-submit path, first set 'Warranty Type' custom field on Materials step (form-builder required field) before clicking submit-project-btn; then review-dialog opens and review-submit-btn will fire handleSubmit. Draft data-testids: resume-draft-banner, resume-draft-btn, discard-draft-btn. Kit testids: kit-suggestion, apply-kit-btn, dismiss-kit-btn, kit-applied-banner.",
+  "rca of the issue": "N/A — no blocking issues found."
+}

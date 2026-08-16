@@ -1324,6 +1324,53 @@ export default function ProjectDetails() {
               <CardContent>
                 <InfoRow label="System Type" value={project.solar_system?.system_type?.toUpperCase()} />
                 {project.solar_system?.battery_required && <InfoRow label="Battery Required" value="Yes" />}
+                {(() => {
+                  const ps = project.custom_fields?.proposed_solution || {};
+                  const st = ps.system_type || project.solar_system?.system_type;
+                  if (st === 'solar-pump') {
+                    return (
+                      <div className="mt-3 pt-3 border-t border-slate-200" data-testid="pump-details-block">
+                        <p className="text-[10px] uppercase tracking-wider text-cyan-700 font-semibold mb-2">Solar Pump Details</p>
+                        <InfoRow label="Pump Rating" value={ps.pump_hp ? `${ps.pump_hp} HP` : '-'} />
+                        <InfoRow label="Pump Type" value={ps.pump_type || '-'} />
+                        <InfoRow label="Total Head" value={ps.pump_head_m ? `${ps.pump_head_m} m` : '-'} />
+                        <InfoRow label="Discharge" value={ps.pump_discharge_lph ? `${ps.pump_discharge_lph} LPH` : '-'} />
+                        <InfoRow label="Controller" value={ps.pump_controller_type || '-'} />
+                        <InfoRow label="Water Source" value={ps.pump_water_source || '-'} />
+                      </div>
+                    );
+                  }
+                  if (st === 'on-grid') {
+                    return (
+                      <div className="mt-3 pt-3 border-t border-slate-200" data-testid="ongrid-details-block">
+                        <p className="text-[10px] uppercase tracking-wider text-blue-700 font-semibold mb-2">On-Grid Details</p>
+                        <InfoRow label="Net Metering" value={ps.net_metering === false ? 'Gross' : 'Bi-directional'} />
+                        {ps.export_limit_kw && <InfoRow label="Export Limit" value={`${ps.export_limit_kw} kW`} />}
+                      </div>
+                    );
+                  }
+                  if (st === 'off-grid') {
+                    return (
+                      <div className="mt-3 pt-3 border-t border-slate-200" data-testid="offgrid-details-block">
+                        <p className="text-[10px] uppercase tracking-wider text-orange-700 font-semibold mb-2">Off-Grid Details</p>
+                        <InfoRow label="Charge Controller" value={ps.charge_controller_type || '-'} />
+                        <InfoRow label="Depth of Discharge" value={ps.battery_dod_pct ? `${ps.battery_dod_pct}%` : '-'} />
+                        <InfoRow label="Autonomy" value={ps.autonomy_days ? `${ps.autonomy_days} day(s)` : '-'} />
+                      </div>
+                    );
+                  }
+                  if (st === 'hybrid') {
+                    return (
+                      <div className="mt-3 pt-3 border-t border-slate-200" data-testid="hybrid-details-block">
+                        <p className="text-[10px] uppercase tracking-wider text-violet-700 font-semibold mb-2">Hybrid Details</p>
+                        <InfoRow label="Battery Chemistry" value={ps.battery_chemistry || '-'} />
+                        <InfoRow label="Grid Charging" value={ps.grid_charge_enabled === false ? 'Solar-only' : 'Allowed'} />
+                        <InfoRow label="Depth of Discharge" value={ps.battery_dod_pct ? `${ps.battery_dod_pct}%` : '-'} />
+                      </div>
+                    );
+                  }
+                  return null;
+                })()}
               </CardContent>
             </Card>
 

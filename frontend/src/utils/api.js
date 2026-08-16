@@ -184,6 +184,17 @@ export const inventoryAPI = {
   exportItems: (format = 'xlsx') => api.get('/inventory/export', { params: { format }, responseType: 'blob' })
 };
 
+// Material Kits API (Solution Kits)
+export const materialKitsAPI = {
+  getAll: (params = {}) => api.get('/material-kits', { params }),
+  getOne: (id) => api.get(`/material-kits/${id}`),
+  match: (system_type, capacity_kw) => api.get('/material-kits/match', { params: { system_type, capacity_kw } }),
+  create: (data) => api.post('/material-kits', data),
+  update: (id, data) => api.put(`/material-kits/${id}`, data),
+  remove: (id) => api.delete(`/material-kits/${id}`),
+  seedStarter: () => api.post('/material-kits/seed-starter')
+};
+
 // File Upload API
 export const uploadAPI = {
   uploadImage: (file) => {

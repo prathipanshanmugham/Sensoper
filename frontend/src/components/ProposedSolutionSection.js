@@ -35,6 +35,27 @@ const blank = {
   battery_kwh: '',
   battery_count: '',
 
+  // ───── On-Grid specific ─────
+  net_metering: true,
+  export_limit_kw: '',
+
+  // ───── Off-Grid specific ─────
+  battery_dod_pct: 80,
+  autonomy_days: 1,
+  charge_controller_type: 'MPPT',
+
+  // ───── Hybrid specific ─────
+  grid_charge_enabled: true,
+  battery_chemistry: 'LiFePO4',
+
+  // ───── Solar Pump specific ─────
+  pump_hp: '',
+  pump_type: 'Submersible',
+  pump_head_m: '',
+  pump_discharge_lph: '',
+  pump_controller_type: 'DC (Direct)',
+  pump_water_source: 'Borewell',
+
   // ───── Generation ─────
   estimated_generation_units_monthly: '',
   estimated_generation_units_annual: '',
@@ -73,7 +94,7 @@ const inrL = (v) => `₹${(v / 100000).toFixed(2)} L`;
 const DEFAULT_TARIFFS = { Domestic: 6.5, Commercial: 9.0, Industrial: 8.5 };
 
 // Cost per kWp (₹) by system_type — Feb 2026 indicative
-const COST_PER_KWP = { 'on-grid': 55000, 'hybrid': 75000, 'off-grid': 95000 };
+const COST_PER_KWP = { 'on-grid': 55000, 'hybrid': 75000, 'off-grid': 95000, 'solar-pump': 65000 };
 
 // Specific yield (kWh/kWp/day) — India residential average; tweakable per location
 const SPECIFIC_YIELD = {
@@ -113,9 +134,18 @@ function autoCalc(d) {
   const dailyUnits = monthlyUnits / 30;
 
   // Step 2 — recommended system size (kWp)
-  const sysKw = ov.system_size_kw
-    ? num(d.system_size_kw)
-    : (dailyUnits > 0 ? +(dailyUnits / yield_kwh).toFixed(2) : 0);
+  // Solar Pump: size from HP (0.75 kW/HP × 1.2 headroom); EB units unused.
+  let sysKw;
+  if (d.system_type === 'solar-pump') {
+    const hp = num(d.pump_hp);
+    sysKw = ov.system_size_kw
+      ? num(d.system_size_kw)
+      : (hp > 0 ? +(hp * 0.75 * 1.2).toFixed(2) : 0);
+  } else {
+    sysKw = ov.system_size_kw
+      ? num(d.system_size_kw)
+      : (dailyUnits > 0 ? +(dailyUnits / yield_kwh).toFixed(2) : 0);
+  }
 
   // Step 3 — panel count & area
   const panelW = num(d.panel_wattage_w) || 540;
@@ -152,7 +182,7 @@ function autoCalc(d) {
   const backupHrs = num(d.power_backup_hours);
   let batteryKwh = num(d.battery_kwh);
   let batteryCount = num(d.battery_count);
-  if (d.system_type !== 'on-grid' && backupHrs > 0 && dailyUnits > 0) {
+  if ((d.system_type === 'hybrid' || d.system_type === 'off-grid') && backupHrs > 0 && dailyUnits > 0) {
     if (!ov.battery_kwh) {
       // assume daily consumption needs `backupHrs/24` proportion of energy from battery
       const wh = (dailyUnits * 1000) * (backupHrs / 24);
@@ -316,6 +346,8 @@ export default function ProposedSolutionSection({ value, onChange }) {
     data.location, data.power_backup_hours, data.system_type,
     data.panel_wattage_w, data.system_life_years, data.panel_degradation_pct_per_year,
     data.diesel_price_per_liter,
+    // Pump driver (solar-pump only):
+    data.pump_hp,
     // override-honoured fields:
     data.system_size_kw, data.panel_count, data.panel_area_sqft,
     data.roof_utilization_pct, data.estimated_generation_units_monthly,
@@ -445,6 +477,7 @@ export default function ProposedSolutionSection({ value, onChange }) {
                   <SelectItem value="on-grid">On-Grid (no battery)</SelectItem>
                   <SelectItem value="hybrid">Hybrid (with battery)</SelectItem>
                   <SelectItem value="off-grid">Off-Grid (battery only)</SelectItem>
+                  <SelectItem value="solar-pump">Solar Pump (agri / borewell)</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -508,6 +541,122 @@ export default function ProposedSolutionSection({ value, onChange }) {
             </div>
           </div>
 
+          {/* ───── System-Type-Specific Fields ───── */}
+          {data.system_type === 'on-grid' && (
+            <div data-testid="ps-ongrid-block">
+              <p className="text-[11px] uppercase tracking-wider text-blue-700 font-semibold mb-2 flex items-center gap-1.5"><Zap className="h-3.5 w-3.5" /> On-Grid Details</p>
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                <div className="space-y-1">
+                  <Label className="text-xs">Net Metering</Label>
+                  <Select value={String(!!data.net_metering)} onValueChange={(v) => updateDriver('net_metering', v === 'true')}>
+                    <SelectTrigger className="h-10 bg-white" data-testid="ps-net-metering"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="true">Yes (Bi-directional meter)</SelectItem>
+                      <SelectItem value="false">No (Gross metering)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <DriverField label="Export Limit (kW)" field="export_limit_kw" placeholder="e.g., 5" value={data.export_limit_kw} onChange={updateDriver} />
+              </div>
+            </div>
+          )}
+
+          {data.system_type === 'off-grid' && (
+            <div data-testid="ps-offgrid-block">
+              <p className="text-[11px] uppercase tracking-wider text-orange-700 font-semibold mb-2 flex items-center gap-1.5"><Package className="h-3.5 w-3.5" /> Off-Grid Details</p>
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                <DriverField label="Depth of Discharge (%)" field="battery_dod_pct" placeholder="80" suffix="%" value={data.battery_dod_pct} onChange={updateDriver} />
+                <DriverField label="Autonomy (days)" field="autonomy_days" placeholder="1" value={data.autonomy_days} onChange={updateDriver} />
+                <div className="space-y-1">
+                  <Label className="text-xs">Charge Controller</Label>
+                  <Select value={data.charge_controller_type} onValueChange={(v) => updateDriver('charge_controller_type', v)}>
+                    <SelectTrigger className="h-10 bg-white" data-testid="ps-charge-controller"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="MPPT">MPPT (Recommended)</SelectItem>
+                      <SelectItem value="PWM">PWM (Basic)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {data.system_type === 'hybrid' && (
+            <div data-testid="ps-hybrid-block">
+              <p className="text-[11px] uppercase tracking-wider text-violet-700 font-semibold mb-2 flex items-center gap-1.5"><Zap className="h-3.5 w-3.5" /> Hybrid Details</p>
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                <div className="space-y-1">
+                  <Label className="text-xs">Grid Charging</Label>
+                  <Select value={String(!!data.grid_charge_enabled)} onValueChange={(v) => updateDriver('grid_charge_enabled', v === 'true')}>
+                    <SelectTrigger className="h-10 bg-white" data-testid="ps-grid-charge"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="true">Allowed</SelectItem>
+                      <SelectItem value="false">Solar-only charge</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Battery Chemistry</Label>
+                  <Select value={data.battery_chemistry} onValueChange={(v) => updateDriver('battery_chemistry', v)}>
+                    <SelectTrigger className="h-10 bg-white" data-testid="ps-battery-chemistry"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="LiFePO4">LiFePO4 (Lithium)</SelectItem>
+                      <SelectItem value="Li-ion">Li-ion NMC</SelectItem>
+                      <SelectItem value="Tubular">Tubular Lead Acid</SelectItem>
+                      <SelectItem value="Gel">Gel Lead Acid</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <DriverField label="Depth of Discharge (%)" field="battery_dod_pct" placeholder="80" suffix="%" value={data.battery_dod_pct} onChange={updateDriver} />
+              </div>
+            </div>
+          )}
+
+          {data.system_type === 'solar-pump' && (
+            <div data-testid="ps-pump-block">
+              <p className="text-[11px] uppercase tracking-wider text-cyan-700 font-semibold mb-2 flex items-center gap-1.5"><Package className="h-3.5 w-3.5" /> Solar Pump Details</p>
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                <DriverField label="Pump Rating (HP)" field="pump_hp" placeholder="e.g., 3" value={data.pump_hp} onChange={updateDriver} />
+                <div className="space-y-1">
+                  <Label className="text-xs">Pump Type</Label>
+                  <Select value={data.pump_type} onValueChange={(v) => updateDriver('pump_type', v)}>
+                    <SelectTrigger className="h-10 bg-white" data-testid="ps-pump-type"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Submersible">Submersible</SelectItem>
+                      <SelectItem value="Surface">Surface (Monoblock)</SelectItem>
+                      <SelectItem value="Openwell">Openwell</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <DriverField label="Total Head (m)" field="pump_head_m" placeholder="e.g., 50" suffix="m" value={data.pump_head_m} onChange={updateDriver} />
+                <DriverField label="Discharge (LPH)" field="pump_discharge_lph" placeholder="e.g., 10000" value={data.pump_discharge_lph} onChange={updateDriver} />
+                <div className="space-y-1">
+                  <Label className="text-xs">Controller</Label>
+                  <Select value={data.pump_controller_type} onValueChange={(v) => updateDriver('pump_controller_type', v)}>
+                    <SelectTrigger className="h-10 bg-white" data-testid="ps-pump-controller"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="DC (Direct)">DC (Direct)</SelectItem>
+                      <SelectItem value="VFD (AC)">VFD (AC)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Water Source</Label>
+                  <Select value={data.pump_water_source} onValueChange={(v) => updateDriver('pump_water_source', v)}>
+                    <SelectTrigger className="h-10 bg-white" data-testid="ps-pump-source"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Borewell">Borewell</SelectItem>
+                      <SelectItem value="Openwell">Openwell</SelectItem>
+                      <SelectItem value="Canal">Canal / Pond</SelectItem>
+                      <SelectItem value="Tank">Overhead Tank</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <p className="text-[10px] text-slate-500 mt-2">Solar Pump sizing uses ≈0.75 kW per HP with 20% headroom; monthly EB &amp; tariff fields are ignored for savings calc — instead ROI compares against grid-pumping or diesel pumpset.</p>
+            </div>
+          )}
+
           {/* ───── System Hardware ───── */}
           <div>
             <p className="text-[11px] uppercase tracking-wider text-slate-600 font-semibold mb-2 flex items-center gap-1.5"><Package className="h-3.5 w-3.5" /> System Hardware</p>
@@ -526,7 +675,7 @@ export default function ProposedSolutionSection({ value, onChange }) {
                 <Label className="text-xs">Inverter Model</Label>
                 <Input type="text" value={data.inverter_model} onChange={(e) => updateDriver('inverter_model', e.target.value)} placeholder="e.g., Sungrow SG5K-D" className="h-10 bg-white" data-testid="ps-inverter-model" />
               </div>
-              {data.system_type !== 'on-grid' && (
+              {(data.system_type === 'hybrid' || data.system_type === 'off-grid') && (
                 <>
                   <AutoField label="Battery (kWh each)" field="battery_kwh" placeholder="auto" value={data.battery_kwh} override={!!overrides.battery_kwh} onChange={updateAutoField} onReset={() => resetField('battery_kwh')} />
                   <AutoField label="Battery Count" field="battery_count" placeholder="auto" value={data.battery_count} override={!!overrides.battery_count} onChange={updateAutoField} onReset={() => resetField('battery_count')} />

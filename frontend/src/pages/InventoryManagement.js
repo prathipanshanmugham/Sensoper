@@ -12,7 +12,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import { 
   ArrowLeft, Plus, Edit, Trash2, Loader2, Package, AlertTriangle,
   Search, Warehouse, Tag, X, CheckCircle2, Circle, Link2, CalendarDays,
-  Upload, FileSpreadsheet, FileText, Download
+  Upload, FileSpreadsheet, FileText, Download, Layers
 } from 'lucide-react';
 
 export default function InventoryManagement() {
@@ -229,6 +229,9 @@ export default function InventoryManagement() {
                 </SelectContent>
               </Select>
               <div className="flex flex-wrap gap-2">
+                <Link to="/dashboard/inventory/kits" className="flex-1 sm:flex-none">
+                  <Button variant="outline" className="w-full h-11 border-emerald-300 text-emerald-700 hover:bg-emerald-50" data-testid="material-kits-btn"><Layers className="h-4 w-4 mr-1" />Solution Kits</Button>
+                </Link>
                 <Button variant="outline" onClick={() => setShowImportDialog(true)} className="flex-1 sm:flex-none h-11" data-testid="import-inventory-btn"><Upload className="h-4 w-4 mr-1" />Import</Button>
                 <Button variant="outline" onClick={() => handleExport('xlsx')} disabled={exportLoading==='xlsx'} className="flex-1 sm:flex-none h-11" data-testid="export-xlsx-btn">{exportLoading==='xlsx' ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Download className="h-4 w-4 mr-1" />}Excel</Button>
                 <Button variant="outline" onClick={() => handleExport('pdf')} disabled={exportLoading==='pdf'} className="flex-1 sm:flex-none h-11" data-testid="export-pdf-btn">{exportLoading==='pdf' ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Download className="h-4 w-4 mr-1" />}PDF</Button>

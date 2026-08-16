@@ -14,6 +14,7 @@ import SiteVisitForm from "./pages/SiteVisitForm";
 import UserManagement from "./pages/UserManagement";
 import TermsConditions from "./pages/TermsConditions";
 import InventoryManagement from "./pages/InventoryManagement";
+import MaterialKitsPage from "./pages/MaterialKitsPage";
 import AuditLogs from "./pages/AuditLogs";
 import CompanyProfile from "./pages/CompanyProfile";
 import ApprovalsPage from "./pages/ApprovalsPage";
@@ -117,6 +118,7 @@ function AppRoutes() {
       <Route path="/dashboard/approvals" element={<ProtectedRoute allowedRoles={["admin", "manager"]}><DashboardLayout><ApprovalsPage /></DashboardLayout></ProtectedRoute>} />
       <Route path="/dashboard/terms" element={<ProtectedRoute allowedRoles={["admin", "manager"]}><DashboardLayout><TermsConditions /></DashboardLayout></ProtectedRoute>} />
       <Route path="/dashboard/inventory" element={<ProtectedRoute allowedRoles={["admin", "manager"]}><DashboardLayout><InventoryManagement /></DashboardLayout></ProtectedRoute>} />
+      <Route path="/dashboard/inventory/kits" element={<ProtectedRoute allowedRoles={["admin", "manager"]}><DashboardLayout><MaterialKitsPage /></DashboardLayout></ProtectedRoute>} />
       <Route path="/dashboard/readings" element={<ProtectedRoute><DashboardLayout><ReadingsPage /></DashboardLayout></ProtectedRoute>} />
       {/* Default Redirect */}
       <Route path="/" element={<Navigate to="/dashboard" replace />} />

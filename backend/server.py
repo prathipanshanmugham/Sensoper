@@ -274,6 +274,36 @@ class InventoryCategoryCreate(BaseModel):
 class DeletionRequestCreate(BaseModel):
     reason: str
 
+# ================== MATERIAL KIT MODELS ==================
+
+class MaterialKitLine(BaseModel):
+    inventory_item_id: Optional[str] = None
+    name: str
+    category: Optional[str] = None
+    quantity: float = 1
+    qty_formula: Optional[str] = None   # e.g. "1 per kW", "1 fixed"
+    notes: Optional[str] = None
+
+class MaterialKitCreate(BaseModel):
+    name: str
+    system_type: Literal["on-grid", "off-grid", "hybrid", "solar-pump"]
+    capacity_kw: float = 0
+    capacity_min_kw: Optional[float] = None
+    capacity_max_kw: Optional[float] = None
+    description: Optional[str] = None
+    lines: List[MaterialKitLine] = []
+    active: bool = True
+
+class MaterialKitUpdate(BaseModel):
+    name: Optional[str] = None
+    system_type: Optional[Literal["on-grid", "off-grid", "hybrid", "solar-pump"]] = None
+    capacity_kw: Optional[float] = None
+    capacity_min_kw: Optional[float] = None
+    capacity_max_kw: Optional[float] = None
+    description: Optional[str] = None
+    lines: Optional[List[MaterialKitLine]] = None
+    active: Optional[bool] = None
+
 # ================== COMPANY PROFILE MODELS ==================
 
 class BankDetails(BaseModel):
@@ -1951,6 +1981,207 @@ async def get_inventory_alerts(request: Request):
         }
         for item in items
     ]
+
+# ================== MATERIAL KITS (Solution Kits) ==================
+
+def _serialize_kit(k):
+    return {
+        "id": str(k["_id"]),
+        "name": k.get("name"),
+        "system_type": k.get("system_type"),
+        "capacity_kw": k.get("capacity_kw", 0),
+        "capacity_min_kw": k.get("capacity_min_kw"),
+        "capacity_max_kw": k.get("capacity_max_kw"),
+        "description": k.get("description"),
+        "lines": k.get("lines", []),
+        "active": k.get("active", True),
+        "created_at": k.get("created_at"),
+        "updated_at": k.get("updated_at"),
+    }
+
+@api_router.get("/material-kits")
+async def list_material_kits(request: Request, system_type: Optional[str] = None, capacity_kw: Optional[float] = None):
+    await get_current_user(request)
+    query = {"active": True}
+    if system_type:
+        query["system_type"] = system_type
+    kits = await db.material_kits.find(query).sort("capacity_kw", 1).to_list(500)
+    result = [_serialize_kit(k) for k in kits]
+    # If a capacity_kw is specified, order by proximity so first item is best-match
+    if capacity_kw is not None:
+        result.sort(key=lambda r: abs(float(r.get("capacity_kw") or 0) - float(capacity_kw)))
+    return result
+
+@api_router.get("/material-kits/match")
+async def match_material_kit(request: Request, system_type: str, capacity_kw: float):
+    """Return the best-matching kit for a given system_type + capacity.
+    Preference: capacity within [min,max], else closest capacity_kw."""
+    await get_current_user(request)
+    kits = await db.material_kits.find({"system_type": system_type, "active": True}).to_list(500)
+    if not kits:
+        return {"match": None, "candidates": []}
+    # Range match first
+    within = [k for k in kits
+              if (k.get("capacity_min_kw") is not None and k.get("capacity_max_kw") is not None
+                  and float(k["capacity_min_kw"]) <= capacity_kw <= float(k["capacity_max_kw"]))]
+    if within:
+        best = min(within, key=lambda k: abs(float(k.get("capacity_kw") or 0) - capacity_kw))
+    else:
+        best = min(kits, key=lambda k: abs(float(k.get("capacity_kw") or 0) - capacity_kw))
+    return {"match": _serialize_kit(best), "candidates": [_serialize_kit(k) for k in kits]}
+
+@api_router.get("/material-kits/{kit_id}")
+async def get_material_kit(kit_id: str, request: Request):
+    await get_current_user(request)
+    kit = await db.material_kits.find_one({"_id": ObjectId(kit_id)})
+    if not kit:
+        raise HTTPException(status_code=404, detail="Kit not found")
+    return _serialize_kit(kit)
+
+@api_router.post("/material-kits")
+async def create_material_kit(kit: MaterialKitCreate, request: Request):
+    current_user = await require_role("admin", "manager")(request)
+    doc = kit.model_dump()
+    doc["created_at"] = datetime.now(timezone.utc).isoformat()
+    doc["updated_at"] = doc["created_at"]
+    doc["created_by"] = current_user["id"]
+    result = await db.material_kits.insert_one(doc)
+    return {"id": str(result.inserted_id), "message": "Kit created"}
+
+@api_router.put("/material-kits/{kit_id}")
+async def update_material_kit(kit_id: str, updates: MaterialKitUpdate, request: Request):
+    await require_role("admin", "manager")(request)
+    kit = await db.material_kits.find_one({"_id": ObjectId(kit_id)})
+    if not kit:
+        raise HTTPException(status_code=404, detail="Kit not found")
+    upd = {k: v for k, v in updates.model_dump(exclude_unset=True).items() if v is not None}
+    upd["updated_at"] = datetime.now(timezone.utc).isoformat()
+    await db.material_kits.update_one({"_id": ObjectId(kit_id)}, {"$set": upd})
+    return {"message": "Kit updated"}
+
+@api_router.delete("/material-kits/{kit_id}")
+async def delete_material_kit(kit_id: str, request: Request):
+    await require_role("admin", "manager")(request)
+    res = await db.material_kits.delete_one({"_id": ObjectId(kit_id)})
+    if res.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Kit not found")
+    return {"message": "Kit deleted"}
+
+@api_router.post("/material-kits/seed-starter")
+async def seed_material_kits(request: Request):
+    """Idempotent seed of 8 starter kits — 2 per system type across common capacities."""
+    await require_role("admin", "manager")(request)
+    starter = [
+        # On-Grid
+        {"name": "On-Grid Starter · 3 kW", "system_type": "on-grid", "capacity_kw": 3,
+         "capacity_min_kw": 2, "capacity_max_kw": 4,
+         "description": "Residential on-grid rooftop with net-metering (2-4 kW).",
+         "lines": [
+             {"name": "540W Mono PERC panels", "category": "panels", "quantity": 6, "qty_formula": "1 per 0.5 kW"},
+             {"name": "3 kW String Inverter", "category": "inverter", "quantity": 1},
+             {"name": "DC/AC combiner box", "category": "combiner", "quantity": 1},
+             {"name": "4 sqmm DC cable", "category": "cables", "quantity": 60, "qty_formula": "10m per panel"},
+             {"name": "MC4 connectors (pair)", "category": "connectors", "quantity": 12},
+             {"name": "GI mounting structure", "category": "mounting", "quantity": 6},
+             {"name": "Earthing kit + LA", "category": "earthing", "quantity": 1},
+         ]},
+        {"name": "On-Grid Family · 5 kW", "system_type": "on-grid", "capacity_kw": 5,
+         "capacity_min_kw": 4, "capacity_max_kw": 7,
+         "description": "Family home on-grid (4-7 kW).",
+         "lines": [
+             {"name": "540W Mono PERC panels", "category": "panels", "quantity": 10},
+             {"name": "5 kW String Inverter", "category": "inverter", "quantity": 1},
+             {"name": "DC/AC combiner box", "category": "combiner", "quantity": 1},
+             {"name": "6 sqmm DC cable", "category": "cables", "quantity": 100},
+             {"name": "MC4 connectors (pair)", "category": "connectors", "quantity": 20},
+             {"name": "GI mounting structure", "category": "mounting", "quantity": 10},
+             {"name": "Earthing kit + LA", "category": "earthing", "quantity": 1},
+         ]},
+        # Off-Grid
+        {"name": "Off-Grid Cabin · 3 kW", "system_type": "off-grid", "capacity_kw": 3,
+         "capacity_min_kw": 2, "capacity_max_kw": 4,
+         "description": "Standalone off-grid with C10 batteries (2-4 kW).",
+         "lines": [
+             {"name": "540W Mono PERC panels", "category": "panels", "quantity": 6},
+             {"name": "3 kW Off-Grid Inverter", "category": "inverter", "quantity": 1},
+             {"name": "150Ah C10 Tubular battery", "category": "battery", "quantity": 4},
+             {"name": "MPPT charge controller 60A", "category": "charge_controller", "quantity": 1},
+             {"name": "4 sqmm DC cable", "category": "cables", "quantity": 60},
+             {"name": "MC4 connectors (pair)", "category": "connectors", "quantity": 12},
+             {"name": "GI mounting structure", "category": "mounting", "quantity": 6},
+             {"name": "Battery cables + lugs", "category": "cables", "quantity": 1},
+         ]},
+        {"name": "Off-Grid Farmhouse · 5 kW", "system_type": "off-grid", "capacity_kw": 5,
+         "capacity_min_kw": 4, "capacity_max_kw": 7,
+         "description": "Extended off-grid autonomy (4-7 kW).",
+         "lines": [
+             {"name": "540W Mono PERC panels", "category": "panels", "quantity": 10},
+             {"name": "5 kW Off-Grid Inverter", "category": "inverter", "quantity": 1},
+             {"name": "200Ah C10 Tubular battery", "category": "battery", "quantity": 6},
+             {"name": "MPPT charge controller 100A", "category": "charge_controller", "quantity": 1},
+             {"name": "6 sqmm DC cable", "category": "cables", "quantity": 100},
+             {"name": "GI mounting structure", "category": "mounting", "quantity": 10},
+         ]},
+        # Hybrid
+        {"name": "Hybrid Home · 5 kW", "system_type": "hybrid", "capacity_kw": 5,
+         "capacity_min_kw": 4, "capacity_max_kw": 7,
+         "description": "Grid-tied with battery backup (4-7 kW).",
+         "lines": [
+             {"name": "540W Mono PERC panels", "category": "panels", "quantity": 10},
+             {"name": "5 kW Hybrid Inverter", "category": "inverter", "quantity": 1},
+             {"name": "5 kWh LiFePO4 battery", "category": "battery", "quantity": 1},
+             {"name": "DC/AC combiner box", "category": "combiner", "quantity": 1},
+             {"name": "6 sqmm DC cable", "category": "cables", "quantity": 100},
+             {"name": "GI mounting structure", "category": "mounting", "quantity": 10},
+             {"name": "Earthing kit + LA", "category": "earthing", "quantity": 1},
+         ]},
+        {"name": "Hybrid Villa · 10 kW", "system_type": "hybrid", "capacity_kw": 10,
+         "capacity_min_kw": 7, "capacity_max_kw": 15,
+         "description": "Large hybrid with battery + net-metering (7-15 kW).",
+         "lines": [
+             {"name": "540W Mono PERC panels", "category": "panels", "quantity": 19},
+             {"name": "10 kW Hybrid Inverter", "category": "inverter", "quantity": 1},
+             {"name": "10 kWh LiFePO4 battery", "category": "battery", "quantity": 1},
+             {"name": "10 sqmm DC cable", "category": "cables", "quantity": 200},
+             {"name": "GI mounting structure", "category": "mounting", "quantity": 19},
+             {"name": "Earthing kit + LA", "category": "earthing", "quantity": 1},
+         ]},
+        # Solar Pump
+        {"name": "Solar Pump · 3 HP Submersible", "system_type": "solar-pump", "capacity_kw": 2.2,
+         "capacity_min_kw": 1.5, "capacity_max_kw": 3,
+         "description": "3 HP submersible pump kit (up to 50m head, ~10 kLPH).",
+         "lines": [
+             {"name": "330W Poly panels", "category": "panels", "quantity": 8},
+             {"name": "3 HP DC Solar Pump Controller", "category": "controller", "quantity": 1},
+             {"name": "3 HP Submersible Pump", "category": "pump", "quantity": 1},
+             {"name": "4 sqmm DC cable", "category": "cables", "quantity": 80},
+             {"name": "Delivery pipe (32mm)", "category": "pipe", "quantity": 50, "qty_formula": "per m of head"},
+             {"name": "GI mounting structure", "category": "mounting", "quantity": 8},
+         ]},
+        {"name": "Solar Pump · 5 HP Surface", "system_type": "solar-pump", "capacity_kw": 3.7,
+         "capacity_min_kw": 3, "capacity_max_kw": 5.5,
+         "description": "5 HP surface pump for open wells / canals.",
+         "lines": [
+             {"name": "540W Mono PERC panels", "category": "panels", "quantity": 8},
+             {"name": "5 HP AC Solar Pump Controller (VFD)", "category": "controller", "quantity": 1},
+             {"name": "5 HP Surface AC Pump", "category": "pump", "quantity": 1},
+             {"name": "6 sqmm DC cable", "category": "cables", "quantity": 80},
+             {"name": "Delivery pipe (50mm)", "category": "pipe", "quantity": 50},
+             {"name": "GI mounting structure", "category": "mounting", "quantity": 8},
+         ]},
+    ]
+    created = 0
+    for k in starter:
+        existing = await db.material_kits.find_one({"name": k["name"], "system_type": k["system_type"]})
+        if existing:
+            continue
+        k["active"] = True
+        k["created_at"] = datetime.now(timezone.utc).isoformat()
+        k["updated_at"] = k["created_at"]
+        await db.material_kits.insert_one(k)
+        created += 1
+    total = await db.material_kits.count_documents({})
+    return {"created": created, "total": total}
 
 # ================== PROJECTS ==================
 
@@ -5006,7 +5237,7 @@ class SolarSizingRequest(BaseModel):
     connection_type: str = "Single Phase"
     avg_monthly_bill: Optional[float] = None
     irradiation_kwh_m2_day: float = 5.0  # India avg fallback
-    system_type: Literal["on-grid", "off-grid", "hybrid"] = "on-grid"
+    system_type: Literal["on-grid", "off-grid", "hybrid", "solar-pump"] = "on-grid"
     panel_wattage_w: int = 550
     cost_per_kwp: float = 55000  # ₹/kWp installed (2026 India avg residential on-grid)
     battery_autonomy_days: float = 1.0
