@@ -14,6 +14,9 @@ import pytest
 import requests
 import os
 from datetime import datetime
+import os
+TEST_ADMIN_PASSWORD = os.environ.get("TEST_ADMIN_PASSWORD") or "Admin@123"
+
 
 BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', '').rstrip('/')
 
@@ -25,7 +28,7 @@ class TestAuth:
         """Login and get auth cookies"""
         response = requests.post(
             f"{BASE_URL}/api/auth/login",
-            json={"email": "admin@sensoper.com", "password": "Admin@123"}
+            json={"email": "admin@sensoper.com", "password": TEST_ADMIN_PASSWORD}
         )
         assert response.status_code == 200, f"Login failed: {response.text}"
         return response.cookies
@@ -44,7 +47,7 @@ class TestDailyUpdates:
         """Login and get auth cookies"""
         response = requests.post(
             f"{BASE_URL}/api/auth/login",
-            json={"email": "admin@sensoper.com", "password": "Admin@123"}
+            json={"email": "admin@sensoper.com", "password": TEST_ADMIN_PASSWORD}
         )
         assert response.status_code == 200
         return response.cookies
@@ -218,7 +221,7 @@ class TestPayments:
     def auth_cookies(self):
         response = requests.post(
             f"{BASE_URL}/api/auth/login",
-            json={"email": "admin@sensoper.com", "password": "Admin@123"}
+            json={"email": "admin@sensoper.com", "password": TEST_ADMIN_PASSWORD}
         )
         return response.cookies
     
@@ -272,7 +275,7 @@ class TestMaterialUsage:
     def auth_cookies(self):
         response = requests.post(
             f"{BASE_URL}/api/auth/login",
-            json={"email": "admin@sensoper.com", "password": "Admin@123"}
+            json={"email": "admin@sensoper.com", "password": TEST_ADMIN_PASSWORD}
         )
         return response.cookies
     
@@ -329,7 +332,7 @@ class TestDataCompleteness:
     def auth_cookies(self):
         response = requests.post(
             f"{BASE_URL}/api/auth/login",
-            json={"email": "admin@sensoper.com", "password": "Admin@123"}
+            json={"email": "admin@sensoper.com", "password": TEST_ADMIN_PASSWORD}
         )
         return response.cookies
     
@@ -374,7 +377,7 @@ class TestProjectReport:
     def auth_cookies(self):
         response = requests.post(
             f"{BASE_URL}/api/auth/login",
-            json={"email": "admin@sensoper.com", "password": "Admin@123"}
+            json={"email": "admin@sensoper.com", "password": TEST_ADMIN_PASSWORD}
         )
         return response.cookies
     
@@ -428,7 +431,7 @@ class TestNewReportTypes:
     def auth_cookies(self):
         response = requests.post(
             f"{BASE_URL}/api/auth/login",
-            json={"email": "admin@sensoper.com", "password": "Admin@123"}
+            json={"email": "admin@sensoper.com", "password": TEST_ADMIN_PASSWORD}
         )
         return response.cookies
     
@@ -559,7 +562,7 @@ class TestAllReportTypes:
     def auth_cookies(self):
         response = requests.post(
             f"{BASE_URL}/api/auth/login",
-            json={"email": "admin@sensoper.com", "password": "Admin@123"}
+            json={"email": "admin@sensoper.com", "password": TEST_ADMIN_PASSWORD}
         )
         return response.cookies
     

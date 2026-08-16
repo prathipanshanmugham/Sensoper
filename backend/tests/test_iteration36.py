@@ -9,6 +9,8 @@ import os
 import io
 import pytest
 import requests
+TEST_ADMIN_PASSWORD = os.environ.get("TEST_ADMIN_PASSWORD") or "Admin@123"
+
 
 BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', '').rstrip('/')
 if not BASE_URL:
@@ -18,7 +20,7 @@ if not BASE_URL:
                 BASE_URL = line.split("=", 1)[1].strip().rstrip("/")
 
 ADMIN_EMAIL = "admin@sensoper.com"
-ADMIN_PASS = "Admin@123"
+ADMIN_PASS = TEST_ADMIN_PASSWORD
 
 
 @pytest.fixture(scope="module")

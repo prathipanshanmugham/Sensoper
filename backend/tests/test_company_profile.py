@@ -7,6 +7,9 @@ Tests Company Profile CRUD, Logo Upload, and Active Profile endpoints
 import pytest
 import requests
 import os
+import os
+TEST_ADMIN_PASSWORD = os.environ.get("TEST_ADMIN_PASSWORD") or "Admin@123"
+
 
 BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', 'https://solar-ops-management.preview.emergentagent.com')
 
@@ -22,7 +25,7 @@ class TestCompanyProfileAPI:
         # Login as admin
         response = self.session.post(f"{BASE_URL}/api/auth/login", json={
             "email": "admin@sensoper.com",
-            "password": "Admin@123"
+            "password": TEST_ADMIN_PASSWORD
         })
         assert response.status_code == 200, f"Admin login failed: {response.text}"
         self.admin_user = response.json()
@@ -255,7 +258,7 @@ class TestCompanyProfileAPI:
         # First login to get cookies
         login_response = upload_session.post(f"{BASE_URL}/api/auth/login", json={
             "email": "admin@sensoper.com",
-            "password": "Admin@123"
+            "password": TEST_ADMIN_PASSWORD
         })
         assert login_response.status_code == 200
         
@@ -283,7 +286,7 @@ class TestCompanyProfileAPI:
         # First login to get cookies
         login_response = upload_session.post(f"{BASE_URL}/api/auth/login", json={
             "email": "admin@sensoper.com",
-            "password": "Admin@123"
+            "password": TEST_ADMIN_PASSWORD
         })
         assert login_response.status_code == 200
         
@@ -341,7 +344,7 @@ class TestTermsAndConditionsAPI:
         # Login as admin
         response = self.session.post(f"{BASE_URL}/api/auth/login", json={
             "email": "admin@sensoper.com",
-            "password": "Admin@123"
+            "password": TEST_ADMIN_PASSWORD
         })
         assert response.status_code == 200
         yield
@@ -370,7 +373,7 @@ class TestProjectPDFIntegration:
         # Login as admin
         response = self.session.post(f"{BASE_URL}/api/auth/login", json={
             "email": "admin@sensoper.com",
-            "password": "Admin@123"
+            "password": TEST_ADMIN_PASSWORD
         })
         assert response.status_code == 200
         yield

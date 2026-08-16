@@ -15,6 +15,9 @@ import pytest
 import requests
 import os
 import uuid
+import os
+TEST_ADMIN_PASSWORD = os.environ.get("TEST_ADMIN_PASSWORD") or "Admin@123"
+
 
 BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', '').rstrip('/')
 
@@ -27,7 +30,7 @@ class TestAuth:
         session = requests.Session()
         response = session.post(f"{BASE_URL}/api/auth/login", json={
             "email": "admin@sensoper.com",
-            "password": "Admin@123"
+            "password": TEST_ADMIN_PASSWORD
         })
         assert response.status_code == 200, f"Admin login failed: {response.text}"
         data = response.json()
@@ -53,7 +56,7 @@ class TestPermissionsAPI:
         session = requests.Session()
         response = session.post(f"{BASE_URL}/api/auth/login", json={
             "email": "admin@sensoper.com",
-            "password": "Admin@123"
+            "password": TEST_ADMIN_PASSWORD
         })
         assert response.status_code == 200
         return session
@@ -169,7 +172,7 @@ class TestApprovalsAPI:
         session = requests.Session()
         response = session.post(f"{BASE_URL}/api/auth/login", json={
             "email": "admin@sensoper.com",
-            "password": "Admin@123"
+            "password": TEST_ADMIN_PASSWORD
         })
         assert response.status_code == 200
         return session
@@ -416,7 +419,7 @@ class TestDashboardStats:
         session = requests.Session()
         response = session.post(f"{BASE_URL}/api/auth/login", json={
             "email": "admin@sensoper.com",
-            "password": "Admin@123"
+            "password": TEST_ADMIN_PASSWORD
         })
         assert response.status_code == 200
         return session
@@ -446,7 +449,7 @@ class TestApprovalWorkflow:
         session = requests.Session()
         response = session.post(f"{BASE_URL}/api/auth/login", json={
             "email": "admin@sensoper.com",
-            "password": "Admin@123"
+            "password": TEST_ADMIN_PASSWORD
         })
         assert response.status_code == 200
         return session
@@ -527,7 +530,7 @@ def cleanup_test_approvals():
     session = requests.Session()
     response = session.post(f"{BASE_URL}/api/auth/login", json={
         "email": "admin@sensoper.com",
-        "password": "Admin@123"
+        "password": TEST_ADMIN_PASSWORD
     })
     if response.status_code == 200:
         # Get all approvals and delete TEST_ ones (if delete endpoint exists)

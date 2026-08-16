@@ -10,6 +10,9 @@ Tests for system tabs (Customer, Location, Site & Electrical, Materials, Site Do
 import pytest
 import requests
 import os
+import os
+TEST_ADMIN_PASSWORD = os.environ.get("TEST_ADMIN_PASSWORD") or "Admin@123"
+
 
 BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', '').rstrip('/')
 
@@ -25,7 +28,7 @@ class TestSystemTabs:
         self.session = requests.Session()
         login_response = self.session.post(f"{BASE_URL}/api/auth/login", json={
             "email": "admin@sensoper.com",
-            "password": "Admin@123"
+            "password": TEST_ADMIN_PASSWORD
         })
         assert login_response.status_code == 200, f"Login failed: {login_response.text}"
         self.user = login_response.json()

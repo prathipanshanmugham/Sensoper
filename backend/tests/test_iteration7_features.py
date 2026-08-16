@@ -14,6 +14,9 @@ import pytest
 import requests
 import os
 import time
+import os
+TEST_ADMIN_PASSWORD = os.environ.get("TEST_ADMIN_PASSWORD") or "Admin@123"
+
 
 BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', '').rstrip('/')
 
@@ -25,7 +28,7 @@ class TestAuth:
         """Login and get auth token"""
         response = requests.post(f"{BASE_URL}/api/auth/login", json={
             "email": "admin@sensoper.com",
-            "password": "Admin@123"
+            "password": TEST_ADMIN_PASSWORD
         })
         assert response.status_code == 200, f"Login failed: {response.text}"
         return response.cookies.get('access_token') or response.json().get('access_token')
@@ -42,7 +45,7 @@ class TestAuth:
         """Test admin login with correct credentials"""
         response = requests.post(f"{BASE_URL}/api/auth/login", json={
             "email": "admin@sensoper.com",
-            "password": "Admin@123"
+            "password": TEST_ADMIN_PASSWORD
         })
         assert response.status_code == 200
         data = response.json()
@@ -59,7 +62,7 @@ class TestReferenceNumberEndpoint:
         s = requests.Session()
         response = s.post(f"{BASE_URL}/api/auth/login", json={
             "email": "admin@sensoper.com",
-            "password": "Admin@123"
+            "password": TEST_ADMIN_PASSWORD
         })
         assert response.status_code == 200
         return s
@@ -122,7 +125,7 @@ class TestStatusEndpoint:
         s = requests.Session()
         response = s.post(f"{BASE_URL}/api/auth/login", json={
             "email": "admin@sensoper.com",
-            "password": "Admin@123"
+            "password": TEST_ADMIN_PASSWORD
         })
         assert response.status_code == 200
         return s
@@ -196,7 +199,7 @@ class TestGalleryEndpoint:
         s = requests.Session()
         response = s.post(f"{BASE_URL}/api/auth/login", json={
             "email": "admin@sensoper.com",
-            "password": "Admin@123"
+            "password": TEST_ADMIN_PASSWORD
         })
         assert response.status_code == 200
         return s
@@ -255,7 +258,7 @@ class TestCompleteEndpointWithFeedback:
         s = requests.Session()
         response = s.post(f"{BASE_URL}/api/auth/login", json={
             "email": "admin@sensoper.com",
-            "password": "Admin@123"
+            "password": TEST_ADMIN_PASSWORD
         })
         assert response.status_code == 200
         return s
@@ -321,7 +324,7 @@ class TestProjectEditing:
         s = requests.Session()
         response = s.post(f"{BASE_URL}/api/auth/login", json={
             "email": "admin@sensoper.com",
-            "password": "Admin@123"
+            "password": TEST_ADMIN_PASSWORD
         })
         assert response.status_code == 200
         return s
@@ -414,7 +417,7 @@ class TestTypeableDropdowns:
         s = requests.Session()
         response = s.post(f"{BASE_URL}/api/auth/login", json={
             "email": "admin@sensoper.com",
-            "password": "Admin@123"
+            "password": TEST_ADMIN_PASSWORD
         })
         assert response.status_code == 200
         return s
@@ -507,7 +510,7 @@ class TestExistingProjectReference:
         s = requests.Session()
         response = s.post(f"{BASE_URL}/api/auth/login", json={
             "email": "admin@sensoper.com",
-            "password": "Admin@123"
+            "password": TEST_ADMIN_PASSWORD
         })
         assert response.status_code == 200
         return s

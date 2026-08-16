@@ -16,10 +16,13 @@ import requests
 from datetime import datetime, timezone
 from bson import ObjectId
 from pymongo import MongoClient
+import os
+TEST_ADMIN_PASSWORD = os.environ.get("TEST_ADMIN_PASSWORD") or "Admin@123"
+
 
 BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "https://solar-ops-management.preview.emergentagent.com").rstrip("/")
 ADMIN_EMAIL = "admin@sensoper.com"
-ADMIN_PASSWORD = "Admin@123"
+ADMIN_PASSWORD = TEST_ADMIN_PASSWORD
 
 # Mongo direct — for status mutation (completed) which has no public endpoint
 MONGO_URL = os.environ.get("MONGO_URL", "mongodb://localhost:27017")

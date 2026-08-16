@@ -9,6 +9,8 @@ import pytest
 import requests
 import os
 import time
+TEST_ADMIN_PASSWORD = os.environ.get("TEST_ADMIN_PASSWORD") or "Admin@123"
+
 
 BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', '').rstrip('/')
 
@@ -21,7 +23,7 @@ class TestAuth:
         session = requests.Session()
         response = session.post(f"{BASE_URL}/api/auth/login", json={
             "email": "admin@sensoper.com",
-            "password": "Admin@123"
+            "password": TEST_ADMIN_PASSWORD
         })
         assert response.status_code == 200, f"Admin login failed: {response.text}"
         data = response.json()
@@ -46,7 +48,7 @@ class TestInventoryCategories:
         session = requests.Session()
         response = session.post(f"{BASE_URL}/api/auth/login", json={
             "email": "admin@sensoper.com",
-            "password": "Admin@123"
+            "password": TEST_ADMIN_PASSWORD
         })
         assert response.status_code == 200
         return session
@@ -102,7 +104,7 @@ class TestInventoryItems:
         session = requests.Session()
         response = session.post(f"{BASE_URL}/api/auth/login", json={
             "email": "admin@sensoper.com",
-            "password": "Admin@123"
+            "password": TEST_ADMIN_PASSWORD
         })
         assert response.status_code == 200
         return session
@@ -145,7 +147,7 @@ class TestImageUpload:
         session = requests.Session()
         response = session.post(f"{BASE_URL}/api/auth/login", json={
             "email": "admin@sensoper.com",
-            "password": "Admin@123"
+            "password": TEST_ADMIN_PASSWORD
         })
         assert response.status_code == 200
         return session
@@ -192,7 +194,7 @@ class TestMarginEndpoint:
         session = requests.Session()
         response = session.post(f"{BASE_URL}/api/auth/login", json={
             "email": "admin@sensoper.com",
-            "password": "Admin@123"
+            "password": TEST_ADMIN_PASSWORD
         })
         assert response.status_code == 200
         return session
@@ -257,7 +259,7 @@ class TestStaffCannotUpdateMargin:
         admin_session = requests.Session()
         admin_session.post(f"{BASE_URL}/api/auth/login", json={
             "email": "admin@sensoper.com",
-            "password": "Admin@123"
+            "password": TEST_ADMIN_PASSWORD
         })
         
         # Create a test project
@@ -304,7 +306,7 @@ class TestPricingConfigRemoved:
         session = requests.Session()
         session.post(f"{BASE_URL}/api/auth/login", json={
             "email": "admin@sensoper.com",
-            "password": "Admin@123"
+            "password": TEST_ADMIN_PASSWORD
         })
         
         response = session.get(f"{BASE_URL}/api/pricing")
@@ -320,7 +322,7 @@ class TestRoofTypeTextField:
         session = requests.Session()
         response = session.post(f"{BASE_URL}/api/auth/login", json={
             "email": "admin@sensoper.com",
-            "password": "Admin@123"
+            "password": TEST_ADMIN_PASSWORD
         })
         assert response.status_code == 200
         return session

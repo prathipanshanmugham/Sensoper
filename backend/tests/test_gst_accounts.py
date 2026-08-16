@@ -10,6 +10,9 @@ from datetime import date
 
 import pytest
 import requests
+import os
+TEST_ADMIN_PASSWORD = os.environ.get("TEST_ADMIN_PASSWORD") or "Admin@123"
+
 
 def _load_backend_url():
     env_url = os.environ.get("REACT_APP_BACKEND_URL")
@@ -27,7 +30,7 @@ def _load_backend_url():
 BASE_URL = _load_backend_url()
 assert BASE_URL, "REACT_APP_BACKEND_URL not configured"
 ADMIN_EMAIL = "admin@sensoper.com"
-ADMIN_PASS = "Admin@123"
+ADMIN_PASS = TEST_ADMIN_PASSWORD
 
 
 @pytest.fixture(scope="module")

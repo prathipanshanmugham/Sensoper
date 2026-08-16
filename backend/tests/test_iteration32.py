@@ -8,6 +8,8 @@
 import os
 import pytest
 import requests
+TEST_ADMIN_PASSWORD = os.environ.get("TEST_ADMIN_PASSWORD") or "Admin@123"
+
 
 BASE_URL = os.environ.get("REACT_APP_BACKEND_URL").rstrip("/")
 API = f"{BASE_URL}/api"
@@ -16,7 +18,7 @@ API = f"{BASE_URL}/api"
 @pytest.fixture(scope="session")
 def session():
     s = requests.Session()
-    r = s.post(f"{API}/auth/login", json={"email": "admin@sensoper.com", "password": "Admin@123"})
+    r = s.post(f"{API}/auth/login", json={"email": "admin@sensoper.com", "password": TEST_ADMIN_PASSWORD})
     assert r.status_code == 200, f"login failed: {r.status_code} {r.text}"
     return s
 

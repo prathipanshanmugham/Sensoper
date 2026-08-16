@@ -29,8 +29,16 @@ mongo_url = os.environ['MONGO_URL']
 client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ['DB_NAME']]
 
-# JWT Configuration
-JWT_SECRET = os.environ.get("JWT_SECRET", secrets.token_hex(32))
+# JWT Configuration — fail fast if the secret isn't provisioned so we never
+# fall back to an ephemeral secret that would invalidate every existing session
+# on service restart.
+JWT_SECRET = os.environ.get("JWT_SECRET")
+if not JWT_SECRET or not JWT_SECRET.strip():
+    raise RuntimeError(
+        "JWT_SECRET environment variable is not set. Add JWT_SECRET to backend/.env "
+        "(a long random string, e.g. output of `python -c 'import secrets; print(secrets.token_hex(32))'`). "
+        "Refusing to start with an auto-generated secret — that would log out every user on every restart."
+    )
 JWT_ALGORITHM = "HS256"
 
 # Object Storage Configuration

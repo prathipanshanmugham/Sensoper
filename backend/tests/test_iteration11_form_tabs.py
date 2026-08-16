@@ -13,6 +13,9 @@ import pytest
 import requests
 import os
 import time
+import os
+TEST_ADMIN_PASSWORD = os.environ.get("TEST_ADMIN_PASSWORD") or "Admin@123"
+
 
 BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', '').rstrip('/')
 
@@ -25,7 +28,7 @@ class TestFormTabsAPI:
         self.session = requests.Session()
         login_response = self.session.post(
             f"{BASE_URL}/api/auth/login",
-            json={"email": "admin@sensoper.com", "password": "Admin@123"}
+            json={"email": "admin@sensoper.com", "password": TEST_ADMIN_PASSWORD}
         )
         assert login_response.status_code == 200, f"Login failed: {login_response.text}"
         self.user = login_response.json()
@@ -291,7 +294,7 @@ class TestFormTabsInProject:
         self.session = requests.Session()
         login_response = self.session.post(
             f"{BASE_URL}/api/auth/login",
-            json={"email": "admin@sensoper.com", "password": "Admin@123"}
+            json={"email": "admin@sensoper.com", "password": TEST_ADMIN_PASSWORD}
         )
         assert login_response.status_code == 200
         yield
@@ -392,7 +395,7 @@ class TestSiteMeasurementsAndSmartSuggestions:
         self.session = requests.Session()
         login_response = self.session.post(
             f"{BASE_URL}/api/auth/login",
-            json={"email": "admin@sensoper.com", "password": "Admin@123"}
+            json={"email": "admin@sensoper.com", "password": TEST_ADMIN_PASSWORD}
         )
         assert login_response.status_code == 200
         yield

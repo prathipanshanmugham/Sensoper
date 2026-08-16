@@ -13,10 +13,13 @@ import io
 import os
 import pytest
 import requests
+import os
+TEST_ADMIN_PASSWORD = os.environ.get("TEST_ADMIN_PASSWORD") or "Admin@123"
+
 
 BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "https://solar-ops-management.preview.emergentagent.com").rstrip("/")
 ADMIN_EMAIL = "admin@sensoper.com"
-ADMIN_PASSWORD = "Admin@123"
+ADMIN_PASSWORD = TEST_ADMIN_PASSWORD
 
 
 @pytest.fixture(scope="module")

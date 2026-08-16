@@ -5,10 +5,12 @@ import os
 from datetime import datetime
 import pytest
 import requests
+TEST_ADMIN_PASSWORD = os.environ.get("TEST_ADMIN_PASSWORD") or "Admin@123"
+
 
 BASE_URL = os.environ.get("REACT_APP_BACKEND_URL").rstrip("/")
 ADMIN_EMAIL = "admin@sensoper.com"
-ADMIN_PASSWORD = "Admin@123"
+ADMIN_PASSWORD = TEST_ADMIN_PASSWORD
 
 
 def _login_session(email, password):

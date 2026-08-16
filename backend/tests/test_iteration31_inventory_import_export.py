@@ -13,6 +13,9 @@ import os
 import pytest
 import requests
 from openpyxl import Workbook, load_workbook
+import os
+TEST_ADMIN_PASSWORD = os.environ.get("TEST_ADMIN_PASSWORD") or "Admin@123"
+
 
 def _load_base_url():
     url = os.environ.get("REACT_APP_BACKEND_URL", "").strip()
@@ -31,7 +34,7 @@ BASE_URL = _load_base_url()
 assert BASE_URL, "REACT_APP_BACKEND_URL not set"
 
 ADMIN_EMAIL = "admin@sensoper.com"
-ADMIN_PASS = "Admin@123"
+ADMIN_PASS = TEST_ADMIN_PASSWORD
 
 
 # ---------- fixtures ----------

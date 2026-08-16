@@ -17,7 +17,7 @@ import {
   User, MapPin, Zap, ArrowRight, ArrowLeft, Loader2, CheckCircle2,
   Sparkles, Plus, Trash2, Package, FolderOpen, X, Percent, FolderPlus, ExternalLink, CheckCircle, Link2,
   Ruler, ChevronDown, ChevronRight, Home, Compass, Eye, PlugZap, Settings2, HardHat, Shield, Layers,
-  Crosshair, AlertCircle, FileText
+  AlertCircle, FileText
 } from 'lucide-react';
 
 const SYSTEM_SLUGS = ['customer', 'location', 'site_electrical', 'materials', 'site_docs'];
@@ -48,8 +48,7 @@ export default function SiteVisitForm() {
   const [currentStep, setCurrentStep] = useState(1);
   const [loading, setLoading] = useState(false);
   const [loadingProject, setLoadingProject] = useState(!!editId);
-  const [gpsLoading, setGpsLoading] = useState(false);
-  const [gpsError, setGpsError] = useState('');
+  const [w3wFormatError, setW3wFormatError] = useState('');
   const [aiLoading, setAiLoading] = useState(false);
   const [aiRecommendation, setAiRecommendation] = useState('');
   const [error, setError] = useState('');
@@ -232,7 +231,7 @@ export default function SiteVisitForm() {
           selected_items: formData.selected_items,
           manual_costs: formData.manual_costs,
           drive_folder_name: formData.drive_folder_name,
-          drive_folder_link: formData.drive_folder_link || 'https://drive.google.com/drive/folders/draft',
+          drive_folder_link: formData.drive_folder_link || null,
           site_measurements: formData.site_measurements,
           custom_fields: formData.custom_fields,
           terms_id: formData.terms_id || null,
@@ -279,66 +278,6 @@ export default function SiteVisitForm() {
   };
 
   // ── What3Words: capture GPS → fetch w3w → autofill ───────────────────
-  const fetchW3W = async () => {
-    setGpsError('');
-    if (!navigator.geolocation) { setGpsError('Geolocation not supported by this browser'); return; }
-    setGpsLoading(true);
-    try {
-      const pos = await new Promise((resolve, reject) => {
-        navigator.geolocation.getCurrentPosition(resolve, reject, { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 });
-      });
-      const { latitude, longitude } = pos.coords;
-      // Always save GPS coordinates first — W3W is a bonus, not a blocker
-      setFormData(prev => ({
-        ...prev,
-        location: { ...prev.location, latitude, longitude }
-      }));
-      const key = process.env.REACT_APP_W3W_API_KEY;
-      if (!key || !key.trim()) {
-        setGpsError('Saved GPS coordinates. (What3Words key not configured — set REACT_APP_W3W_API_KEY in frontend/.env to enable 3-word addresses.)');
-        return;
-      }
-      let resp;
-      try {
-        resp = await fetch(`https://api.what3words.com/v3/convert-to-3wa?coordinates=${latitude},${longitude}&key=${encodeURIComponent(key)}`);
-      } catch (netErr) {
-        setGpsError(`Saved GPS coordinates. What3Words could not be reached: ${netErr.message || 'network error'}.`);
-        return;
-      }
-      if (!resp.ok) {
-        const errBody = await resp.text();
-        let hint = '';
-        if (resp.status === 401) hint = ' (API key invalid or restricted to a different domain — check W3W dashboard for quote.sensoper.in).';
-        else if (resp.status === 402) hint = ' (Account quota exhausted — upgrade or wait until next cycle).';
-        else if (resp.status === 429) hint = ' (Rate limited — wait a minute and retry).';
-        setGpsError(`Saved GPS coordinates. What3Words returned ${resp.status}${hint} ${errBody.slice(0, 100)}`);
-        return;
-      }
-      const data = await resp.json();
-      if (!data.words) {
-        setGpsError('Saved GPS coordinates. What3Words returned no words for this location.');
-        return;
-      }
-      setFormData(prev => ({
-        ...prev,
-        location: {
-          ...prev.location,
-          latitude,
-          longitude,
-          site_location_words: data.words,
-          address: prev.location.address || (data.nearestPlace ? `Near ${data.nearestPlace}` : prev.location.address)
-        }
-      }));
-    } catch (e) {
-      const code = e?.code;
-      if (code === 1) setGpsError('Location permission denied. Enable it in your browser to use this feature.');
-      else if (code === 2) setGpsError('Position unavailable. Try again outdoors.');
-      else if (code === 3) setGpsError('Location request timed out.');
-      else setGpsError(e.message || 'Failed to fetch What3Words');
-    } finally {
-      setGpsLoading(false);
-    }
-  };
 
   const updateMeasurement = (section, field, value) => {
     setFormData(prev => ({
@@ -466,7 +405,14 @@ export default function SiteVisitForm() {
       case 'location': if (!formData.location.site_location_words && !formData.location.address) { setError('Enter What3Words or site address'); return false; } return validateExtraFields();
       case 'site_electrical': return validateExtraFields();
       case 'materials': if (formData.selected_items.length === 0) { setError('Add at least one inventory item'); return false; } return validateExtraFields();
-      case 'site_docs': if (!formData.drive_folder_link || !formData.drive_folder_link.includes('drive.google.com/drive/folders/')) { setError('Please enter a valid Google Drive folder link'); return false; } return validateExtraFields();
+      case 'site_docs': {
+        // Drive folder is now optional; if provided, warn about format but do not block
+        const link = formData.drive_folder_link;
+        if (link && link.trim() && !link.includes('drive.google.com/drive/folders/')) {
+          console.warn('Drive folder link does not match the standard Google Drive folder URL format.');
+        }
+        return validateExtraFields();
+      }
       default: return validateExtraFields();
     }
   };
@@ -517,9 +463,9 @@ export default function SiteVisitForm() {
         manual_costs: formData.manual_costs.filter(c => c.description && c.amount > 0).map(c => ({
           description: c.description, amount: parseFloat(c.amount) || 0
         })),
-        drive_folder_name: formData.drive_folder_name,
-        drive_folder_link: formData.drive_folder_link,
-        drive_folder_id: extractFolderId(formData.drive_folder_link),
+        drive_folder_name: formData.drive_folder_name || null,
+        drive_folder_link: formData.drive_folder_link || null,
+        drive_folder_id: formData.drive_folder_link ? extractFolderId(formData.drive_folder_link) : null,
         site_measurements: {
           roof: {
             length: parseFloat(formData.site_measurements.roof.length) || '',
@@ -664,27 +610,40 @@ export default function SiteVisitForm() {
             {STEPS[currentStep - 1]?.slug === 'location' && (
               <div className="space-y-4">
                 <div className="p-4 bg-emerald-50 rounded-lg border border-emerald-200">
-                  <div className="flex items-start justify-between gap-3 flex-wrap mb-2">
-                    <div>
-                      <h3 className="font-semibold text-emerald-800 mb-1">What3Words Address</h3>
-                      <p className="text-sm text-emerald-600">Enter the 3-word location, or auto-fill from your current GPS.</p>
-                    </div>
-                    <Button type="button" variant="outline" size="sm" onClick={fetchW3W} disabled={gpsLoading} className="h-9 gap-1.5 border-emerald-300 text-emerald-700 hover:bg-emerald-100" data-testid="w3w-gps-btn">
-                      {gpsLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Crosshair className="h-3.5 w-3.5" />}
-                      {gpsLoading ? 'Locating…' : 'Auto-fill from GPS'}
-                    </Button>
+                  <div className="mb-2">
+                    <h3 className="font-semibold text-emerald-800 mb-1">What3Words Address</h3>
+                    <p className="text-sm text-emerald-600">Enter the 3-word location manually (optional). Use the What3Words app on your phone to look it up.</p>
                   </div>
-                  <Input value={formData.location.site_location_words} onChange={(e) => updateField('location', 'site_location_words', e.target.value)} placeholder="word.word.word" className="font-mono h-11" data-testid="what3words-input" />
+                  <Input
+                    value={formData.location.site_location_words}
+                    onChange={(e) => {
+                      const raw = e.target.value;
+                      const cleaned = raw.replace(/^\/{1,3}/, '');
+                      updateField('location', 'site_location_words', cleaned);
+                      if (!cleaned || /^[a-z]+\.[a-z]+\.[a-z]+$/i.test(cleaned)) setW3wFormatError('');
+                      else setW3wFormatError('Format should be word.word.word (optional field — you can leave it blank).');
+                    }}
+                    placeholder="word.word.word"
+                    className="font-mono h-11"
+                    data-testid="what3words-input"
+                  />
                   {(formData.location.latitude && formData.location.longitude) && (
                     <p className="text-[11px] text-emerald-600 mt-1.5 flex items-center gap-1" data-testid="w3w-coords">
                       <MapPin className="h-3 w-3" />
                       {Number(formData.location.latitude).toFixed(5)}, {Number(formData.location.longitude).toFixed(5)}
-                      <a href={`https://what3words.com/${formData.location.site_location_words}`} target="_blank" rel="noopener noreferrer" className="ml-2 text-emerald-700 hover:underline">Open in W3W ↗</a>
                     </p>
                   )}
-                  {gpsError && (
-                    <p className="text-[11px] text-red-600 mt-1.5 flex items-center gap-1" data-testid="w3w-error"><AlertCircle className="h-3 w-3" />{gpsError}</p>
+                  {formData.location.site_location_words && (
+                    <a href={`https://what3words.com/${formData.location.site_location_words.replace(/^\/{1,3}/, '')}`} target="_blank" rel="noopener noreferrer" className="text-[11px] text-emerald-700 hover:underline inline-block mt-1.5" data-testid="w3w-open-link">Open in W3W ↗</a>
                   )}
+                  {w3wFormatError && (
+                    <p className="text-[11px] text-amber-700 mt-1.5 flex items-center gap-1" data-testid="w3w-error"><AlertCircle className="h-3 w-3" />{w3wFormatError}</p>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-2"><Label className="text-xs">Latitude (optional)</Label><Input type="number" step="any" value={formData.location.latitude ?? ''} onChange={(e) => updateField('location', 'latitude', e.target.value)} placeholder="e.g., 13.0827" className="h-11 font-mono" data-testid="latitude-input" /></div>
+                  <div className="space-y-2"><Label className="text-xs">Longitude (optional)</Label><Input type="number" step="any" value={formData.location.longitude ?? ''} onChange={(e) => updateField('location', 'longitude', e.target.value)} placeholder="e.g., 80.2707" className="h-11 font-mono" data-testid="longitude-input" /></div>
                 </div>
                 <div className="space-y-2"><Label>Site Address</Label><Textarea rows={2} value={formData.location.address} onChange={(e) => updateField('location', 'address', e.target.value)} placeholder="Site location description" data-testid="location-address-input" /></div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -1099,7 +1058,7 @@ export default function SiteVisitForm() {
                     </Button>
                   </div>
                   {driveLinkValid === false && (
-                    <p className="text-xs text-red-500">Link must contain: drive.google.com/drive/folders/</p>
+                    <p className="text-xs text-amber-600">Warning: link doesn&apos;t match drive.google.com/drive/folders/ — you can still submit.</p>
                   )}
                   {driveLinkValid === true && (
                     <p className="text-xs text-emerald-600">Folder ID: {extractFolderId(formData.drive_folder_link)}</p>
@@ -1209,7 +1168,7 @@ export default function SiteVisitForm() {
                           ))}
                         {refCandidates.length === 0 && <p className="px-3 py-3 text-xs text-slate-400">No completed projects yet.</p>}
                       </div>
-                      <p className="text-[11px] text-slate-500">Attach a similar finished project. Its actual savings + ROI will be added to the customer's quotation PDF as social proof.</p>
+                      <p className="text-[11px] text-slate-500">Attach a similar finished project. Its actual savings + ROI will be added to the customer&apos;s quotation PDF as social proof.</p>
                     </div>
                   )}
                 </div>
@@ -1235,7 +1194,7 @@ export default function SiteVisitForm() {
                       data-testid="commission-date-input"
                     />
                   </div>
-                  <p className="text-[11px] text-slate-500 col-span-full">Once filled, the system uses these dates to auto-calculate "savings till date", units generated, CO₂ offset and fuel saved — useful when this project is later picked as a Reference Site for a future quote.</p>
+                  <p className="text-[11px] text-slate-500 col-span-full">Once filled, the system uses these dates to auto-calculate &ldquo;savings till date&rdquo;, units generated, CO₂ offset and fuel saved — useful when this project is later picked as a Reference Site for a future quote.</p>
                 </div>
 
                 <div className="space-y-2">
@@ -1260,7 +1219,7 @@ export default function SiteVisitForm() {
               {currentStep < totalSteps ? (
                 <Button type="button" onClick={nextStep} className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white h-12" data-testid="next-step-btn">Next <ArrowRight className="h-4 w-4" /></Button>
               ) : (
-                <Button type="button" onClick={handleSubmit} disabled={loading || !formData.drive_folder_link} className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white h-12" data-testid="submit-project-btn">
+                <Button type="button" onClick={handleSubmit} disabled={loading} className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white h-12" data-testid="submit-project-btn">
                   {loading ? <><Loader2 className="h-4 w-4 animate-spin" />{isEditMode ? 'Saving...' : 'Creating...'}</> : <><CheckCircle2 className="h-4 w-4" />{isEditMode ? 'Save Changes' : 'Create Project'}</>}
                 </Button>
               )}

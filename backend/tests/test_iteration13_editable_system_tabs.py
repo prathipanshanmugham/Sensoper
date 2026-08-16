@@ -8,6 +8,9 @@ System tabs preserve their slug when renamed (for hardcoded content rendering).
 import pytest
 import requests
 import os
+import os
+TEST_ADMIN_PASSWORD = os.environ.get("TEST_ADMIN_PASSWORD") or "Admin@123"
+
 
 BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', '').rstrip('/')
 
@@ -20,7 +23,7 @@ class TestEditableSystemTabs:
         self.session = requests.Session()
         login_resp = self.session.post(f"{BASE_URL}/api/auth/login", json={
             "email": "admin@sensoper.com",
-            "password": "Admin@123"
+            "password": TEST_ADMIN_PASSWORD
         })
         assert login_resp.status_code == 200, f"Login failed: {login_resp.text}"
         self.admin_user = login_resp.json()
@@ -310,7 +313,7 @@ class TestFormTabsAPIValidation:
         self.session = requests.Session()
         login_resp = self.session.post(f"{BASE_URL}/api/auth/login", json={
             "email": "admin@sensoper.com",
-            "password": "Admin@123"
+            "password": TEST_ADMIN_PASSWORD
         })
         assert login_resp.status_code == 200
         yield
