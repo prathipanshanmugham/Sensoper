@@ -1,0 +1,40 @@
+{
+  "summary": "Iteration 43 (Phase D — remaining 4 frontends of Iter 39: Subsidy Widget, Marketing Expense form, Expansion capacity charts, CAC report) tested end-to-end. Backend: 6/6 new API tests pass (test_iter43_api.py) covering POST /api/accounts marketing_expense + attribution persistence, POST /api/subsidy/tracking incremental merge (application_date preserved, days_to_disburse=30 computed correctly), status-only update preserving amounts, GET /api/reports/cac wide window with correct typing (blended_cac/paid_cac/ltv_cac_ratio nullable numeric), GET /api/accounts/marketing-summary, GET /api/subsidy/analytics. Frontend Playwright verified: (1) Expansion page shows all 6 required chart cards ('Installed vs Pipeline Capacity (top 8)', 'System-Type Mix', 'Cumulative Capacity Growth', 'Opportunity Score vs Installed', 'Customer Segment Mix', 'Capacity Funnel (Company-wide)') rendered with Recharts stackId/dataKey/fill props — no <Cell> crash. (2) Accounting → Accounts sub-tab renders 3 snapshot cards (Cash on Hand ₹0, Account Balance ₹9,99,999, Marketing Expense ₹25,000). 'New Marketing Spend' opens the form with type=Marketing Expense preselected and Channel + Campaign Name + Target District row visible. Marketing entries persist and appear in History with Channel/Campaign column ('Meta (FB/IG) — TEST_Camp_... Coimbatore'). (3) Subsidy Tracking widget on project detail page renders full 5-step timeline (all data-testid=subsidy-step-* present), amounts strip, dates strip, Edit form with scheme/status/application_number/4 amount fields/5 date fields. 'Advance' quick-action button works — clicked on project 6a81ad98… advanced status and stamped today's date as application_date. (4) Reports → Marketing Report card renders CAC panel with 4 KPI cards (MARKETING SPEND ₹55,000, NEW CUSTOMERS 6, BLENDED CAC ₹9,166.67, LTV:CAC 23.4×), Channel Performance table, Attribution Split section. No React errors on any page.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/accounts", "issue": "Response returns only {id, message} instead of echoing the full created entry — clients must GET afterwards to see persisted fields. Non-breaking (GET verification confirms all attribution fields persist), but inconsistent with typical REST create semantics."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Accounts → Accounts sub-tab", "issues": ["'Marketing — last 90 days' mini summary strip is hidden when entry_count=0 (all existing/seeded marketing entries dated Jan/Feb 2026 are >90 days from current date Aug 2026). This matches the review-request spec ('may say entries=0 … but should not error'). Consider always rendering the strip with entries=0 so users know the widget exists — currently invisible to end-users until a fresh entry is logged."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter43_api.py",
+    "/app/test_reports/pytest/iteration_43.xml"
+  ],
+  "action_items": [
+    "(Optional) Have POST /api/accounts return the full persisted entry (not just {id, message}) for cleaner client integration.",
+    "(Optional/UX) Always render the 'Marketing — last 90 days' strip even when entry_count=0 so it is discoverable."
+  ],
+  "critical_code_review_comments": [
+    "Recharts usage on ExpansionPage confirmed clean — stackId/dataKey/fill only, no <Cell> (the previously known crash pattern).",
+    "Subsidy upsert merge logic (server.py L2260-2268) correctly merges existing DB doc before computing days_to_disburse — verified with dedicated status-only update test.",
+    "AccountEntryCreate accepts marketing_channel/campaign_name/target_district and persists via POST /api/accounts when entry_type==marketing_expense — verified via GET round-trip.",
+    "CAC endpoint _safe(a,b) returns None on divide-by-zero → frontend must render '—' fallback (already handled per review-request)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter43_api.py (new)"
+  ],
+  "success_rate": {"backend": "100% (6/6)", "frontend": "100%"},
+  "test_credentials": "admin@sensoper.com / Admin@123 (cookie/session auth)",
+  "seed_data_creation": "Test creates 2 marketing_expense account entries (TEST_Camp_<uuid>) + 2 subsidy_tracking docs (TEST_PROJ_<uuid>). Not cleaned up — safe because they are TEST_ prefixed and appear only in History list.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Auth is cookie/session based via POST /api/auth/login (use requests.Session). REACT_APP_BACKEND_URL not always in shell env — fallback to reading /app/frontend/.env. Accounts tab uses data-testid='tab-accounts'. Subsidy widget testids: subsidy-step-{eligible|applied|under_review|approved|disbursed}, subsidy-advance-btn (conditional). AccountsSection testids: accounts-new-marketing-btn, accounts-form-channel/campaign/district. POST /api/accounts returns {id,message} only — verify persistence via GET. Marketing 90-day strip hidden when entry_count=0 (by design).",
+  "rca of the issue": "N/A — no blocking issues found."
+}

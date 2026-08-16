@@ -119,7 +119,16 @@
 
 ## P2 - Future
 - [ ] WhatsApp Business API & Email delivery for quote sharing
-- [ ] Refactor server.py (~4000 lines) into modular routers
+- [ ] Refactor server.py (~5700 lines) into modular routers
 - [ ] Embed Unicode font in jsPDF so ₹ renders natively in PDFs
 - [ ] Dead Stock classification (no movement for extended duration)
 - [ ] Reorder Suggestions card driven by Fast-moving + low stock
+- [ ] Extend attribution: multi-touch CAC (first-touch vs last-touch weighting)
+
+## Latest — Iteration 43 (Feb 2026)
+- [x] **Deferred Iter-39 Frontends — all 4 landed in one shot**:
+  1. **Subsidy Tracking Card** (`components/SubsidyTrackingCard.js`) — mounted on ProjectDetails after Notes. Renders 5-step lifecycle timeline (Eligible → Applied → Under Review → Approved → Disbursed) with the current stage ring-highlighted, quick-advance button that stamps today's date on transition, Mark Rejected with reason capture, amounts strip (Eligible / Approved / Disbursed), dates strip + Cycle days badge, and a full Edit dialog covering scheme (PM Surya Ghar / KUSUM-B / KUSUM-C / State), application number, 4 amount fields, 5 date fields (application / approval / disbursement / DISCOM inspection / net meter), and notes. Backend `POST /api/subsidy/tracking` now merges with existing DB doc so `days_to_disburse` computes on incremental updates.
+  2. **Marketing Expense Form** on `components/AccountsSection.js` — extended entry types with `marketing_expense`. Added 3-column snapshot row (Cash on Hand / Account Balance / Marketing Expense), "New Marketing Spend" pill button, and an inline form row with Channel (10 options: Google Ads, Meta, WhatsApp, Hoardings, Local Events, Print, TV/Radio, Referral, Organic, Other) + Campaign Name + Target District. Marketing 90-day mini summary strip (spend / entries / channels used / top channel). `AccountEntryCreate` schema now accepts and persists `marketing_channel`, `campaign_name`, `target_district`.
+  3. **Expansion Analytics — 6 chart visuals** on `ExpansionPage.js` — new `CapacityCharts` component renders Installed vs Pipeline stacked bar (top 8 districts), System-Type Mix donut (on-grid/off-grid/hybrid/solar-pump split by kWp + count + revenue), Cumulative Capacity Growth line, Opportunity Score vs Installed scatter (bubble sized by project count), Customer Segment Mix horizontal bar, and Capacity Funnel progress rows (Quoted → Pipeline → Installed with quote→install conversion %). All Recharts usage uses stackId/dataKey/fill props (no `<Cell>` — known crash pattern deliberately avoided).
+  4. **CAC / Marketing Report UI** on `ReportsPage.js` — when the Marketing report tab is active, a CAC panel renders above the existing Marketing table: 4 KPI cards (Marketing Spend, New Customers with % unattributed, Blended CAC + Paid CAC, LTV:CAC + LTV), Channel Performance table (channel · spend · customers · CAC · ROI), and Attribution Split panel with per-channel horizontal bars sorted by customer count.
+  - **Testing**: `test_iter43_api.py` (6/6 backend tests pass) + full Playwright end-to-end via testing agent — `iteration_43.json` returns 100% backend / 100% frontend with no critical or minor blockers.

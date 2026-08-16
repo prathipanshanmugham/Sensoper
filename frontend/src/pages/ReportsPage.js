@@ -1,6 +1,6 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { reportsAPI } from '../utils/api';
+import { reportsAPI, marketingAPI } from '../utils/api';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
@@ -52,6 +52,27 @@ export default function ReportsPage() {
   const [reportData, setReportData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [filters, setFilters] = useState({ date_from: '', date_to: '', system_type: 'all', status: 'all', movement_type: 'all' });
+  const [cacData, setCacData] = useState(null);
+  const [cacLoading, setCacLoading] = useState(false);
+
+  const fetchCac = useCallback(async () => {
+    setCacLoading(true);
+    try {
+      const params = {};
+      if (filters.date_from) params.start = filters.date_from;
+      if (filters.date_to) params.end = filters.date_to;
+      const [cac, mkt] = await Promise.all([
+        reportsAPI.getCac ? reportsAPI.getCac(params) : marketingAPI.cac(params),
+        marketingAPI.summary(params),
+      ]);
+      setCacData({ cac: cac.data, marketing: mkt.data });
+    } catch (e) { console.error('CAC fetch failed', e); setCacData(null); }
+    finally { setCacLoading(false); }
+  }, [filters.date_from, filters.date_to]);
+
+  useEffect(() => {
+    if (activeReport === 'marketing') fetchCac();
+  }, [activeReport, fetchCac]);
 
   const fetchReport = useCallback(async (type, tab, overrideFilters) => {
     setLoading(true);
@@ -227,6 +248,113 @@ export default function ReportsPage() {
                   </div>
                 </div>
               )}
+              {/* CAC / Marketing dashboard (Iter 39 Change 3b) */}
+              {activeReport === 'marketing' && (
+                <div className="mb-4" data-testid="cac-panel">
+                  {cacLoading ? (
+                    <div className="flex justify-center py-6"><Loader2 className="h-5 w-5 animate-spin text-rose-500" /></div>
+                  ) : cacData?.cac ? (
+                    <>
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3" data-testid="cac-kpi-strip">
+                        <div className="rounded-lg border border-rose-200 bg-rose-50 p-3">
+                          <p className="text-[10px] uppercase text-rose-700">Marketing Spend</p>
+                          <p className="text-lg font-bold text-slate-900">₹{(cacData.cac.total_spend || 0).toLocaleString('en-IN')}</p>
+                          <p className="text-[10px] text-slate-500 mt-0.5">{cacData.marketing?.entry_count || 0} entries</p>
+                        </div>
+                        <div className="rounded-lg border border-blue-200 bg-blue-50 p-3">
+                          <p className="text-[10px] uppercase text-blue-700">New Customers</p>
+                          <p className="text-lg font-bold text-slate-900">{cacData.cac.total_customers || 0}</p>
+                          <p className="text-[10px] text-slate-500 mt-0.5">{cacData.cac.unattributed_pct?.toFixed?.(0) || 0}% unattributed</p>
+                        </div>
+                        <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
+                          <p className="text-[10px] uppercase text-amber-700">Blended CAC</p>
+                          <p className="text-lg font-bold text-slate-900">
+                            {cacData.cac.blended_cac == null ? '—' : `₹${cacData.cac.blended_cac.toLocaleString('en-IN')}`}
+                          </p>
+                          <p className="text-[10px] text-slate-500 mt-0.5">
+                            Paid CAC: {cacData.cac.paid_cac == null ? '—' : `₹${cacData.cac.paid_cac.toLocaleString('en-IN')}`}
+                          </p>
+                        </div>
+                        <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3">
+                          <p className="text-[10px] uppercase text-emerald-700">LTV : CAC</p>
+                          <p className="text-lg font-bold text-slate-900">
+                            {cacData.cac.ltv_cac_ratio == null ? '—' : `${cacData.cac.ltv_cac_ratio.toFixed(1)}×`}
+                          </p>
+                          <p className="text-[10px] text-slate-500 mt-0.5">
+                            LTV: ₹{(cacData.cac.ltv || 0).toLocaleString('en-IN')}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
+                        {/* Channel performance table */}
+                        <Card className="border-slate-200" data-testid="cac-channels">
+                          <CardHeader className="py-2 px-3 border-b border-slate-200"><CardTitle className="text-sm font-['Outfit'] flex items-center gap-1"><Megaphone className="h-4 w-4 text-rose-600" /> Channel Performance</CardTitle></CardHeader>
+                          <CardContent className="p-0">
+                            {cacData.cac.channels?.length ? (
+                              <table className="w-full text-xs">
+                                <thead className="bg-slate-50 border-b border-slate-100 text-[10px] uppercase text-slate-500">
+                                  <tr>
+                                    <th className="text-left px-2 py-2">Channel</th>
+                                    <th className="text-right px-2 py-2">Spend</th>
+                                    <th className="text-right px-2 py-2">Cust</th>
+                                    <th className="text-right px-2 py-2">CAC</th>
+                                    <th className="text-right px-2 py-2">ROI</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100">
+                                  {cacData.cac.channels.map((c) => (
+                                    <tr key={c.channel} className="hover:bg-slate-50">
+                                      <td className="px-2 py-1.5 font-medium text-slate-800 capitalize">{c.channel.replace(/_/g, ' ')}</td>
+                                      <td className="px-2 py-1.5 text-right">₹{(c.spend || 0).toLocaleString('en-IN')}</td>
+                                      <td className="px-2 py-1.5 text-right">{c.customers}</td>
+                                      <td className="px-2 py-1.5 text-right">{c.cac == null ? '—' : `₹${c.cac.toLocaleString('en-IN')}`}</td>
+                                      <td className={`px-2 py-1.5 text-right font-semibold ${c.roi > 0 ? 'text-emerald-700' : c.roi < 0 ? 'text-rose-600' : 'text-slate-500'}`}>
+                                        {c.roi == null ? '—' : `${(c.roi * 100).toFixed(0)}%`}
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            ) : <p className="text-xs text-slate-400 text-center py-4">No paid channels with recorded spend.</p>}
+                          </CardContent>
+                        </Card>
+
+                        {/* Attribution funnel */}
+                        <Card className="border-slate-200" data-testid="cac-attribution">
+                          <CardHeader className="py-2 px-3 border-b border-slate-200"><CardTitle className="text-sm font-['Outfit'] flex items-center gap-1"><TrendingUp className="h-4 w-4 text-blue-600" /> Attribution Split</CardTitle></CardHeader>
+                          <CardContent className="p-3 space-y-2">
+                            {Object.entries(cacData.cac.by_channel_customers || {})
+                              .sort((a, b) => b[1] - a[1])
+                              .map(([ch, count], i) => {
+                                const total = Object.values(cacData.cac.by_channel_customers || {}).reduce((a, b) => a + b, 0) || 1;
+                                const pct = (count / total) * 100;
+                                return (
+                                  <div key={ch} className="flex items-center gap-2">
+                                    <span className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: PIE_COLORS[i % PIE_COLORS.length] }} />
+                                    <span className="text-xs text-slate-700 w-28 truncate capitalize">{ch.replace(/_/g, ' ')}</span>
+                                    <div className="flex-1 h-2 bg-slate-100 rounded-full overflow-hidden">
+                                      <div className="h-full rounded-full" style={{ width: `${pct}%`, backgroundColor: PIE_COLORS[i % PIE_COLORS.length] }} />
+                                    </div>
+                                    <span className="text-xs font-medium text-slate-900 w-16 text-right">{count} ({pct.toFixed(0)}%)</span>
+                                  </div>
+                                );
+                              })}
+                            <p className="text-[10px] text-slate-400 pt-1 border-t border-slate-100">
+                              Marketing % of revenue: <span className="font-semibold text-slate-700">{cacData.cac.marketing_pct_of_revenue?.toFixed(1) || 0}%</span>
+                            </p>
+                          </CardContent>
+                        </Card>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="text-center py-6 text-xs text-slate-400" data-testid="cac-empty">
+                      No marketing spend recorded yet. Add entries under Accounting → Marketing Expense to see CAC metrics.
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* Table */}
               {reportData.rows?.length > 0 ? (
                 <div className="overflow-x-auto rounded-lg border border-slate-200" data-testid="report-table">

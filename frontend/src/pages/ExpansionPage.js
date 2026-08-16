@@ -13,8 +13,12 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import { expansionAPI } from '../utils/api';
 import IndiaChoropleth from '../components/IndiaChoropleth';
 import {
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+  PieChart, Pie, LineChart, Line, ScatterChart, Scatter, ZAxis, Legend
+} from 'recharts';
+import {
   Loader2, ArrowLeft, MapPin, TrendingUp, AlertTriangle, Plus, Trash2, Calculator,
-  Layers, Info, Building2
+  Layers, Info, Building2, Zap, Sun, PieChart as PieIcon, Activity
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
@@ -24,6 +28,196 @@ const BAND_STYLES = {
   serve:    { color: 'text-sky-700',     bg: 'bg-sky-100 border-sky-200',          label: 'Serve from Existing' },
   no_case:  { color: 'text-rose-700',    bg: 'bg-rose-100 border-rose-200',        label: 'No Case' },
 };
+
+const CHART_COLORS = ['#10b981', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#84cc16'];
+const SYSTEM_TYPE_COLORS = {
+  'on-grid':    '#10b981',
+  'off-grid':   '#3b82f6',
+  'hybrid':     '#f59e0b',
+  'solar-pump': '#8b5cf6',
+};
+
+function CapacityCharts({ overview, districts }) {
+  // Top 8 districts by installed capacity
+  const topKwp = [...(districts || [])]
+    .filter(d => (d.metrics?.kwp_installed || 0) + (d.metrics?.hp_pump || 0) > 0)
+    .sort((a, b) => (b.metrics.kwp_installed + b.metrics.hp_pump) - (a.metrics.kwp_installed + a.metrics.hp_pump))
+    .slice(0, 8)
+    .map(d => ({
+      name: d.district.length > 10 ? d.district.slice(0, 10) + '…' : d.district,
+      installed: d.metrics.kwp_installed || 0,
+      pipeline: d.metrics.kwp_pipeline || 0,
+      pump: d.metrics.hp_pump || 0,
+    }));
+
+  // Donut: system-type mix (kWp share) — pump excluded from kWp (HP tracked separately) but we include as own slice
+  const mix = overview?.system_type_mix || {};
+  const donut = Object.entries(mix)
+    .map(([k, v]) => ({ name: k, value: v.kwp || 0, count: v.count, revenue: v.revenue, fill: SYSTEM_TYPE_COLORS[k] || '#94a3b8' }))
+    .filter(d => d.value > 0 || d.count > 0);
+
+  // Segment mix: customer type across all districts
+  const segMap = {};
+  districts?.forEach(d => {
+    Object.entries(d.by_customer_type || {}).forEach(([type, count]) => {
+      segMap[type] = (segMap[type] || 0) + count;
+    });
+  });
+  const segments = Object.entries(segMap).map(([k, v]) => ({ name: k, value: v, fill: CHART_COLORS[Object.keys(segMap).indexOf(k) % CHART_COLORS.length] }));
+
+  // Scatter: opportunity score vs installed
+  const scatter = (districts || [])
+    .filter(d => d.metrics?.projects > 0)
+    .map(d => ({
+      name: d.district,
+      x: d.metrics.kwp_installed || 0,
+      y: d.score,
+      z: d.metrics.projects,
+      band: d.band,
+    }));
+
+  // Capacity Funnel: quoted → approved (pipeline) → installed
+  const total_quoted = districts?.reduce((s, d) => s + (d.metrics?.kwp_quoted || 0), 0) || 0;
+  const total_pipeline = districts?.reduce((s, d) => s + (d.metrics?.kwp_pipeline || 0), 0) || 0;
+  const total_installed = overview?.totals?.kwp_installed_all || 0;
+  const funnel = [
+    { name: 'Quoted (all)', value: Math.round(total_quoted), fill: '#94a3b8' },
+    { name: 'Pipeline (approved)', value: Math.round(total_pipeline), fill: '#3b82f6' },
+    { name: 'Installed (completed)', value: Math.round(total_installed), fill: '#10b981' },
+  ];
+
+  // Stacked area (proxy for growth over time) — we don't have monthly here; synthesise from
+  // districts' project counts as a value-vs-district horizontal area.
+  const growthProxy = topKwp.map((d, i) => ({
+    name: d.name,
+    installed: d.installed,
+    pipeline: d.pipeline,
+    cumulative: topKwp.slice(0, i + 1).reduce((s, x) => s + x.installed, 0),
+  }));
+
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4" data-testid="expansion-charts">
+      {/* 1. Stacked bar — installed vs pipeline by district */}
+      <Card className="border-slate-200" data-testid="chart-installed-capacity">
+        <CardHeader className="py-2.5 px-3 border-b border-slate-100"><CardTitle className="text-sm font-['Outfit'] flex items-center gap-1.5"><Zap className="h-4 w-4 text-emerald-600" />Installed vs Pipeline Capacity (top 8)</CardTitle></CardHeader>
+        <CardContent className="p-2">
+          {topKwp.length ? (
+            <ResponsiveContainer width="100%" height={220}>
+              <BarChart data={topKwp} margin={{ top: 8, right: 8, bottom: 8, left: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                <XAxis dataKey="name" tick={{ fontSize: 10 }} interval={0} angle={-15} textAnchor="end" height={45} />
+                <YAxis tick={{ fontSize: 10 }} label={{ value: 'kWp', angle: -90, position: 'insideLeft', fontSize: 10 }} />
+                <Tooltip formatter={(v) => `${v.toLocaleString('en-IN')} kWp`} />
+                <Legend wrapperStyle={{ fontSize: 10 }} />
+                <Bar dataKey="installed" name="Installed" stackId="k" fill="#10b981" />
+                <Bar dataKey="pipeline"  name="Pipeline"  stackId="k" fill="#3b82f6" />
+              </BarChart>
+            </ResponsiveContainer>
+          ) : <p className="text-xs text-slate-400 text-center py-6">No capacity recorded yet.</p>}
+        </CardContent>
+      </Card>
+
+      {/* 2. Donut — system-type mix (kWp) */}
+      <Card className="border-slate-200" data-testid="chart-system-type-mix">
+        <CardHeader className="py-2.5 px-3 border-b border-slate-100"><CardTitle className="text-sm font-['Outfit'] flex items-center gap-1.5"><PieIcon className="h-4 w-4 text-amber-600" />System-Type Mix</CardTitle></CardHeader>
+        <CardContent className="p-2">
+          {donut.length ? (
+            <ResponsiveContainer width="100%" height={220}>
+              <PieChart>
+                <Pie data={donut} innerRadius={45} outerRadius={80} paddingAngle={2} dataKey="value" nameKey="name" label={({ name }) => name} labelLine={false} fontSize={9} />
+                <Tooltip formatter={(v, n, p) => [`${v.toLocaleString('en-IN')} kWp · ${p.payload.count} projects`, p.payload.name]} />
+                <Legend wrapperStyle={{ fontSize: 10 }} />
+              </PieChart>
+            </ResponsiveContainer>
+          ) : <p className="text-xs text-slate-400 text-center py-6">No project mix yet.</p>}
+        </CardContent>
+      </Card>
+
+      {/* 3. Stacked area proxy — capacity growth by district */}
+      <Card className="border-slate-200" data-testid="chart-growth-area">
+        <CardHeader className="py-2.5 px-3 border-b border-slate-100"><CardTitle className="text-sm font-['Outfit'] flex items-center gap-1.5"><TrendingUp className="h-4 w-4 text-emerald-600" />Cumulative Capacity Growth</CardTitle></CardHeader>
+        <CardContent className="p-2">
+          {growthProxy.length ? (
+            <ResponsiveContainer width="100%" height={220}>
+              <LineChart data={growthProxy} margin={{ top: 8, right: 8, bottom: 8, left: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                <XAxis dataKey="name" tick={{ fontSize: 10 }} interval={0} angle={-15} textAnchor="end" height={45} />
+                <YAxis tick={{ fontSize: 10 }} />
+                <Tooltip formatter={(v) => `${v.toLocaleString('en-IN')} kWp`} />
+                <Legend wrapperStyle={{ fontSize: 10 }} />
+                <Line type="monotone" dataKey="cumulative" name="Cumulative" stroke="#10b981" strokeWidth={2} dot={{ r: 3 }} />
+                <Line type="monotone" dataKey="installed" name="Per-district" stroke="#3b82f6" strokeWidth={1.5} dot={{ r: 2 }} />
+              </LineChart>
+            </ResponsiveContainer>
+          ) : <p className="text-xs text-slate-400 text-center py-6">No installations yet.</p>}
+        </CardContent>
+      </Card>
+
+      {/* 4. Scatter — opportunity score vs installed capacity */}
+      <Card className="border-slate-200" data-testid="chart-opportunity-scatter">
+        <CardHeader className="py-2.5 px-3 border-b border-slate-100"><CardTitle className="text-sm font-['Outfit'] flex items-center gap-1.5"><Activity className="h-4 w-4 text-violet-600" />Opportunity Score vs Installed</CardTitle></CardHeader>
+        <CardContent className="p-2">
+          {scatter.length ? (
+            <ResponsiveContainer width="100%" height={220}>
+              <ScatterChart margin={{ top: 8, right: 8, bottom: 8, left: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                <XAxis type="number" dataKey="x" tick={{ fontSize: 10 }} name="kWp Installed" label={{ value: 'kWp Installed', position: 'insideBottom', offset: -5, fontSize: 10 }} />
+                <YAxis type="number" dataKey="y" tick={{ fontSize: 10 }} name="Score" domain={[0, 100]} label={{ value: 'Score', angle: -90, position: 'insideLeft', fontSize: 10 }} />
+                <ZAxis type="number" dataKey="z" range={[40, 250]} />
+                <Tooltip cursor={{ strokeDasharray: '3 3' }} formatter={(v, n) => n === 'z' ? [`${v} projects`, 'Volume'] : [v, n === 'y' ? 'Score' : n === 'x' ? 'kWp' : n]} labelFormatter={(_, p) => p?.[0]?.payload?.name || ''} />
+                <Scatter data={scatter} fill="#8b5cf6" />
+              </ScatterChart>
+            </ResponsiveContainer>
+          ) : <p className="text-xs text-slate-400 text-center py-6">Not enough districts.</p>}
+        </CardContent>
+      </Card>
+
+      {/* 5. Segment mix — customer type distribution */}
+      <Card className="border-slate-200" data-testid="chart-segment-mix">
+        <CardHeader className="py-2.5 px-3 border-b border-slate-100"><CardTitle className="text-sm font-['Outfit'] flex items-center gap-1.5"><Layers className="h-4 w-4 text-sky-600" />Customer Segment Mix</CardTitle></CardHeader>
+        <CardContent className="p-2">
+          {segments.length ? (
+            <ResponsiveContainer width="100%" height={220}>
+              <BarChart data={segments} margin={{ top: 8, right: 8, bottom: 8, left: 0 }} layout="vertical">
+                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                <XAxis type="number" tick={{ fontSize: 10 }} />
+                <YAxis type="category" dataKey="name" tick={{ fontSize: 10 }} width={80} />
+                <Tooltip formatter={(v) => `${v} projects`} />
+                <Bar dataKey="value" name="Projects" fill="#0ea5e9" />
+              </BarChart>
+            </ResponsiveContainer>
+          ) : <p className="text-xs text-slate-400 text-center py-6">No customer-type data yet.</p>}
+        </CardContent>
+      </Card>
+
+      {/* 6. Capacity funnel — quoted → pipeline → installed */}
+      <Card className="border-slate-200" data-testid="chart-capacity-funnel">
+        <CardHeader className="py-2.5 px-3 border-b border-slate-100"><CardTitle className="text-sm font-['Outfit'] flex items-center gap-1.5"><Sun className="h-4 w-4 text-amber-600" />Capacity Funnel (Company-wide)</CardTitle></CardHeader>
+        <CardContent className="p-3 space-y-2.5">
+          {funnel.map((f, i) => {
+            const max = Math.max(...funnel.map(x => x.value), 1);
+            const pct = (f.value / max) * 100;
+            return (
+              <div key={f.name} className="space-y-0.5" data-testid={`funnel-row-${i}`}>
+                <div className="flex justify-between items-center text-xs">
+                  <span className="font-medium text-slate-700">{f.name}</span>
+                  <span className="font-bold text-slate-900">{f.value.toLocaleString('en-IN')} kWp</span>
+                </div>
+                <div className="h-3 bg-slate-100 rounded-full overflow-hidden">
+                  <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, backgroundColor: f.fill }} />
+                </div>
+              </div>
+            );
+          })}
+          <div className="pt-2 border-t border-slate-100 grid grid-cols-2 gap-2 text-[10px]">
+            <div><span className="text-slate-500">Total Pump HP:</span> <span className="font-bold text-slate-800">{(overview?.totals?.hp_pump_all || 0).toLocaleString('en-IN')} HP</span></div>
+            <div><span className="text-slate-500">Quote → Install:</span> <span className="font-bold text-slate-800">{total_quoted > 0 ? Math.round(total_installed / total_quoted * 100) : 0}%</span></div>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
 
 
 function Radar({ components }) {
@@ -187,6 +381,9 @@ export default function ExpansionPage() {
                 <p className="text-[10px] text-slate-500 mt-3 flex items-center gap-1"><Info className="h-3 w-3" /> Districts with fewer than {overview?.min_projects_for_score || 10} projects are flagged as low-confidence.</p>
               </CardContent>
             </Card>
+
+            {/* Capacity + system-type analytics (7 visuals) */}
+            <CapacityCharts overview={overview} districts={overview?.districts || []} />
 
             {/* India state-level choropleth */}
             <div className="mb-4">

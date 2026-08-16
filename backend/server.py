@@ -2256,11 +2256,14 @@ async def upsert_subsidy_tracking(payload: SubsidyTracking, request: Request):
     body = payload.model_dump(exclude_unset=True)
     body["updated_at"] = datetime.now(timezone.utc).isoformat()
     body["updated_by"] = user.get("id")
-    # compute days_to_disburse when dates present
-    if body.get("application_date") and body.get("disbursement_date"):
+    # Merge with existing so days_to_disburse can be computed on incremental updates
+    existing = await db.subsidy_tracking.find_one({"project_id": payload.project_id}) or {}
+    merged_app = body.get("application_date") or existing.get("application_date")
+    merged_disb = body.get("disbursement_date") or existing.get("disbursement_date")
+    if merged_app and merged_disb:
         try:
-            d1 = datetime.fromisoformat(body["application_date"].replace("Z", "+00:00"))
-            d2 = datetime.fromisoformat(body["disbursement_date"].replace("Z", "+00:00"))
+            d1 = datetime.fromisoformat(merged_app.replace("Z", "+00:00"))
+            d2 = datetime.fromisoformat(merged_disb.replace("Z", "+00:00"))
             body["days_to_disburse"] = (d2 - d1).days
         except Exception: pass
     await db.subsidy_tracking.update_one(
@@ -5790,16 +5793,23 @@ async def shutdown_db_client():
 # ================== ACCOUNTS (Cash on Hand, Meter Readings, Account Balance) ==================
 
 class AccountEntryCreate(BaseModel):
-    entry_type: str  # cash_on_hand | meter_reading | account_balance
+    entry_type: str  # cash_on_hand | account_balance | operational_expense | marketing_expense | gst_input | gst_paid
     entry_date: str  # ISO date YYYY-MM-DD
     amount: float
     description: Optional[str] = ""
+    # Marketing-expense-only attribution fields (Iter 39 Change 3)
+    marketing_channel: Optional[str] = None       # google_ads|meta|referral|organic|hoardings|local_events|whatsapp|print|tv_radio|other
+    campaign_name: Optional[str] = None
+    target_district: Optional[str] = None
 
 class AccountEntryUpdate(BaseModel):
     entry_type: Optional[str] = None
     entry_date: Optional[str] = None
     amount: Optional[float] = None
     description: Optional[str] = None
+    marketing_channel: Optional[str] = None
+    campaign_name: Optional[str] = None
+    target_district: Optional[str] = None
 
 ACCOUNT_TYPES = {"cash_on_hand", "account_balance", "operational_expense", "marketing_expense", "gst_input", "gst_paid"}
 
@@ -5823,6 +5833,9 @@ async def list_accounts(request: Request, entry_type: Optional[str] = None, date
         "entry_date": d.get("entry_date"),
         "amount": d.get("amount", 0),
         "description": d.get("description", ""),
+        "marketing_channel": d.get("marketing_channel"),
+        "campaign_name": d.get("campaign_name"),
+        "target_district": d.get("target_district"),
         "entered_by_id": d.get("entered_by_id"),
         "entered_by": d.get("entered_by", ""),
         "created_at": d.get("created_at")
@@ -5842,6 +5855,10 @@ async def create_account_entry(entry: AccountEntryCreate, request: Request):
         "entered_by": user.get("name", ""),
         "created_at": datetime.now(timezone.utc).isoformat()
     }
+    if entry.entry_type == "marketing_expense":
+        doc["marketing_channel"] = entry.marketing_channel or "other"
+        doc["campaign_name"] = entry.campaign_name or ""
+        doc["target_district"] = entry.target_district or ""
     result = await db.account_entries.insert_one(doc)
     await create_audit_log(user["id"], user.get("name",""), "create", "account_entry", str(result.inserted_id), None, doc)
     return {"id": str(result.inserted_id), "message": "Account entry created"}

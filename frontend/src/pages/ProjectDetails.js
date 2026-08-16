@@ -46,6 +46,7 @@ function InfoRow({ label, value }) {
 }
 
 import DOMPurify from 'dompurify';
+import SubsidyTrackingCard from '../components/SubsidyTrackingCard';
 
 function stripHtml(html) { return DOMPurify.sanitize(html, { ALLOWED_TAGS: [] }); }
 function parseTermsHtml(html) {
@@ -1465,6 +1466,9 @@ export default function ProjectDetails() {
                 )}
               </CardContent>
             </Card>
+
+            {/* Subsidy Tracking widget — lifecycle timeline + amounts + dates */}
+            <SubsidyTrackingCard projectId={id} />
 
             {/* Site Documentation */}
             {project.drive_folder_link && (
