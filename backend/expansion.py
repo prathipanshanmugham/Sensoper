@@ -62,6 +62,10 @@ def compute_district_scores(projects, credits, brand_returns, branches, config,
     by_district = defaultdict(lambda: {
         "projects": [], "enquiries": 0, "quotes": 0, "wins": 0, "completed": 0,
         "revenue": 0, "margin_total": 0, "ticket_sizes": [], "months_active": set(),
+        # Iter 39 Change 2a: installed capacity aggregations
+        "kwp_installed": 0, "kwp_quoted": 0, "kwp_pipeline": 0, "hp_pump": 0,
+        "by_system_type": defaultdict(lambda: {"kwp": 0, "count": 0, "revenue": 0}),
+        "by_customer_type": defaultdict(int),
     })
 
     for p in projects:
@@ -75,12 +79,32 @@ def compute_district_scores(projects, credits, brand_returns, branches, config,
         if status != "draft": entry["quotes"] += 1
         if status in ("approved", "completed"): entry["wins"] += 1
         if status == "completed": entry["completed"] += 1
+        # Capacity extraction — prefer proposed_solution snapshot, then legacy system_size
+        ps = (p.get("custom_fields") or {}).get("proposed_solution") or {}
+        sys_type = ps.get("system_type") or (p.get("solar_system") or {}).get("system_type") or "on-grid"
+        sys_kw = float(ps.get("system_size_kw") or 0)
+        pump_hp = float(ps.get("pump_hp") or 0)
         if status in ("approved", "completed"):
             cost = p.get("cost_estimation", {}).get("total_cost", 0)
             marg = p.get("cost_estimation", {}).get("margin_total", 0)
             entry["revenue"] += cost
             entry["margin_total"] += marg
             entry["ticket_sizes"].append(cost)
+            if status == "completed":
+                if sys_type == "solar-pump":
+                    entry["hp_pump"] += pump_hp
+                else:
+                    entry["kwp_installed"] += sys_kw
+            elif status == "approved":
+                entry["kwp_pipeline"] += sys_kw
+            entry["by_system_type"][sys_type]["kwp"] += sys_kw
+            entry["by_system_type"][sys_type]["count"] += 1
+            entry["by_system_type"][sys_type]["revenue"] += cost
+        if status != "draft":
+            entry["kwp_quoted"] += sys_kw
+        # customer type
+        ct = (p.get("customer") or {}).get("customer_type") or "residential"
+        entry["by_customer_type"][ct] += 1
         created = (p.get("created_at") or "")[:7]
         if created: entry["months_active"].add(created)
 
@@ -217,7 +241,17 @@ def compute_district_scores(projects, credits, brand_returns, branches, config,
                 "nearest_branch_km": round(nearest_km, 1) if nearest_km is not None else None,
                 "overdue_pct": round(overdue_pct, 1),
                 "returns": rets,
+                # Iter 39 Change 2a
+                "kwp_installed": round(b["kwp_installed"], 2),
+                "kwp_quoted": round(b["kwp_quoted"], 2),
+                "kwp_pipeline": round(b["kwp_pipeline"], 2),
+                "hp_pump": round(b["hp_pump"], 2),
+                "capacity_conversion_pct": round((b["kwp_installed"] / b["kwp_quoted"] * 100), 1) if b["kwp_quoted"] else 0,
+                "avg_system_kw": round(b["kwp_installed"] / max(b["completed"], 1), 2) if b["completed"] else 0,
             },
+            "by_system_type": {k: {"kwp": round(v["kwp"], 2), "count": v["count"], "revenue": round(v["revenue"])}
+                               for k, v in b["by_system_type"].items()},
+            "by_customer_type": dict(b["by_customer_type"]),
             "components": [
                 {"name": "Demand Density",     "score": round(demand_score, 1),      "weight": w.get("demand_density", 20)},
                 {"name": "Revenue Share",       "score": round(revenue_share_score, 1),"weight": w.get("revenue_contribution", 15)},
@@ -231,6 +265,15 @@ def compute_district_scores(projects, credits, brand_returns, branches, config,
         })
 
     results.sort(key=lambda x: x["score"], reverse=True)
+    # Iter 39 2a/2b: company-wide capacity aggregations
+    total_kwp_installed = sum(r["metrics"]["kwp_installed"] for r in results)
+    total_hp_pump = sum(r["metrics"]["hp_pump"] for r in results)
+    system_type_mix = defaultdict(lambda: {"kwp": 0, "count": 0, "revenue": 0})
+    for r in results:
+        for st, v in r["by_system_type"].items():
+            system_type_mix[st]["kwp"] += v["kwp"]
+            system_type_mix[st]["count"] += v["count"]
+            system_type_mix[st]["revenue"] += v["revenue"]
     return {
         "generated_at": now.isoformat(),
         "period_start": period_start,
@@ -241,7 +284,11 @@ def compute_district_scores(projects, credits, brand_returns, branches, config,
         "totals": {
             "revenue_all_districts": round(global_revenue),
             "projects_all_districts": global_projects,
+            "kwp_installed_all": round(total_kwp_installed, 2),
+            "hp_pump_all": round(total_hp_pump, 2),
         },
+        "system_type_mix": {k: {"kwp": round(v["kwp"], 2), "count": v["count"], "revenue": round(v["revenue"])}
+                            for k, v in system_type_mix.items()},
     }
 
 

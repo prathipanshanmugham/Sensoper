@@ -567,6 +567,7 @@ DEFAULT_PERMISSIONS = {
         "module_dashboard": {"view": True, "create": True, "edit": True, "delete": True, "export": True},
         "module_ceo_dashboard": {"view": True, "create": True, "edit": True, "delete": True, "export": True},
         "module_expansion": {"view": True, "create": True, "edit": True, "delete": True, "export": True},
+        "module_direct_sales": {"view": True, "create": True, "edit": True, "delete": True, "export": True},
         "module_accounts": {"view": True, "create": True, "edit": True, "delete": True, "export": True},
         "module_readings": {"view": True, "create": True, "edit": True, "delete": True, "export": True},
         "module_inventory": {"view": True, "create": True, "edit": True, "delete": True, "export": True},
@@ -593,6 +594,7 @@ DEFAULT_PERMISSIONS = {
         "module_dashboard": {"view": True, "create": True, "edit": True, "delete": False, "export": True},
         "module_ceo_dashboard": {"view": True, "create": False, "edit": False, "delete": False, "export": True},
         "module_expansion": {"view": True, "create": False, "edit": False, "delete": False, "export": True},
+        "module_direct_sales": {"view": True, "create": True, "edit": True, "delete": False, "export": True},
         "module_accounts": {"view": True, "create": True, "edit": True, "delete": False, "export": True},
         "module_readings": {"view": True, "create": True, "edit": True, "delete": True, "export": True},
         "module_inventory": {"view": True, "create": True, "edit": True, "delete": False, "export": True},
@@ -619,6 +621,7 @@ DEFAULT_PERMISSIONS = {
         "module_dashboard": {"view": True, "create": True, "edit": True, "delete": False, "export": False},
         "module_ceo_dashboard": {"view": False, "create": False, "edit": False, "delete": False, "export": False},
         "module_expansion": {"view": False, "create": False, "edit": False, "delete": False, "export": False},
+        "module_direct_sales": {"view": True, "create": True, "edit": False, "delete": False, "export": False},
         "module_accounts": {"view": True, "create": True, "edit": False, "delete": False, "export": False},
         "module_readings": {"view": True, "create": True, "edit": True, "delete": False, "export": False},
         "module_inventory": {"view": True, "create": False, "edit": False, "delete": False, "export": False},
@@ -2202,6 +2205,257 @@ from calculators import (
 )
 from calculators.seed_data import get_default_discoms, get_default_pincodes
 
+# ═══════════ DIRECT SALES ROUTER (Iter 39 Change 1) ═══════════
+from sales import create_router as _create_sales_router
+
+
+async def _get_active_company_profile():
+    return await db.company_profiles.find_one({"is_active": True}) or {}
+
+
+_sales_router = _create_sales_router(
+    db=db, get_current_user=get_current_user, require_role=require_role,
+    company_profile_fn=_get_active_company_profile,
+)
+api_router.include_router(_sales_router)
+
+
+# ═══════════ SUBSIDY TRACKING (Iter 39 Change 2c) ═══════════
+
+class SubsidyTracking(BaseModel):
+    project_id: str
+    scheme: Optional[str] = "pm_surya_ghar"    # pm_surya_ghar|pm_kusum_b|pm_kusum_c|state_scheme|none
+    eligible_amount: Optional[float] = 0
+    claimed_amount: Optional[float] = 0
+    approved_amount: Optional[float] = 0
+    disbursed_amount: Optional[float] = 0
+    status: Optional[str] = "eligible"          # eligible|application_pending|applied|under_review|approved|disbursed|rejected|not_applicable
+    application_number: Optional[str] = None
+    application_date: Optional[str] = None
+    approval_date: Optional[str] = None
+    disbursement_date: Optional[str] = None
+    discom_inspection_date: Optional[str] = None
+    inspection_status: Optional[str] = None
+    net_meter_installation_date: Optional[str] = None
+    rejection_reason: Optional[str] = None
+    documents: Optional[List[str]] = []
+    notes: Optional[str] = None
+
+
+@api_router.get("/subsidy/tracking/{project_id}")
+async def get_subsidy_tracking(project_id: str, request: Request):
+    await get_current_user(request)
+    doc = await db.subsidy_tracking.find_one({"project_id": project_id})
+    if not doc: return {"project_id": project_id, "status": "not_started"}
+    return {k: v for k, v in doc.items() if k != "_id"}
+
+
+@api_router.post("/subsidy/tracking")
+async def upsert_subsidy_tracking(payload: SubsidyTracking, request: Request):
+    user = await get_current_user(request)
+    body = payload.model_dump(exclude_unset=True)
+    body["updated_at"] = datetime.now(timezone.utc).isoformat()
+    body["updated_by"] = user.get("id")
+    # compute days_to_disburse when dates present
+    if body.get("application_date") and body.get("disbursement_date"):
+        try:
+            d1 = datetime.fromisoformat(body["application_date"].replace("Z", "+00:00"))
+            d2 = datetime.fromisoformat(body["disbursement_date"].replace("Z", "+00:00"))
+            body["days_to_disburse"] = (d2 - d1).days
+        except Exception: pass
+    await db.subsidy_tracking.update_one(
+        {"project_id": payload.project_id},
+        {"$set": body, "$setOnInsert": {"created_at": body["updated_at"]}},
+        upsert=True,
+    )
+    return {"message": "saved"}
+
+
+@api_router.get("/subsidy/analytics")
+async def subsidy_analytics(request: Request):
+    user = await get_current_user(request)
+    if user["role"] not in ("admin", "manager"):
+        raise HTTPException(403, "Forbidden")
+    docs = await db.subsidy_tracking.find({}).to_list(5000)
+    total_eligible = sum(d.get("eligible_amount", 0) for d in docs)
+    total_claimed = sum(d.get("claimed_amount", 0) for d in docs)
+    total_approved = sum(d.get("approved_amount", 0) for d in docs)
+    total_disbursed = sum(d.get("disbursed_amount", 0) for d in docs)
+    by_scheme = {}
+    by_status = {}
+    stuck = []
+    now = datetime.now(timezone.utc)
+    threshold_days = 60
+    for d in docs:
+        s = d.get("scheme") or "unknown"
+        by_scheme[s] = by_scheme.get(s, 0) + d.get("disbursed_amount", 0)
+        st = d.get("status") or "eligible"
+        by_status[st] = by_status.get(st, 0) + 1
+        # Stuck detection
+        if st in ("applied", "under_review") and d.get("application_date"):
+            try:
+                appd = datetime.fromisoformat(d["application_date"].replace("Z", "+00:00"))
+                if (now - appd).days > threshold_days:
+                    stuck.append({"project_id": d.get("project_id"), "status": st,
+                                  "days": (now - appd).days,
+                                  "amount": d.get("claimed_amount", 0)})
+            except Exception: pass
+    rejections = [d for d in docs if d.get("status") == "rejected"]
+    days = [d["days_to_disburse"] for d in docs if d.get("days_to_disburse")]
+    return {
+        "total_eligible": _round_v(total_eligible), "total_claimed": _round_v(total_claimed),
+        "total_approved": _round_v(total_approved), "total_disbursed": _round_v(total_disbursed),
+        "by_scheme": by_scheme, "by_status": by_status,
+        "stuck_applications": stuck[:50],
+        "rejection_count": len(rejections),
+        "rejection_reasons": [{"reason": r.get("rejection_reason", "?"), "count": 1} for r in rejections[:20]],
+        "avg_days_to_disburse": round(sum(days) / len(days), 1) if days else None,
+        "conversion_pct": round((total_disbursed / total_eligible * 100), 1) if total_eligible else 0,
+        "count": len(docs),
+    }
+
+
+def _round_v(x):
+    try: return round(float(x), 2)
+    except: return 0
+
+
+# ═══════════ MARKETING SUMMARY + CAC REPORT (Iter 39 Change 3) ═══════════
+
+@api_router.get("/accounts/marketing-summary")
+async def marketing_summary(request: Request, start: Optional[str] = None, end: Optional[str] = None):
+    await get_current_user(request)
+    now = datetime.now(timezone.utc)
+    if not start: start = (now - timedelta(days=90)).date().isoformat()
+    if not end: end = now.date().isoformat()
+    entries = await db.account_entries.find({
+        "entry_type": "marketing_expense",
+        "entry_date": {"$gte": start, "$lte": end}
+    }).to_list(5000)
+    total = sum(e.get("amount", 0) for e in entries)
+    by_channel, by_campaign, by_district, by_month = {}, {}, {}, {}
+    for e in entries:
+        ch = e.get("marketing_channel", "other")
+        by_channel[ch] = by_channel.get(ch, 0) + e.get("amount", 0)
+        cp = e.get("campaign_name", "-")
+        by_campaign[cp] = by_campaign.get(cp, 0) + e.get("amount", 0)
+        dist = e.get("target_district", "-")
+        by_district[dist] = by_district.get(dist, 0) + e.get("amount", 0)
+        m = (e.get("entry_date") or "")[:7]
+        by_month[m] = by_month.get(m, 0) + e.get("amount", 0)
+    return {
+        "period_start": start, "period_end": end,
+        "total_spend": _round_v(total),
+        "entry_count": len(entries),
+        "by_channel": by_channel, "by_campaign": by_campaign,
+        "by_district": by_district, "by_month": by_month,
+    }
+
+
+@api_router.get("/reports/cac")
+async def cac_report(request: Request, start: Optional[str] = None, end: Optional[str] = None,
+                     attribution_window_days: int = 90):
+    user = await get_current_user(request)
+    if user["role"] not in ("admin", "manager"):
+        raise HTTPException(403, "Forbidden")
+    now = datetime.now(timezone.utc)
+    if not start: start = (now - timedelta(days=365)).date().isoformat()
+    if not end: end = now.date().isoformat()
+
+    # Total marketing spend
+    m_entries = await db.account_entries.find({
+        "entry_type": "marketing_expense",
+        "entry_date": {"$gte": start, "$lte": end}
+    }).to_list(5000)
+    total_spend = sum(e.get("amount", 0) for e in m_entries)
+    spend_by_channel = {}
+    for e in m_entries:
+        ch = e.get("marketing_channel", "other")
+        spend_by_channel[ch] = spend_by_channel.get(ch, 0) + e.get("amount", 0)
+
+    # New customers acquired (projects + direct sales)
+    proj_query = {"created_at": {"$gte": start + "T00:00:00", "$lte": end + "T23:59:59"},
+                  "status": {"$in": ["approved", "completed"]},
+                  "deleted_at": {"$exists": False}}
+    projects = await db.projects.find(proj_query).to_list(5000)
+    sales = await db.sales.find({"sale_date": {"$gte": start, "$lte": end},
+                                  "status": {"$ne": "cancelled"}}).to_list(5000)
+
+    # Deduplicate by phone (unified customer)
+    customers = {}
+    unattributed = 0
+    by_channel_customers = {}
+    total_revenue = 0
+    for p in projects:
+        phone = (p.get("customer") or {}).get("phone", "?")
+        src = (p.get("custom_fields", {}) or {}).get("lead_source") or p.get("lead_source") or "unattributed"
+        rev = (p.get("cost_estimation") or {}).get("total_cost", 0)
+        total_revenue += rev
+        if phone not in customers:
+            customers[phone] = {"channel": src, "revenue": rev, "type": "project"}
+        else:
+            customers[phone]["revenue"] += rev
+    for s in sales:
+        phone = (s.get("customer") or {}).get("phone", "?")
+        src = s.get("lead_source") or "unattributed"
+        rev = s.get("grand_total", 0)
+        total_revenue += rev
+        if phone not in customers:
+            customers[phone] = {"channel": src, "revenue": rev, "type": "sale"}
+        else:
+            customers[phone]["revenue"] += rev
+
+    for phone, c in customers.items():
+        ch = c["channel"] or "unattributed"
+        if ch == "unattributed":
+            unattributed += 1
+        by_channel_customers[ch] = by_channel_customers.get(ch, 0) + 1
+
+    total_customers = len(customers)
+    paid_customers = sum(v for k, v in by_channel_customers.items() if k != "unattributed" and k not in ("referral", "organic"))
+
+    def _safe(a, b): return _round_v(a / b) if b else None
+
+    blended_cac = _safe(total_spend, total_customers)
+    paid_cac = _safe(total_spend, paid_customers)
+
+    channel_perf = []
+    for ch, spend in spend_by_channel.items():
+        n = by_channel_customers.get(ch, 0)
+        ch_rev = sum(c["revenue"] for c in customers.values() if c["channel"] == ch)
+        channel_perf.append({
+            "channel": ch,
+            "spend": _round_v(spend),
+            "customers": n,
+            "revenue": _round_v(ch_rev),
+            "cac": _safe(spend, n),
+            "roi": _safe(ch_rev - spend, spend) if spend else None,
+        })
+    channel_perf.sort(key=lambda r: -(r["revenue"] or 0))
+
+    # LTV = average revenue per customer (proxy)
+    ltv = _round_v(total_revenue / total_customers) if total_customers else 0
+    ltv_cac_ratio = _safe(ltv, blended_cac) if blended_cac else None
+
+    return {
+        "period_start": start, "period_end": end,
+        "attribution_window_days": attribution_window_days,
+        "total_spend": _round_v(total_spend),
+        "total_customers": total_customers,
+        "unattributed_customers": unattributed,
+        "unattributed_pct": _round_v(unattributed / total_customers * 100) if total_customers else 0,
+        "blended_cac": blended_cac,
+        "paid_cac": paid_cac,
+        "ltv": ltv,
+        "ltv_cac_ratio": ltv_cac_ratio,
+        "marketing_pct_of_revenue": _round_v(total_spend / total_revenue * 100) if total_revenue else 0,
+        "channels": channel_perf,
+        "by_channel_customers": by_channel_customers,
+        "spend_by_channel": {k: _round_v(v) for k, v in spend_by_channel.items()},
+        "total_revenue": _round_v(total_revenue),
+    }
+
+
 
 class CalculateSolutionRequest(BaseModel):
     system_type: str
@@ -3658,6 +3912,12 @@ async def get_ceo_dashboard(request: Request):
     
     # Revenue & Profit
     total_revenue = sum(p.get("cost_estimation", {}).get("total_cost", 0) for p in all_projects if p.get("status") in ["completed", "approved"])
+    # Iter 39 Change 1c: include direct sales revenue
+    sales_docs = await db.sales.find({"status": {"$ne": "cancelled"}}).to_list(10000)
+    direct_sales_revenue = sum(s.get("grand_total", 0) for s in sales_docs)
+    direct_sales_margin = sum(sum(l.get("margin_amount", 0) for l in (s.get("lines") or [])) for s in sales_docs)
+    project_revenue = total_revenue
+    total_revenue = project_revenue + direct_sales_revenue
     total_margin = sum(p.get("cost_estimation", {}).get("margin_total", 0) for p in all_projects if p.get("status") in ["completed", "approved"])
     
     # Conversion rate — proportion of real leads (drafts excluded) that became wins (approved + completed)
@@ -3757,7 +4017,13 @@ async def get_ceo_dashboard(request: Request):
         },
         "accounts_summary": await _ceo_accounts_summary(),
         "readings_summary": await _ceo_readings_summary(),
-        "health_score": await _ceo_health_score(all_projects, credits, inv_items, pending_approvals)
+        "health_score": await _ceo_health_score(all_projects, credits, inv_items, pending_approvals),
+        "direct_sales": {
+            "revenue": direct_sales_revenue,
+            "margin": direct_sales_margin,
+            "count": len(sales_docs),
+        },
+        "project_revenue": project_revenue,
     }
 
 
@@ -5535,7 +5801,7 @@ class AccountEntryUpdate(BaseModel):
     amount: Optional[float] = None
     description: Optional[str] = None
 
-ACCOUNT_TYPES = {"cash_on_hand", "account_balance", "operational_expense", "gst_input", "gst_paid"}
+ACCOUNT_TYPES = {"cash_on_hand", "account_balance", "operational_expense", "marketing_expense", "gst_input", "gst_paid"}
 
 @api_router.get("/accounts")
 async def list_accounts(request: Request, entry_type: Optional[str] = None, date_from: Optional[str] = None, date_to: Optional[str] = None):

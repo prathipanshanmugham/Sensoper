@@ -209,7 +209,30 @@ export const calcAPI = {
   seedDefaults: () => api.post('/calculate/seed-defaults')
 };
 
-// Company Health Score API
+// Direct Sales API (Iter 39 Change 1)
+export const salesAPI = {
+  list: (params = {}) => api.get('/sales', { params }),
+  get: (id) => api.get(`/sales/${id}`),
+  create: (data) => api.post('/sales', data),
+  update: (id, data) => api.put(`/sales/${id}`, data),
+  addPayment: (id, data) => api.post(`/sales/${id}/payment`, data),
+  return: (id, data) => api.post(`/sales/${id}/return`, data),
+  invoice: (id) => api.get(`/sales/${id}/invoice`),
+  summary: (params = {}) => api.get('/sales/summary', { params })
+};
+
+// Subsidy tracking + analytics (Iter 39 Change 2c)
+export const subsidyAPI = {
+  get: (project_id) => api.get(`/subsidy/tracking/${project_id}`),
+  upsert: (data) => api.post('/subsidy/tracking', data),
+  analytics: () => api.get('/subsidy/analytics')
+};
+
+// Marketing + CAC (Iter 39 Change 3)
+export const marketingAPI = {
+  summary: (params = {}) => api.get('/accounts/marketing-summary', { params }),
+  cac: (params = {}) => api.get('/reports/cac', { params })
+};
 export const healthAPI = {
   getConfig: () => api.get('/dashboard/health/config'),
   updateConfig: (payload) => api.put('/dashboard/health/config', payload),
