@@ -566,6 +566,7 @@ DEFAULT_PERMISSIONS = {
         # Module-level (added Feb 2026 for Accounts, Readings, refreshed UI)
         "module_dashboard": {"view": True, "create": True, "edit": True, "delete": True, "export": True},
         "module_ceo_dashboard": {"view": True, "create": True, "edit": True, "delete": True, "export": True},
+        "module_expansion": {"view": True, "create": True, "edit": True, "delete": True, "export": True},
         "module_accounts": {"view": True, "create": True, "edit": True, "delete": True, "export": True},
         "module_readings": {"view": True, "create": True, "edit": True, "delete": True, "export": True},
         "module_inventory": {"view": True, "create": True, "edit": True, "delete": True, "export": True},
@@ -591,6 +592,7 @@ DEFAULT_PERMISSIONS = {
         "can_manage_company": False, "can_manage_terms": True,
         "module_dashboard": {"view": True, "create": True, "edit": True, "delete": False, "export": True},
         "module_ceo_dashboard": {"view": True, "create": False, "edit": False, "delete": False, "export": True},
+        "module_expansion": {"view": True, "create": False, "edit": False, "delete": False, "export": True},
         "module_accounts": {"view": True, "create": True, "edit": True, "delete": False, "export": True},
         "module_readings": {"view": True, "create": True, "edit": True, "delete": True, "export": True},
         "module_inventory": {"view": True, "create": True, "edit": True, "delete": False, "export": True},
@@ -616,6 +618,7 @@ DEFAULT_PERMISSIONS = {
         "can_manage_company": False, "can_manage_terms": False,
         "module_dashboard": {"view": True, "create": True, "edit": True, "delete": False, "export": False},
         "module_ceo_dashboard": {"view": False, "create": False, "edit": False, "delete": False, "export": False},
+        "module_expansion": {"view": False, "create": False, "edit": False, "delete": False, "export": False},
         "module_accounts": {"view": True, "create": True, "edit": False, "delete": False, "export": False},
         "module_readings": {"view": True, "create": True, "edit": True, "delete": False, "export": False},
         "module_inventory": {"view": True, "create": False, "edit": False, "delete": False, "export": False},
@@ -3528,8 +3531,212 @@ async def get_ceo_dashboard(request: Request):
             "aging": credit_aging
         },
         "accounts_summary": await _ceo_accounts_summary(),
-        "readings_summary": await _ceo_readings_summary()
+        "readings_summary": await _ceo_readings_summary(),
+        "health_score": await _ceo_health_score(all_projects, credits, inv_items, pending_approvals)
     }
+
+
+# ================== CEO HEALTH SCORE ==================
+from health import compute_pillars as _compute_health_pillars, DEFAULT_HEALTH_CONFIG
+
+
+async def _get_health_config():
+    doc = await db.health_config.find_one({"_id": "singleton"})
+    if not doc:
+        await db.health_config.insert_one(dict(DEFAULT_HEALTH_CONFIG))
+        return dict(DEFAULT_HEALTH_CONFIG)
+    return doc
+
+
+async def _ceo_health_score(all_projects, credits, inv_items, pending_approvals_count):
+    cfg = await _get_health_config()
+    # Fetch approvals list, daily_updates & weekly_audits + brand_returns for the pillars
+    approvals_docs = await db.approvals.find({}).to_list(500)
+    daily_updates_docs = await db.daily_updates.find({}).to_list(500)
+    audit_docs = await db.weekly_audits.find({}).to_list(200)
+    return_docs = await db.brand_returns.find({}).to_list(500)
+    return _compute_health_pillars(
+        projects=all_projects, credits=credits, inv_items=inv_items,
+        approvals=approvals_docs, health_cfg=cfg,
+        daily_updates=daily_updates_docs, weekly_audits=audit_docs, brand_returns=return_docs
+    )
+
+
+@api_router.get("/dashboard/health/config")
+async def get_health_config_api(request: Request):
+    await get_current_user(request)
+    cfg = await _get_health_config()
+    cfg.pop("_id", None)
+    return cfg
+
+
+@api_router.put("/dashboard/health/config")
+async def update_health_config_api(payload: Dict[str, Any], request: Request):
+    await require_role("admin")(request)
+    payload.pop("_id", None)
+    payload["updated_at"] = datetime.now(timezone.utc).isoformat()
+    await db.health_config.update_one({"_id": "singleton"}, {"$set": payload}, upsert=True)
+    doc = await db.health_config.find_one({"_id": "singleton"})
+    doc.pop("_id", None)
+    return doc
+
+
+@api_router.post("/dashboard/health/snapshot")
+async def snapshot_health(request: Request):
+    """Persist the current health score as a monthly datapoint. Idempotent per month."""
+    user = await require_role("admin", "manager")(request)
+    query = {"deleted_at": {"$exists": False}}
+    projects = await db.projects.find(query).to_list(5000)
+    credits = await db.customer_credits.find({}).to_list(2000)
+    inv_items = await db.inventory_items.find({}).to_list(2000)
+    approvals = await db.approvals.count_documents({"status": "pending"})
+    hs = await _ceo_health_score(projects, credits, inv_items, approvals)
+    month_key = datetime.now(timezone.utc).strftime("%Y-%m")
+    snap = {
+        "month": month_key,
+        "score": hs["score"], "band": hs["band"], "verdict": hs["verdict"],
+        "pillars": hs["pillars"], "weakest_pillar": hs["weakest_pillar"],
+        "created_by": user["id"], "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.health_snapshots.update_one({"month": month_key}, {"$set": snap}, upsert=True)
+    return {"month": month_key, "score": hs["score"], "message": "snapshot saved"}
+
+
+@api_router.get("/dashboard/health/history")
+async def get_health_history(request: Request, months: int = 12):
+    await get_current_user(request)
+    docs = await db.health_snapshots.find({}).sort("month", -1).limit(months).to_list(months)
+    docs.reverse()
+    return [{k: v for k, v in d.items() if k != "_id"} for d in docs]
+
+
+# ================== EXPANSION MODULE ==================
+from expansion import compute_district_scores as _compute_districts, \
+    simulate_breakeven as _simulate_be, DEFAULT_EXPANSION_CONFIG
+
+
+async def _get_expansion_config():
+    doc = await db.expansion_config.find_one({"_id": "singleton"})
+    if not doc:
+        await db.expansion_config.insert_one(dict(DEFAULT_EXPANSION_CONFIG))
+        return dict(DEFAULT_EXPANSION_CONFIG)
+    return doc
+
+
+@api_router.get("/expansion/overview")
+async def expansion_overview(request: Request, state: Optional[str] = None):
+    user = await get_current_user(request)
+    if user["role"] not in ("admin", "manager"):
+        raise HTTPException(status_code=403, detail="Expansion module is admin/manager only")
+    cfg = await _get_expansion_config()
+    projects = await db.projects.find({"deleted_at": {"$exists": False}}).to_list(5000)
+    credits = await db.customer_credits.find({}).to_list(2000)
+    returns = await db.brand_returns.find({}).to_list(500)
+    branches = await db.branches.find({}).to_list(200)
+    result = _compute_districts(projects, credits, returns, branches, cfg)
+    if state:
+        result["districts"] = [d for d in result["districts"] if d["state"] == state]
+    return result
+
+
+@api_router.get("/expansion/district/{district}")
+async def expansion_district(district: str, request: Request):
+    user = await get_current_user(request)
+    if user["role"] not in ("admin", "manager"):
+        raise HTTPException(status_code=403, detail="Forbidden")
+    cfg = await _get_expansion_config()
+    projects = await db.projects.find({"deleted_at": {"$exists": False}}).to_list(5000)
+    credits = await db.customer_credits.find({}).to_list(2000)
+    returns = await db.brand_returns.find({}).to_list(500)
+    branches = await db.branches.find({}).to_list(200)
+    all_ = _compute_districts(projects, credits, returns, branches, cfg)
+    match = next((d for d in all_["districts"] if d["district"].lower() == district.lower()), None)
+    if not match:
+        raise HTTPException(status_code=404, detail="District not found")
+    return match
+
+
+class BreakEvenSimRequest(BaseModel):
+    district: Optional[str] = None
+    monthly_run_rate: float = 0
+    monthly_branch_cost: float = 250000
+    setup_capex: float = 1500000
+    target_margin_pct: float = 20
+    current_monthly_projects: float = 0
+    current_avg_ticket: float = 300000
+
+
+@api_router.post("/expansion/simulate")
+async def expansion_simulate(payload: BreakEvenSimRequest, request: Request):
+    user = await get_current_user(request)
+    if user["role"] not in ("admin", "manager"):
+        raise HTTPException(status_code=403, detail="Forbidden")
+    return _simulate_be(
+        monthly_run_rate=payload.monthly_run_rate,
+        target_margin_pct=payload.target_margin_pct,
+        monthly_branch_cost=payload.monthly_branch_cost,
+        setup_capex=payload.setup_capex,
+        current_monthly_projects=payload.current_monthly_projects,
+        current_avg_ticket=payload.current_avg_ticket,
+    )
+
+
+@api_router.get("/expansion/config")
+async def expansion_get_config(request: Request):
+    await get_current_user(request)
+    cfg = await _get_expansion_config()
+    cfg.pop("_id", None)
+    return cfg
+
+
+@api_router.put("/expansion/config")
+async def expansion_update_config(payload: Dict[str, Any], request: Request):
+    await require_role("admin")(request)
+    payload.pop("_id", None)
+    payload["updated_at"] = datetime.now(timezone.utc).isoformat()
+    await db.expansion_config.update_one({"_id": "singleton"}, {"$set": payload}, upsert=True)
+    doc = await db.expansion_config.find_one({"_id": "singleton"})
+    doc.pop("_id", None)
+    return doc
+
+
+# ── Branches CRUD ──
+@api_router.get("/expansion/branches")
+async def list_branches(request: Request):
+    await get_current_user(request)
+    docs = await db.branches.find({}).sort("name", 1).to_list(200)
+    return [{**{k: v for k, v in d.items() if k != "_id"}, "id": str(d["_id"])} for d in docs]
+
+
+@api_router.post("/expansion/branches")
+async def create_branch(payload: Dict[str, Any], request: Request):
+    await require_role("admin", "manager")(request)
+    payload["created_at"] = datetime.now(timezone.utc).isoformat()
+    if not payload.get("name"):
+        raise HTTPException(status_code=400, detail="name is required")
+    r = await db.branches.insert_one(payload)
+    return {"id": str(r.inserted_id), "message": "Branch added"}
+
+
+@api_router.put("/expansion/branches/{branch_id}")
+async def update_branch(branch_id: str, payload: Dict[str, Any], request: Request):
+    await require_role("admin", "manager")(request)
+    payload.pop("_id", None); payload.pop("id", None)
+    payload["updated_at"] = datetime.now(timezone.utc).isoformat()
+    r = await db.branches.update_one({"_id": ObjectId(branch_id)}, {"$set": payload})
+    if r.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Branch not found")
+    return {"message": "Branch updated"}
+
+
+@api_router.delete("/expansion/branches/{branch_id}")
+async def delete_branch(branch_id: str, request: Request):
+    await require_role("admin", "manager")(request)
+    r = await db.branches.delete_one({"_id": ObjectId(branch_id)})
+    if r.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Branch not found")
+    return {"message": "Branch deleted"}
+
 
 async def _ceo_accounts_summary():
     """Latest snapshot per account_entries type for CEO Dashboard cards."""

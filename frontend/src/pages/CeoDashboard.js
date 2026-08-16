@@ -1,13 +1,14 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { dashboardAPI } from '../utils/api';
+import { dashboardAPI, healthAPI } from '../utils/api';
+import HealthScoreCard from '../components/HealthScoreCard';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
 import {
   BarChart3, TrendingUp, IndianRupee, CheckCircle2, Clock, Package,
   AlertTriangle, Users, Loader2, ClipboardCheck, ArrowUpRight,
-  Wallet, Banknote, Activity, Receipt, Calculator
+  Wallet, Banknote, Activity, Receipt, Calculator, MapPin
 } from 'lucide-react';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -41,17 +42,30 @@ export default function CeoDashboard() {
   const navigate = useNavigate();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [sparkline, setSparkline] = useState([]);
 
   const fetchData = useCallback(async () => {
     try {
-      const res = await dashboardAPI.getCeo();
-      setData(res.data);
+      const [dashRes, histRes] = await Promise.all([
+        dashboardAPI.getCeo(),
+        healthAPI.getHistory(6).catch(() => ({ data: [] }))
+      ]);
+      setData(dashRes.data);
+      setSparkline((histRes.data || []).map(s => ({ month: s.month, score: s.score })));
     } catch (err) {
       console.error('Failed to load CEO dashboard:', err);
     } finally {
       setLoading(false);
     }
   }, []);
+
+  const handleSnapshot = async () => {
+    try {
+      await healthAPI.snapshot();
+      const h = await healthAPI.getHistory(6);
+      setSparkline((h.data || []).map(s => ({ month: s.month, score: s.score })));
+    } catch { /* ignore */ }
+  };
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
@@ -80,8 +94,25 @@ export default function CeoDashboard() {
             <h1 className="text-2xl font-bold font-['Outfit'] text-slate-900" data-testid="ceo-title">CEO Dashboard</h1>
             <p className="text-sm text-slate-500">High-level business overview</p>
           </div>
+          <Button variant="outline" onClick={() => navigate('/dashboard/expansion')} className="gap-2" data-testid="goto-expansion-btn"><MapPin className="h-4 w-4" />Expansion</Button>
           <Button variant="outline" onClick={() => navigate('/dashboard/reports')} className="gap-2" data-testid="goto-reports-btn"><BarChart3 className="h-4 w-4" />Reports</Button>
         </div>
+
+        {/* Company Health Score — hero */}
+        {data.health_score && (
+          <div className="mb-6">
+            <HealthScoreCard
+              health={data.health_score}
+              sparkline={sparkline}
+              onSnapshot={handleSnapshot}
+              onPillarClick={(key) => {
+                const map = { profitability: '/dashboard/alerts', cash_collections: '/dashboard/accounts',
+                              operations: '/dashboard/inventory', sales_growth: '/dashboard/reports?type=sales' };
+                if (map[key]) navigate(map[key]);
+              }}
+            />
+          </div>
+        )}
 
         {/* KPI Grid — symmetric 4×2 */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6" data-testid="kpi-grid">

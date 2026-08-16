@@ -208,6 +208,27 @@ export const calcAPI = {
   seedDefaults: () => api.post('/calculate/seed-defaults')
 };
 
+// Company Health Score API
+export const healthAPI = {
+  getConfig: () => api.get('/dashboard/health/config'),
+  updateConfig: (payload) => api.put('/dashboard/health/config', payload),
+  snapshot: () => api.post('/dashboard/health/snapshot'),
+  getHistory: (months = 12) => api.get('/dashboard/health/history', { params: { months } })
+};
+
+// Expansion Module API
+export const expansionAPI = {
+  overview: (params = {}) => api.get('/expansion/overview', { params }),
+  district: (name) => api.get(`/expansion/district/${name}`),
+  simulate: (payload) => api.post('/expansion/simulate', payload),
+  getConfig: () => api.get('/expansion/config'),
+  updateConfig: (payload) => api.put('/expansion/config', payload),
+  listBranches: () => api.get('/expansion/branches'),
+  createBranch: (payload) => api.post('/expansion/branches', payload),
+  updateBranch: (id, payload) => api.put(`/expansion/branches/${id}`, payload),
+  deleteBranch: (id) => api.delete(`/expansion/branches/${id}`)
+};
+
 // File Upload API
 export const uploadAPI = {
   uploadImage: (file) => {
