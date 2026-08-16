@@ -102,6 +102,7 @@ export default function SiteVisitForm() {
     },
     custom_fields: {},
     solar_report: null,
+    calculation_snapshot: null,
     terms_id: '',
     reference_project_id: '',
     installation_date: '',
@@ -332,6 +333,7 @@ export default function SiteVisitForm() {
           drive_folder_link: formData.drive_folder_link || null,
           site_measurements: formData.site_measurements,
           custom_fields: formData.custom_fields,
+          calculation_snapshot: formData.calculation_snapshot || null,
           terms_id: formData.terms_id || null,
           reference_project_id: formData.reference_project_id || null,
           installation_date: formData.installation_date || null,
@@ -582,6 +584,7 @@ export default function SiteVisitForm() {
         },
         custom_fields: formData.custom_fields || {},
         solar_report: formData.solar_report || null,
+        calculation_snapshot: formData.calculation_snapshot || null,
         terms_id: formData.terms_id || null,
         reference_project_id: formData.reference_project_id || null,
         installation_date: formData.installation_date || null,
@@ -966,7 +969,17 @@ export default function SiteVisitForm() {
                       ...prev.solar_system,
                       system_type: ps?.system_type || prev.solar_system?.system_type,
                       battery_required: (ps?.system_type === 'hybrid' || ps?.system_type === 'off-grid')
-                    }
+                    },
+                    // Mirror PIN/DISCOM back into LocationDetails so the DB stores it
+                    location: {
+                      ...(prev.location || {}),
+                      pincode: ps?.pincode || prev.location?.pincode,
+                      district: ps?.district || prev.location?.district,
+                      state: ps?.state || prev.location?.state,
+                      discom_id: ps?.discom_id || prev.location?.discom_id,
+                    },
+                    // Persist the server-computed snapshot so this quote can be reproduced later
+                    calculation_snapshot: ps?._server_snapshot || prev.calculation_snapshot,
                   }))}
                 />
 

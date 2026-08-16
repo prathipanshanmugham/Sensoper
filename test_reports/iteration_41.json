@@ -1,0 +1,44 @@
+{
+  "summary": "Iteration 41 backend calc engine + PIN/DISCOM/pump UI validated. All 13 pytest unit tests in test_calculators.py pass. Wrote /app/backend/tests/test_iter41_api.py covering 12 API scenarios — 11 pass; 1 real backend bug found: calculation_snapshot is NOT persisted on POST /api/projects (missing in project_doc dict). Frontend UI on the Materials step correctly renders ps-pin-block, PIN 641001 auto-fills district/state/DISCOM + shows 4.65 kWh/kWp/day yield with 'slab-aware calc' badge, ps-bill-savings-strip shows Pre ₹3,500 / Post ₹25 / Save ₹3,502, selecting Solar Pump + expanding advanced reveals ps-pump-block with DC/AC path toggles, TDH inputs, PM-KUSUM section, and ps-pump-live-result panel.",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "POST /api/projects", "issue": "calculation_snapshot field is accepted by ProjectCreate Pydantic model but is NEVER written into project_doc at server.py:2466-2493. Consequently GET /api/projects/{id} returns snapshot={} even when it was posted. This defeats the whole point of persisting the calc snapshot alongside a project. Same fix likely needed in the ProjectUpdate handler (~line 2798).", "priority": "HIGH"}
+    ],
+    "minor": [
+      {"endpoint": "POST /api/calculate/pincodes", "issue": "Returns 400 with 'PIN already exists' instead of the more standard 409 Conflict."},
+      {"endpoint": "POST /api/calculate/solution (inputs.tariff_category)", "issue": "Field is named `tariff_category` inside `inputs`, but the FE/docs sometimes call it `category_name`. Consider accepting both aliases for robustness — currently passing category_name silently falls back to Domestic (root cause of an initial test failure)."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Materials step / Proposed Solution", "issues": ["ps-pump-block is only rendered inside the collapsed 'Show more options (advanced)' section. That is fine as-is, but the primary pump inputs (TDH, flow, HP) really belong above the fold once system_type=solar-pump is chosen — currently a user must switch to Solar Pump and then also click 'Show more options' before they see any pump-specific fields."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_calculators.py",
+    "/app/backend/tests/test_iter41_api.py",
+    "/app/test_reports/pytest/pytest_iter41.xml"
+  ],
+  "action_items": [
+    "In server.py create_project (~line 2466) add: 'calculation_snapshot': project.calculation_snapshot or None into project_doc. Also verify update_project handler mirrors this so PUTs persist snapshot changes.",
+    "Consider moving the pump-specific block (TDH/flow/HP) out of the collapsed 'advanced' section when system_type=solar-pump, so pump users see the primary inputs immediately."
+  ],
+  "critical_code_review_comments": [
+    "server.py is >5700 lines — this violates the 'files >700 lines split' guideline and makes it very easy for regressions like the missing calculation_snapshot write to slip through.",
+    "The calculators/ package cleanly encapsulates the numeric logic and is well tested (13 pytest cases). Good.",
+    "PIN CRUD returns 400 for duplicate — should be 409.",
+    "Solution endpoint accepts `pincode` at top-level but expects DISCOM-related fields (tariff_category) inside `inputs` — this dual-location schema is confusing. Consider flattening or documenting the schema clearly."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter41_api.py (new — 12 API tests)"
+  ],
+  "success_rate": {"backend": "96% (24/25 pytest tests pass; 1 legit backend bug)", "frontend": "100% (all iter-41 testids and flows work as spec'd)"},
+  "test_credentials": "admin@sensoper.com / Admin@123",
+  "seed_data_creation": "Backend already had 5 DISCOMs + 18 pincodes seeded. TEST_DISCOM_41 was created and deleted by CRUD test. 999001 test pincode may remain (idempotent — POST returns 400 on re-run).",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Iteration 41 = backend calc engine + PIN/DISCOM/pump split. All 13 calculators unit tests pass. API tests in /app/backend/tests/test_iter41_api.py. Only failing test: test_project_persists_location_and_snapshot — root cause is server.py create_project not writing calculation_snapshot into project_doc. Frontend UI is fully working on the Materials step. Login is cookie-based (POST /api/auth/login sets session cookie; use requests.Session).",
+  "rca of the issue": "BUG: /api/projects create endpoint accepts calculation_snapshot in ProjectCreate pydantic model but does not include it when building project_doc at server.py lines 2466-2493. Location fields (pincode/district/state/discom_id) do persist because they come through project.location.model_dump(). REPRO: POST /api/projects with calculation_snapshot={payback_years:5.2}; then GET /api/projects/{id} → snapshot is {}. FIX: add \"calculation_snapshot\": project.calculation_snapshot or None to the project_doc dict (and mirror in update_project)."
+}

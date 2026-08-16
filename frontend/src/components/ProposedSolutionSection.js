@@ -5,10 +5,12 @@ import { Label } from '../components/ui/label';
 import { Textarea } from '../components/ui/textarea';
 import { Button } from '../components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
+import { Badge as UIBadge } from '../components/ui/badge';
 import {
   Package, Leaf, Calendar, TrendingUp, Fuel, Sun,
-  Wand2, Loader2, RotateCcw, MapPin, Zap, ChevronDown, ChevronUp
+  Wand2, Loader2, RotateCcw, MapPin, Zap, ChevronDown, ChevronUp, CheckCircle2, AlertTriangle
 } from 'lucide-react';
+import { calcAPI } from '../utils/api';
 
 // ───────────────────────── default form shape ─────────────────────────
 const blank = {
@@ -20,6 +22,10 @@ const blank = {
   tariff_category: 'Domestic',
   tariff_per_unit: '',
   location: 'Tamil Nadu',
+  pincode: '',
+  discom_id: '',
+  district: '',
+  state: '',
   power_backup_hours: '',
   system_type: 'on-grid',
 
@@ -411,6 +417,123 @@ export default function ProposedSolutionSection({ value, onChange }) {
     onChange({ ...data, [field]: engine[field], _overrides: nextOv });
   }, [data, onChange, engine]);
 
+  // ═════ Server-side calculation (thin-client mode) ═════
+  const [pinInfo, setPinInfo] = useState(null);       // resolved PIN → district/state/DISCOM/yield
+  const [pinLoading, setPinLoading] = useState(false);
+  const [serverCalc, setServerCalc] = useState(null); // authoritative slab-aware numbers
+  const [serverCalcLoading, setServerCalcLoading] = useState(false);
+  const [serverCalcError, setServerCalcError] = useState('');
+  const [tariffCategoryOptions, setTariffCategoryOptions] = useState(['Domestic', 'Commercial', 'Industrial', 'Agricultural']);
+
+  // 1) Debounced PIN lookup
+  useEffect(() => {
+    const pin = (data.pincode || '').trim();
+    if (pin.length !== 6 || !/^\d{6}$/.test(pin)) { setPinInfo(null); return; }
+    setPinLoading(true);
+    const t = setTimeout(async () => {
+      try {
+        const r = await calcAPI.lookupPincode(pin);
+        setPinInfo(r.data);
+        if (r.data.categories?.length) {
+          setTariffCategoryOptions(r.data.categories.map((c) => c.name));
+        }
+        // Autofill district/state/DISCOM (leave editable)
+        onChange({
+          ...data,
+          district: r.data.district || data.district,
+          state: r.data.state || data.state,
+          discom_id: r.data.discom_id || data.discom_id,
+        });
+      } catch (e) {
+        setPinInfo({ resolved: false, reason: 'Lookup failed', pincode: pin, is_estimate: true });
+      } finally { setPinLoading(false); }
+    }, 400);
+    return () => clearTimeout(t);
+  }, [data.pincode]);  // eslint-disable-line react-hooks/exhaustive-deps
+
+  // 2) Debounced full calculation whenever inputs change
+  useEffect(() => {
+    // Only call when we have at least a bill or units and a system_type
+    const hasInput = num(data.monthly_eb_bill) > 0 || num(data.monthly_eb_units) > 0 || data.system_type === 'solar-pump';
+    if (!hasInput) { setServerCalc(null); return; }
+    setServerCalcLoading(true);
+    setServerCalcError('');
+    const t = setTimeout(async () => {
+      try {
+        const payload = {
+          system_type: data.system_type || 'on-grid',
+          pincode: (data.pincode || '').trim() || null,
+          discom_id: data.discom_id || null,
+          inputs: {
+            monthly_eb_bill: num(data.monthly_eb_bill),
+            monthly_eb_units: num(data.monthly_eb_units),
+            roof_area_sqft: num(data.roof_area_sqft),
+            tariff_category: data.tariff_category,
+            tariff_per_unit: num(data.tariff_per_unit),
+            power_backup_hours: num(data.power_backup_hours),
+            panel_wattage_w: num(data.panel_wattage_w) || 540,
+            net_metering: !!data.net_metering,
+            battery_dod_pct: num(data.battery_dod_pct),
+            autonomy_days: num(data.autonomy_days),
+            battery_chemistry: data.battery_chemistry,
+            grid_charge_enabled: !!data.grid_charge_enabled,
+            // Pump inputs
+            pump_path: data.pump_path,
+            pump_hp: num(data.pump_hp),
+            pump_type: data.pump_type,
+            water_requirement_lpd: num(data.water_requirement_lpd),
+            required_flow_lpm: num(data.required_flow_lpm),
+            daily_operating_hours: num(data.daily_operating_hours),
+            static_water_level_m: num(data.static_water_level_m),
+            dynamic_water_level_m: num(data.dynamic_water_level_m),
+            delivery_head_m: num(data.delivery_head_m),
+            tank_height_m: num(data.tank_height_m),
+            horizontal_pipe_run_m: num(data.horizontal_pipe_run_m),
+            pipe_internal_diameter_mm: num(data.pipe_internal_diameter_mm),
+            pipe_material: data.pipe_material,
+            bore_casing_diameter_mm: num(data.bore_casing_diameter_mm),
+            bore_yield_lph: num(data.bore_yield_lph),
+            existing_ag_tariff: num(data.existing_ag_tariff),
+            controller_max_voltage: num(data.controller_max_voltage),
+            string_voltage_v: num(data.string_voltage_v),
+          },
+          overrides: Object.keys(data._overrides || {}).reduce((acc, k) => {
+            if (data._overrides[k]) acc[k] = data[k];
+            return acc;
+          }, {})
+        };
+        const r = await calcAPI.solution(payload);
+        setServerCalc(r.data);
+        // Persist server snapshot into a hidden field so the project can save it
+        if (r.data?.snapshot) {
+          onChange({ ...data, _server_snapshot: r.data.snapshot, _server_result: r.data.result });
+        }
+      } catch (e) {
+        setServerCalcError(e.response?.data?.detail || 'Server calc failed — showing local estimate');
+        setServerCalc(null);
+      } finally { setServerCalcLoading(false); }
+    }, 600);
+    return () => clearTimeout(t);
+  }, [
+    data.pincode, data.discom_id, data.system_type, data.monthly_eb_bill, data.monthly_eb_units,
+    data.tariff_category, data.tariff_per_unit, data.roof_area_sqft, data.panel_wattage_w,
+    data.net_metering, data.battery_dod_pct, data.autonomy_days, data.power_backup_hours,
+    data.pump_path, data.pump_hp, data.water_requirement_lpd, data.required_flow_lpm,
+    data.daily_operating_hours, data.static_water_level_m, data.dynamic_water_level_m,
+    data.delivery_head_m, data.horizontal_pipe_run_m, data.pipe_internal_diameter_mm,
+    data.pipe_material, data.bore_casing_diameter_mm, data.existing_ag_tariff,
+    JSON.stringify(data._overrides || {})
+  ]);  // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Prefer server-computed values when available (falls back to local `engine`)
+  const serverR = serverCalc?.result || null;
+  const finalPayback = serverR?.payback_years ?? engine.payback_years;
+  const finalMonthlySave = serverR?.monthly_saving ?? engine.monthly_savings;
+  const finalAnnualSave = serverR?.annual_saving ?? engine.annual_savings;
+  const finalRoiPct = serverR?.roi_pct ?? engine.roi_pct;
+  const finalLifetime = serverR?.lifetime_savings ?? engine.lifetime_savings;
+  const finalSystemKw = serverR?.system_size_kw ?? data.system_size_kw;
+
   const handleAutoCalculateAll = async () => {
     setRecomputing(true);
     // Clear all overrides → engine output flows back into every AUTO_FIELDS slot
@@ -448,20 +571,91 @@ export default function ProposedSolutionSection({ value, onChange }) {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-2" data-testid="ps-hero-outputs">
           <div className="rounded-lg p-3 bg-emerald-600 text-white">
             <p className="text-[9px] uppercase tracking-wider opacity-90">System Size</p>
-            <p className="text-lg font-bold leading-tight">{data.system_size_kw ? `${data.system_size_kw} kW` : '—'}</p>
+            <p className="text-lg font-bold leading-tight">{finalSystemKw ? `${finalSystemKw} kW` : '—'}</p>
           </div>
           <div className="rounded-lg p-3 bg-amber-500 text-white" data-testid="ps-out-annual">
             <p className="text-[9px] uppercase tracking-wider opacity-90">Annual Savings</p>
-            <p className="text-lg font-bold leading-tight">{engine.annual_savings > 0 ? inr(engine.annual_savings) : '—'}</p>
+            <p className="text-lg font-bold leading-tight">{finalAnnualSave > 0 ? inr(finalAnnualSave) : '—'}</p>
           </div>
           <div className="rounded-lg p-3 bg-blue-600 text-white" data-testid="ps-out-payback">
             <p className="text-[9px] uppercase tracking-wider opacity-90">Payback</p>
-            <p className="text-lg font-bold leading-tight">{engine.payback_years > 0 ? `${engine.payback_years.toFixed(1)} yrs` : '—'}</p>
+            <p className="text-lg font-bold leading-tight">{finalPayback > 0 ? `${Number(finalPayback).toFixed(1)} yrs` : '—'}</p>
           </div>
           <div className="rounded-lg p-3 bg-violet-600 text-white" data-testid="ps-out-roi">
             <p className="text-[9px] uppercase tracking-wider opacity-90">ROI (lifetime)</p>
-            <p className="text-lg font-bold leading-tight">{engine.roi_pct ? `${Math.round(engine.roi_pct)}%` : '—'}</p>
+            <p className="text-lg font-bold leading-tight">{finalRoiPct ? `${Math.round(finalRoiPct)}%` : '—'}</p>
           </div>
+        </div>
+
+        {/* ───── PIN + DISCOM Resolution Banner ───── */}
+        <div className="rounded-lg border border-slate-200 bg-white p-3 space-y-2" data-testid="ps-pin-block">
+          <div className="grid grid-cols-1 sm:grid-cols-4 gap-2">
+            <div className="space-y-1">
+              <Label className="text-xs flex items-center gap-1"><MapPin className="h-3 w-3" /> PIN Code</Label>
+              <div className="relative">
+                <Input
+                  type="text" maxLength={6} inputMode="numeric"
+                  value={data.pincode || ''}
+                  onChange={(e) => updateDriver('pincode', e.target.value.replace(/\D/g, '').slice(0, 6))}
+                  placeholder="6-digit PIN" className="h-10 bg-white pr-8"
+                  data-testid="ps-pincode-input"
+                />
+                {pinLoading && <Loader2 className="absolute right-2 top-2.5 h-4 w-4 animate-spin text-slate-400" />}
+                {!pinLoading && pinInfo?.resolved && <CheckCircle2 className="absolute right-2 top-2.5 h-4 w-4 text-emerald-600" />}
+              </div>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">District</Label>
+              <Input value={data.district || ''} onChange={(e) => updateDriver('district', e.target.value)}
+                     placeholder="auto" className="h-10 bg-white" data-testid="ps-district" />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">State</Label>
+              <Input value={data.state || ''} onChange={(e) => updateDriver('state', e.target.value)}
+                     placeholder="auto" className="h-10 bg-white" data-testid="ps-state" />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">DISCOM</Label>
+              <Input value={data.discom_id || ''} onChange={(e) => updateDriver('discom_id', e.target.value)}
+                     placeholder="auto" className="h-10 bg-white" data-testid="ps-discom" />
+            </div>
+          </div>
+          {pinInfo && (
+            <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
+              {pinInfo.resolved ? (
+                <UIBadge className="bg-emerald-100 text-emerald-700 border-emerald-200 border">
+                  <CheckCircle2 className="h-3 w-3 mr-1" /> {pinInfo.discom_name}
+                </UIBadge>
+              ) : (
+                <UIBadge className="bg-amber-100 text-amber-700 border-amber-200 border">
+                  <AlertTriangle className="h-3 w-3 mr-1" /> Estimated — verify tariff
+                </UIBadge>
+              )}
+              {pinInfo.specific_yield_kwh_per_kwp_day && (
+                <span className="text-slate-500">Yield: <strong>{pinInfo.specific_yield_kwh_per_kwp_day} kWh/kWp/day</strong></span>
+              )}
+              {serverCalcLoading && <span className="text-blue-600 flex items-center gap-1"><Loader2 className="h-3 w-3 animate-spin" />recalculating…</span>}
+              {!serverCalcLoading && serverCalc && <span className="text-emerald-700">✓ slab-aware calc</span>}
+              {serverCalcError && <span className="text-red-600">⚠ {serverCalcError}</span>}
+            </div>
+          )}
+          {/* Slab-savings 3-number breakdown (only when server has data) */}
+          {serverR && serverR.pre_solar_bill != null && (
+            <div className="grid grid-cols-3 gap-2 pt-2 border-t border-slate-100" data-testid="ps-bill-savings-strip">
+              <div className="text-center">
+                <p className="text-[9px] uppercase tracking-wider text-slate-500">Pre-Solar Bill</p>
+                <p className="text-sm font-bold text-slate-700">{inr(serverR.pre_solar_bill)}</p>
+              </div>
+              <div className="text-center">
+                <p className="text-[9px] uppercase tracking-wider text-slate-500">Post-Solar Bill</p>
+                <p className="text-sm font-bold text-slate-700">{inr(serverR.post_solar_bill)}</p>
+              </div>
+              <div className="text-center">
+                <p className="text-[9px] uppercase tracking-wider text-emerald-600">Monthly Saving</p>
+                <p className="text-sm font-bold text-emerald-700">{inr(finalMonthlySave || 0)}</p>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* ───── Quick Inputs (always visible — 3 essentials) ───── */}
@@ -529,9 +723,9 @@ export default function ProposedSolutionSection({ value, onChange }) {
                 <Select value={data.tariff_category} onValueChange={(v) => updateDriver('tariff_category', v)}>
                   <SelectTrigger className="h-10 bg-white" data-testid="ps-tariff-category"><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="Domestic">Domestic</SelectItem>
-                    <SelectItem value="Commercial">Commercial</SelectItem>
-                    <SelectItem value="Industrial">Industrial</SelectItem>
+                    {tariffCategoryOptions.map((cat) => (
+                      <SelectItem key={cat} value={cat}>{cat}</SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
@@ -613,47 +807,143 @@ export default function ProposedSolutionSection({ value, onChange }) {
           )}
 
           {data.system_type === 'solar-pump' && (
-            <div data-testid="ps-pump-block">
-              <p className="text-[11px] uppercase tracking-wider text-cyan-700 font-semibold mb-2 flex items-center gap-1.5"><Package className="h-3.5 w-3.5" /> Solar Pump Details</p>
+            <div data-testid="ps-pump-block" className="space-y-3">
+              <div className="flex items-center gap-2">
+                <p className="text-[11px] uppercase tracking-wider text-cyan-700 font-semibold flex items-center gap-1.5"><Package className="h-3.5 w-3.5" /> Solar Pump — Path</p>
+                <div className="flex gap-1">
+                  <Button type="button" size="sm" variant={data.pump_path === 'DC' || !data.pump_path ? 'default' : 'outline'}
+                    onClick={() => updateDriver('pump_path', 'DC')}
+                    className={(data.pump_path === 'DC' || !data.pump_path) ? 'h-7 bg-cyan-600 hover:bg-cyan-700 text-white text-xs' : 'h-7 text-xs'}
+                    data-testid="ps-pump-path-dc">DC (MPPT + BLDC)</Button>
+                  <Button type="button" size="sm" variant={data.pump_path === 'AC' ? 'default' : 'outline'}
+                    onClick={() => updateDriver('pump_path', 'AC')}
+                    className={data.pump_path === 'AC' ? 'h-7 bg-cyan-600 hover:bg-cyan-700 text-white text-xs' : 'h-7 text-xs'}
+                    data-testid="ps-pump-path-ac">AC (VFD + Induction)</Button>
+                </div>
+              </div>
               <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                <DriverField label="Pump Rating (HP)" field="pump_hp" placeholder="e.g., 3" value={data.pump_hp} onChange={updateDriver} />
                 <div className="space-y-1">
-                  <Label className="text-xs">Pump Type</Label>
-                  <Select value={data.pump_type} onValueChange={(v) => updateDriver('pump_type', v)}>
+                  <Label className="text-xs">Water Source</Label>
+                  <Select value={data.pump_water_source || 'Borewell'} onValueChange={(v) => updateDriver('pump_water_source', v)}>
+                    <SelectTrigger className="h-10 bg-white" data-testid="ps-pump-source"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {['Borewell','Openwell','Well','Canal','River','Pond','Tank','Sump'].map(v => <SelectItem key={v} value={v}>{v}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Pump Mounting</Label>
+                  <Select value={data.pump_type || 'Submersible'} onValueChange={(v) => updateDriver('pump_type', v)}>
                     <SelectTrigger className="h-10 bg-white" data-testid="ps-pump-type"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="Submersible">Submersible</SelectItem>
                       <SelectItem value="Surface">Surface (Monoblock)</SelectItem>
-                      <SelectItem value="Openwell">Openwell</SelectItem>
+                      <SelectItem value="Openwell submersible">Openwell submersible</SelectItem>
+                      <SelectItem value="Floating">Floating</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
-                <DriverField label="Total Head (m)" field="pump_head_m" placeholder="e.g., 50" suffix="m" value={data.pump_head_m} onChange={updateDriver} />
-                <DriverField label="Discharge (LPH)" field="pump_discharge_lph" placeholder="e.g., 10000" value={data.pump_discharge_lph} onChange={updateDriver} />
-                <div className="space-y-1">
-                  <Label className="text-xs">Controller</Label>
-                  <Select value={data.pump_controller_type} onValueChange={(v) => updateDriver('pump_controller_type', v)}>
-                    <SelectTrigger className="h-10 bg-white" data-testid="ps-pump-controller"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="DC (Direct)">DC (Direct)</SelectItem>
-                      <SelectItem value="VFD (AC)">VFD (AC)</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-xs">Water Source</Label>
-                  <Select value={data.pump_water_source} onValueChange={(v) => updateDriver('pump_water_source', v)}>
-                    <SelectTrigger className="h-10 bg-white" data-testid="ps-pump-source"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Borewell">Borewell</SelectItem>
-                      <SelectItem value="Openwell">Openwell</SelectItem>
-                      <SelectItem value="Canal">Canal / Pond</SelectItem>
-                      <SelectItem value="Tank">Overhead Tank</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
+                <DriverField label="Water Requirement (L/day)" field="water_requirement_lpd" placeholder="e.g., 30000" value={data.water_requirement_lpd} onChange={updateDriver} />
+                <DriverField label="Required Flow (LPM)" field="required_flow_lpm" placeholder="auto from L/day" value={data.required_flow_lpm} onChange={updateDriver} />
+                <DriverField label="Operating Hours/day" field="daily_operating_hours" placeholder="e.g., 6" value={data.daily_operating_hours} onChange={updateDriver} />
+                <DriverField label="Land (acres)" field="land_area_acres" placeholder="e.g., 5" value={data.land_area_acres} onChange={updateDriver} />
               </div>
-              <p className="text-[10px] text-slate-500 mt-2">Solar Pump sizing uses ≈0.75 kW per HP with 20% headroom; monthly EB &amp; tariff fields are ignored for savings calc — instead ROI compares against grid-pumping or diesel pumpset.</p>
+
+              <p className="text-[10px] uppercase tracking-wider text-slate-500 font-semibold pt-2 border-t border-slate-100">TDH Components</p>
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                <DriverField label="Static Water Level (m)" field="static_water_level_m" placeholder="e.g., 30" suffix="m" value={data.static_water_level_m} onChange={updateDriver} />
+                <DriverField label="Dynamic Level while pumping (m)" field="dynamic_water_level_m" placeholder="e.g., 50" suffix="m" value={data.dynamic_water_level_m} onChange={updateDriver} />
+                <DriverField label="Bore Depth (m)" field="bore_depth_m" placeholder="e.g., 120" suffix="m" value={data.bore_depth_m} onChange={updateDriver} />
+                <DriverField label="Bore Casing Ø (mm)" field="bore_casing_diameter_mm" placeholder="e.g., 150" suffix="mm" value={data.bore_casing_diameter_mm} onChange={updateDriver} />
+                <DriverField label="Pump Setting Depth (m)" field="pump_setting_depth_m" placeholder="e.g., 80" suffix="m" value={data.pump_setting_depth_m} onChange={updateDriver} />
+                <DriverField label="Delivery Head above ground (m)" field="delivery_head_m" placeholder="e.g., 10" suffix="m" value={data.delivery_head_m} onChange={updateDriver} />
+                <DriverField label="Horizontal Pipe Run (m)" field="horizontal_pipe_run_m" placeholder="e.g., 40" suffix="m" value={data.horizontal_pipe_run_m} onChange={updateDriver} />
+                <div className="space-y-1">
+                  <Label className="text-xs">Pipe Material</Label>
+                  <Select value={data.pipe_material || 'HDPE'} onValueChange={(v) => updateDriver('pipe_material', v)}>
+                    <SelectTrigger className="h-10 bg-white" data-testid="ps-pipe-material"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {['GI','HDPE','PVC','Column pipe'].map(v => <SelectItem key={v} value={v}>{v}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <DriverField label="Pipe Internal Ø (mm)" field="pipe_internal_diameter_mm" placeholder="e.g., 40" suffix="mm" value={data.pipe_internal_diameter_mm} onChange={updateDriver} />
+              </div>
+
+              {data.pump_path !== 'AC' && (
+                <>
+                  <p className="text-[10px] uppercase tracking-wider text-cyan-700 font-semibold pt-2 border-t border-slate-100">DC-Specific</p>
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                    <DriverField label="Controller Max V" field="controller_max_voltage" placeholder="e.g., 100" suffix="V" value={data.controller_max_voltage} onChange={updateDriver} />
+                    <DriverField label="String Voltage (V)" field="string_voltage_v" placeholder="e.g., 80" suffix="V" value={data.string_voltage_v} onChange={updateDriver} />
+                    <DriverField label="Bore Yield (LPH)" field="bore_yield_lph" placeholder="e.g., 6000" value={data.bore_yield_lph} onChange={updateDriver} />
+                  </div>
+                </>
+              )}
+              {data.pump_path === 'AC' && (
+                <>
+                  <p className="text-[10px] uppercase tracking-wider text-cyan-700 font-semibold pt-2 border-t border-slate-100">AC-Specific</p>
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                    <div className="space-y-1">
+                      <Label className="text-xs">Retrofit / New</Label>
+                      <Select value={data.pump_retrofit || 'new'} onValueChange={(v) => updateDriver('pump_retrofit', v)}>
+                        <SelectTrigger className="h-10 bg-white" data-testid="ps-pump-retrofit"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="new">New Pump</SelectItem>
+                          <SelectItem value="retrofit">Retrofit Existing</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs">Grid Backup</Label>
+                      <Select value={String(!!data.grid_backup_enabled)} onValueChange={(v) => updateDriver('grid_backup_enabled', v === 'true')}>
+                        <SelectTrigger className="h-10 bg-white" data-testid="ps-pump-grid-backup"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="false">Solar-only</SelectItem>
+                          <SelectItem value="true">Solar + Mains fallback</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <DriverField label="Existing Ag Tariff (₹/unit)" field="existing_ag_tariff" placeholder="₹0 = free" value={data.existing_ag_tariff} onChange={updateDriver} />
+                  </div>
+                </>
+              )}
+
+              <p className="text-[10px] uppercase tracking-wider text-slate-500 font-semibold pt-2 border-t border-slate-100">PM-KUSUM Subsidy</p>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <div className="space-y-1">
+                  <Label className="text-xs">Component</Label>
+                  <Select value={data.pm_kusum_component || 'B'} onValueChange={(v) => updateDriver('pm_kusum_component', v)}>
+                    <SelectTrigger className="h-10 bg-white" data-testid="ps-kusum-comp"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="B">Component B (Standalone)</SelectItem>
+                      <SelectItem value="C">Component C (Grid-connected)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <DriverField label="Central %" field="pm_kusum_central_pct" placeholder="30" suffix="%" value={data.pm_kusum_central_pct} onChange={updateDriver} />
+                <DriverField label="State %" field="pm_kusum_state_pct" placeholder="30" suffix="%" value={data.pm_kusum_state_pct} onChange={updateDriver} />
+                <DriverField label="Farmer %" field="pm_kusum_farmer_pct" placeholder="40" suffix="%" value={data.pm_kusum_farmer_pct} onChange={updateDriver} />
+              </div>
+
+              {/* Live results panel + warnings */}
+              {serverR && (
+                <div className="rounded-lg border border-cyan-200 bg-cyan-50/40 p-3 space-y-2" data-testid="ps-pump-live-result">
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
+                    <div><p className="text-[9px] uppercase text-slate-500">TDH</p><p className="font-bold">{serverR.tdh_m} m</p></div>
+                    <div><p className="text-[9px] uppercase text-slate-500">Flow</p><p className="font-bold">{serverR.flow_lpm} LPM</p></div>
+                    <div><p className="text-[9px] uppercase text-slate-500">Selected HP</p><p className="font-bold">{serverR.pump_hp_selected} HP</p></div>
+                    <div><p className="text-[9px] uppercase text-slate-500">Array</p><p className="font-bold">{serverR.system_size_kw} kWp</p></div>
+                  </div>
+                  {(serverR.warnings || []).length > 0 && (
+                    <ul className="text-[11px] text-amber-700 space-y-0.5">
+                      {serverR.warnings.map((w, i) => (
+                        <li key={i} className="flex items-start gap-1"><AlertTriangle className="h-3 w-3 mt-0.5 shrink-0" /> {w}</li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              )}
             </div>
           )}
 

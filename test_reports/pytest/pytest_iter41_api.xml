@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="5" failures="7" skipped="0" tests="12" time="1.478" timestamp="2026-08-16T11:56:13.066744+00:00" hostname="agent-env-86a396a4-eee6-43cf-95a4-609aa1e6ecd9"><testcase classname="tests.test_iter41_api" name="test_seed_defaults_idempotent" time="0.495"><error message="failed on setup with &quot;KeyError: 'access_token'&quot;">tests/test_iter41_api.py:19: in admin_token
+    return r.json()["access_token"]
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+E   KeyError: 'access_token'</error></testcase><testcase classname="tests.test_iter41_api" name="test_lookup_641001_tangedco" time="0.109"><failure message="AssertionError: {&quot;detail&quot;:&quot;Not authenticated&quot;}&#10;assert 401 == 200&#10; +  where 401 = &lt;Response [401]&gt;.status_code">tests/test_iter41_api.py:42: in test_lookup_641001_tangedco
+    assert r.status_code == 200, r.text
+E   AssertionError: {"detail":"Not authenticated"}
+E   assert 401 == 200
+E    +  where 401 = &lt;Response [401]&gt;.status_code</failure></testcase><testcase classname="tests.test_iter41_api" name="test_lookup_682001_kseb" time="0.102"><failure message="assert 401 == 200&#10; +  where 401 = &lt;Response [401]&gt;.status_code">tests/test_iter41_api.py:59: in test_lookup_682001_kseb
+    assert r.status_code == 200
+E   assert 401 == 200
+E    +  where 401 = &lt;Response [401]&gt;.status_code</failure></testcase><testcase classname="tests.test_iter41_api" name="test_lookup_999999_fallback" time="0.115"><failure message="assert 401 == 200&#10; +  where 401 = &lt;Response [401]&gt;.status_code">tests/test_iter41_api.py:68: in test_lookup_999999_fallback
+    assert r.status_code == 200
+E   assert 401 == 200
+E    +  where 401 = &lt;Response [401]&gt;.status_code</failure></testcase><testcase classname="tests.test_iter41_api" name="test_solution_tn_vs_kl_payback_differs" time="0.201"><failure message="AssertionError: tn={'detail': 'Not authenticated'}, kl={'detail': 'Not authenticated'}&#10;assert (None is not None)">tests/test_iter41_api.py:90: in test_solution_tn_vs_kl_payback_differs
+    assert tn_pb is not None and kl_pb is not None, f"tn={tn}, kl={kl}"
+E   AssertionError: tn={'detail': 'Not authenticated'}, kl={'detail': 'Not authenticated'}
+E   assert (None is not None)</failure></testcase><testcase classname="tests.test_iter41_api" name="test_solution_agricultural_no_divzero" time="0.104"><failure message="AssertionError: {&quot;detail&quot;:&quot;Not authenticated&quot;}&#10;assert 401 == 200&#10; +  where 401 = &lt;Response [401]&gt;.status_code">tests/test_iter41_api.py:97: in test_solution_agricultural_no_divzero
+    assert r.status_code == 200, r.text
+E   AssertionError: {"detail":"Not authenticated"}
+E   assert 401 == 200
+E    +  where 401 = &lt;Response [401]&gt;.status_code</failure></testcase><testcase classname="tests.test_iter41_api" name="test_solution_pump_dc" time="0.104"><failure message="AssertionError: {&quot;detail&quot;:&quot;Not authenticated&quot;}&#10;assert 401 == 200&#10; +  where 401 = &lt;Response [401]&gt;.status_code">tests/test_iter41_api.py:122: in test_solution_pump_dc
+    assert r.status_code == 200, r.text
+E   AssertionError: {"detail":"Not authenticated"}
+E   assert 401 == 200
+E    +  where 401 = &lt;Response [401]&gt;.status_code</failure></testcase><testcase classname="tests.test_iter41_api" name="test_bill_savings_endpoint" time="0.099"><failure message="AssertionError: {&quot;detail&quot;:[{&quot;type&quot;:&quot;missing&quot;,&quot;loc&quot;:[&quot;body&quot;,&quot;monthly_units_pre&quot;],&quot;msg&quot;:&quot;Field required&quot;,&quot;input&quot;:{&quot;monthly_units&quot;:500,&quot;monthly_generation_units&quot;:300,&quot;tariff_category&quot;:&quot;Domestic&quot;,&quot;discom_id&quot;:&quot;TANGEDCO&quot;,&quot;state&quot;:&quot;Tamil Nadu&quot;,&quot;pincode&quot;:&quot;641001&quot;},&quot;url&quot;:&quot;https://errors.pydantic.dev/2.12/v/missing&quot;},{&quot;type&quot;:&quot;missing&quot;,&quot;loc&quot;:[&quot;body&quot;,&quot;monthly_generation&quot;],&quot;msg&quot;:&quot;Field required&quot;,&quot;input&quot;:{&quot;monthly_units&quot;:500,&quot;monthly_generation_units&quot;:300,&quot;tariff_category&quot;:&quot;Domestic&quot;,&quot;discom_id&quot;:&quot;TANGEDCO&quot;,&quot;state&quot;:&quot;Tamil Nadu&quot;,&quot;pincode&quot;:&quot;641001&quot;},&quot;url&quot;:&quot;https://errors.pydantic.dev/2.12/v/missing&quot;}]}&#10;assert 422 == 200&#10; +  where 422 = &lt;Response [422]&gt;.status_code">tests/test_iter41_api.py:141: in test_bill_savings_endpoint
+    assert r.status_code == 200, r.text
+E   AssertionError: {"detail":[{"type":"missing","loc":["body","monthly_units_pre"],"msg":"Field required","input":{"monthly_units":500,"monthly_generation_units":300,"tariff_category":"Domestic","discom_id":"TANGEDCO","state":"Tamil Nadu","pincode":"641001"},"url":"https://errors.pydantic.dev/2.12/v/missing"},{"type":"missing","loc":["body","monthly_generation"],"msg":"Field required","input":{"monthly_units":500,"monthly_generation_units":300,"tariff_category":"Domestic","discom_id":"TANGEDCO","state":"Tamil Nadu","pincode":"641001"},"url":"https://errors.pydantic.dev/2.12/v/missing"}]}
+E   assert 422 == 200
+E    +  where 422 = &lt;Response [422]&gt;.status_code</failure></testcase><testcase classname="tests.test_iter41_api" name="test_config_get_and_put" time="0.000"><error message="failed on setup with &quot;KeyError: 'access_token'&quot;">tests/test_iter41_api.py:19: in admin_token
+    return r.json()["access_token"]
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+E   KeyError: 'access_token'</error></testcase><testcase classname="tests.test_iter41_api" name="test_discoms_crud" time="0.000"><error message="failed on setup with &quot;KeyError: 'access_token'&quot;">tests/test_iter41_api.py:19: in admin_token
+    return r.json()["access_token"]
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+E   KeyError: 'access_token'</error></testcase><testcase classname="tests.test_iter41_api" name="test_pincodes_add" time="0.000"><error message="failed on setup with &quot;KeyError: 'access_token'&quot;">tests/test_iter41_api.py:19: in admin_token
+    return r.json()["access_token"]
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+E   KeyError: 'access_token'</error></testcase><testcase classname="tests.test_iter41_api" name="test_project_persists_location_and_snapshot" time="0.000"><error message="failed on setup with &quot;KeyError: 'access_token'&quot;">tests/test_iter41_api.py:19: in admin_token
+    return r.json()["access_token"]
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+E   KeyError: 'access_token'</error></testcase></testsuite></testsuites>

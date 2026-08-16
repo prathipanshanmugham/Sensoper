@@ -195,6 +195,19 @@ export const materialKitsAPI = {
   seedStarter: () => api.post('/material-kits/seed-starter')
 };
 
+// Solar Calculator API (server-side calculation engine + PIN/DISCOM lookup)
+export const calcAPI = {
+  lookupPincode: (pin) => api.get(`/calculate/lookup/${pin}`),
+  solution: (payload) => api.post('/calculate/solution', payload),
+  billSavings: (payload) => api.post('/calculate/bill-savings', payload),
+  getConfig: () => api.get('/calculate/config'),
+  updateConfig: (payload) => api.put('/calculate/config', payload),
+  listDiscoms: (params = {}) => api.get('/calculate/discoms', { params }),
+  getDiscom: (id) => api.get(`/calculate/discoms/${id}`),
+  listPincodes: (params = {}) => api.get('/calculate/pincodes', { params }),
+  seedDefaults: () => api.post('/calculate/seed-defaults')
+};
+
 // File Upload API
 export const uploadAPI = {
   uploadImage: (file) => {

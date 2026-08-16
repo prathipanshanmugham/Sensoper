@@ -10,7 +10,7 @@ import os
 import logging
 from pathlib import Path
 from pydantic import BaseModel, Field, EmailStr
-from typing import List, Optional, Literal, Any
+from typing import List, Optional, Literal, Any, Dict
 import uuid
 from datetime import datetime, timezone, timedelta
 import bcrypt
@@ -119,6 +119,10 @@ class LocationDetails(BaseModel):
     longitude: Optional[float] = None
     address: Optional[str] = None
     site_location_words: Optional[str] = None
+    pincode: Optional[str] = None
+    district: Optional[str] = None
+    state: Optional[str] = None
+    discom_id: Optional[str] = None
 
 class ElectricalDetails(BaseModel):
     sanction_load_kw: float
@@ -174,6 +178,7 @@ class ProjectCreate(BaseModel):
     site_measurements: Optional[dict] = None
     custom_fields: Optional[dict] = None
     solar_report: Optional[dict] = None
+    calculation_snapshot: Optional[dict] = None
     terms_id: Optional[str] = None
     notes: Optional[str] = None
     reference_project_id: Optional[str] = None
@@ -196,6 +201,7 @@ class ProjectUpdate(BaseModel):
     site_measurements: Optional[dict] = None
     custom_fields: Optional[dict] = None
     solar_report: Optional[dict] = None
+    calculation_snapshot: Optional[dict] = None
     terms_id: Optional[str] = None
     notes: Optional[str] = None
     reference_project_id: Optional[str] = None
@@ -2183,6 +2189,270 @@ async def seed_material_kits(request: Request):
     total = await db.material_kits.count_documents({})
     return {"created": created, "total": total}
 
+# ================== SOLAR CALCULATION ENGINE ==================
+
+from calculators import (
+    calculate_solution as _calc_solution,
+    lookup_pincode as _lookup_pincode,
+    compute_bill_from_slabs as _compute_bill,
+    back_solve_units as _back_solve,
+)
+from calculators.seed_data import get_default_discoms, get_default_pincodes
+
+
+class CalculateSolutionRequest(BaseModel):
+    system_type: str
+    pincode: Optional[str] = None
+    discom_id: Optional[str] = None
+    inputs: Dict[str, Any] = {}
+    overrides: Dict[str, Any] = {}
+
+
+async def _get_calc_config() -> Dict[str, Any]:
+    doc = await db.calc_config.find_one({"_id": "singleton"})
+    if not doc:
+        default = {
+            "_id": "singleton",
+            "default_specific_yield": 4.4,
+            "cost_per_kwp": {"on-grid": 55000, "hybrid": 75000, "off-grid": 95000, "solar-pump": 65000},
+            "battery_unit_kwh": 5,
+            "system_life_years": 25,
+            "panel_degradation_pct_per_year": 0.7,
+            "pm_surya_ghar": {
+                "cap": 78000,
+                "slabs": [
+                    {"upto_kw": 1, "amount": 30000},
+                    {"upto_kw": 2, "amount": 48000},
+                    {"upto_kw": 3, "amount": 78000},
+                ],
+            },
+            "pm_kusum": {"benchmark_per_kw": 40000},
+            "diesel_price_per_liter": 95,
+            "diesel_lph_per_kw": 0.3,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }
+        await db.calc_config.insert_one(default)
+        return default
+    return doc
+
+
+async def _get_pincode_and_discom(pincode: Optional[str], discom_id: Optional[str]):
+    """Return (pin_dict_or_None, discom_dict_or_None)."""
+    pin_doc = None
+    discom_doc = None
+    if pincode:
+        pin_doc = await db.pincodes.find_one({"pincode": pincode})
+    # DISCOM priority: explicit discom_id > pin's discom > FALLBACK
+    if discom_id:
+        discom_doc = await db.discoms.find_one({"$or": [{"id": discom_id}, {"short_code": discom_id}]})
+    if not discom_doc and pin_doc and pin_doc.get("discom"):
+        discom_doc = await db.discoms.find_one({"$or": [{"id": pin_doc["discom"]}, {"short_code": pin_doc["discom"]}]})
+    if not discom_doc:
+        discom_doc = await db.discoms.find_one({"id": "FALLBACK"})
+    return pin_doc, discom_doc
+
+
+@api_router.get("/calculate/lookup/{pincode}")
+async def calc_lookup_pincode(pincode: str, request: Request):
+    """Debounced endpoint — returns district/state/DISCOM/yield for a PIN."""
+    await get_current_user(request)
+    # Preload all discoms into a code-keyed map
+    all_discoms = await db.discoms.find({}).to_list(500)
+    discoms_by_code = {d["id"]: d for d in all_discoms}
+    pin_doc = await db.pincodes.find_one({"pincode": pincode})
+    pincodes_map = {pin_doc["pincode"]: pin_doc} if pin_doc else {}
+    resolved = _lookup_pincode(pincode, pincodes_map, discoms_by_code)
+    # Present only category names + fixed_charge in the light response
+    if resolved.get("categories"):
+        resolved["categories"] = [
+            {"name": c.get("name"), "fixed_charge": c.get("fixed_charge", 0),
+             "export_rate": c.get("export_rate", 0),
+             "slab_count": len(c.get("slabs", []))}
+            for c in resolved["categories"]
+        ]
+    return resolved
+
+
+@api_router.post("/calculate/solution")
+async def calc_solution(payload: CalculateSolutionRequest, request: Request):
+    await get_current_user(request)
+    config = await _get_calc_config()
+    pin_doc, discom_doc = await _get_pincode_and_discom(payload.pincode, payload.discom_id)
+    if pin_doc:
+        pin_doc = {k: v for k, v in pin_doc.items() if k != "_id"}
+    if discom_doc:
+        discom_doc = {k: v for k, v in discom_doc.items() if k != "_id"}
+    computed = _calc_solution(
+        system_type=payload.system_type,
+        pincode=payload.pincode,
+        inputs=payload.inputs,
+        overrides=payload.overrides,
+        config=config,
+        discom=discom_doc,
+        pin=pin_doc,
+    )
+    # Snapshot the versioned constants used, so a project saving this can replay it later
+    computed["snapshot"] = {
+        "computed_at": datetime.now(timezone.utc).isoformat(),
+        "config_version": config.get("updated_at"),
+        "pincode": payload.pincode,
+        "discom_id": (discom_doc or {}).get("id") or (discom_doc or {}).get("short_code"),
+        "discom_effective_from": (discom_doc or {}).get("effective_from"),
+        "specific_yield_used": computed["result"].get("specific_yield_used"),
+        "cost_per_kwp_used": computed["result"].get("cost_per_kwp_used"),
+    }
+    return computed
+
+
+@api_router.get("/calculate/config")
+async def get_calc_config(request: Request):
+    await get_current_user(request)
+    cfg = await _get_calc_config()
+    cfg.pop("_id", None)
+    return cfg
+
+
+@api_router.put("/calculate/config")
+async def update_calc_config(payload: Dict[str, Any], request: Request):
+    await require_role("admin")(request)
+    payload["updated_at"] = datetime.now(timezone.utc).isoformat()
+    payload.pop("_id", None)
+    await db.calc_config.update_one({"_id": "singleton"}, {"$set": payload}, upsert=True)
+    doc = await db.calc_config.find_one({"_id": "singleton"})
+    doc.pop("_id", None)
+    return doc
+
+
+# ── DISCOMs ─────────────────────────────────────────────────────────────
+@api_router.get("/calculate/discoms")
+async def list_discoms(request: Request, state: Optional[str] = None, active_only: bool = True):
+    await get_current_user(request)
+    q = {}
+    if state: q["state"] = state
+    if active_only: q["active"] = True
+    docs = await db.discoms.find(q).sort("name", 1).to_list(500)
+    return [{k: v for k, v in d.items() if k != "_id"} for d in docs]
+
+
+@api_router.get("/calculate/discoms/{discom_id}")
+async def get_discom(discom_id: str, request: Request):
+    await get_current_user(request)
+    d = await db.discoms.find_one({"$or": [{"id": discom_id}, {"short_code": discom_id}]})
+    if not d:
+        raise HTTPException(status_code=404, detail="DISCOM not found")
+    d.pop("_id", None)
+    return d
+
+
+@api_router.post("/calculate/discoms")
+async def create_discom(payload: Dict[str, Any], request: Request):
+    await require_role("admin")(request)
+    if not payload.get("id"):
+        raise HTTPException(status_code=400, detail="'id' is required")
+    existing = await db.discoms.find_one({"id": payload["id"]})
+    if existing:
+        raise HTTPException(status_code=400, detail="DISCOM id already exists")
+    payload["created_at"] = datetime.now(timezone.utc).isoformat()
+    payload["active"] = payload.get("active", True)
+    await db.discoms.insert_one(payload)
+    return {"message": "DISCOM created", "id": payload["id"]}
+
+
+@api_router.put("/calculate/discoms/{discom_id}")
+async def update_discom(discom_id: str, payload: Dict[str, Any], request: Request):
+    await require_role("admin")(request)
+    payload.pop("_id", None)
+    payload["updated_at"] = datetime.now(timezone.utc).isoformat()
+    res = await db.discoms.update_one({"$or": [{"id": discom_id}, {"short_code": discom_id}]}, {"$set": payload})
+    if res.matched_count == 0:
+        raise HTTPException(status_code=404, detail="DISCOM not found")
+    return {"message": "DISCOM updated"}
+
+
+@api_router.delete("/calculate/discoms/{discom_id}")
+async def delete_discom(discom_id: str, request: Request):
+    await require_role("admin")(request)
+    if discom_id == "FALLBACK":
+        raise HTTPException(status_code=400, detail="Cannot delete FALLBACK DISCOM")
+    res = await db.discoms.delete_one({"id": discom_id})
+    if res.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="DISCOM not found")
+    return {"message": "DISCOM deleted"}
+
+
+# ── Pincodes ────────────────────────────────────────────────────────────
+@api_router.get("/calculate/pincodes")
+async def list_pincodes(request: Request, state: Optional[str] = None, q: Optional[str] = None, limit: int = 100):
+    await get_current_user(request)
+    query = {}
+    if state: query["state"] = state
+    if q:
+        query["$or"] = [{"pincode": {"$regex": f"^{q}"}}, {"district": {"$regex": q, "$options": "i"}}]
+    docs = await db.pincodes.find(query).limit(limit).to_list(limit)
+    return [{k: v for k, v in d.items() if k != "_id"} for d in docs]
+
+
+@api_router.post("/calculate/pincodes")
+async def create_pincode(payload: Dict[str, Any], request: Request):
+    await require_role("admin", "manager")(request)
+    if not payload.get("pincode") or len(payload["pincode"]) != 6:
+        raise HTTPException(status_code=400, detail="pincode must be 6 digits")
+    existing = await db.pincodes.find_one({"pincode": payload["pincode"]})
+    if existing:
+        raise HTTPException(status_code=400, detail="PIN already exists")
+    payload["created_at"] = datetime.now(timezone.utc).isoformat()
+    await db.pincodes.insert_one(payload)
+    return {"message": "PIN created"}
+
+
+# ── Seed defaults (idempotent) ──────────────────────────────────────────
+@api_router.post("/calculate/seed-defaults")
+async def seed_calc_defaults(request: Request):
+    await require_role("admin")(request)
+    created_discoms = 0
+    created_pins = 0
+    for d in get_default_discoms():
+        existing = await db.discoms.find_one({"id": d["id"]})
+        if existing: continue
+        payload = dict(d)
+        payload["created_at"] = datetime.now(timezone.utc).isoformat()
+        await db.discoms.insert_one(payload)
+        created_discoms += 1
+    for p in get_default_pincodes():
+        existing = await db.pincodes.find_one({"pincode": p["pincode"]})
+        if existing: continue
+        payload = dict(p)
+        payload["created_at"] = datetime.now(timezone.utc).isoformat()
+        await db.pincodes.insert_one(payload)
+        created_pins += 1
+    return {
+        "discoms_created": created_discoms,
+        "pincodes_created": created_pins,
+        "total_discoms": await db.discoms.count_documents({}),
+        "total_pincodes": await db.pincodes.count_documents({}),
+    }
+
+
+class BillSavingsRequest(BaseModel):
+    monthly_units_pre: float
+    monthly_generation: float
+    discom_id: Optional[str] = None
+    category_name: Optional[str] = "Domestic"
+    net_metering: bool = True
+
+
+@api_router.post("/calculate/bill-savings")
+async def calc_bill_savings(payload: BillSavingsRequest, request: Request):
+    """Slab-aware pre-vs-post bill comparison. Standalone endpoint for the UI to
+    show a clear 3-number savings breakdown without recomputing the full solution."""
+    await get_current_user(request)
+    from calculators.tariffs import compute_bill_savings as _cbs, pick_category as _pk
+    _, discom_doc = await _get_pincode_and_discom(None, payload.discom_id)
+    category = _pk(discom_doc, payload.category_name)
+    return _cbs(payload.monthly_units_pre, payload.monthly_generation, category,
+                net_metering=payload.net_metering)
+
+
 # ================== PROJECTS ==================
 
 @api_router.post("/projects")
@@ -2209,6 +2479,7 @@ async def create_project(project: ProjectCreate, request: Request):
         "site_measurements": project.site_measurements or {},
         "custom_fields": project.custom_fields or {},
         "solar_report": project.solar_report or None,
+        "calculation_snapshot": project.calculation_snapshot or None,
         "terms_id": project.terms_id or None,
         "reference_project_id": project.reference_project_id or None,
         "installation_date": project.installation_date or None,
@@ -2469,6 +2740,7 @@ async def get_project(project_id: str, request: Request):
         "site_measurements": project.get("site_measurements", {}),
         "custom_fields": project.get("custom_fields", {}),
         "solar_report": project.get("solar_report"),
+        "calculation_snapshot": project.get("calculation_snapshot"),
         "terms_id": project.get("terms_id"),
         "reference_project_id": project.get("reference_project_id"),
         "installation_date": project.get("installation_date"),
