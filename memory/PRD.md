@@ -161,6 +161,7 @@
   - Grand-total block: System Total, Add-ons Total, GST %, Less Subsidy, Net Payable (bold, brand-coloured).
   - **New "Kit Quotation" button** on `ProjectDetails.js` sits next to "Detailed PDF" and Excel.
 - **Contract test** (`frontend/src/utils/kitQuotationPDF.spec.js`) — 19/19 assertions pass, verifies the presentation shape contains zero `unit_price` keys and no rupee amounts in inclusions strings; `pdftotext`-style extraction confirms the generated PDF's text layer carries no per-item prices.
+- **Kit Price Explainer modal** (`components/KitPriceExplainerModal.js`, new): opens from an "Explain" ghost button next to Kit Quotation. Splits into a rose-accented sales/internal pane (Core System line-items with unit cost + margin % + line-with-margin + rounded lump per group + roll-up totals: raw cost, weighted margin ₹, cost+margin, rounding impact, effective margin ₹ and %) and an emerald-accented customer pane that mirrors the actual Kit PDF (lump-sum system line, inclusions, add-on groups, GST, subsidy, net payable). Bottom reconciliation strip shows Sales cost+margin → After Rounding → Customer lump-sum with a clear delta so the sales person can defend any rounding move on the phone. Toggle to hide the customer pane when only the internal breakdown is needed. Uses the shared `buildKitSalesBreakdown` helper (exported from `kitQuotationPDF.js`) — mirrors the customer helper exactly but keeps raw prices; never piped into the PDF generator.
 
 ## Latest — Iteration 43 (Feb 2026)
 - [x] **Deferred Iter-39 Frontends — all 4 landed in one shot**:

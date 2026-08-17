@@ -47,6 +47,7 @@ function InfoRow({ label, value }) {
 
 import DOMPurify from 'dompurify';
 import SubsidyTrackingCard from '../components/SubsidyTrackingCard';
+import KitPriceExplainerModal from '../components/KitPriceExplainerModal';
 import { generateKitQuotationPDF } from '../utils/kitQuotationPDF';
 import { catalogueAPI } from '../utils/api';
 
@@ -70,6 +71,7 @@ export default function ProjectDetails() {
   const [actionLoading, setActionLoading] = useState(false);
   const [showRejectDialog, setShowRejectDialog] = useState(false);
   const [rejectReason, setRejectReason] = useState('');
+  const [showKitExplainer, setShowKitExplainer] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [deletionReason, setDeletionReason] = useState('');
   const [terms, setTerms] = useState(null);
@@ -1282,6 +1284,7 @@ export default function ProjectDetails() {
                 await generateKitQuotationPDF(project, companyProfile, cfg.data, groups.data);
               } catch (e) { alert('Kit PDF failed: ' + (e.message || 'unknown')); }
             }} className="gap-2 border-emerald-300 text-emerald-700 hover:bg-emerald-50" data-testid="download-kit-pdf-btn"><Download className="h-4 w-4" />Kit Quotation</Button>
+            <Button variant="ghost" onClick={() => setShowKitExplainer(true)} className="gap-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100" data-testid="explain-kit-price-btn" title="Sales-side breakdown vs customer-side lump sum"><FileSpreadsheet className="h-4 w-4" />Explain</Button>
             {(project.status === 'approved' || project.status === 'completed') && (
               <Button variant="outline" onClick={shareViaWhatsApp} className="gap-2" data-testid="share-whatsapp-btn"><Share2 className="h-4 w-4" />WhatsApp</Button>
             )}
@@ -1841,6 +1844,8 @@ export default function ProjectDetails() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      {/* Kit Price Explainer — sales-vs-customer breakdown (Iter 44 Change 4) */}
+      <KitPriceExplainerModal project={project} open={showKitExplainer} onClose={() => setShowKitExplainer(false)} />
     </div>
   );
 }

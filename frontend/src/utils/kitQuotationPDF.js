@@ -118,6 +118,99 @@ function sysTypeLabel(s) {
   return map[s] || 'Solar';
 }
 
+/**
+ * Iter 44 Change 4 — Sales-side breakdown for the Kit Price Explainer modal.
+ * Mirrors the customer presentation but keeps every raw price, margin and
+ * rounding step visible. NEVER pipe this into the PDF generator.
+ */
+export function buildKitSalesBreakdown(project, config = {}, addonGroups = []) {
+  const items = project.selected_items || [];
+  const manualCosts = project.manual_costs || [];
+  const step = config.kit_rounding_step || 500;
+  const mode = config.kit_rounding_mode || 'nearest';
+  const gstPct = config.gst_pct || 13.8;
+
+  const coreLines = [];
+  const groupMap = {};
+  let coreSubtotal = 0, coreWithMargin = 0;
+
+  items.forEach(it => {
+    const qty = it.quantity || 1;
+    const rawLine = (it.unit_price || 0) * qty;
+    const marginPct = it.margin_percentage || 0;
+    const lineWithMargin = rawLine * (1 + marginPct / 100);
+    const entry = {
+      name: it.name, qty,
+      unit_price: it.unit_price || 0,
+      line_cost: rawLine,
+      margin_pct: marginPct,
+      line_with_margin: lineWithMargin,
+      specifications: it.specifications || '',
+      addon_group: it.addon_group || null,
+    };
+    if (!it.addon_group) {
+      coreLines.push(entry);
+      coreSubtotal += rawLine;
+      coreWithMargin += lineWithMargin;
+    } else {
+      const g = groupMap[it.addon_group] || { name: it.addon_group, lines: [], subtotal: 0, withMargin: 0 };
+      g.lines.push(entry);
+      g.subtotal += rawLine;
+      g.withMargin += lineWithMargin;
+      groupMap[it.addon_group] = g;
+    }
+  });
+
+  manualCosts.forEach(c => {
+    coreLines.push({
+      name: c.description || 'Manual cost', qty: 1,
+      unit_price: c.amount || 0, line_cost: c.amount || 0,
+      margin_pct: 0, line_with_margin: c.amount || 0,
+      specifications: c.notes || '', is_manual: true,
+    });
+    coreSubtotal += c.amount || 0;
+    coreWithMargin += c.amount || 0;
+  });
+
+  const coreRounded = roundKitPrice(coreWithMargin, step, mode);
+  const groups = Object.values(groupMap).map(g => {
+    const meta = addonGroups.find(ag => ag.name === g.name) || {};
+    const rounded = roundKitPrice(g.withMargin, step, mode);
+    return {
+      ...g, rounded, roundingDelta: rounded - g.withMargin,
+      show_on_pdf: meta.show_on_pdf !== false,
+      optional_priced_separately: !!meta.optional_priced_separately,
+      description: meta.description || '',
+    };
+  });
+
+  const groupsRawCost = groups.reduce((s, g) => s + g.subtotal, 0);
+  const groupsWithMargin = groups.reduce((s, g) => s + g.withMargin, 0);
+  const groupsRounded = groups.filter(g => !g.optional_priced_separately).reduce((s, g) => s + g.rounded, 0);
+
+  const rawCost = coreSubtotal + groupsRawCost;
+  const rawWithMargin = coreWithMargin + groupsWithMargin;
+  const roundedTotal = coreRounded + groupsRounded;
+  const roundingImpact = roundedTotal - rawWithMargin;
+  const gst = Math.round(roundedTotal * (gstPct / 100));
+  const subsidy = project.subsidy_tracking?.eligible_amount || 0;
+  const netPayable = roundedTotal + gst - subsidy;
+  const netMarginRupees = rawWithMargin - rawCost + roundingImpact;
+  const netMarginPct = rawCost > 0 ? (netMarginRupees / rawCost * 100) : 0;
+
+  return {
+    core: { lines: coreLines, subtotal: coreSubtotal, withMargin: coreWithMargin, rounded: coreRounded, roundingDelta: coreRounded - coreWithMargin },
+    groups,
+    totals: {
+      rawCost, rawWithMargin, roundedTotal, gst, subsidy, netPayable,
+      roundingImpact, netMarginRupees, netMarginPct, gstPct,
+    },
+    config: { step, mode, gstPct },
+  };
+}
+
+
+
 function defaultInclusions(sysType, kwp) {
   const panels = Math.max(1, Math.ceil(kwp * 1000 / 550));
   const common = [
