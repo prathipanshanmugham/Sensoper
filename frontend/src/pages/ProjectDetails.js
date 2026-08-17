@@ -47,6 +47,8 @@ function InfoRow({ label, value }) {
 
 import DOMPurify from 'dompurify';
 import SubsidyTrackingCard from '../components/SubsidyTrackingCard';
+import { generateKitQuotationPDF } from '../utils/kitQuotationPDF';
+import { catalogueAPI } from '../utils/api';
 
 function stripHtml(html) { return DOMPurify.sanitize(html, { ALLOWED_TAGS: [] }); }
 function parseTermsHtml(html) {
@@ -1270,7 +1272,16 @@ export default function ProjectDetails() {
               <Link to={`/dashboard/projects/${id}/edit`}><Button variant="outline" className="gap-2" data-testid="edit-project-btn"><Pencil className="h-4 w-4" />Edit</Button></Link>
             )}
             <Button variant="outline" onClick={generateExcel} className="gap-2" data-testid="download-excel-btn"><FileSpreadsheet className="h-4 w-4" />Excel</Button>
-            <Button variant="outline" onClick={generatePDF} className="gap-2" data-testid="download-pdf-btn"><Download className="h-4 w-4" />PDF</Button>
+            <Button variant="outline" onClick={generatePDF} className="gap-2" data-testid="download-pdf-btn"><Download className="h-4 w-4" />Detailed PDF</Button>
+            <Button variant="outline" onClick={async () => {
+              try {
+                const [cfg, groups] = await Promise.all([
+                  catalogueAPI.getConfig(),
+                  catalogueAPI.addonGroups(),
+                ]);
+                await generateKitQuotationPDF(project, companyProfile, cfg.data, groups.data);
+              } catch (e) { alert('Kit PDF failed: ' + (e.message || 'unknown')); }
+            }} className="gap-2 border-emerald-300 text-emerald-700 hover:bg-emerald-50" data-testid="download-kit-pdf-btn"><Download className="h-4 w-4" />Kit Quotation</Button>
             {(project.status === 'approved' || project.status === 'completed') && (
               <Button variant="outline" onClick={shareViaWhatsApp} className="gap-2" data-testid="share-whatsapp-btn"><Share2 className="h-4 w-4" />WhatsApp</Button>
             )}

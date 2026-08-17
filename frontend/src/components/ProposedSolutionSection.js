@@ -11,6 +11,7 @@ import {
   Wand2, Loader2, RotateCcw, MapPin, Zap, ChevronDown, ChevronUp, CheckCircle2, AlertTriangle
 } from 'lucide-react';
 import { calcAPI } from '../utils/api';
+import GuidedSolutionFlow from './GuidedSolutionFlow';
 
 // ───────────────────────── default form shape ─────────────────────────
 const blank = {
@@ -659,6 +660,22 @@ export default function ProposedSolutionSection({ value, onChange }) {
             </div>
           )}
         </div>
+
+        {/* ───── 4-Stage Guided Flow (Iter 44 Phase 2 — Change 1) ───── */}
+        {serverCalc?.stages && serverR && (
+          <div data-testid="ps-guided-flow-wrapper">
+            <p className="text-[11px] uppercase tracking-wider text-slate-600 font-semibold mb-2 flex items-center gap-1.5">
+              <Sun className="h-3.5 w-3.5 text-amber-500" /> Guided Solution — click any step to see the working
+            </p>
+            <GuidedSolutionFlow
+              stages={serverCalc.stages}
+              result={serverR}
+              systemType={data.system_type}
+              warnings={serverCalc.warnings || []}
+              validation={serverCalc.string_validation || null}
+            />
+          </div>
+        )}
 
         {/* ───── Quick Inputs (always visible — 3 essentials) ───── */}
         <div data-testid="ps-quick-inputs">

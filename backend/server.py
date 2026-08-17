@@ -251,6 +251,7 @@ class InventoryItemCreate(BaseModel):
     active: bool = True
     qc_checklist: list = []
     procurement_date: Optional[str] = None
+    addon_group: Optional[str] = None                # Iter 44 Change 3 — links to addon_groups collection
 
 class InventoryItemUpdate(BaseModel):
     name: Optional[str] = None
@@ -271,6 +272,7 @@ class InventoryItemUpdate(BaseModel):
     active: Optional[bool] = None
     qc_checklist: Optional[list] = None
     procurement_date: Optional[str] = None
+    addon_group: Optional[str] = None                # Iter 44 Change 3
 
 class InventoryCategoryCreate(BaseModel):
     name: str
@@ -2565,7 +2567,104 @@ async def calc_solution(payload: CalculateSolutionRequest, request: Request):
         "specific_yield_used": computed["result"].get("specific_yield_used"),
         "cost_per_kwp_used": computed["result"].get("cost_per_kwp_used"),
     }
+    # 4-stage guided-flow trace (Iter 44 Phase 2 — Change 1) — for Show Working UI
+    try:
+        from calculators.working import compile_stages_ongrid, compile_stages_pump, pump_roi
+        st = (payload.system_type or "on-grid").lower()
+        if st == "on-grid":
+            computed["stages"] = compile_stages_ongrid(
+                computed["result"], computed.get("breakdown", []), payload.inputs, config
+            )
+        elif st in ("solar-pump", "pump-dc", "pump-ac"):
+            # Resolve ROI mode + fuel for pump
+            mode = (payload.inputs.get("roi_mode") or "diesel").lower()
+            fuel_doc = None
+            fuel_id = payload.inputs.get("fuel_id")
+            if fuel_id:
+                try:
+                    fuel_doc = await db.fuel_types.find_one({"_id": ObjectId(fuel_id)})
+                except Exception:
+                    fuel_doc = None
+            if not fuel_doc:
+                fuel_doc = await db.fuel_types.find_one({"name": "Diesel"})
+            if fuel_doc:
+                fuel_doc = {k: v for k, v in fuel_doc.items() if k != "_id"}
+            roi_params = {
+                "fuel_price": payload.inputs.get("fuel_price_per_unit"),
+                "tariff_per_unit": payload.inputs.get("existing_ag_tariff"),
+                "hours_per_year": payload.inputs.get("hire_hours_per_year"),
+                "hire_rate": payload.inputs.get("hire_rate"),
+                "crop_value_per_year": payload.inputs.get("crop_value_per_year"),
+                "hours_gained_per_year": payload.inputs.get("hours_gained_per_year"),
+            }
+            roi = pump_roi(
+                input_kw=computed["result"].get("input_power_kw", 0),
+                operating_hours=payload.inputs.get("daily_operating_hours", 6),
+                mode=mode, mode_params=roi_params, fuel=fuel_doc,
+            )
+            # Overwrite the legacy annual_saving/payback if ROI helper produced them
+            if roi.get("annual_saving") and roi["annual_saving"] > 0:
+                computed["result"]["annual_saving"] = roi["annual_saving"]
+                if computed["result"].get("net_cost"):
+                    computed["result"]["payback_years"] = round(computed["result"]["net_cost"] / roi["annual_saving"], 2)
+            if roi.get("annual_co2_offset_kg"):
+                computed["result"]["annual_co2_offset_kg"] = roi["annual_co2_offset_kg"]
+            if roi.get("annual_fuel_units"):
+                computed["result"]["fuel_offset_units_yearly"] = roi["annual_fuel_units"]
+                computed["result"]["fuel_saved_units_yearly"] = roi["annual_fuel_units"]  # alias
+                if fuel_doc:
+                    computed["result"]["fuel_name"] = fuel_doc.get("name")
+                    computed["result"]["fuel_unit"] = fuel_doc.get("unit")
+            computed["roi_details"] = roi
+            computed["stages"] = compile_stages_pump(
+                computed["result"], computed.get("breakdown", []), payload.inputs, config, roi
+            )
+    except Exception as _stages_err:
+        logger.warning(f"stages compilation failed: {_stages_err}")
+        computed["stages"] = None
     return computed
+
+
+@api_router.post("/calculate/pump/string-voltage")
+async def validate_pump_string_voltage(payload: Dict[str, Any], request: Request):
+    """Iter 44 Phase 2 — validate a pump string design against controller MPPT + absolute-max limits
+    using per-DISCOM/pincode admin-configurable low-temp reference.
+    """
+    await get_current_user(request)
+    from calculators.working import validate_string_voltage
+
+    pump_id = payload.get("pump_product_id")
+    panel_id = payload.get("panel_product_id")
+    modules_in_series = int(payload.get("modules_in_series") or 0)
+    strings_in_parallel = int(payload.get("strings_in_parallel") or 1)
+    pincode = payload.get("pincode")
+
+    if not (pump_id and panel_id):
+        raise HTTPException(400, "pump_product_id and panel_product_id are required")
+
+    try:
+        pump = await db.pump_products.find_one({"_id": ObjectId(pump_id)})
+        panel = await db.panel_products.find_one({"_id": ObjectId(panel_id)})
+    except Exception:
+        raise HTTPException(400, "invalid product id(s)")
+    if not (pump and panel):
+        raise HTTPException(404, "pump or panel not found in catalogue")
+
+    # Resolve low-temp reference: per-pincode override > global default (from pricing_config)
+    site_tmin = None
+    if pincode:
+        pin_doc = await db.pincodes.find_one({"pincode": str(pincode)})
+        if pin_doc and pin_doc.get("min_temp_c") is not None:
+            site_tmin = float(pin_doc["min_temp_c"])
+    if site_tmin is None:
+        pc = await db.pricing_config.find_one({"key": "defaults"}) or {}
+        site_tmin = float(pc.get("string_low_temp_default_c", -10))
+
+    return validate_string_voltage(
+        pump_product=pump, panel_product=panel,
+        modules_in_series=modules_in_series, strings_in_parallel=strings_in_parallel,
+        site_min_temp_c=site_tmin,
+    )
 
 
 @api_router.get("/calculate/config")

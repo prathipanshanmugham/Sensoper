@@ -504,7 +504,7 @@ export default function SiteVisitForm() {
       case 'customer': if (!formData.customer.name || !formData.customer.phone || !formData.customer.address) { setError('Please fill all required fields'); return false; } return validateExtraFields();
       case 'location': if (!formData.location.site_location_words && !formData.location.address) { setError('Enter What3Words or site address'); return false; } return validateExtraFields();
       case 'site_electrical': return validateExtraFields();
-      case 'materials': if (formData.selected_items.length === 0) { setError('Add at least one inventory item'); return false; } return validateExtraFields();
+      case 'materials': return validateExtraFields();
       case 'site_docs': {
         // Drive folder is now optional; if provided, warn about format but do not block
         const link = formData.drive_folder_link;
@@ -1039,7 +1039,10 @@ export default function SiteVisitForm() {
 
                 <div>
                   <div className="flex items-center justify-between mb-3">
-                    <h3 className="font-semibold text-slate-900 flex items-center gap-2"><Package className="h-4 w-4" />Select from Inventory</h3>
+                    <div>
+                      <h3 className="font-semibold text-slate-900 flex items-center gap-2"><Package className="h-4 w-4" />Add-ons & Extras</h3>
+                      <p className="text-[11px] text-slate-500 mt-0.5">Optional extras on top of the core kit — safety, monitoring, civil work, service. Grouped on the customer PDF.</p>
+                    </div>
                     <Button type="button" variant="outline" size="sm" onClick={() => setShowAddCategory(true)} className="h-9 text-xs gap-1" data-testid="add-category-btn"><FolderPlus className="h-3.5 w-3.5" />Add Category</Button>
                   </div>
 
@@ -1056,19 +1059,42 @@ export default function SiteVisitForm() {
                     </div>
                   )}
 
-                  {categories.map(cat => {
-                    const catItems = getItemsByCategory(cat.slug);
-                    if (catItems.length === 0) return null;
-                    return (
-                      <div key={cat.slug} className="mb-3">
-                        <Label className="text-xs uppercase tracking-wider text-slate-500 mb-1 block">{cat.name}</Label>
-                        <Select onValueChange={(v) => addSelectedItem(v)}>
-                          <SelectTrigger className="h-11" data-testid={`select-${cat.slug}`}><SelectValue placeholder={`Add ${cat.name.toLowerCase()}...`} /></SelectTrigger>
-                          <SelectContent>{catItems.map(item => (<SelectItem key={item.id} value={item.id}>{item.name} - ₹{item.unit_price.toLocaleString('en-IN')} (Stock: {item.quantity})</SelectItem>))}</SelectContent>
-                        </Select>
+                  {/* Universal searchable combobox — replaces per-category dropdowns */}
+                  <div className="rounded-lg border border-slate-200 bg-white p-3 space-y-2" data-testid="addons-searchbox">
+                    <Label className="text-xs uppercase tracking-wider text-slate-500">Search all inventory</Label>
+                    <Select onValueChange={(v) => addSelectedItem(v)}>
+                      <SelectTrigger className="h-11" data-testid="addons-select-any"><SelectValue placeholder="Search by name / SKU / category..." /></SelectTrigger>
+                      <SelectContent>
+                        {inventoryItems.filter(i => i.quantity > 0 || true).map(item => {
+                          const cat = categories.find(c => c.slug === item.category);
+                          return (
+                            <SelectItem key={item.id} value={item.id}>
+                              {item.name} <span className="text-slate-400">· {cat?.name || item.category} · ₹{item.unit_price.toLocaleString('en-IN')} · Stock {item.quantity}</span>
+                            </SelectItem>
+                          );
+                        })}
+                      </SelectContent>
+                    </Select>
+                    {/* Quick-add strip: 6 most recent items */}
+                    {inventoryItems.length > 0 && (
+                      <div className="pt-1">
+                        <p className="text-[10px] uppercase text-slate-400 mb-1">Quick add</p>
+                        <div className="flex flex-wrap gap-1.5">
+                          {inventoryItems.slice(0, 6).map(item => (
+                            <button
+                              type="button"
+                              key={item.id}
+                              onClick={() => addSelectedItem(item.id)}
+                              className="text-[11px] px-2 py-1 rounded-full border border-slate-200 hover:border-emerald-400 hover:bg-emerald-50 text-slate-600 flex items-center gap-1"
+                              data-testid={`quick-add-${item.id}`}
+                            >
+                              <Plus className="h-3 w-3" />{item.name}
+                            </button>
+                          ))}
+                        </div>
                       </div>
-                    );
-                  })}
+                    )}
+                  </div>
                 </div>
 
                 {formData.selected_items.length > 0 && (
