@@ -125,6 +125,23 @@
 - [ ] Reorder Suggestions card driven by Fast-moving + low stock
 - [ ] Extend attribution: multi-touch CAC (first-touch vs last-touch weighting)
 
+## Iteration 44 — 7-Change Master Spec (in progress)
+**Overall goal:** rebuild solar calculator into 4-stage guided flow, replace flat pricing with real per-product catalogue, generalise diesel → fuel model, split materials into kit + add-ons, add Kit Quotation PDF (lump-sum), rebuild pump physics with string voltage validation and ROI-by-replacement.
+
+**Delivery plan (phased):**
+- ✅ **Phase 1 (Feb 2026) — Changes 6 & 7 (data foundation):** Product Catalogue + Fuel Model
+- ⏳ **Phase 2 — Changes 1 & 5:** 4-stage guided calculator + Show Working + rebuilt pump physics
+- ⏳ **Phase 3 — Changes 2, 3 & 4:** Add-ons materials rebuild + grouped PDF section + Kit Quotation PDF
+- ⏳ **Phase 4:** End-to-end regression, migration checks, PDF text-layer scrub audit
+
+### Phase 1 — landed Feb 2026
+- **`backend/catalogue.py`** (new, ~430 lines): 7 product collections (`panel_products` / `inverter_products` / `battery_products` / `pump_products` / `structure_products` / `service_rates` / `fuel_types`) + `addon_groups` + `price_history` + `pricing_config` keyed defaults. Each product carries `effective_from` for versioning, per-product `margin_pct`, `linked_inventory_item_id`, `supplier`, `active` soft-delete, plus category-specific string-design specs (Voc/Vmp/Isc/Imp/temp_coef on panels, MPPT window + absolute-max on inverters and pump controllers).
+- **CRUD**: `GET/POST/PUT/DELETE /api/catalogue/products/{cat}`, `POST /api/catalogue/products/{cat}/import` (multipart CSV), `GET /api/catalogue/products/{cat}/{pid}/history`, `GET/PUT /api/catalogue/config`, `POST /api/catalogue/seed` (idempotent — migrates legacy `thresholds.pricing` into a Generic/Unbranded fallback product per category so existing projects still open), `GET /api/catalogue/addon-groups`.
+- **Fuel model** replaces the hardcoded `FUEL_LITRES_PER_KWH = 0.28` in `ProposedSolutionSection.js`. Seeded with Diesel/Petrol/Kerosene/LPG/CNG/Grid Electricity, each carrying `energy_content_kwh_per_unit`, `genset_efficiency_pct`, auto-derived `effective_kwh_per_unit` and `units_per_kwh`, `default_price_per_unit`, `co2_kg_per_unit`, plus `source_note` + `last_reviewed_date` audit fields. Diesel now derives 0.31 L/kWh (was 0.28).
+- **8 admin-managed add-on groups** seeded: Safety & Protection, Monitoring, Structure Upgrades, Electrical Extras, Civil Work, Water & Plumbing, Service & AMC, Miscellaneous — each with `display_order`, `description`, `show_on_pdf`, `optional_priced_separately` toggle for Phase 3 PDF grouping.
+- **`PricingConfig.js`** rebuilt as 8-tab UI (Panels · Inverters · Batteries · Pumps & Ctrl · Structure & BOS · Services & Rates · Fuel Types · Global Defaults). Per-tab: paginated list + search summary, New/Edit/Delete/Import CSV, price versioning via `effective_from`, per-product margin, auto-derive `price_per_watt` for panels and `kWh` for batteries on save. Global Defaults tab exposes admin-configurable `kit_rounding_step` (Change 4), `string_low_temp_default_c` (Change 5), `pump_oversizing_factor`, `pump_derating_factor`, `specific_yield_kwh_per_kwp_day` etc. — every constant Phase 2 needs.
+- **Tests**: `test_iter44_catalogue.py` — 8/8 pass (idempotent seed, auto-derived fields, history + soft-delete, config persistence, addon groups ordering, non-admin write blocked).
+
 ## Latest — Iteration 43 (Feb 2026)
 - [x] **Deferred Iter-39 Frontends — all 4 landed in one shot**:
   1. **Subsidy Tracking Card** (`components/SubsidyTrackingCard.js`) — mounted on ProjectDetails after Notes. Renders 5-step lifecycle timeline (Eligible → Applied → Under Review → Approved → Disbursed) with the current stage ring-highlighted, quick-advance button that stamps today's date on transition, Mark Rejected with reason capture, amounts strip (Eligible / Approved / Disbursed), dates strip + Cycle days badge, and a full Edit dialog covering scheme (PM Surya Ghar / KUSUM-B / KUSUM-C / State), application number, 4 amount fields, 5 date fields (application / approval / disbursement / DISCOM inspection / net meter), and notes. Backend `POST /api/subsidy/tracking` now merges with existing DB doc so `days_to_disburse` computes on incremental updates.

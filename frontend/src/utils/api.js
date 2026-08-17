@@ -102,6 +102,20 @@ export const thresholdsAPI = {
   update: (data) => api.put('/settings/thresholds', data)
 };
 
+// Catalogue (Iter 44 Phase 1) — product-level pricing across panels / inverters / batteries / pumps / structure / services / fuels
+export const catalogueAPI = {
+  list: (cat, active_only = false) => api.get(`/catalogue/products/${cat}`, { params: { active_only } }),
+  create: (cat, data) => api.post(`/catalogue/products/${cat}`, data),
+  update: (cat, pid, data) => api.put(`/catalogue/products/${cat}/${pid}`, data),
+  delete: (cat, pid) => api.delete(`/catalogue/products/${cat}/${pid}`),
+  history: (cat, pid) => api.get(`/catalogue/products/${cat}/${pid}/history`),
+  importCsv: (cat, file) => { const fd = new FormData(); fd.append('file', file); return api.post(`/catalogue/products/${cat}/import`, fd, { headers: { 'Content-Type': 'multipart/form-data' } }); },
+  getConfig: () => api.get('/catalogue/config'),
+  updateConfig: (data) => api.put('/catalogue/config', data),
+  seed: () => api.post('/catalogue/seed'),
+  addonGroups: () => api.get('/catalogue/addon-groups'),
+};
+
 // Customer Credits
 export const creditsAPI = {
   create: (data) => api.post('/credits', data),

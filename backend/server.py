@@ -2219,6 +2219,10 @@ _sales_router = _create_sales_router(
 )
 api_router.include_router(_sales_router)
 
+# ═══════════ CATALOGUE + FUEL MODEL (Iter 44 Phase 1 — Changes 6 & 7) ═══════════
+from catalogue import attach as _attach_catalogue  # noqa: E402
+_attach_catalogue(api_router, db, get_current_user)
+
 
 # ═══════════ SUBSIDY TRACKING (Iter 39 Change 2c) ═══════════
 
