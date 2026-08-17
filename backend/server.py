@@ -130,6 +130,10 @@ class ElectricalDetails(BaseModel):
     monthly_consumption_units: float
     eb_tariff: float
     service_type: Optional[str] = None
+    connection_phase: Optional[str] = None       # Iter 41 Change 1 — Single/Three Phase
+    _prefilled: Optional[dict] = None             # {eb_tariff: bool, service_type: bool}
+
+    model_config = {"extra": "allow"}             # forward-compat for future fields
 
 class SolarSystemInputs(BaseModel):
     system_type: str = "on-grid"
@@ -148,6 +152,10 @@ class AdditionalInputs(BaseModel):
     inverter_to_panel_distance: float
     installation_complexity: str = "simple"
     shadow_analysis_notes: Optional[str] = None
+    cable_length_unit: Optional[str] = "m"          # Iter 41 Change 1 — user-facing unit
+    inverter_to_panel_unit: Optional[str] = "m"
+
+    model_config = {"extra": "allow"}
 
 class SelectedItem(BaseModel):
     inventory_item_id: Optional[str] = None

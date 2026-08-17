@@ -18,8 +18,9 @@ import {
   User, MapPin, Zap, ArrowRight, ArrowLeft, Loader2, CheckCircle2,
   Sparkles, Plus, Trash2, Package, FolderOpen, X, Percent, FolderPlus, ExternalLink, CheckCircle, Link2,
   Ruler, ChevronDown, ChevronRight, Home, Compass, Eye, PlugZap, Settings2, HardHat, Shield, Layers,
-  AlertCircle, FileText, Wand2, RefreshCw
+  AlertCircle, FileText, Wand2, RefreshCw, Bolt
 } from 'lucide-react';
+import { Badge } from '../components/ui/badge';
 
 const SYSTEM_SLUGS = ['customer', 'location', 'site_electrical', 'materials', 'site_docs'];
 const SLUG_ICON_MAP = { customer: User, location: MapPin, site_electrical: Zap, materials: Package, site_docs: FolderOpen };
@@ -40,6 +41,29 @@ const SERVICE_TYPE_OPTIONS = [
   { value: 'Three Phase', label: 'Three Phase' },
   { value: 'HT Service', label: 'HT Service (High Tension)' }
 ];
+
+// Iter 41 Change 1 — canonical service-category options (LT/HT/Ag) used on the
+// PDF's Electrical Details section. Kept separate from SERVICE_TYPE_OPTIONS
+// (phase) so both can coexist without breaking older projects.
+const SERVICE_CATEGORY_OPTIONS = [
+  { value: 'LT Domestic', label: 'LT Domestic' },
+  { value: 'LT Commercial', label: 'LT Commercial' },
+  { value: 'LT Industrial', label: 'LT Industrial' },
+  { value: 'Agricultural', label: 'Agricultural' },
+  { value: 'HT', label: 'HT (High Tension)' },
+];
+const CONNECTION_PHASE_OPTIONS = [
+  { value: 'Single Phase', label: 'Single Phase' },
+  { value: 'Three Phase', label: 'Three Phase' },
+];
+
+// Length conversion — user enters in either unit, we store in metres.
+const toMetres = (val, unit) => {
+  const n = parseFloat(val);
+  if (isNaN(n)) return 0;
+  return unit === 'ft' ? +(n * 0.3048).toFixed(2) : n;
+};
+
 
 export default function SiteVisitForm() {
   const navigate = useNavigate();
@@ -82,10 +106,10 @@ export default function SiteVisitForm() {
   const [formData, setFormData] = useState({
     customer: { name: '', phone: '', address: '', email: '' },
     location: { latitude: null, longitude: null, address: '', site_location_words: '' },
-    electrical: { sanction_load_kw: '', connected_load_kw: '', monthly_consumption_units: '', eb_tariff: '', service_type: '' },
+    electrical: { sanction_load_kw: '', connected_load_kw: '', monthly_consumption_units: '', eb_tariff: '', service_type: '', connection_phase: '', _prefilled: {} },
     solar_system: { system_type: 'on-grid', inverter_model: '', panel_wattage: 540, battery_required: false, battery_capacity_ah: '' },
     mounting: { roof_type: '', tilt_angle: 15, structure_type: '' },
-    additional: { cable_length_meters: 50, inverter_to_panel_distance: 10, installation_complexity: 'simple', shadow_analysis_notes: '' },
+    additional: { cable_length_meters: 15, cable_length_unit: 'm', inverter_to_panel_distance: 3, inverter_to_panel_unit: 'm', installation_complexity: 'simple', shadow_analysis_notes: '' },
     selected_items: [],
     manual_costs: [],
     drive_folder_name: '',
@@ -122,13 +146,17 @@ export default function SiteVisitForm() {
           connected_load_kw: p.electrical?.connected_load_kw || '',
           monthly_consumption_units: p.electrical?.monthly_consumption_units || '',
           eb_tariff: p.electrical?.eb_tariff || '',
-          service_type: p.electrical?.service_type || ''
+          service_type: p.electrical?.service_type || '',
+          connection_phase: p.electrical?.connection_phase || '',
+          _prefilled: p.electrical?._prefilled || {}
         },
         solar_system: p.solar_system || { system_type: 'on-grid', inverter_model: '', panel_wattage: 540, battery_required: false, battery_capacity_ah: '' },
         mounting: p.mounting || { roof_type: '', tilt_angle: 15, structure_type: '' },
         additional: {
-          cable_length_meters: p.additional?.cable_length_meters || 50,
-          inverter_to_panel_distance: p.additional?.inverter_to_panel_distance || 10,
+          cable_length_meters: p.additional?.cable_length_meters || 15,
+          cable_length_unit: p.additional?.cable_length_unit || 'm',
+          inverter_to_panel_distance: p.additional?.inverter_to_panel_distance || 3,
+          inverter_to_panel_unit: p.additional?.inverter_to_panel_unit || 'm',
           installation_complexity: p.additional?.installation_complexity || 'simple',
           shadow_analysis_notes: p.additional?.shadow_analysis_notes || ''
         },
@@ -219,6 +247,40 @@ export default function SiteVisitForm() {
     setSuggestedKit(best);
   }, [availableKits, formData.custom_fields, editId, kitDismissed]);
 
+  // Iter 41 Change 1 — Auto-prefill EB tariff + service type from the proposed-solution
+  // section (which resolves DISCOM/tariff-category from PIN code). We only fill when
+  // the user hasn't already typed something; mark _prefilled so the UI can badge it.
+  useEffect(() => {
+    const ps = formData.custom_fields?.proposed_solution || {};
+    const psTariff = parseFloat(ps.tariff_per_unit) || 0;
+    const psCategory = ps.tariff_category || '';
+    if (!psTariff && !psCategory) return;
+    setFormData(prev => {
+      const el = prev.electrical || {};
+      const patch = { ...el };
+      const pref = { ...(el._prefilled || {}) };
+      let changed = false;
+      if (psTariff && (!el.eb_tariff || pref.eb_tariff)) {
+        patch.eb_tariff = psTariff; pref.eb_tariff = true; changed = true;
+      }
+      // Only prefill service type if the user hasn't picked one; keep them separate — tariff
+      // category ≠ service type but they usually coincide (e.g. "Domestic" → "LT Domestic")
+      if (psCategory && !el.service_type) {
+        const mapped =
+          psCategory === 'Domestic'   ? 'LT Domestic'   :
+          psCategory === 'Commercial' ? 'LT Commercial' :
+          psCategory === 'Industrial' ? 'LT Industrial' :
+          psCategory === 'Agricultural' ? 'Agricultural' :
+          psCategory === 'HT' ? 'HT' : null;
+        if (mapped) { patch.service_type = mapped; pref.service_type = true; changed = true; }
+      }
+      if (!changed) return prev;
+      patch._prefilled = pref;
+      return { ...prev, electrical: patch };
+    });
+  }, [formData.custom_fields?.proposed_solution?.tariff_per_unit,
+      formData.custom_fields?.proposed_solution?.tariff_category]);
+
   const applyKit = (kit) => {
     if (!kit) return;
     // Convert kit lines into selected_items (using inventory info when linked)
@@ -307,7 +369,9 @@ export default function SiteVisitForm() {
             connected_load_kw: parseFloat(formData.electrical.connected_load_kw) || 0,
             monthly_consumption_units: parseFloat(formData.electrical.monthly_consumption_units) || 0,
             eb_tariff: parseFloat(formData.electrical.eb_tariff) || 0,
-            service_type: formData.electrical.service_type || null
+            service_type: formData.electrical.service_type || null,
+            connection_phase: formData.electrical.connection_phase || null,
+            _prefilled: formData.electrical._prefilled || {}
           },
           solar_system: {
             system_type: formData.solar_system.system_type || 'on-grid',
@@ -322,8 +386,10 @@ export default function SiteVisitForm() {
             structure_type: formData.mounting.structure_type || 'TBD'
           },
           additional: {
-            cable_length_meters: parseFloat(formData.additional.cable_length_meters) || 50,
-            inverter_to_panel_distance: parseFloat(formData.additional.inverter_to_panel_distance) || 10,
+            cable_length_meters: toMetres(formData.additional.cable_length_meters, formData.additional.cable_length_unit),
+            cable_length_unit: formData.additional.cable_length_unit || 'm',
+            inverter_to_panel_distance: toMetres(formData.additional.inverter_to_panel_distance, formData.additional.inverter_to_panel_unit),
+            inverter_to_panel_unit: formData.additional.inverter_to_panel_unit || 'm',
             installation_complexity: formData.additional.installation_complexity || 'simple',
             shadow_analysis_notes: formData.additional.shadow_analysis_notes || ''
           },
@@ -543,7 +609,9 @@ export default function SiteVisitForm() {
           connected_load_kw: parseFloat(formData.electrical.connected_load_kw) || 0,
           monthly_consumption_units: parseFloat(formData.electrical.monthly_consumption_units) || psMonthlyUnits || 0,
           eb_tariff: parseFloat(formData.electrical.eb_tariff) || psTariff || 0,
-          service_type: formData.electrical.service_type || ps.connection_type || null
+          service_type: formData.electrical.service_type || ps.connection_type || null,
+          connection_phase: formData.electrical.connection_phase || null,
+          _prefilled: formData.electrical._prefilled || {}
         },
         solar_system: {
           ...formData.solar_system, panel_wattage: parseInt(formData.solar_system.panel_wattage) || 540,
@@ -552,8 +620,10 @@ export default function SiteVisitForm() {
         mounting: { ...formData.mounting, tilt_angle: parseInt(formData.mounting.tilt_angle) || 15 },
         additional: {
           ...formData.additional,
-          cable_length_meters: parseFloat(formData.additional.cable_length_meters) || 0,
-          inverter_to_panel_distance: parseFloat(formData.additional.inverter_to_panel_distance) || 0
+          cable_length_meters: toMetres(formData.additional.cable_length_meters, formData.additional.cable_length_unit),
+          cable_length_unit: formData.additional.cable_length_unit || 'm',
+          inverter_to_panel_distance: toMetres(formData.additional.inverter_to_panel_distance, formData.additional.inverter_to_panel_unit),
+          inverter_to_panel_unit: formData.additional.inverter_to_panel_unit || 'm'
         },
         selected_items: formData.selected_items.map(si => ({
           inventory_item_id: si.inventory_item_id, name: si.name, category: si.category,
@@ -889,6 +959,107 @@ export default function SiteVisitForm() {
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <div className="space-y-1"><Label className="text-xs">Distance Roof to DB (ft)</Label><Input type="number" step="0.1" min="0" value={formData.site_measurements.electrical.db_distance} onChange={(e) => updateMeasurement('electrical', 'db_distance', e.target.value)} placeholder="e.g., 25" className="h-10" data-testid="db-distance-input" /></div>
                         <div className="space-y-1"><Label className="text-xs">Estimated Cable Length (ft)</Label><Input type="number" step="0.1" min="0" value={formData.site_measurements.electrical.cable_length} onChange={(e) => updateMeasurement('electrical', 'cable_length', e.target.value)} placeholder="e.g., 50" className="h-10" data-testid="meas-cable-length-input" /></div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Load & Electrical Details (Iter 41 Change 1 — orphan-field fix) */}
+                <div className="border border-slate-200 rounded-lg overflow-hidden" data-testid="section-load-electrical">
+                  <button type="button" onClick={() => toggleSection('load_m')} className="w-full flex items-center justify-between p-3 bg-slate-50 hover:bg-slate-100 transition-colors">
+                    <span className="flex items-center gap-2 font-semibold text-sm text-slate-800"><Bolt className="h-4 w-4 text-emerald-600" />Load & Electrical Details<Badge variant="outline" className="ml-1 text-[9px]">prints on PDF</Badge></span>
+                    {openSections.load_m ? <ChevronDown className="h-4 w-4 text-slate-400" /> : <ChevronRight className="h-4 w-4 text-slate-400" />}
+                  </button>
+                  {openSections.load_m && (
+                    <div className="p-4 space-y-4">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div className="space-y-1">
+                          <Label className="text-xs">Service Type *</Label>
+                          <Select value={formData.electrical.service_type || ''} onValueChange={(v) => setFormData(p => ({ ...p, electrical: { ...p.electrical, service_type: v } }))}>
+                            <SelectTrigger className="h-10" data-testid="electrical-service-type-select"><SelectValue placeholder="LT Domestic / Commercial / Industrial..." /></SelectTrigger>
+                            <SelectContent>{SERVICE_CATEGORY_OPTIONS.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}</SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs">Connection Phase</Label>
+                          <Select value={formData.electrical.connection_phase || ''} onValueChange={(v) => setFormData(p => ({ ...p, electrical: { ...p.electrical, connection_phase: v } }))}>
+                            <SelectTrigger className="h-10" data-testid="electrical-connection-phase-select"><SelectValue placeholder="Single Phase / Three Phase" /></SelectTrigger>
+                            <SelectContent>{CONNECTION_PHASE_OPTIONS.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}</SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        <div className="space-y-1">
+                          <Label className="text-xs">Sanctioned Load (kW)</Label>
+                          <Input type="number" inputMode="decimal" step="0.1" min="0"
+                            value={formData.electrical.sanction_load_kw}
+                            onChange={(e) => setFormData(p => ({ ...p, electrical: { ...p.electrical, sanction_load_kw: e.target.value } }))}
+                            placeholder="e.g., 3" className="h-10" data-testid="electrical-sanction-load-input" />
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs">Connected Load (kW)</Label>
+                          <Input type="number" inputMode="decimal" step="0.1" min="0"
+                            value={formData.electrical.connected_load_kw}
+                            onChange={(e) => setFormData(p => ({ ...p, electrical: { ...p.electrical, connected_load_kw: e.target.value } }))}
+                            placeholder="e.g., 4.5" className="h-10" data-testid="electrical-connected-load-input" />
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs">Monthly Consumption (units)</Label>
+                          <Input type="number" inputMode="numeric" step="1" min="0"
+                            value={formData.electrical.monthly_consumption_units}
+                            onChange={(e) => setFormData(p => ({ ...p, electrical: { ...p.electrical, monthly_consumption_units: e.target.value } }))}
+                            placeholder="e.g., 400" className="h-10" data-testid="electrical-monthly-consumption-input" />
+                        </div>
+                      </div>
+
+                      <div className="space-y-1">
+                        <Label className="text-xs flex items-center gap-1.5">
+                          EB Tariff (₹ / unit)
+                          {formData.electrical._prefilled?.eb_tariff && <Badge variant="outline" className="text-[9px] border-blue-300 text-blue-700">prefilled — editable</Badge>}
+                        </Label>
+                        <Input type="number" inputMode="decimal" step="0.1" min="0"
+                          value={formData.electrical.eb_tariff}
+                          onChange={(e) => setFormData(p => ({ ...p, electrical: { ...p.electrical, eb_tariff: e.target.value, _prefilled: { ...(p.electrical._prefilled || {}), eb_tariff: false } } }))}
+                          placeholder="e.g., 7.5 — auto-prefills from DISCOM" className={`h-10 ${formData.electrical._prefilled?.eb_tariff ? 'bg-blue-50/50' : ''}`} data-testid="electrical-eb-tariff-input" />
+                      </div>
+
+                      <div className="pt-3 border-t border-slate-100 space-y-3">
+                        <p className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold">Wiring runs — stored in metres, prints on PDF as metres</p>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          <div className="space-y-1">
+                            <Label className="text-xs">Cable Length (roof → DB)</Label>
+                            <div className="flex gap-2">
+                              <Input type="number" inputMode="decimal" step="0.1" min="0"
+                                value={formData.additional.cable_length_meters}
+                                onChange={(e) => setFormData(p => ({ ...p, additional: { ...p.additional, cable_length_meters: e.target.value } }))}
+                                placeholder="e.g., 15" className="h-10 flex-1" data-testid="additional-cable-length-input" />
+                              <Select value={formData.additional.cable_length_unit || 'm'} onValueChange={(v) => setFormData(p => ({ ...p, additional: { ...p.additional, cable_length_unit: v } }))}>
+                                <SelectTrigger className="h-10 w-20" data-testid="additional-cable-length-unit-select"><SelectValue /></SelectTrigger>
+                                <SelectContent><SelectItem value="m">m</SelectItem><SelectItem value="ft">ft</SelectItem></SelectContent>
+                              </Select>
+                            </div>
+                            {formData.additional.cable_length_unit === 'ft' && (
+                              <p className="text-[10px] text-slate-400">= {toMetres(formData.additional.cable_length_meters, 'ft')} m (stored)</p>
+                            )}
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-xs">Inverter → Panel Distance</Label>
+                            <div className="flex gap-2">
+                              <Input type="number" inputMode="decimal" step="0.1" min="0"
+                                value={formData.additional.inverter_to_panel_distance}
+                                onChange={(e) => setFormData(p => ({ ...p, additional: { ...p.additional, inverter_to_panel_distance: e.target.value } }))}
+                                placeholder="e.g., 3" className="h-10 flex-1" data-testid="additional-inverter-panel-distance-input" />
+                              <Select value={formData.additional.inverter_to_panel_unit || 'm'} onValueChange={(v) => setFormData(p => ({ ...p, additional: { ...p.additional, inverter_to_panel_unit: v } }))}>
+                                <SelectTrigger className="h-10 w-20" data-testid="additional-inverter-panel-unit-select"><SelectValue /></SelectTrigger>
+                                <SelectContent><SelectItem value="m">m</SelectItem><SelectItem value="ft">ft</SelectItem></SelectContent>
+                              </Select>
+                            </div>
+                            {formData.additional.inverter_to_panel_unit === 'ft' && (
+                              <p className="text-[10px] text-slate-400">= {toMetres(formData.additional.inverter_to_panel_distance, 'ft')} m (stored)</p>
+                            )}
+                          </div>
+                        </div>
                       </div>
                     </div>
                   )}

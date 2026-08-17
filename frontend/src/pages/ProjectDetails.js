@@ -37,10 +37,12 @@ const statusConfig = {
 const ALL_STATUSES = ['draft', 'submitted', 'approved', 'rejected', 'completed'];
 
 function InfoRow({ label, value }) {
+  // Iter 41 Change 1 — omit rows with no real value instead of printing "-" or "0"
+  if (value === null || value === undefined || value === '' || value === '- ' || value === '-') return null;
   return (
     <div className="flex justify-between py-2 border-b border-slate-100 last:border-0">
       <span className="text-slate-500">{label}</span>
-      <span className="font-medium text-slate-900 text-right max-w-[60%]">{value || '-'}</span>
+      <span className="font-medium text-slate-900 text-right max-w-[60%]">{value}</span>
     </div>
   );
 }
@@ -332,19 +334,28 @@ export default function ProjectDetails() {
     autoTable(doc, { startY: y, margin: { left: m, right: m }, theme: 'plain', styles: { font: FONT, fontSize: 9, cellPadding: 2, textColor: [50, 50, 50] }, columnStyles: { 0: { fontStyle: 'bold', cellWidth: 40, textColor: [100, 100, 100] } }, body: locationRows });
     y = doc.lastAutoTable.finalY + 8;
 
-    // Electrical
+    // Electrical (Iter 41 Change 1 — audited, all rows now have a matching input)
     y = sectionHead('Electrical Details', y);
-    autoTable(doc, { startY: y, margin: { left: m, right: m }, theme: 'plain', styles: { font: FONT, fontSize: 9, cellPadding: 2, textColor: [50, 50, 50] }, columnStyles: { 0: { fontStyle: 'bold', cellWidth: 50, textColor: [100, 100, 100] } },
-      body: [
-        ['Service Type', project.electrical?.service_type || '-'],
-        ['Sanction Load', `${project.electrical?.sanction_load_kw || 0} kW`],
-        ['Connected Load', `${project.electrical?.connected_load_kw || 0} kW`],
-        ['Monthly Consumption', `${project.electrical?.monthly_consumption_units || 0} units`],
-        ['EB Tariff', `₹${project.electrical?.eb_tariff || 0}/unit`],
-        ['System Type', (project.solar_system?.system_type || '-').toUpperCase()],
-        ['Cable Length', `${project.additional?.cable_length_meters || 0} m`],
-      ],
-    }); y = doc.lastAutoTable.finalY + 12;
+    const canonicalConnected = project.electrical?.connected_load_kw
+      ?? project.site_measurements?.load?.connected_load ?? 0;
+    const canonicalMonthly = project.electrical?.monthly_consumption_units
+      ?? project.site_measurements?.load?.monthly_units ?? 0;
+    const cableM = project.additional?.cable_length_meters || 0;
+    const invPanelM = project.additional?.inverter_to_panel_distance || 0;
+    const elRows = [];
+    if (project.electrical?.service_type) elRows.push(['Service Type', project.electrical.service_type]);
+    if (project.electrical?.connection_phase) elRows.push(['Connection Phase', project.electrical.connection_phase]);
+    if (project.electrical?.sanction_load_kw) elRows.push(['Sanctioned Load', `${project.electrical.sanction_load_kw} kW`]);
+    if (canonicalConnected) elRows.push(['Connected Load', `${canonicalConnected} kW`]);
+    if (canonicalMonthly) elRows.push(['Monthly Consumption', `${canonicalMonthly} units`]);
+    if (project.electrical?.eb_tariff) elRows.push(['EB Tariff', `\u20B9${project.electrical.eb_tariff}/unit`]);
+    if (project.solar_system?.system_type) elRows.push(['System Type', project.solar_system.system_type.toUpperCase()]);
+    if (cableM) elRows.push(['Cable Length (roof \u2192 DB)', `${cableM} m`]);
+    if (invPanelM) elRows.push(['Inverter \u2192 Panel Distance', `${invPanelM} m`]);
+    if (elRows.length) {
+      autoTable(doc, { startY: y, margin: { left: m, right: m }, theme: 'plain', styles: { font: FONT, fontSize: 9, cellPadding: 2, textColor: [50, 50, 50] }, columnStyles: { 0: { fontStyle: 'bold', cellWidth: 55, textColor: [100, 100, 100] } }, body: elRows });
+      y = doc.lastAutoTable.finalY + 12;
+    }
 
     // Cost Breakdown
     if (y > pageHeight - 80) { doc.addPage(); drawHeader(doc); y = 48; }
@@ -1155,12 +1166,14 @@ export default function ProjectDetails() {
       [],
       ['— Electrical —'],
       ['Service Type', project.electrical?.service_type || '-'],
+      ['Connection Phase', project.electrical?.connection_phase || '-'],
       ['Sanction Load (kW)', project.electrical?.sanction_load_kw || 0],
-      ['Connected Load (kW)', project.electrical?.connected_load_kw || 0],
-      ['Monthly Consumption (units)', project.electrical?.monthly_consumption_units || 0],
+      ['Connected Load (kW)', project.electrical?.connected_load_kw ?? project.site_measurements?.load?.connected_load ?? 0],
+      ['Monthly Consumption (units)', project.electrical?.monthly_consumption_units ?? project.site_measurements?.load?.monthly_units ?? 0],
       ['EB Tariff (₹/unit)', project.electrical?.eb_tariff || 0],
       ['System Type', project.solar_system?.system_type || '-'],
       ['Cable Length (m)', project.additional?.cable_length_meters || 0],
+      ['Inverter to Panel (m)', project.additional?.inverter_to_panel_distance || 0],
       [],
       ['— Cost Summary —'],
       ['Subtotal (₹)', (project.cost_estimation || {}).subtotal || 0],
@@ -1324,11 +1337,13 @@ export default function ProjectDetails() {
               <CardHeader className="pb-3"><CardTitle className="text-lg font-['Outfit'] flex items-center gap-2"><Zap className="h-5 w-5 text-emerald-600" />Electrical Details</CardTitle></CardHeader>
               <CardContent>
                 <InfoRow label="Type of Service" value={project.electrical?.service_type} />
-                <InfoRow label="Sanction Load" value={`${project.electrical?.sanction_load_kw} kW`} />
-                <InfoRow label="Connected Load" value={`${project.electrical?.connected_load_kw} kW`} />
-                <InfoRow label="Monthly Consumption" value={`${project.electrical?.monthly_consumption_units} units`} />
-                <InfoRow label="EB Tariff" value={`₹${project.electrical?.eb_tariff}/unit`} />
-                <InfoRow label="Cable Length" value={`${project.additional?.cable_length_meters} m`} />
+                <InfoRow label="Connection Phase" value={project.electrical?.connection_phase} />
+                <InfoRow label="Sanction Load" value={project.electrical?.sanction_load_kw ? `${project.electrical.sanction_load_kw} kW` : null} />
+                <InfoRow label="Connected Load" value={(project.electrical?.connected_load_kw ?? project.site_measurements?.load?.connected_load) ? `${project.electrical?.connected_load_kw ?? project.site_measurements?.load?.connected_load} kW` : null} />
+                <InfoRow label="Monthly Consumption" value={(project.electrical?.monthly_consumption_units ?? project.site_measurements?.load?.monthly_units) ? `${project.electrical?.monthly_consumption_units ?? project.site_measurements?.load?.monthly_units} units` : null} />
+                <InfoRow label="EB Tariff" value={project.electrical?.eb_tariff ? `₹${project.electrical.eb_tariff}/unit` : null} />
+                <InfoRow label="Cable Length (roof → DB)" value={project.additional?.cable_length_meters ? `${project.additional.cable_length_meters} m` : null} />
+                <InfoRow label="Inverter → Panel" value={project.additional?.inverter_to_panel_distance ? `${project.additional.inverter_to_panel_distance} m` : null} />
                 <InfoRow label="Complexity" value={project.additional?.installation_complexity?.toUpperCase()} />
               </CardContent>
             </Card>
