@@ -109,7 +109,7 @@ export const catalogueAPI = {
   update: (cat, pid, data) => api.put(`/catalogue/products/${cat}/${pid}`, data),
   delete: (cat, pid) => api.delete(`/catalogue/products/${cat}/${pid}`),
   history: (cat, pid) => api.get(`/catalogue/products/${cat}/${pid}/history`),
-  importCsv: (cat, file) => { const fd = new FormData(); fd.append('file', file); return api.post(`/catalogue/products/${cat}/import`, fd, { headers: { 'Content-Type': 'multipart/form-data' } }); },
+  importCsv: (cat, file) => { const fd = new FormData(); fd.append('file', file); return api.post(`/catalogue/products/${cat}/import`, fd, { headers: { 'Content-Type': undefined } }); },
   getConfig: () => api.get('/catalogue/config'),
   updateConfig: (data) => api.put('/catalogue/config', data),
   seed: () => api.post('/catalogue/seed'),
@@ -132,7 +132,16 @@ export const purchaseOrdersAPI = {
   approve: (id) => api.put(`/purchase-orders/${id}/approve`),
   arrival: (id, data) => api.put(`/purchase-orders/${id}/arrival`, data),
   qc: (id, data) => api.put(`/purchase-orders/${id}/qc`, data),
-  inbound: (id, data) => api.put(`/purchase-orders/${id}/inbound`, data)
+  inbound: (id, data) => api.put(`/purchase-orders/${id}/inbound`, data),
+  editInbound: (id, data) => api.put(`/purchase-orders/${id}/inbound/edit`, data),
+  reverseInbound: (id) => api.delete(`/purchase-orders/${id}/inbound`)
+};
+
+// Inbound reversal approval queue (managers without delete rights → admin)
+export const inboundApprovalsAPI = {
+  list: (status = null) => api.get('/inbound-action-requests', { params: status ? { status } : {} }),
+  approve: (id) => api.post(`/inbound-action-requests/${id}/approve`),
+  reject: (id) => api.post(`/inbound-action-requests/${id}/reject`)
 };
 
 // Deliveries
@@ -191,10 +200,17 @@ export const inventoryAPI = {
 
   // Import / Export
   downloadTemplate: () => api.get('/inventory/template', { responseType: 'blob' }),
-  importItems: (file) => {
+  importItems: (file, options = {}) => {
     const fd = new FormData();
     fd.append('file', file);
-    return api.post('/inventory/import', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+    if (options.dryRun) fd.append('dry_run', 'true');
+    if (options.columnMap) fd.append('column_map', JSON.stringify(options.columnMap));
+    return api.post('/inventory/import', fd, { headers: { 'Content-Type': undefined } });
+  },
+  previewImport: (file) => {
+    const fd = new FormData();
+    fd.append('file', file);
+    return api.post('/inventory/import/preview', fd, { headers: { 'Content-Type': undefined } });
   },
   exportItems: (format = 'xlsx') => api.get('/inventory/export', { params: { format }, responseType: 'blob' })
 };
@@ -272,12 +288,12 @@ export const uploadAPI = {
   uploadImage: (file) => {
     const formData = new FormData();
     formData.append('file', file);
-    return api.post('/upload/image', formData, { headers: { 'Content-Type': 'multipart/form-data' } });
+    return api.post('/upload/image', formData, { headers: { 'Content-Type': undefined } });
   },
   uploadMedia: (file) => {
     const formData = new FormData();
     formData.append('file', file);
-    return api.post('/upload/media', formData, { headers: { 'Content-Type': 'multipart/form-data' }, timeout: 120000 });
+    return api.post('/upload/media', formData, { headers: { 'Content-Type': undefined }, timeout: 120000 });
   },
   getFileUrl: (path) => `${API_URL}/api/files/${path}`
 };
@@ -310,7 +326,7 @@ export const companyAPI = {
     const formData = new FormData();
     formData.append('file', file);
     return api.post('/company/upload-logo', formData, {
-      headers: { 'Content-Type': 'multipart/form-data' }
+      headers: { 'Content-Type': undefined }
     });
   }
 };
@@ -369,10 +385,58 @@ export const solarReportAPI = {
     fd.append('uploaded_pdf', uploadedFile);
     fd.append('position', position);
     return api.post('/solar/merge-pdf', fd, {
-      headers: { 'Content-Type': 'multipart/form-data' },
+      headers: { 'Content-Type': undefined },
       responseType: 'blob'
     });
   }
+};
+
+// Excess Material Reconciliation (Iter 42 Change 4)
+export const reconciliationAPI = {
+  get: (projectId) => api.get(`/material-reconciliation/${projectId}`),
+  submit: (projectId, data) => api.put(`/material-reconciliation/${projectId}`, data),
+  report: (params = {}) => api.get('/material-reconciliation-report', { params }),
+  alerts: (days = 7) => api.get('/material-reconciliation-alerts', { params: { days } })
+};
+
+// Assets & Tools (Iter 42 Change 6)
+export const assetsAPI = {
+  list: (params = {}) => api.get('/assets', { params }),
+  get: (id) => api.get(`/assets/${id}`),
+  create: (data) => api.post('/assets', data),
+  update: (id, data) => api.put(`/assets/${id}`, data),
+  remove: (id) => api.delete(`/assets/${id}`),
+  issue: (id, data) => api.post(`/assets/${id}/issue`, data),
+  returnAsset: (id, data) => api.post(`/assets/${id}/return`, data),
+  logMaintenance: (id, data) => api.post(`/assets/${id}/maintenance`, data),
+  compliance: (days = 90) => api.get('/assets/compliance', { params: { days } }),
+  report: (type) => api.get(`/assets/reports/${type}`)
+};
+
+// AMC Contracts (Iter 42 Change 5)
+export const amcAPI = {
+  list: (params = {}) => api.get('/amc/contracts', { params }),
+  get: (id) => api.get(`/amc/contracts/${id}`),
+  create: (data) => api.post('/amc/contracts', data),
+  createFromProject: (projectId) => api.post(`/amc/contracts/from-project/${projectId}`),
+  update: (id, data) => api.put(`/amc/contracts/${id}`, data),
+  renew: (id) => api.post(`/amc/contracts/${id}/renew`),
+  bulkRenew: (ids) => api.post('/amc/contracts/bulk-renew', { contract_ids: ids }),
+  cancel: (id, reason) => api.post(`/amc/contracts/${id}/cancel`, { reason }),
+  scheduleVisit: (id, data) => api.post(`/amc/contracts/${id}/visits`, data),
+  completeVisit: (id, data) => api.put(`/amc/visits/${id}/complete`, data),
+  listVisits: (params = {}) => api.get('/amc/visits', { params }),
+  dashboard: () => api.get('/amc/dashboard'),
+  recurringRevenueReport: () => api.get('/amc/recurring-revenue-report')
+};
+
+// Multi-location (Iter 42 Change 8)
+export const locationsAPI = {
+  list: () => api.get('/locations'),
+  create: (data) => api.post('/locations', data),
+  update: (id, data) => api.put(`/locations/${id}`, data),
+  remove: (id) => api.delete(`/locations/${id}`),
+  assignUser: (userId, data) => api.put(`/users/${userId}/locations`, data)
 };
 
 export default api;

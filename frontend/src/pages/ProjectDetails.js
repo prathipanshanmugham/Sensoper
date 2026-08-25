@@ -50,6 +50,7 @@ function InfoRow({ label, value }) {
 import DOMPurify from 'dompurify';
 import SubsidyTrackingCard from '../components/SubsidyTrackingCard';
 import KitPriceExplainerModal from '../components/KitPriceExplainerModal';
+import MaterialReconciliationCard from '../components/MaterialReconciliationCard';
 import { generateKitQuotationPDF } from '../utils/kitQuotationPDF';
 import { catalogueAPI } from '../utils/api';
 
@@ -1498,6 +1499,9 @@ export default function ProjectDetails() {
 
             {/* Subsidy Tracking widget — lifecycle timeline + amounts + dates */}
             <SubsidyTrackingCard projectId={id} />
+
+            {/* Excess Material Reconciliation — required once a project is completed (Iter 42 Change 4) */}
+            {project.status === 'completed' && <MaterialReconciliationCard projectId={id} />}
 
             {/* Site Documentation */}
             {project.drive_folder_link && (

@@ -18,7 +18,7 @@ import {
 } from 'recharts';
 import {
   Loader2, ArrowLeft, MapPin, TrendingUp, AlertTriangle, Plus, Trash2, Calculator,
-  Layers, Info, Building2, Zap, Sun, PieChart as PieIcon, Activity
+  Layers, Info, Building2, Zap, Sun, PieChart as PieIcon, Activity, Pencil
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
@@ -264,7 +264,8 @@ export default function ExpansionPage() {
   const [selectedDistrict, setSelectedDistrict] = useState(null);
   const [showBranches, setShowBranches] = useState(false);
   const [branches, setBranches] = useState([]);
-  const [newBranch, setNewBranch] = useState({ name: '', state: '', district: '', latitude: '', longitude: '', monthly_cost: 250000 });
+  const [newBranch, setNewBranch] = useState({ name: '', state: '', district: '', latitude: '', longitude: '', monthly_cost: 250000, address: '', opened_date: '', staff_count: '', districts_served: '' });
+  const [editingBranch, setEditingBranch] = useState(null);
   const [showSim, setShowSim] = useState(false);
   const [sim, setSim] = useState(null);
   const [simInputs, setSimInputs] = useState({
@@ -326,10 +327,11 @@ export default function ExpansionPage() {
         ...newBranch,
         latitude: parseFloat(newBranch.latitude) || null,
         longitude: parseFloat(newBranch.longitude) || null,
-        monthly_cost: parseFloat(newBranch.monthly_cost) || 0
+        monthly_cost: parseFloat(newBranch.monthly_cost) || 0,
+        staff_count: parseInt(newBranch.staff_count) || 0,
       };
       await expansionAPI.createBranch(payload);
-      setNewBranch({ name: '', state: '', district: '', latitude: '', longitude: '', monthly_cost: 250000 });
+      setNewBranch({ name: '', state: '', district: '', latitude: '', longitude: '', monthly_cost: 250000, address: '', opened_date: '', staff_count: '', districts_served: '' });
       const r = await expansionAPI.listBranches(); setBranches(r.data);
     } catch (e) { alert('Failed to add branch'); }
   };
@@ -337,6 +339,23 @@ export default function ExpansionPage() {
     if (!window.confirm('Remove this branch?')) return;
     try { await expansionAPI.deleteBranch(id); const r = await expansionAPI.listBranches(); setBranches(r.data); }
     catch { alert('Failed'); }
+  };
+  const openEditBranch = (b) => setEditingBranch({ ...b, monthly_cost: b.monthly_cost || 0, staff_count: b.staff_count || '', districts_served: b.districts_served || '' });
+  const saveEditBranch = async () => {
+    if (!editingBranch?.name?.trim()) return;
+    try {
+      await expansionAPI.updateBranch(editingBranch.id, {
+        name: editingBranch.name, address: editingBranch.address || '',
+        district: editingBranch.district, state: editingBranch.state,
+        opened_date: editingBranch.opened_date || '',
+        monthly_cost: parseFloat(editingBranch.monthly_cost) || 0,
+        staff_count: parseInt(editingBranch.staff_count) || 0,
+        districts_served: editingBranch.districts_served || '',
+        latitude: editingBranch.latitude, longitude: editingBranch.longitude,
+      });
+      setEditingBranch(null);
+      const r = await expansionAPI.listBranches(); setBranches(r.data);
+    } catch (e) { alert('Failed to save branch'); }
   };
 
   const meta = (b) => BAND_STYLES[b] || BAND_STYLES.no_case;
@@ -528,9 +547,12 @@ export default function ExpansionPage() {
               <div key={b.id} className="flex items-center justify-between rounded border border-slate-200 p-2.5">
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-medium truncate">{b.name}</p>
-                  <p className="text-[11px] text-slate-500">{b.district}, {b.state} · ₹{(b.monthly_cost || 0).toLocaleString('en-IN')}/mo</p>
+                  <p className="text-[11px] text-slate-500">{b.district}, {b.state} · ₹{(b.monthly_cost || 0).toLocaleString('en-IN')}/mo{b.staff_count ? ` · ${b.staff_count} staff` : ''}</p>
                 </div>
-                <Button size="icon" variant="ghost" className="h-8 w-8 text-red-500" onClick={() => removeBranch(b.id)} data-testid={`del-branch-${b.id}`}><Trash2 className="h-3.5 w-3.5" /></Button>
+                <div className="flex gap-1 shrink-0">
+                  <Button size="icon" variant="ghost" className="h-8 w-8 text-blue-500" onClick={() => openEditBranch(b)} data-testid={`edit-branch-${b.id}`}><Pencil className="h-3.5 w-3.5" /></Button>
+                  <Button size="icon" variant="ghost" className="h-8 w-8 text-red-500" onClick={() => removeBranch(b.id)} data-testid={`del-branch-${b.id}`}><Trash2 className="h-3.5 w-3.5" /></Button>
+                </div>
               </div>
             ))}
             {branches.length === 0 && <p className="text-xs text-slate-400 text-center py-4">No branches configured yet.</p>}
@@ -547,6 +569,32 @@ export default function ExpansionPage() {
             </div>
             <Button onClick={addBranch} size="sm" className="w-full bg-emerald-600 hover:bg-emerald-700 text-white" data-testid="add-branch-btn"><Plus className="h-3.5 w-3.5 mr-1" />Add Branch</Button>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Branch Dialog */}
+      <Dialog open={!!editingBranch} onOpenChange={(v) => !v && setEditingBranch(null)}>
+        <DialogContent className="max-w-lg" data-testid="edit-branch-dialog">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2"><Pencil className="h-5 w-5 text-blue-600" />Edit Branch</DialogTitle>
+            <DialogDescription>Name and details are editable — reports join by branch ID, so renaming never breaks history.</DialogDescription>
+          </DialogHeader>
+          {editingBranch && (
+            <div className="grid grid-cols-2 gap-2">
+              <Input placeholder="Name" value={editingBranch.name} onChange={e => setEditingBranch(b => ({ ...b, name: e.target.value }))} className="h-9 text-xs col-span-2" data-testid="edit-branch-name" />
+              <Input placeholder="Address" value={editingBranch.address || ''} onChange={e => setEditingBranch(b => ({ ...b, address: e.target.value }))} className="h-9 text-xs col-span-2" data-testid="edit-branch-address" />
+              <Input placeholder="District" value={editingBranch.district || ''} onChange={e => setEditingBranch(b => ({ ...b, district: e.target.value }))} className="h-9 text-xs" data-testid="edit-branch-district" />
+              <Input placeholder="State" value={editingBranch.state || ''} onChange={e => setEditingBranch(b => ({ ...b, state: e.target.value }))} className="h-9 text-xs" data-testid="edit-branch-state" />
+              <Input placeholder="Opened Date" type="date" value={editingBranch.opened_date || ''} onChange={e => setEditingBranch(b => ({ ...b, opened_date: e.target.value }))} className="h-9 text-xs" data-testid="edit-branch-opened" />
+              <Input placeholder="Monthly cost (₹)" type="number" value={editingBranch.monthly_cost} onChange={e => setEditingBranch(b => ({ ...b, monthly_cost: e.target.value }))} className="h-9 text-xs" data-testid="edit-branch-cost" />
+              <Input placeholder="Staff Count" type="number" value={editingBranch.staff_count} onChange={e => setEditingBranch(b => ({ ...b, staff_count: e.target.value }))} className="h-9 text-xs" data-testid="edit-branch-staff" />
+              <Input placeholder="Districts Served (comma-separated)" value={editingBranch.districts_served || ''} onChange={e => setEditingBranch(b => ({ ...b, districts_served: e.target.value }))} className="h-9 text-xs col-span-2" data-testid="edit-branch-districts-served" />
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditingBranch(null)}>Cancel</Button>
+            <Button onClick={saveEditBranch} className="bg-blue-600 hover:bg-blue-700 text-white" data-testid="save-branch-edit-btn">Save Changes</Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

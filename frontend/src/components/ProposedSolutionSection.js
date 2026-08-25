@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Badge as UIBadge } from '../components/ui/badge';
 import {
   Package, Leaf, Calendar, TrendingUp, Fuel, Sun,
-  Wand2, Loader2, RotateCcw, MapPin, Zap, ChevronDown, ChevronUp, CheckCircle2, AlertTriangle
+  Wand2, Loader2, RotateCcw, MapPin, Zap, ChevronDown, ChevronUp, CheckCircle2, AlertTriangle, Info
 } from 'lucide-react';
 import { calcAPI } from '../utils/api';
 import GuidedSolutionFlow from './GuidedSolutionFlow';
@@ -140,8 +140,10 @@ function autoCalc(d) {
 
   const dailyUnits = monthlyUnits / 30;
 
-  // Step 2 — recommended system size (kWp)
-  // Solar Pump: size from HP (0.75 kW/HP × 1.2 headroom); EB units unused.
+  // Step 2 — system size (kWp)
+  // Solar Pump: sizing is a physics problem (HP → array kW) — keep the suggestion engine.
+  // Every other system type: System Size is a required MANUAL entry. We never derive it
+  // from consumption any more — sales staff enter their own judgement call.
   let sysKw;
   if (d.system_type === 'solar-pump') {
     const hp = num(d.pump_hp);
@@ -149,10 +151,10 @@ function autoCalc(d) {
       ? num(d.system_size_kw)
       : (hp > 0 ? +(hp * 0.75 * 1.2).toFixed(2) : 0);
   } else {
-    sysKw = ov.system_size_kw
-      ? num(d.system_size_kw)
-      : (dailyUnits > 0 ? +(dailyUnits / yield_kwh).toFixed(2) : 0);
+    sysKw = num(d.system_size_kw);
   }
+  // Non-binding reference only — never written back into system_size_kw.
+  const referenceSizeKw = dailyUnits > 0 ? +(dailyUnits / yield_kwh).toFixed(1) : 0;
 
   // Step 3 — panel count & area
   const panelW = num(d.panel_wattage_w) || 540;
@@ -270,12 +272,16 @@ function autoCalc(d) {
     annual_generation_units: annualGen,
     co2_kg_year: co2KgYear,
     diesel_petrol_saved_liters_yearly: dieselL,
+    reference_system_kw: referenceSizeKw,
+    reference_monthly_units: monthlyUnits,
   };
 }
 
 // Fields whose value comes from autoCalc (must be in sync with the engine output).
+// `system_size_kw` is intentionally EXCLUDED here for non-pump types — it is a required
+// manual entry, never auto-written. Pumps keep the suggestion engine (added back per-row below).
 const AUTO_FIELDS = [
-  'system_size_kw', 'panel_count', 'panel_area_sqft', 'roof_utilization_pct',
+  'panel_count', 'panel_area_sqft', 'roof_utilization_pct',
   'estimated_generation_units_monthly', 'estimated_generation_units_annual',
   'inverter_kw', 'battery_kwh', 'battery_count', 'total_cost', 'subsidy',
   'diesel_offset_liters_yearly',
@@ -369,7 +375,9 @@ export default function ProposedSolutionSection({ value, onChange }) {
   const lastPushed = useRef('');
   useEffect(() => {
     const patch = {};
-    AUTO_FIELDS.forEach((f) => {
+    // Pump is the sizing exception — system_size_kw stays suggestion-engine-driven there.
+    const activeAutoFields = data.system_type === 'solar-pump' ? [...AUTO_FIELDS, 'system_size_kw'] : AUTO_FIELDS;
+    activeAutoFields.forEach((f) => {
       if (!overrides[f]) {
         const newVal = engine[f];
         if (newVal !== undefined && newVal !== null && String(newVal) !== String(data[f])) {
@@ -553,19 +561,26 @@ export default function ProposedSolutionSection({ value, onChange }) {
             <Sun className="h-5 w-5 text-emerald-600" />
             <div>
               <h3 className="text-base font-semibold font-['Outfit'] text-emerald-800">Solar Calculator</h3>
-              <p className="text-[11px] text-emerald-700">Type 1-3 inputs below — system size, savings &amp; ROI auto-fill instantly.</p>
+              <p className="text-[11px] text-emerald-700">
+                {data.system_type === 'solar-pump'
+                  ? 'Enter the site details — pump sizing is suggested for you below.'
+                  : 'Enter the System Size (kW) yourself — hardware, savings & ROI calculate from it.'}
+              </p>
             </div>
           </div>
-          <Button
-            type="button"
-            onClick={handleAutoCalculateAll}
-            disabled={recomputing}
-            className="h-9 gap-1.5 bg-blue-600 hover:bg-blue-700 text-white"
-            data-testid="ps-auto-calc-btn"
-          >
-            {recomputing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
-            {recomputing ? 'Calculating…' : 'Auto Calculate'}
-          </Button>
+          {data.system_type !== 'solar-pump' && (
+            <Button
+              type="button"
+              onClick={handleAutoCalculateAll}
+              disabled={recomputing}
+              className="h-9 gap-1.5 bg-blue-600 hover:bg-blue-700 text-white"
+              data-testid="ps-auto-calc-btn"
+              title="Recalculates panel count, inverter, generation & cost from your entered System Size"
+            >
+              {recomputing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
+              {recomputing ? 'Recalculating…' : 'Recalculate Hardware'}
+            </Button>
+          )}
         </div>
 
         {/* ───── HERO Outputs (always visible, big) ───── */}
@@ -681,7 +696,6 @@ export default function ProposedSolutionSection({ value, onChange }) {
         <div data-testid="ps-quick-inputs">
           <p className="text-[11px] uppercase tracking-wider text-slate-600 font-semibold mb-2 flex items-center gap-1.5"><Zap className="h-3.5 w-3.5" /> Quick Inputs</p>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <DriverField label="Monthly EB Bill (₹)" field="monthly_eb_bill" placeholder="e.g., 3500" value={data.monthly_eb_bill} onChange={updateDriver} />
             <div className="space-y-1">
               <Label className="text-xs">System Type</Label>
               <Select value={data.system_type} onValueChange={(v) => updateDriver('system_type', v)}>
@@ -694,6 +708,20 @@ export default function ProposedSolutionSection({ value, onChange }) {
                 </SelectContent>
               </Select>
             </div>
+            {data.system_type !== 'solar-pump' && (
+              <div className="space-y-1">
+                <Label className="text-xs">System Size (kW) <span className="text-rose-500">*</span></Label>
+                <Input
+                  type="number" step="any"
+                  value={data.system_size_kw ?? ''}
+                  onChange={(e) => updateDriver('system_size_kw', e.target.value)}
+                  placeholder="e.g., 3.5"
+                  className="h-10 bg-white border-emerald-300 focus-visible:ring-emerald-400"
+                  data-testid="ps-system-size-kw-manual"
+                />
+              </div>
+            )}
+            <DriverField label="Monthly EB Bill (₹)" field="monthly_eb_bill" placeholder="e.g., 3500" value={data.monthly_eb_bill} onChange={updateDriver} />
             <div className="space-y-1">
               <Label className="text-xs flex items-center gap-1"><MapPin className="h-3 w-3" /> Location</Label>
               <Select value={data.location} onValueChange={(v) => updateDriver('location', v)}>
@@ -704,6 +732,12 @@ export default function ProposedSolutionSection({ value, onChange }) {
               </Select>
             </div>
           </div>
+          {data.system_type !== 'solar-pump' && engine.reference_monthly_units > 0 && (
+            <p className="text-[11px] text-slate-500 mt-2 flex items-center gap-1" data-testid="ps-size-reference-line">
+              <Info className="h-3 w-3 shrink-0" />
+              For reference: {Math.round(engine.reference_monthly_units)} units/month at this location would typically need around {engine.reference_system_kw} kW.
+            </p>
+          )}
         </div>
 
         {/* ───── Show / Hide advanced ───── */}
@@ -970,7 +1004,15 @@ export default function ProposedSolutionSection({ value, onChange }) {
           <div>
             <p className="text-[11px] uppercase tracking-wider text-slate-600 font-semibold mb-2 flex items-center gap-1.5"><Package className="h-3.5 w-3.5" /> System Hardware</p>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              <AutoField label="System Size (kW)" field="system_size_kw" placeholder="auto" value={data.system_size_kw} override={!!overrides.system_size_kw} onChange={updateAutoField} onReset={() => resetField('system_size_kw')} />
+              {data.system_type === 'solar-pump' ? (
+                <AutoField label="System Size (kW)" field="system_size_kw" placeholder="auto" value={data.system_size_kw} override={!!overrides.system_size_kw} onChange={updateAutoField} onReset={() => resetField('system_size_kw')} />
+              ) : (
+                <div className="space-y-1">
+                  <Label className="text-xs">System Size (kW)</Label>
+                  <Input value={data.system_size_kw || '—'} readOnly className="h-10 bg-slate-50 font-medium" data-testid="ps-system-size-readonly-echo" />
+                  <p className="text-[10px] text-slate-400">Set above in Quick Inputs — required manual entry.</p>
+                </div>
+              )}
               <AutoField label="Panel Count" field="panel_count" placeholder="auto" value={data.panel_count} override={!!overrides.panel_count} onChange={updateAutoField} onReset={() => resetField('panel_count')} />
               <DriverField label="Panel Wattage (W)" field="panel_wattage_w" placeholder="540" value={data.panel_wattage_w} onChange={updateDriver} />
               <div className="space-y-1">

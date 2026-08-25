@@ -1,5 +1,35 @@
 # Sensoper Controls & Renewables - Solar ERP
 
+## Iteration 42 (Aug 2026) — 8 major changes, delivered in one pass, tested end-to-end
+Status: DONE — 35/35 backend pytest green, frontend flows verified by testing agent, all 5 post-test action items fixed and re-verified.
+
+1. **Inventory import bug + UX overhaul** — Fixed multipart Content-Type bug (`'multipart/form-data'` string strips the boundary) across all 6 upload call sites in `frontend/src/utils/api.js`. Rebuilt `/api/inventory/import`: flexible column alias matching (`backend/inventory_import.py`), header-row auto-detection, currency/thousands cleaning, duplicate-SKU flagging, preview-before-commit (`/inventory/import/preview`), dry-run mode, column-mapping UI when headers can't be matched, downloadable CSV error report.
+2. **Purchase Inbound edit/delete** — `complete_inbound` now permission-gated, idempotent (blocks double-receipt), matches by `inventory_item_id`/`sku_code` (never silent-skips). Added `PUT /inbound/edit` (delta-only stock changes, Pydantic-validated non-empty lines), `DELETE /inbound` (reversal with negative-stock guard), and an admin approval queue (`inbound_action_requests`) for users without delete rights. PurchaseInboundPage.js has Edit/Reverse buttons, receipt history, and an admin approvals banner.
+3. **Manual System Size** — Removed the auto-suggester for On-Grid/Off-Grid/Hybrid; System Size (kW) is now a required manual field in Quick Inputs with a non-binding reference line. Panel Count/Inverter/Generation/Cost/Subsidy still auto-derive from the entered size (Auto/Override pattern retained). Solar Pump keeps its HP-based suggestion engine unchanged (explicit exception).
+4. **Excess Material Report** — New `material_reconciliation` collection (`backend/reconciliation.py`), reconciliation form on `ProjectDetails.js` (visible when status=completed), returns increment stock via the standard movement trail, damaged items route to `returns`. New "Excess Material" tile on ReportsPage with by-item over-issue % and unreturned-by-project tables.
+5. **AMC module** — Brand new `backend/amc.py`: contracts, service visits, dashboard (ARR/MRR/penetration/renewal-rate/8 KPIs), Recurring Revenue Report, create-from-completed-project, renew/bulk-renew/cancel. New page `/dashboard/amc`.
+6. **Assets & Tools** — Brand new `backend/assets.py`: register, issue/return, maintenance, compliance (90-day expiry banner), QR code (client-side via `qrcode` lib), depreciation/utilisation/write-off/7 reports. New page `/dashboard/assets`.
+7. **Branch name editable** — `ExpansionPage.js` branch edit dialog (name/address/district/state/opened date/monthly cost/staff count/districts served), audit-logged on rename. District-score aggregation already joins by district string, unaffected by renames.
+8. **Multi-location (scoped)** — New `backend/locations.py`: locations registry, `location_scope_filter` helper, user `location_ids`/`default_location_id` assignment. Read-filtering wired into Projects, Inventory, Assets, AMC lists. New `/dashboard/locations` admin page. Deliberately scoped per user's explicit approval — not full per-collection enforcement.
+
+### Post-test-agent fixes (same session)
+- Fixed DOM-nesting warning in AssetsPage detail dialog (Badge inside `<p>` → `<div>`).
+- `PUT /inbound/edit` now uses a Pydantic model requiring a non-empty `lines` list (was a silent-wipe risk on malformed bodies); Save button disabled client-side when no editable lines.
+- `GET /assets/reports/*` now excludes soft-deleted (scrapped) assets from register/depreciation/utilisation, while `writeoff` report still includes them — register totals now reconcile with the visible grid.
+- Removed dead `BILLING_MONTHS` lookup in AMC's `_monthly_value`.
+- Replaced `count_documents()+1` sequence generation for `asset_code`/`contract_number` with an atomic `counters` collection (`find_one_and_update` + `$inc`) to avoid duplicate codes under concurrency/soft-deletes.
+
+### Deferred (explicitly, per user's "do the best" instruction on Iter41 continuity)
+- Iter41 Phase 2 (per-system-type calculator UI split into separate files) — superseded/partially folded into Change 3's pump exception; full component split not done.
+- Iter41 Phase 3 (plain-language 6-page quote PDF) — not started.
+- Iter41 Phase 4 (global responsive/UI polish across 26 pages) — not started.
+- `server.py` (6,850 lines) still needs router extraction — inbound/import blocks are good next candidates alongside the already-extracted assets/amc/locations/reconciliation routers.
+
+## Known non-blocking notes (Iter 42)
+- Untyped `Dict[str, Any]` bodies on `PUT /locations/{id}`, `PUT /assets/{id}`, `PUT /amc/contracts/{id}` allow arbitrary field injection (only `_id`/`id` stripped) — acceptable for admin/manager-only endpoints, consider allow-lists later.
+- `location_scope_filter` no-ops (returns `{}`) for admins and for any user with no `location_ids` assigned — intentional backward-compatibility behavior for the scoped Change 8 implementation.
+- Recharts `<Cell>` component still must never be used (causes blank-screen crash) — confirmed avoided in all new charts (AMCDashboard uses plain `<Bar fill="#10b981">`).
+
 ## Tech Stack
 - Frontend: React, Tailwind CSS, Shadcn UI, Recharts, jsPDF, xlsx/SheetJS, DOMPurify
 - Backend: FastAPI, MongoDB, Motor (Async), JWT Auth (cookie-based)

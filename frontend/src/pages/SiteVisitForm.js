@@ -570,7 +570,13 @@ export default function SiteVisitForm() {
       case 'customer': if (!formData.customer.name || !formData.customer.phone || !formData.customer.address) { setError('Please fill all required fields'); return false; } return validateExtraFields();
       case 'location': if (!formData.location.site_location_words && !formData.location.address) { setError('Enter What3Words or site address'); return false; } return validateExtraFields();
       case 'site_electrical': return validateExtraFields();
-      case 'materials': return validateExtraFields();
+      case 'materials': {
+        const ps = formData.custom_fields?.proposed_solution || {};
+        if (ps.system_type !== 'solar-pump' && !(parseFloat(ps.system_size_kw) > 0)) {
+          setError('Enter System Size (kW) in the Solar Calculator before continuing'); return false;
+        }
+        return validateExtraFields();
+      }
       case 'site_docs': {
         // Drive folder is now optional; if provided, warn about format but do not block
         const link = formData.drive_folder_link;

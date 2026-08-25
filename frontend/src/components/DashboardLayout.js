@@ -7,7 +7,8 @@ import { Badge } from '../components/ui/badge';
 import {
   LayoutDashboard, FolderPlus, Users, LogOut, FileText, TrendingUp,
   Menu, X, Package, History, ScrollText, Building2, ClipboardCheck, Shield,
-  Layers, BarChart3, CalendarDays, AlertTriangle, CreditCard, Truck, Undo2, ClipboardList, Bell, Activity, MapPin, Settings, ShoppingCart
+  Layers, BarChart3, CalendarDays, AlertTriangle, CreditCard, Truck, Undo2, ClipboardList, Bell, Activity, MapPin, Settings, ShoppingCart,
+  Wrench, RefreshCw, Map
 } from 'lucide-react';
 
 const LOGO_URL = "https://customer-assets.emergentagent.com/job_solar-estimator-14/artifacts/2dpfr2zb_slg.png";
@@ -75,11 +76,14 @@ export default function DashboardLayout({ children }) {
     { icon: CalendarDays, label: 'Daily Updates', href: '/dashboard/daily-updates', show: true },
     { icon: Activity, label: 'Readings', href: '/dashboard/readings', show: true },
     { icon: Package, label: 'Inventory', href: '/dashboard/inventory', show: isAdmin || isManager, badge: stats?.low_stock_alerts },
+    { icon: RefreshCw, label: 'AMC Contracts', href: '/dashboard/amc', show: isAdmin || isManager },
+    { icon: Wrench, label: 'Assets & Tools', href: '/dashboard/assets', show: true },
     { icon: ScrollText, label: 'Terms & Conditions', href: '/dashboard/terms', show: isAdmin || isManager },
     { icon: Users, label: 'User Management', href: '/dashboard/users', show: isAdmin },
     { icon: Shield, label: 'Permissions', href: '/dashboard/permissions', show: isAdmin },
     { icon: Layers, label: 'Form Builder', href: '/dashboard/form-tabs', show: isAdmin },
     { icon: Building2, label: 'Company Profile', href: '/dashboard/company-profile', show: isAdmin },
+    { icon: Map, label: 'Locations', href: '/dashboard/locations', show: isAdmin },
     { icon: History, label: 'Audit Logs', href: '/dashboard/audit-logs', show: isAdmin },
     { icon: Settings, label: 'Pricing & Config', href: '/dashboard/pricing-config', show: isAdmin },
   ].filter(item => item.show);

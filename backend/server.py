@@ -437,9 +437,16 @@ class CreditPaymentCreate(BaseModel):
 class PurchaseOrderCreate(BaseModel):
     supplier_name: str
     supplier_contact: str = ""
-    items: list  # [{name, qty, unit_price}]
+    items: list  # [{name, qty, unit_price, inventory_item_id?, sku_code?}]
     expected_delivery: str = ""
     notes: str = ""
+
+class InboundEditLine(BaseModel):
+    inventory_item_id: str
+    qty_received: float
+
+class InboundEditRequest(BaseModel):
+    lines: List[InboundEditLine] = Field(..., min_items=1)
 
 class DeliveryOutboundCreate(BaseModel):
     project_id: str = ""
@@ -520,7 +527,9 @@ async def get_current_user(request: Request) -> dict:
             "name": user["name"],
             "role": user["role"],
             "phone": user.get("phone"),
-            "created_at": user["created_at"]
+            "created_at": user["created_at"],
+            "location_ids": user.get("location_ids", []),
+            "default_location_id": user.get("default_location_id")
         }
     except jwt.ExpiredSignatureError:
         raise HTTPException(status_code=401, detail="Token expired")
@@ -591,7 +600,10 @@ DEFAULT_PERMISSIONS = {
         "module_approvals": {"view": True, "create": True, "edit": True, "delete": True, "export": True},
         "module_users": {"view": True, "create": True, "edit": True, "delete": True, "export": True},
         "module_permissions": {"view": True, "create": True, "edit": True, "delete": True, "export": True},
-        "module_settings": {"view": True, "create": True, "edit": True, "delete": True, "export": True}
+        "module_settings": {"view": True, "create": True, "edit": True, "delete": True, "export": True},
+        "module_assets": {"view": True, "create": True, "edit": True, "delete": True, "export": True},
+        "module_amc": {"view": True, "create": True, "edit": True, "delete": True, "export": True},
+        "module_locations": {"view": True, "create": True, "edit": True, "delete": True, "export": True}
     },
     "manager": {
         "can_create_project": True, "can_edit_project": True, "can_delete_project": False,
@@ -618,7 +630,10 @@ DEFAULT_PERMISSIONS = {
         "module_approvals": {"view": True, "create": False, "edit": True, "delete": False, "export": False},
         "module_users": {"view": False, "create": False, "edit": False, "delete": False, "export": False},
         "module_permissions": {"view": False, "create": False, "edit": False, "delete": False, "export": False},
-        "module_settings": {"view": True, "create": False, "edit": False, "delete": False, "export": False}
+        "module_settings": {"view": True, "create": False, "edit": False, "delete": False, "export": False},
+        "module_assets": {"view": True, "create": True, "edit": True, "delete": False, "export": True},
+        "module_amc": {"view": True, "create": True, "edit": True, "delete": False, "export": True},
+        "module_locations": {"view": True, "create": False, "edit": False, "delete": False, "export": False}
     },
     "staff": {
         "can_create_project": True, "can_edit_project": True, "can_delete_project": False,
@@ -645,7 +660,10 @@ DEFAULT_PERMISSIONS = {
         "module_approvals": {"view": False, "create": False, "edit": False, "delete": False, "export": False},
         "module_users": {"view": False, "create": False, "edit": False, "delete": False, "export": False},
         "module_permissions": {"view": False, "create": False, "edit": False, "delete": False, "export": False},
-        "module_settings": {"view": False, "create": False, "edit": False, "delete": False, "export": False}
+        "module_settings": {"view": False, "create": False, "edit": False, "delete": False, "export": False},
+        "module_assets": {"view": True, "create": False, "edit": False, "delete": False, "export": False},
+        "module_amc": {"view": True, "create": False, "edit": False, "delete": False, "export": False},
+        "module_locations": {"view": True, "create": False, "edit": False, "delete": False, "export": False}
     }
 }
 
@@ -671,6 +689,15 @@ async def require_permission(request: Request, permission: str) -> dict:
     if not has_perm:
         raise HTTPException(status_code=403, detail=f"Permission denied: {permission}")
     return user
+
+async def check_module_permission(user: dict, module: str, action: str) -> bool:
+    """Read permission for a module.action from the dynamic role_permissions matrix."""
+    perms = await get_permissions(user["role"])
+    mod = perms.get(module, {})
+    if isinstance(mod, dict):
+        return bool(mod.get(action, False))
+    return False
+
 
 def calculate_cost_estimation(selected_items: list, manual_costs: list) -> dict:
     """Calculate cost estimation from selected inventory items and manual costs with per-item margins"""
@@ -847,7 +874,9 @@ async def get_users(request: Request):
             "name": u["name"],
             "role": u["role"],
             "phone": u.get("phone"),
-            "created_at": u["created_at"]
+            "created_at": u["created_at"],
+            "location_ids": u.get("location_ids", []),
+            "default_location_id": u.get("default_location_id")
         }
         for u in users
     ]
@@ -902,6 +931,10 @@ async def update_user(user_id: str, request: Request):
         update_data["phone"] = body["phone"]
     if "password" in body and body["password"]:
         update_data["password_hash"] = hash_password(body["password"])
+    if "location_ids" in body:
+        update_data["location_ids"] = body["location_ids"]
+    if "default_location_id" in body:
+        update_data["default_location_id"] = body["default_location_id"]
     
     if not update_data:
         raise HTTPException(status_code=400, detail="No fields to update")
@@ -1488,13 +1521,17 @@ async def update_project_margin(project_id: str, request: Request):
 async def get_inventory_items(
     request: Request, 
     category: Optional[str] = None,
-    low_stock: bool = False
+    low_stock: bool = False,
+    location_id: Optional[str] = None
 ):
-    await get_current_user(request)
+    user = await get_current_user(request)
     
     query = {}
     if category:
         query["category"] = category
+    loc_filter = location_scope_filter(user, location_id)
+    if loc_filter:
+        query.update(loc_filter)
     
     items = await db.inventory_items.find(query).to_list(500)
     
@@ -1505,6 +1542,7 @@ async def get_inventory_items(
             "name": item["name"],
             "sku_code": item["sku_code"],
             "category": item["category"],
+            "location_id": item.get("location_id"),
             "zone": item.get("zone", ""),
             "aisle": item.get("aisle", ""),
             "shelf": item.get("shelf", ""),
@@ -1768,119 +1806,129 @@ async def inventory_import_template(request: Request):
         headers={"Content-Disposition": 'attachment; filename="inventory_import_template.xlsx"'})
 
 
-@api_router.post("/inventory/import")
-async def inventory_import(request: Request, file: UploadFile = File(...)):
-    """Bulk import inventory items from XLSX/CSV. Existing SKUs are updated; new SKUs are created."""
-    current_user = await require_role("admin", "manager")(request)
+from inventory_import import (
+    build_column_mapping, read_spreadsheet, validate_rows, REQUIRED_CANONICAL,
+)
+
+
+async def _load_import_file(file: UploadFile, column_map_json: Optional[str]):
+    """Shared by preview + commit. Returns either a 'needs_mapping' dict or (df, mapping, clean_rows, error_rows)."""
     if not file.filename:
         raise HTTPException(status_code=400, detail="No file uploaded")
-
     raw = await file.read()
     if not raw:
-        raise HTTPException(status_code=400, detail="Empty file")
+        raise HTTPException(status_code=400, detail="This file could not be read. Save it as .xlsx or .csv and try again.")
     if len(raw) > 10 * 1024 * 1024:
         raise HTTPException(status_code=413, detail="File too large (max 10MB)")
-
-    from io import BytesIO
-    import pandas as _pd
-    fname = file.filename.lower()
+    if not file.filename.lower().endswith((".csv", ".xlsx", ".xls")):
+        raise HTTPException(status_code=400, detail="This file could not be read. Save it as .xlsx or .csv and try again.")
     try:
-        if fname.endswith(".csv"):
-            df = _pd.read_csv(BytesIO(raw))
-        else:
-            df = _pd.read_excel(BytesIO(raw), engine="openpyxl")
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Could not parse file: {str(e)[:160]}")
-
+        df, raw_columns = read_spreadsheet(raw, file.filename)
+    except Exception:
+        raise HTTPException(status_code=400, detail="This file could not be read. Save it as .xlsx or .csv and try again.")
     if df.empty:
         raise HTTPException(status_code=400, detail="File has no rows")
-    df.columns = [str(c).strip().lower().replace(" ", "_") for c in df.columns]
-    missing = [c for c in ["name", "sku_code", "category", "quantity", "unit_price"] if c not in df.columns]
-    if missing:
-        raise HTTPException(status_code=400, detail=f"Missing required columns: {', '.join(missing)}")
 
-    created, updated, errors = 0, 0, []
-    now_iso = datetime.now(timezone.utc).isoformat()
-    for idx, row in df.iterrows():
-        excel_row = idx + 2
-        try:
-            sku = str(row.get("sku_code", "")).strip()
-            name = str(row.get("name", "")).strip()
-            category = str(row.get("category", "")).strip()
-            if not sku or not name or not category or sku.lower() == "nan" or name.lower() == "nan":
-                errors.append({"row": int(excel_row), "error": "sku_code, name and category are required"})
-                continue
-            qty_raw = row.get("quantity")
-            price_raw = row.get("unit_price")
-            if _pd.isna(qty_raw) or _pd.isna(price_raw):
-                errors.append({"row": int(excel_row), "error": "quantity and unit_price are required"})
-                continue
-            try:
-                quantity = int(float(qty_raw))
-                unit_price = float(price_raw)
-            except Exception:
-                errors.append({"row": int(excel_row), "error": "quantity must be integer, unit_price must be number"})
-                continue
-            if quantity < 0 or unit_price < 0:
-                errors.append({"row": int(excel_row), "error": "quantity and unit_price must be at least 0"})
-                continue
-
-            def _opt(col, default=None, cast=str):
-                v = row.get(col)
-                if v is None or (isinstance(v, float) and _pd.isna(v)) or str(v).strip() == "":
-                    return default
-                try: return cast(v)
-                except Exception: return default
-
-            doc = {
-                "name": name,
-                "sku_code": sku,
-                "category": category,
-                "quantity": quantity,
-                "unit_price": unit_price,
-                "reorder_level": _opt("reorder_level", 10, lambda v: int(float(v))),
-                "supplier": _opt("supplier", "", str) or "",
-                "gst_percentage": _opt("gst_percentage", 18.0, float),
-                "hsn_code": _opt("hsn_code", None, str),
-                "margin_pct": _opt("margin_pct", 0.0, float),
-                "zone": _opt("zone", "", str) or "",
-                "aisle": _opt("aisle", "", str) or "",
-                "shelf": _opt("shelf", "", str) or "",
-                "rack": _opt("rack", "", str) or "",
-                "bin_location": _opt("bin_location", "", str) or "",
-                "procurement_date": _opt("procurement_date", None, str),
-                "active": _opt("active", True, lambda v: str(v).strip().lower() in ("true", "1", "yes", "y")),
-                "image_url": _opt("image_url", None, str),
-                "updated_at": now_iso,
-            }
-            existing = await db.inventory_items.find_one({"sku_code": sku})
-            if existing:
-                await db.inventory_items.update_one({"_id": existing["_id"]}, {"$set": doc})
-                updated += 1
-            else:
-                doc["created_at"] = now_iso
-                doc["qc_checklist"] = []
-                res = await db.inventory_items.insert_one(doc)
-                await db.inventory_transactions.insert_one({
-                    "item_id": str(res.inserted_id),
-                    "transaction_type": "purchase",
-                    "quantity": quantity,
-                    "previous_quantity": 0,
-                    "new_quantity": quantity,
-                    "performed_by_id": current_user["id"],
-                    "performed_by_name": current_user["name"],
-                    "notes": "Bulk import",
-                    "timestamp": now_iso,
-                })
-                created += 1
-        except Exception as e:
-            errors.append({"row": int(excel_row), "error": str(e)[:200]})
-
-    await create_audit_log(current_user["id"], current_user["name"], "import", "inventory_item",
-                           f"created={created} updated={updated} errors={len(errors)}")
-    return {"created": created, "updated": updated, "errors": errors,
+    overrides = json.loads(column_map_json) if column_map_json else None
+    mapping = build_column_mapping(raw_columns, overrides)
+    unmapped_required = [c for c in REQUIRED_CANONICAL if not mapping.get(c)]
+    if unmapped_required:
+        return {
+            "status": "needs_mapping",
+            "detected_columns": raw_columns,
+            "column_mapping": mapping,
+            "unmapped_required": unmapped_required,
+            "sample_rows": df.head(5).fillna("").astype(str).to_dict(orient="records"),
             "total_rows": int(len(df)),
-            "message": f"Imported {created} new and updated {updated} existing items"}
+        }
+    clean_rows, error_rows = validate_rows(df, mapping)
+    return df, mapping, clean_rows, error_rows
+
+
+@api_router.post("/inventory/import/preview")
+async def inventory_import_preview(request: Request, file: UploadFile = File(...), column_map: Optional[str] = Form(None)):
+    """Parse + validate only — never writes to the database. Shows the first 20 rows with a per-row status."""
+    await require_role("admin", "manager")(request)
+    result = await _load_import_file(file, column_map)
+    if isinstance(result, dict):
+        return result
+    df, mapping, clean_rows, error_rows = result
+
+    existing_skus = set()
+    if clean_rows:
+        docs = await db.inventory_items.find({"sku_code": {"$in": [r["sku_code"] for r in clean_rows]}}, {"sku_code": 1}).to_list(5000)
+        existing_skus = {d["sku_code"] for d in docs}
+
+    preview_rows = []
+    for r in clean_rows[:20]:
+        will_update = r["sku_code"] in existing_skus
+        preview_rows.append({**r, "status": "will_update" if will_update else "will_create", "reason": None})
+    for e in error_rows[:20 - len(preview_rows)] if len(preview_rows) < 20 else []:
+        preview_rows.append({"row": e["row"], "status": "will_skip", "reason": e["error"]})
+
+    will_create = sum(1 for r in clean_rows if r["sku_code"] not in existing_skus)
+    will_update = sum(1 for r in clean_rows if r["sku_code"] in existing_skus)
+    return {
+        "status": "ready",
+        "column_mapping": mapping,
+        "total_rows": int(len(df)),
+        "preview_rows": preview_rows,
+        "summary": {"will_create": will_create, "will_update": will_update, "will_skip": len(error_rows)},
+        "errors": error_rows,
+    }
+
+
+@api_router.post("/inventory/import")
+async def inventory_import(request: Request, file: UploadFile = File(...),
+                            dry_run: Optional[str] = Form(None), column_map: Optional[str] = Form(None)):
+    """Bulk import inventory items from XLSX/CSV. Existing SKUs are updated; new SKUs are created."""
+    current_user = await require_role("admin", "manager")(request)
+    result = await _load_import_file(file, column_map)
+    if isinstance(result, dict):
+        return result
+    df, mapping, clean_rows, error_rows = result
+    is_dry_run = str(dry_run).strip().lower() in ("true", "1", "yes")
+
+    created, updated = 0, 0
+    now_iso = datetime.now(timezone.utc).isoformat()
+    for r in clean_rows:
+        sku = r["sku_code"]
+        doc = {k: v for k, v in r.items() if k != "row"}
+        doc["updated_at"] = now_iso
+        if is_dry_run:
+            existing = await db.inventory_items.find_one({"sku_code": sku}, {"_id": 1})
+            updated += 1 if existing else 0
+            created += 0 if existing else 1
+            continue
+        existing = await db.inventory_items.find_one({"sku_code": sku})
+        if existing:
+            await db.inventory_items.update_one({"_id": existing["_id"]}, {"$set": doc})
+            updated += 1
+        else:
+            doc["created_at"] = now_iso
+            doc["qc_checklist"] = []
+            res = await db.inventory_items.insert_one(doc)
+            await db.inventory_transactions.insert_one({
+                "item_id": str(res.inserted_id),
+                "transaction_type": "purchase",
+                "quantity": doc["quantity"],
+                "previous_quantity": 0,
+                "new_quantity": doc["quantity"],
+                "performed_by_id": current_user["id"],
+                "performed_by_name": current_user["name"],
+                "notes": "Bulk import",
+                "timestamp": now_iso,
+            })
+            created += 1
+
+    if not is_dry_run:
+        await create_audit_log(current_user["id"], current_user["name"], "import", "inventory_item",
+                               f"created={created} updated={updated} errors={len(error_rows)}")
+    verb = "Would import" if is_dry_run else "Imported"
+    return {"status": "done", "dry_run": is_dry_run, "created": created, "updated": updated, "errors": error_rows,
+            "total_rows": int(len(df)),
+            "message": f"{verb} {created} new and {'would update' if is_dry_run else 'updated'} {updated} existing item(s)"
+                        + (f" — {len(error_rows)} row(s) skipped" if error_rows else "")}
 
 
 @api_router.get("/inventory/export")
@@ -2228,6 +2276,38 @@ _sales_router = _create_sales_router(
     company_profile_fn=_get_active_company_profile,
 )
 api_router.include_router(_sales_router)
+
+# ═══════════ EXCESS MATERIAL RECONCILIATION (Iter 42 Change 4) ═══════════
+from reconciliation import create_router as _create_reconciliation_router
+_reconciliation_router = _create_reconciliation_router(
+    db=db, get_current_user=get_current_user, require_role=require_role,
+    create_audit_log=create_audit_log,
+)
+api_router.include_router(_reconciliation_router)
+
+# ═══════════ ASSETS & TOOLS (Iter 42 Change 6) ═══════════
+from assets import create_router as _create_assets_router
+_assets_router = _create_assets_router(
+    db=db, get_current_user=get_current_user, require_role=require_role,
+    create_audit_log=create_audit_log,
+)
+api_router.include_router(_assets_router)
+
+# ═══════════ AMC — RECURRING REVENUE (Iter 42 Change 5) ═══════════
+from amc import create_router as _create_amc_router
+_amc_router = _create_amc_router(
+    db=db, get_current_user=get_current_user, require_role=require_role,
+    create_audit_log=create_audit_log,
+)
+api_router.include_router(_amc_router)
+
+# ═══════════ MULTI-LOCATION ACCESS CONTROL (Iter 42 Change 8) ═══════════
+from locations import create_router as _create_locations_router, location_scope_filter
+_locations_router = _create_locations_router(
+    db=db, get_current_user=get_current_user, require_role=require_role,
+    create_audit_log=create_audit_log,
+)
+api_router.include_router(_locations_router)
 
 # ═══════════ CATALOGUE + FUEL MODEL (Iter 44 Phase 1 — Changes 6 & 7) ═══════════
 from catalogue import attach as _attach_catalogue  # noqa: E402
@@ -3083,6 +3163,7 @@ async def create_project(project: ProjectCreate, request: Request):
         "notes": project.notes or "",
         "notes_history": [],
         "status": "draft",
+        "location_id": user.get("default_location_id"),
         "created_by": user["id"],
         "created_by_name": user["name"],
         "created_at": datetime.now(timezone.utc).isoformat(),
@@ -3264,7 +3345,7 @@ async def get_reference_summary(project_id: str, request: Request):
     }
 
 @api_router.get("/projects")
-async def get_projects(request: Request, status: Optional[str] = None):
+async def get_projects(request: Request, status: Optional[str] = None, location_id: Optional[str] = None):
     user = await get_current_user(request)
     
     query = {"deleted_at": {"$exists": False}}  # Exclude soft-deleted projects
@@ -3275,6 +3356,10 @@ async def get_projects(request: Request, status: Optional[str] = None):
     
     if status:
         query["status"] = status
+
+    loc_filter = location_scope_filter(user, location_id)
+    if loc_filter:
+        query.update(loc_filter)
     
     projects = await db.projects.find(query).sort("created_at", -1).to_list(1000)
     
@@ -3288,7 +3373,8 @@ async def get_projects(request: Request, status: Optional[str] = None):
             "cost_estimation": p.get("cost_estimation", {}),
             "created_by_name": p.get("created_by_name", "Unknown"),
             "created_at": p["created_at"],
-            "updated_at": p["updated_at"]
+            "updated_at": p["updated_at"],
+            "location_id": p.get("location_id")
         }
         for p in projects
     ]
@@ -4325,12 +4411,16 @@ async def create_branch(payload: Dict[str, Any], request: Request):
 
 @api_router.put("/expansion/branches/{branch_id}")
 async def update_branch(branch_id: str, payload: Dict[str, Any], request: Request):
-    await require_role("admin", "manager")(request)
+    user = await require_role("admin", "manager")(request)
     payload.pop("_id", None); payload.pop("id", None)
     payload["updated_at"] = datetime.now(timezone.utc).isoformat()
+    old = await db.branches.find_one({"_id": ObjectId(branch_id)})
     r = await db.branches.update_one({"_id": ObjectId(branch_id)}, {"$set": payload})
     if r.matched_count == 0:
         raise HTTPException(status_code=404, detail="Branch not found")
+    if old and payload.get("name") and old.get("name") != payload.get("name"):
+        await create_audit_log(user["id"], user["name"], "branch_renamed", "branch", branch_id,
+                                {"name": old.get("name")}, {"name": payload.get("name")})
     return {"message": "Branch updated"}
 
 
@@ -4687,6 +4777,39 @@ async def get_report(report_type: str, request: Request, date_from: str = None, 
         if not rows:
             rows = [{"date": "-", "total_leads": 0, "qualified": 0, "site_visits": 0, "quotes_sent": 0, "conversions": 0, "by": "No data yet"}]
         return {"title": "Marketing Report", "summary": {"total_leads": total_leads, "qualified_leads": qualified, "quotes_sent": quotes_sent, "conversion_rate": conversion_rate}, "rows": rows, "chart_data": [c for c in chart_data if c["value"]>0]}
+
+    # === 13. EXCESS MATERIAL REPORT (Iter 42 Change 4) ===
+    elif report_type == "excess_material":
+        docs = await db.material_reconciliation.find({}).to_list(2000)
+        rows = []
+        item_agg: Dict[str, Dict[str, Any]] = {}
+        recoverable_value = 0.0
+        damaged_total = 0.0
+        for d in docs:
+            proj = await db.projects.find_one({"_id": ObjectId(d["project_id"])}) if d.get("project_id") else None
+            pname = (proj.get("customer", {}) or {}).get("name") if proj else d.get("project_id")
+            variance_value_total = 0.0
+            at_site_value_total = 0.0
+            for l in d.get("lines", []):
+                variance_value_total += l.get("variance_value", 0) or 0
+                at_site_value_total += (l.get("qty_at_site", 0) or 0) * (l.get("unit_cost", 0) or 0)
+                damaged_total += l.get("qty_damaged", 0) or 0
+                key = l.get("name") or "Unknown"
+                agg = item_agg.setdefault(key, {"name": key, "qty_issued": 0.0, "qty_consumed": 0.0, "variance": 0.0})
+                agg["qty_issued"] += l.get("qty_issued", 0) or 0
+                agg["qty_consumed"] += l.get("qty_consumed", 0) or 0
+                agg["variance"] += l.get("variance", 0) or 0
+            recoverable_value += at_site_value_total
+            rows.append({"project": pname, "status": d.get("status"), "variance_value": round(variance_value_total, 2),
+                         "value_at_site": round(at_site_value_total, 2), "reconciled_at": (d.get("reconciled_at") or "")[:10]})
+        by_item = sorted(item_agg.values(), key=lambda x: abs(x["variance"]), reverse=True)[:10]
+        chart_data = [{"name": it["name"][:14], "value": round(it["variance"], 1)} for it in by_item if it["variance"] > 0]
+        if not rows:
+            rows = [{"project": "-", "status": "-", "variance_value": 0, "value_at_site": 0, "reconciled_at": "No data yet"}]
+        return {"title": "Excess Material Report", "summary": {
+            "reconciliations": len(docs), "recoverable_value": round(recoverable_value, 2),
+            "damaged_qty": round(damaged_total, 2),
+        }, "rows": rows, "chart_data": chart_data}
 
     raise HTTPException(status_code=404, detail=f"Unknown report type: {report_type}")
 
@@ -5583,14 +5706,214 @@ async def record_qc(po_id: str, request: Request):
 @api_router.put("/purchase-orders/{po_id}/inbound")
 async def complete_inbound(po_id: str, request: Request):
     body = await request.json()
-    await get_current_user(request)
-    location = body.get("storage_location", "")
+    current_user = await get_current_user(request)
+    if not await check_module_permission(current_user, "module_purchase_inbound", "create"):
+        raise HTTPException(status_code=403, detail="You don't have permission to receive inventory against a purchase order")
+
     po = await db.purchase_orders.find_one({"_id": ObjectId(po_id)})
-    if po:
-        for item in po.get("items", []):
-            await db.inventory_items.update_one({"name": item.get("name")}, {"$inc": {"quantity": item.get("qty", 0)}})
-    await db.purchase_orders.update_one({"_id": ObjectId(po_id)}, {"$set": {"status": "completed", "storage_location": location, "completed_at": datetime.now(timezone.utc).isoformat()}})
-    return {"message": "Inbound completed, inventory updated"}
+    if not po:
+        raise HTTPException(status_code=404, detail="Purchase order not found")
+    if po.get("status") == "completed":
+        raise HTTPException(status_code=400, detail="This PO has already been received. Use Edit to correct a quantity, or Reverse to undo it.")
+
+    location = body.get("storage_location", "")
+    now_iso = datetime.now(timezone.utc).isoformat()
+    received_items, failed_lines, movements = [], [], []
+    for item in po.get("items", []):
+        inv_item = None
+        if item.get("inventory_item_id"):
+            inv_item = await db.inventory_items.find_one({"_id": ObjectId(item["inventory_item_id"])})
+        if not inv_item and item.get("sku_code"):
+            inv_item = await db.inventory_items.find_one({"sku_code": item["sku_code"]})
+        if not inv_item:
+            failed_lines.append(item.get("name", "Unknown item"))
+            continue
+        qty = float(item.get("qty", 0))
+        await db.inventory_items.update_one({"_id": inv_item["_id"]}, {"$inc": {"quantity": qty}})
+        received_items.append({
+            "inventory_item_id": str(inv_item["_id"]), "name": inv_item["name"],
+            "sku_code": inv_item.get("sku_code"), "qty_received": qty, "received_at": now_iso,
+        })
+        movements.append({
+            "inventory_item_id": str(inv_item["_id"]), "movement_type": "purchase_inbound", "quantity": qty,
+            "reference_type": "purchase_order", "reference_id": po_id,
+            "note": f"PO inbound: {inv_item['name']}", "created_by": current_user["id"], "created_at": now_iso,
+        })
+    if failed_lines:
+        raise HTTPException(status_code=400,
+            detail=f"Could not match to an inventory item: {', '.join(failed_lines)}. Link each PO line to an inventory item before completing the inbound.")
+    if movements:
+        await db.inventory_movements.insert_many(movements)
+    await db.purchase_orders.update_one({"_id": ObjectId(po_id)}, {"$set": {
+        "status": "completed", "storage_location": location, "completed_at": now_iso,
+        "received_items": received_items,
+        "completed_by": current_user["id"], "completed_by_name": current_user["name"],
+    }})
+    await create_audit_log(current_user["id"], current_user["name"], "inbound_completed", "purchase_order", po_id,
+                            None, received_items)
+    return {"message": "Inbound completed, inventory updated", "received_items": received_items}
+
+
+@api_router.put("/purchase-orders/{po_id}/inbound/edit")
+async def edit_inbound(po_id: str, payload: InboundEditRequest, request: Request):
+    """Correct a completed inbound's received quantities. Applies only the DELTA to stock."""
+    current_user = await get_current_user(request)
+    if not await check_module_permission(current_user, "module_purchase_inbound", "edit"):
+        raise HTTPException(status_code=403, detail="You don't have permission to edit a completed inbound")
+
+    po = await db.purchase_orders.find_one({"_id": ObjectId(po_id)})
+    if not po or po.get("status") != "completed":
+        raise HTTPException(status_code=400, detail="Only a completed inbound can be edited")
+
+    lines = payload.lines
+    old_by_id = {r["inventory_item_id"]: r for r in po.get("received_items", [])}
+    now_iso = datetime.now(timezone.utc).isoformat()
+    new_received, deltas, movements = [], [], []
+
+    for line in lines:
+        inv_id = line.inventory_item_id
+        new_qty = float(line.qty_received)
+        old_entry = old_by_id.get(inv_id, {})
+        old_qty = float(old_entry.get("qty_received", 0))
+        delta = new_qty - old_qty
+        inv_item = await db.inventory_items.find_one({"_id": ObjectId(inv_id)})
+        if not inv_item:
+            raise HTTPException(status_code=400, detail=f"Inventory item {inv_id} not found")
+        if delta != 0:
+            projected = inv_item.get("quantity", 0) + delta
+            if projected < 0:
+                raise HTTPException(status_code=400,
+                    detail=f"Cannot reduce '{inv_item['name']}' by {abs(delta)} — only {inv_item.get('quantity', 0)} left in stock (some has already been issued or sold elsewhere)")
+            await db.inventory_items.update_one({"_id": ObjectId(inv_id)}, {"$inc": {"quantity": delta}})
+            deltas.append({"inventory_item_id": inv_id, "name": inv_item["name"], "old_qty": old_qty, "new_qty": new_qty, "delta": delta})
+            movements.append({
+                "inventory_item_id": inv_id, "movement_type": "purchase_inbound_edit", "quantity": delta,
+                "reference_type": "purchase_order", "reference_id": po_id,
+                "note": f"Inbound correction: {inv_item['name']} ({old_qty} → {new_qty})",
+                "created_by": current_user["id"], "created_at": now_iso,
+            })
+        new_received.append({**old_entry, "inventory_item_id": inv_id, "name": inv_item["name"],
+                              "sku_code": inv_item.get("sku_code"), "qty_received": new_qty, "received_at": old_entry.get("received_at", now_iso)})
+
+    if movements:
+        await db.inventory_movements.insert_many(movements)
+    await db.purchase_orders.update_one({"_id": ObjectId(po_id)}, {"$set": {
+        "received_items": new_received, "edited_at": now_iso, "edited_by": current_user["name"],
+    }})
+    await create_audit_log(current_user["id"], current_user["name"], "inbound_edited", "purchase_order", po_id,
+                            old_by_id, new_received, details=json.dumps(deltas))
+    return {"message": "Inbound updated", "deltas": deltas}
+
+
+@api_router.delete("/purchase-orders/{po_id}/inbound")
+async def reverse_inbound(po_id: str, request: Request):
+    """Undo a completed inbound. Admins act directly; others without delete rights are queued for admin approval."""
+    current_user = await get_current_user(request)
+    po = await db.purchase_orders.find_one({"_id": ObjectId(po_id)})
+    if not po or po.get("status") != "completed":
+        raise HTTPException(status_code=400, detail="Only a completed inbound can be reversed")
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+    can_delete = await check_module_permission(current_user, "module_purchase_inbound", "delete")
+    if not can_delete:
+        existing = await db.inbound_action_requests.find_one({"po_id": po_id, "status": "pending"})
+        if existing:
+            return {"status": "pending_approval", "message": "A reversal request for this PO is already awaiting admin approval"}
+        await db.inbound_action_requests.insert_one({
+            "po_id": po_id, "supplier_name": po.get("supplier_name"), "action": "reverse",
+            "requested_by": current_user["id"], "requested_by_name": current_user["name"],
+            "status": "pending", "requested_at": now_iso,
+            "received_items_snapshot": po.get("received_items", []),
+        })
+        await create_audit_log(current_user["id"], current_user["name"], "inbound_reversal_requested", "purchase_order", po_id)
+        return {"status": "pending_approval", "message": "You don't have permission to reverse a completed inbound — request sent to an admin for approval"}
+
+    blocked = []
+    for r in po.get("received_items", []):
+        inv_item = await db.inventory_items.find_one({"_id": ObjectId(r["inventory_item_id"])})
+        if inv_item and inv_item.get("quantity", 0) < r.get("qty_received", 0):
+            blocked.append(f"{r['name']} — only {inv_item.get('quantity', 0)} left, {r.get('qty_received', 0)} was received (some already issued or sold)")
+    if blocked:
+        raise HTTPException(status_code=400, detail="Cannot reverse — stock has already moved: " + "; ".join(blocked))
+
+    movements = []
+    for r in po.get("received_items", []):
+        await db.inventory_items.update_one({"_id": ObjectId(r["inventory_item_id"])}, {"$inc": {"quantity": -r.get("qty_received", 0)}})
+        movements.append({
+            "inventory_item_id": r["inventory_item_id"], "movement_type": "purchase_inbound_reversal",
+            "quantity": -r.get("qty_received", 0), "reference_type": "purchase_order", "reference_id": po_id,
+            "note": f"Inbound reversed: {r['name']}", "created_by": current_user["id"], "created_at": now_iso,
+        })
+    if movements:
+        await db.inventory_movements.insert_many(movements)
+    await db.purchase_orders.update_one({"_id": ObjectId(po_id)}, {
+        "$set": {"status": "qc_done", "received_items": [], "reversed_at": now_iso, "reversed_by": current_user["name"]},
+        "$unset": {"completed_at": ""},
+    })
+    await create_audit_log(current_user["id"], current_user["name"], "inbound_reversed", "purchase_order", po_id,
+                            po.get("received_items"), None)
+    return {"status": "reversed", "message": "Inbound reversed, stock reverted"}
+
+
+# ── Inbound reversal approval queue (managers without delete rights → admin) ──
+@api_router.get("/inbound-action-requests")
+async def list_inbound_action_requests(request: Request, status: Optional[str] = None):
+    await require_role("admin")(request)
+    query = {"status": status} if status else {}
+    docs = await db.inbound_action_requests.find(query).sort("requested_at", -1).to_list(200)
+    return [{**{k: v for k, v in d.items() if k != "_id"}, "id": str(d["_id"])} for d in docs]
+
+
+@api_router.post("/inbound-action-requests/{req_id}/approve")
+async def approve_inbound_action_request(req_id: str, request: Request):
+    user = await require_role("admin")(request)
+    doc = await db.inbound_action_requests.find_one({"_id": ObjectId(req_id)})
+    if not doc or doc.get("status") != "pending":
+        raise HTTPException(status_code=400, detail="This request is no longer pending")
+    po = await db.purchase_orders.find_one({"_id": ObjectId(doc["po_id"])})
+    if not po or po.get("status") != "completed":
+        raise HTTPException(status_code=400, detail="PO is no longer in a completed state")
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+    blocked = []
+    for r in po.get("received_items", []):
+        inv_item = await db.inventory_items.find_one({"_id": ObjectId(r["inventory_item_id"])})
+        if inv_item and inv_item.get("quantity", 0) < r.get("qty_received", 0):
+            blocked.append(f"{r['name']} — only {inv_item.get('quantity', 0)} left")
+    if blocked:
+        raise HTTPException(status_code=400, detail="Cannot reverse — stock has already moved: " + "; ".join(blocked))
+
+    movements = []
+    for r in po.get("received_items", []):
+        await db.inventory_items.update_one({"_id": ObjectId(r["inventory_item_id"])}, {"$inc": {"quantity": -r.get("qty_received", 0)}})
+        movements.append({
+            "inventory_item_id": r["inventory_item_id"], "movement_type": "purchase_inbound_reversal",
+            "quantity": -r.get("qty_received", 0), "reference_type": "purchase_order", "reference_id": doc["po_id"],
+            "note": f"Inbound reversed (approved): {r['name']}", "created_by": user["id"], "created_at": now_iso,
+        })
+    if movements:
+        await db.inventory_movements.insert_many(movements)
+    await db.purchase_orders.update_one({"_id": ObjectId(doc["po_id"])}, {
+        "$set": {"status": "qc_done", "received_items": [], "reversed_at": now_iso, "reversed_by": user["name"]},
+        "$unset": {"completed_at": ""},
+    })
+    await db.inbound_action_requests.update_one({"_id": ObjectId(req_id)}, {"$set": {
+        "status": "approved", "resolved_by": user["id"], "resolved_by_name": user["name"], "resolved_at": now_iso,
+    }})
+    await create_audit_log(user["id"], user["name"], "inbound_reversal_approved", "purchase_order", doc["po_id"])
+    return {"message": "Reversal approved and applied"}
+
+
+@api_router.post("/inbound-action-requests/{req_id}/reject")
+async def reject_inbound_action_request(req_id: str, request: Request):
+    user = await require_role("admin")(request)
+    r = await db.inbound_action_requests.update_one(
+        {"_id": ObjectId(req_id), "status": "pending"},
+        {"$set": {"status": "rejected", "resolved_by": user["id"], "resolved_by_name": user["name"],
+                   "resolved_at": datetime.now(timezone.utc).isoformat()}})
+    if r.matched_count == 0:
+        raise HTTPException(status_code=400, detail="This request is no longer pending")
+    return {"message": "Request rejected"}
 
 # ================== DELIVERY OUTBOUND ==================
 

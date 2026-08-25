@@ -15,6 +15,13 @@ import {
   Upload, FileSpreadsheet, FileText, Download, Layers
 } from 'lucide-react';
 
+const REQUIRED_IMPORT_FIELDS = ['name', 'sku_code', 'category', 'quantity', 'unit_price'];
+const IMPORT_STATUS_STYLES = {
+  will_create: 'bg-emerald-100 text-emerald-700',
+  will_update: 'bg-blue-100 text-blue-700',
+  will_skip: 'bg-rose-100 text-rose-700',
+};
+
 export default function InventoryManagement() {
   const [items, setItems] = useState([]);
   const [alerts, setAlerts] = useState([]);
@@ -43,6 +50,10 @@ export default function InventoryManagement() {
   const [showImportDialog, setShowImportDialog] = useState(false);
   const [importFile, setImportFile] = useState(null);
   const [importing, setImporting] = useState(false);
+  const [previewing, setPreviewing] = useState(false);
+  const [importPreview, setImportPreview] = useState(null); // preview response
+  const [columnMapOverrides, setColumnMapOverrides] = useState({});
+  const [dryRun, setDryRun] = useState(false);
   const [importResult, setImportResult] = useState(null);
   const [exportLoading, setExportLoading] = useState(null);
 
@@ -53,18 +64,51 @@ export default function InventoryManagement() {
     setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 500);
   };
 
+  const downloadErrorsCsv = (errors) => {
+    const header = 'row,column,error,value\n';
+    const rows = errors.map(e => [e.row, e.column || '', (e.error || '').replace(/,/g, ';'), e.value != null ? String(e.value).replace(/,/g, ';') : ''].join(',')).join('\n');
+    const blob = new Blob([header + rows], { type: 'text/csv' });
+    downloadBlob(blob, 'inventory_import_errors.csv');
+  };
+
   const handleDownloadTemplate = async () => {
     try { const res = await inventoryAPI.downloadTemplate(); downloadBlob(res.data, 'inventory_import_template.xlsx'); }
     catch (e) { setError('Failed to download template'); }
+  };
+
+  const handlePreview = async () => {
+    if (!importFile) { setError('Select a file first'); return; }
+    setPreviewing(true); setError(''); setImportResult(null);
+    try {
+      const res = await inventoryAPI.previewImport(importFile);
+      setImportPreview(res.data);
+      if (res.data.status === 'needs_mapping') {
+        const seed = {};
+        REQUIRED_IMPORT_FIELDS.forEach(f => { seed[f] = res.data.column_mapping?.[f] || ''; });
+        setColumnMapOverrides(seed);
+      }
+    } catch (e) { setError(formatApiErrorDetail(e.response?.data?.detail) || 'Could not read this file. Save it as .xlsx or .csv and try again.'); }
+    finally { setPreviewing(false); }
+  };
+
+  const handleConfirmMapping = async () => {
+    setPreviewing(true); setError('');
+    try {
+      const res = await inventoryAPI.previewImport(importFile); // re-parse then re-map client-selected columns for a fresh preview
+      const merged = { ...(res.data.column_mapping || {}), ...columnMapOverrides };
+      setImportPreview({ ...res.data, column_mapping: merged, status: Object.values(merged).every(Boolean) ? 'pending_confirm' : 'needs_mapping' });
+    } catch (e) { setError('Could not re-validate the file'); }
+    finally { setPreviewing(false); }
   };
 
   const handleImport = async () => {
     if (!importFile) { setError('Select a file first'); return; }
     setImporting(true); setError(''); setImportResult(null);
     try {
-      const res = await inventoryAPI.importItems(importFile);
+      const res = await inventoryAPI.importItems(importFile, { dryRun, columnMap: columnMapOverrides });
+      if (res.data.status === 'needs_mapping') { setImportPreview(res.data); return; }
       setImportResult(res.data);
-      fetchData();
+      if (!dryRun) fetchData();
     } catch (e) { setError(formatApiErrorDetail(e.response?.data?.detail) || 'Import failed'); }
     finally { setImporting(false); }
   };
@@ -567,8 +611,8 @@ export default function InventoryManagement() {
       </Dialog>
 
       {/* Import Dialog */}
-      <Dialog open={showImportDialog} onOpenChange={(open) => { setShowImportDialog(open); if (!open) { setImportFile(null); setImportResult(null); setError(''); } }}>
-        <DialogContent className="sm:max-w-lg" data-testid="import-inventory-dialog">
+      <Dialog open={showImportDialog} onOpenChange={(open) => { setShowImportDialog(open); if (!open) { setImportFile(null); setImportResult(null); setImportPreview(null); setColumnMapOverrides({}); setDryRun(false); setError(''); } }}>
+        <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-y-auto" data-testid="import-inventory-dialog">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2"><Upload className="h-5 w-5 text-emerald-600" />Import Inventory</DialogTitle>
             <DialogDescription>Upload an .xlsx or .csv file. Existing SKUs are updated, new SKUs are added.</DialogDescription>
@@ -580,22 +624,88 @@ export default function InventoryManagement() {
             </div>
             <div className="space-y-2">
               <Label className="text-sm">File (.xlsx / .csv)</Label>
-              <Input type="file" accept=".xlsx,.csv" onChange={(e) => { setImportFile(e.target.files?.[0] || null); setImportResult(null); }} data-testid="import-file-input" />
+              <Input type="file" accept=".xlsx,.csv" onChange={(e) => { setImportFile(e.target.files?.[0] || null); setImportResult(null); setImportPreview(null); setColumnMapOverrides({}); }} data-testid="import-file-input" />
               {importFile && <p className="text-xs text-slate-500">{importFile.name} ({(importFile.size / 1024).toFixed(1)} KB)</p>}
             </div>
-            <p className="text-[11px] text-slate-500">Required columns: <code className="bg-slate-100 px-1 rounded">name, sku_code, category, quantity, unit_price</code>. Optional: reorder_level, supplier, gst_percentage, hsn_code, margin_pct, zone, aisle, shelf, rack, bin_location, procurement_date, active.</p>
-            {error && <div className="p-2 bg-red-50 text-red-700 text-xs rounded">{error}</div>}
+            <p className="text-[11px] text-slate-500">Accepted headers are flexible — e.g. "SKU", "Item Name", "Price", "Rate" all work. Required: name, sku_code, category, quantity, unit_price.</p>
+            {error && <div className="p-2 bg-red-50 text-red-700 text-xs rounded" data-testid="import-error">{error}</div>}
+
+            {!importResult && importFile && !importPreview && (
+              <Button onClick={handlePreview} disabled={previewing} variant="outline" className="w-full gap-1" data-testid="preview-import-btn">
+                {previewing ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileSpreadsheet className="h-4 w-4" />}{previewing ? 'Reading file…' : 'Preview File'}
+              </Button>
+            )}
+
+            {importPreview?.status === 'needs_mapping' && (
+              <div className="p-3 rounded-lg bg-amber-50 border border-amber-200 space-y-3" data-testid="column-mapping-panel">
+                <p className="text-xs font-semibold text-amber-800">We couldn't auto-match every required column. Map them below:</p>
+                {REQUIRED_IMPORT_FIELDS.filter(f => importPreview.unmapped_required?.includes(f)).map(field => (
+                  <div key={field} className="flex items-center gap-2">
+                    <Label className="text-xs w-28 shrink-0 capitalize">{field.replace(/_/g, ' ')}</Label>
+                    <Select value={columnMapOverrides[field] || ''} onValueChange={(v) => setColumnMapOverrides(p => ({ ...p, [field]: v }))}>
+                      <SelectTrigger className="h-9 bg-white" data-testid={`map-select-${field}`}><SelectValue placeholder="Select a column…" /></SelectTrigger>
+                      <SelectContent>
+                        {importPreview.detected_columns.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                ))}
+                <Button size="sm" onClick={handleConfirmMapping} disabled={previewing || REQUIRED_IMPORT_FIELDS.filter(f => importPreview.unmapped_required?.includes(f)).some(f => !columnMapOverrides[f])} className="bg-amber-600 hover:bg-amber-700 text-white" data-testid="confirm-mapping-btn">
+                  Apply Mapping &amp; Re-check
+                </Button>
+              </div>
+            )}
+
+            {importPreview && importPreview.status !== 'needs_mapping' && !importResult && (
+              <div className="space-y-2" data-testid="import-preview-panel">
+                <div className="grid grid-cols-3 gap-2 text-center text-xs">
+                  <div className="rounded bg-emerald-50 border border-emerald-200 p-2"><p className="font-bold text-emerald-700">{importPreview.summary?.will_create ?? 0}</p><p className="text-emerald-600">Will Create</p></div>
+                  <div className="rounded bg-blue-50 border border-blue-200 p-2"><p className="font-bold text-blue-700">{importPreview.summary?.will_update ?? 0}</p><p className="text-blue-600">Will Update</p></div>
+                  <div className="rounded bg-rose-50 border border-rose-200 p-2"><p className="font-bold text-rose-700">{importPreview.summary?.will_skip ?? 0}</p><p className="text-rose-600">Will Skip</p></div>
+                </div>
+                <div className="max-h-48 overflow-y-auto border rounded-lg">
+                  <table className="w-full text-[11px]">
+                    <thead className="bg-slate-50 sticky top-0"><tr><th className="text-left p-1.5">Row</th><th className="text-left p-1.5">Name / Issue</th><th className="text-left p-1.5">SKU</th><th className="text-right p-1.5">Status</th></tr></thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {importPreview.preview_rows?.map((r, i) => (
+                        <tr key={i}>
+                          <td className="p-1.5">{r.row}</td>
+                          <td className="p-1.5 truncate max-w-[160px]">{r.name || r.reason}</td>
+                          <td className="p-1.5">{r.sku_code || '—'}</td>
+                          <td className="p-1.5 text-right"><span className={`px-1.5 py-0.5 rounded ${IMPORT_STATUS_STYLES[r.status] || ''}`}>{(r.status || '').replace('will_', '')}</span></td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                {importPreview.errors?.length > 0 && (
+                  <Button variant="outline" size="sm" className="gap-1 text-xs" onClick={() => downloadErrorsCsv(importPreview.errors)} data-testid="download-preview-errors-btn">
+                    <Download className="h-3 w-3" />Download full error report ({importPreview.errors.length})
+                  </Button>
+                )}
+                <label className="flex items-center gap-2 text-xs cursor-pointer">
+                  <input type="checkbox" checked={dryRun} onChange={(e) => setDryRun(e.target.checked)} data-testid="dry-run-toggle" />
+                  Validate only (dry run) — don't write to inventory yet
+                </label>
+              </div>
+            )}
+
             {importResult && (
               <div className="p-3 rounded-lg bg-emerald-50 border border-emerald-200 text-sm" data-testid="import-result">
                 <p className="font-semibold text-emerald-800">{importResult.message}</p>
                 <p className="text-emerald-700 text-xs mt-1">Total rows processed: {importResult.total_rows}</p>
                 {importResult.errors?.length > 0 && (
-                  <div className="mt-2 max-h-32 overflow-y-auto">
-                    <p className="text-xs font-medium text-amber-700 mb-1">{importResult.errors.length} row(s) skipped:</p>
-                    <ul className="text-[11px] text-amber-700 space-y-0.5">
-                      {importResult.errors.slice(0, 8).map((er, i) => <li key={i}>Row {er.row}: {er.error}</li>)}
-                      {importResult.errors.length > 8 && <li>… and {importResult.errors.length - 8} more</li>}
-                    </ul>
+                  <div className="mt-2">
+                    <div className="max-h-32 overflow-y-auto">
+                      <p className="text-xs font-medium text-amber-700 mb-1">{importResult.errors.length} row(s) skipped:</p>
+                      <ul className="text-[11px] text-amber-700 space-y-0.5">
+                        {importResult.errors.slice(0, 8).map((er, i) => <li key={i}>Row {er.row}: {er.error}</li>)}
+                        {importResult.errors.length > 8 && <li>… and {importResult.errors.length - 8} more</li>}
+                      </ul>
+                    </div>
+                    <Button variant="outline" size="sm" className="gap-1 text-xs mt-2" onClick={() => downloadErrorsCsv(importResult.errors)} data-testid="download-result-errors-btn">
+                      <Download className="h-3 w-3" />Download full error report
+                    </Button>
                   </div>
                 )}
               </div>
@@ -603,8 +713,8 @@ export default function InventoryManagement() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowImportDialog(false)}>Close</Button>
-            <Button onClick={handleImport} disabled={!importFile || importing} className="bg-emerald-600 hover:bg-emerald-700 text-white gap-1" data-testid="confirm-import-btn">
-              {importing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}{importing ? 'Importing...' : 'Import'}
+            <Button onClick={handleImport} disabled={!importFile || importing || !importPreview || importPreview.status === 'needs_mapping'} className="bg-emerald-600 hover:bg-emerald-700 text-white gap-1" data-testid="confirm-import-btn">
+              {importing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}{importing ? 'Importing...' : dryRun ? 'Run Validation' : 'Confirm Import'}
             </Button>
           </DialogFooter>
         </DialogContent>

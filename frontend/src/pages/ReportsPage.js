@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { reportsAPI, marketingAPI } from '../utils/api';
+import { reportsAPI, marketingAPI, reconciliationAPI } from '../utils/api';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Badge } from '../components/ui/badge';
 import {
   Loader2, FileSpreadsheet, FileText, IndianRupee, TrendingUp, Briefcase,
-  Package, Users, Receipt, Star, AlertTriangle, Truck, ClipboardList, Megaphone
+  Package, Users, Receipt, Star, AlertTriangle, Truck, ClipboardList, Megaphone, PackageCheck
 } from 'lucide-react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -31,7 +31,8 @@ const REPORTS = [
   { id: 'inbound', label: 'Inbound Report', icon: Package, desc: 'Purchase orders, QC, transport, receiving' },
   { id: 'outbound', label: 'Outbound Report', icon: Truck, desc: 'Deliveries, dispatch, transport tracking' },
   { id: 'audit', label: 'Audit Report', icon: ClipboardList, desc: 'Audits, checklist, issues, resolution' },
-  { id: 'marketing', label: 'Marketing Report', icon: Megaphone, desc: 'Leads, conversions, site visits, quotes' }
+  { id: 'marketing', label: 'Marketing Report', icon: Megaphone, desc: 'Leads, conversions, site visits, quotes' },
+  { id: 'excess_material', label: 'Excess Material', icon: PackageCheck, desc: 'Quoted vs issued vs consumed, recoverable value' }
 ];
 
 function SummaryCard({ label, value }) {
@@ -54,6 +55,15 @@ export default function ReportsPage() {
   const [filters, setFilters] = useState({ date_from: '', date_to: '', system_type: 'all', status: 'all', movement_type: 'all' });
   const [cacData, setCacData] = useState(null);
   const [cacLoading, setCacLoading] = useState(false);
+  const [excessMaterialData, setExcessMaterialData] = useState(null);
+  const [excessMaterialLoading, setExcessMaterialLoading] = useState(false);
+
+  const fetchExcessMaterial = useCallback(async () => {
+    setExcessMaterialLoading(true);
+    try { const r = await reconciliationAPI.report(); setExcessMaterialData(r.data); }
+    catch (e) { console.error('Excess material report fetch failed', e); setExcessMaterialData(null); }
+    finally { setExcessMaterialLoading(false); }
+  }, []);
 
   const fetchCac = useCallback(async () => {
     setCacLoading(true);
@@ -72,7 +82,8 @@ export default function ReportsPage() {
 
   useEffect(() => {
     if (activeReport === 'marketing') fetchCac();
-  }, [activeReport, fetchCac]);
+    if (activeReport === 'excess_material') fetchExcessMaterial();
+  }, [activeReport, fetchCac, fetchExcessMaterial]);
 
   const fetchReport = useCallback(async (type, tab, overrideFilters) => {
     setLoading(true);
@@ -351,6 +362,55 @@ export default function ReportsPage() {
                     <div className="text-center py-6 text-xs text-slate-400" data-testid="cac-empty">
                       No marketing spend recorded yet. Add entries under Accounting → Marketing Expense to see CAC metrics.
                     </div>
+                  )}
+                </div>
+              )}
+
+              {/* Excess Material dashboard (Iter 42 Change 4) */}
+              {activeReport === 'excess_material' && (
+                <div className="mb-4" data-testid="excess-material-panel">
+                  {excessMaterialLoading ? (
+                    <div className="flex justify-center py-6"><Loader2 className="h-5 w-5 animate-spin text-amber-500" /></div>
+                  ) : excessMaterialData ? (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <Card className="border-slate-200" data-testid="excess-by-item">
+                        <CardHeader className="py-2 px-3 border-b border-slate-200"><CardTitle className="text-sm font-['Outfit'] flex items-center gap-1"><Package className="h-4 w-4 text-amber-600" />Over-Issue by Item</CardTitle></CardHeader>
+                        <CardContent className="p-0">
+                          {excessMaterialData.by_item?.length ? (
+                            <table className="w-full text-xs">
+                              <thead className="bg-slate-50 border-b border-slate-100 text-[10px] uppercase text-slate-500"><tr><th className="text-left px-2 py-2">Item</th><th className="text-right px-2 py-2">Issued</th><th className="text-right px-2 py-2">Variance</th><th className="text-right px-2 py-2">Over-Issue %</th></tr></thead>
+                              <tbody className="divide-y divide-slate-100">
+                                {excessMaterialData.by_item.slice(0, 10).map(it => (
+                                  <tr key={it.name}>
+                                    <td className="px-2 py-1.5 font-medium text-slate-800 truncate max-w-[120px]">{it.name}</td>
+                                    <td className="px-2 py-1.5 text-right">{it.qty_issued}</td>
+                                    <td className="px-2 py-1.5 text-right">{it.variance}</td>
+                                    <td className={`px-2 py-1.5 text-right font-semibold ${it.over_issue_pct > 10 ? 'text-rose-600' : 'text-slate-600'}`}>{it.over_issue_pct}%</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          ) : <p className="text-xs text-slate-400 text-center py-4">No reconciliations submitted yet.</p>}
+                        </CardContent>
+                      </Card>
+                      <Card className="border-slate-200" data-testid="excess-unreturned">
+                        <CardHeader className="py-2 px-3 border-b border-slate-200"><CardTitle className="text-sm font-['Outfit'] flex items-center gap-1"><IndianRupee className="h-4 w-4 text-rose-600" />Unreturned Material by Project</CardTitle></CardHeader>
+                        <CardContent className="p-0">
+                          {excessMaterialData.unreturned_by_project?.length ? (
+                            <table className="w-full text-xs">
+                              <thead className="bg-slate-50 border-b border-slate-100 text-[10px] uppercase text-slate-500"><tr><th className="text-left px-2 py-2">Project</th><th className="text-right px-2 py-2">Value at Site</th></tr></thead>
+                              <tbody className="divide-y divide-slate-100">
+                                {excessMaterialData.unreturned_by_project.slice(0, 10).map((p, i) => (
+                                  <tr key={i}><td className="px-2 py-1.5 font-medium text-slate-800 truncate max-w-[160px]">{p.project_name}</td><td className="px-2 py-1.5 text-right">₹{p.value_at_site.toLocaleString('en-IN')}</td></tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          ) : <p className="text-xs text-slate-400 text-center py-4">Nothing unreturned yet.</p>}
+                        </CardContent>
+                      </Card>
+                    </div>
+                  ) : (
+                    <div className="text-center py-6 text-xs text-slate-400" data-testid="excess-material-empty">No reconciliations submitted yet — fill one from a completed project's page.</div>
                   )}
                 </div>
               )}

@@ -34,6 +34,9 @@ import PurchaseInboundPage from "./pages/PurchaseInboundPage";
 import DeliveryOutboundPage from "./pages/DeliveryOutboundPage";
 import BrandReturnsPage from "./pages/BrandReturnsPage";
 import WeeklyAuditPage from "./pages/WeeklyAuditPage";
+import AssetsPage from "./pages/AssetsPage";
+import AMCDashboard from "./pages/AMCDashboard";
+import LocationsPage from "./pages/LocationsPage";
 
 // Protected Route Component
 function ProtectedRoute({ children, allowedRoles = null }) {
@@ -126,6 +129,9 @@ function AppRoutes() {
       <Route path="/dashboard/pricing-config" element={<ProtectedRoute allowedRoles={["admin"]}><DashboardLayout><PricingConfig /></DashboardLayout></ProtectedRoute>} />
       <Route path="/dashboard/sales" element={<ProtectedRoute><DashboardLayout><DirectSalesPage /></DashboardLayout></ProtectedRoute>} />
       <Route path="/dashboard/readings" element={<ProtectedRoute><DashboardLayout><ReadingsPage /></DashboardLayout></ProtectedRoute>} />
+      <Route path="/dashboard/assets" element={<ProtectedRoute><DashboardLayout><AssetsPage /></DashboardLayout></ProtectedRoute>} />
+      <Route path="/dashboard/amc" element={<ProtectedRoute allowedRoles={["admin", "manager"]}><DashboardLayout><AMCDashboard /></DashboardLayout></ProtectedRoute>} />
+      <Route path="/dashboard/locations" element={<ProtectedRoute allowedRoles={["admin"]}><DashboardLayout><LocationsPage /></DashboardLayout></ProtectedRoute>} />
       {/* Default Redirect */}
       <Route path="/" element={<Navigate to="/dashboard" replace />} />
       <Route path="*" element={<Navigate to="/dashboard" replace />} />
