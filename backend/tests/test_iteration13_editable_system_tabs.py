@@ -8,7 +8,6 @@ System tabs preserve their slug when renamed (for hardcoded content rendering).
 import pytest
 import requests
 import os
-import os
 TEST_ADMIN_PASSWORD = os.environ.get("TEST_ADMIN_PASSWORD") or "Admin@123"
 
 

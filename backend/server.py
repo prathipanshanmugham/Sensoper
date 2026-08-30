@@ -6,6 +6,7 @@ from fastapi.responses import JSONResponse, HTMLResponse
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 from bson import ObjectId
+from pymongo import ReturnDocument
 import os
 import logging
 from pathlib import Path
@@ -260,6 +261,7 @@ class InventoryItemCreate(BaseModel):
     qc_checklist: list = []
     procurement_date: Optional[str] = None
     addon_group: Optional[str] = None                # Iter 44 Change 3 — links to addon_groups collection
+    location_id: Optional[str] = None
 
 class InventoryItemUpdate(BaseModel):
     name: Optional[str] = None
@@ -281,6 +283,7 @@ class InventoryItemUpdate(BaseModel):
     qc_checklist: Optional[list] = None
     procurement_date: Optional[str] = None
     addon_group: Optional[str] = None                # Iter 44 Change 3
+    location_id: Optional[str] = None
 
 class InventoryCategoryCreate(BaseModel):
     name: str
@@ -342,6 +345,8 @@ class CompanyProfileCreate(BaseModel):
     website: Optional[str] = None
     gst_number: Optional[str] = None
     pan_number: Optional[str] = None
+    state: Optional[str] = None
+    location_id: Optional[str] = None
     bank_details: Optional[BankDetails] = None
     authorized_signatory: Optional[str] = None
     designation: Optional[str] = None
@@ -358,6 +363,8 @@ class CompanyProfileUpdate(BaseModel):
     website: Optional[str] = None
     gst_number: Optional[str] = None
     pan_number: Optional[str] = None
+    state: Optional[str] = None
+    location_id: Optional[str] = None
     bank_details: Optional[BankDetails] = None
     authorized_signatory: Optional[str] = None
     designation: Optional[str] = None
@@ -440,13 +447,16 @@ class PurchaseOrderCreate(BaseModel):
     items: list  # [{name, qty, unit_price, inventory_item_id?, sku_code?}]
     expected_delivery: str = ""
     notes: str = ""
+    location_id: Optional[str] = None
 
 class InboundEditLine(BaseModel):
     inventory_item_id: str
     qty_received: float
+    notes: Optional[str] = None
 
 class InboundEditRequest(BaseModel):
     lines: List[InboundEditLine] = Field(..., min_items=1)
+    storage_location: Optional[str] = None
 
 class DeliveryOutboundCreate(BaseModel):
     project_id: str = ""
@@ -461,6 +471,17 @@ class DeliveryOutboundCreate(BaseModel):
     delivery_date: str = ""
     distance_km: float = 0
     notes: str = ""
+
+class DeliveryOutboundEdit(BaseModel):
+    items: Optional[list] = None
+    transporter_name: Optional[str] = None
+    vehicle_number: Optional[str] = None
+    driver_contact: Optional[str] = None
+    dispatch_date: Optional[str] = None
+    delivery_date: Optional[str] = None
+    notes: Optional[str] = None
+    confirm_reconciliation_impact: bool = False
+    admin_reason: Optional[str] = None
 
 class BrandReturnCreate(BaseModel):
     project_id: str = ""
@@ -994,6 +1015,8 @@ async def get_company_profiles(request: Request):
             "website": p.get("website"),
             "gst_number": p.get("gst_number"),
             "pan_number": p.get("pan_number"),
+            "state": p.get("state"),
+            "location_id": p.get("location_id"),
             "bank_details": p.get("bank_details"),
             "authorized_signatory": p.get("authorized_signatory"),
             "designation": p.get("designation"),
@@ -1023,6 +1046,8 @@ async def get_active_company():
             "website": "www.sensoper.com",
             "gst_number": None,
             "pan_number": None,
+            "state": "Tamil Nadu",
+            "location_id": None,
             "bank_details": None,
             "authorized_signatory": None,
             "designation": None
@@ -1041,6 +1066,8 @@ async def get_active_company():
         "website": profile.get("website"),
         "gst_number": profile.get("gst_number"),
         "pan_number": profile.get("pan_number"),
+        "state": profile.get("state"),
+        "location_id": profile.get("location_id"),
         "bank_details": profile.get("bank_details"),
         "authorized_signatory": profile.get("authorized_signatory"),
         "designation": profile.get("designation")
@@ -1063,6 +1090,8 @@ async def create_company_profile(profile: CompanyProfileCreate, request: Request
         "website": profile.website,
         "gst_number": profile.gst_number,
         "pan_number": profile.pan_number,
+        "state": profile.state,
+        "location_id": profile.location_id,
         "bank_details": profile.bank_details.model_dump() if profile.bank_details else None,
         "authorized_signatory": profile.authorized_signatory,
         "designation": profile.designation,
@@ -1113,6 +1142,10 @@ async def update_company_profile(profile_id: str, updates: CompanyProfileUpdate,
         update_data["gst_number"] = updates.gst_number
     if updates.pan_number is not None:
         update_data["pan_number"] = updates.pan_number
+    if updates.state is not None:
+        update_data["state"] = updates.state
+    if updates.location_id is not None:
+        update_data["location_id"] = updates.location_id
     if updates.bank_details is not None:
         update_data["bank_details"] = updates.bank_details.model_dump()
     if updates.authorized_signatory is not None:
@@ -1651,6 +1684,7 @@ async def create_inventory_item(item: InventoryItemCreate, request: Request):
         "active": item.active,
         "qc_checklist": item.qc_checklist,
         "procurement_date": item.procurement_date,
+        "location_id": item.location_id or None,
         "created_at": datetime.now(timezone.utc).isoformat(),
         "updated_at": datetime.now(timezone.utc).isoformat()
     }
@@ -1702,6 +1736,8 @@ async def update_inventory_item(item_id: str, updates: InventoryItemUpdate, requ
         update_data["image_url"] = updates.image_url
     if updates.category is not None:
         update_data["category"] = updates.category
+    if updates.location_id is not None:
+        update_data["location_id"] = updates.location_id or None
     if updates.unit_price is not None:
         update_data["unit_price"] = updates.unit_price
     if updates.supplier is not None:
@@ -2024,18 +2060,16 @@ async def inventory_export(request: Request, format: str = "xlsx"):
 
 
 @api_router.get("/inventory/alerts")
-async def get_inventory_alerts(request: Request):
+async def get_inventory_alerts(request: Request, location_id: Optional[str] = None):
     """Get all low stock alerts"""
-    await get_current_user(request)
+    user = await get_current_user(request)
     
     # Use aggregation to find items below reorder level
-    pipeline = [
-        {
-            "$match": {
-                "$expr": {"$lte": ["$quantity", "$reorder_level"]}
-            }
-        }
-    ]
+    match_stage = {"$expr": {"$lte": ["$quantity", "$reorder_level"]}}
+    loc_filter = location_scope_filter(user, location_id)
+    if loc_filter:
+        match_stage = {"$and": [match_stage, loc_filter]}
+    pipeline = [{"$match": match_stage}]
     
     items = await db.inventory_items.aggregate(pipeline).to_list(100)
     
@@ -2046,6 +2080,7 @@ async def get_inventory_alerts(request: Request):
             "sku_code": item["sku_code"],
             "category": item["category"],
             "zone": item.get("zone", ""),
+            "location_id": item.get("location_id"),
             "quantity": item["quantity"],
             "reorder_level": item.get("reorder_level", 10)
         }
@@ -2267,13 +2302,18 @@ from calculators.seed_data import get_default_discoms, get_default_pincodes
 from sales import create_router as _create_sales_router
 
 
-async def _get_active_company_profile():
+async def _get_active_company_profile(location_id: Optional[str] = None):
+    """Iter 43 Change 3b — a location-scoped profile (own GST/state) wins over the global active one."""
+    if location_id:
+        loc_profile = await db.company_profiles.find_one({"location_id": location_id, "is_active": True})
+        if loc_profile:
+            return loc_profile
     return await db.company_profiles.find_one({"is_active": True}) or {}
 
 
 _sales_router = _create_sales_router(
     db=db, get_current_user=get_current_user, require_role=require_role,
-    company_profile_fn=_get_active_company_profile,
+    company_profile_fn=_get_active_company_profile, check_module_permission=check_module_permission,
 )
 api_router.include_router(_sales_router)
 
@@ -2289,7 +2329,7 @@ api_router.include_router(_reconciliation_router)
 from assets import create_router as _create_assets_router
 _assets_router = _create_assets_router(
     db=db, get_current_user=get_current_user, require_role=require_role,
-    create_audit_log=create_audit_log,
+    create_audit_log=create_audit_log, check_module_permission=check_module_permission,
 )
 api_router.include_router(_assets_router)
 
@@ -2414,7 +2454,7 @@ async def subsidy_analytics(request: Request):
 
 def _round_v(x):
     try: return round(float(x), 2)
-    except: return 0
+    except Exception: return 0
 
 
 # ═══════════ MARKETING SUMMARY + CAC REPORT (Iter 39 Change 3) ═══════════
@@ -4080,9 +4120,13 @@ async def get_dashboard_stats(request: Request):
         pending_approvals = await db.approvals.count_documents({"status": "pending"})
         stats["pending_approvals"] = pending_approvals
         
-        # Low stock alerts count
+        # Low stock alerts count — scoped to the user's assigned location(s)
+        loc_filter = location_scope_filter(user)
+        low_stock_match = {"$expr": {"$lte": ["$quantity", "$reorder_level"]}}
+        if loc_filter:
+            low_stock_match.update(loc_filter)
         low_stock_pipeline = [
-            {"$match": {"$expr": {"$lte": ["$quantity", "$reorder_level"]}}}
+            {"$match": low_stock_match}
         ]
         low_stock_items = await db.inventory_items.aggregate(low_stock_pipeline).to_list(100)
         stats["low_stock_alerts"] = len(low_stock_items)
@@ -4809,6 +4853,110 @@ async def get_report(report_type: str, request: Request, date_from: str = None, 
         return {"title": "Excess Material Report", "summary": {
             "reconciliations": len(docs), "recoverable_value": round(recoverable_value, 2),
             "damaged_qty": round(damaged_total, 2),
+        }, "rows": rows, "chart_data": chart_data}
+
+    # === 14. AMC REPORT (Iter 43 Change 4) ===
+    elif report_type == "amc":
+        contracts = await db.amc_contracts.find({}).to_list(2000)
+        active = [c for c in contracts if c.get("status") == "active"]
+        arr = sum(c.get("annual_value", 0) or 0 for c in active)
+        outstanding = sum(c.get("outstanding", 0) or 0 for c in contracts)
+        renewed = sum(1 for c in contracts if c.get("status") == "renewed")
+        churned = sum(1 for c in contracts if c.get("status") == "cancelled")
+        renewal_rate = round((renewed / (renewed + churned)) * 100, 1) if (renewed + churned) else 0
+        by_type: Dict[str, float] = {}
+        for c in active:
+            by_type[c.get("contract_type", "other")] = by_type.get(c.get("contract_type", "other"), 0) + (c.get("annual_value", 0) or 0)
+        rows = [{"contract_number": c.get("contract_number"), "customer": c.get("customer_name"),
+                 "contract_type": c.get("contract_type", "-"), "annual_value": round(c.get("annual_value", 0) or 0, 2),
+                 "status": c.get("status"), "start_date": (c.get("start_date") or "")[:10],
+                 "end_date": (c.get("end_date") or "")[:10], "outstanding": round(c.get("outstanding", 0) or 0, 2)} for c in contracts]
+        if not rows:
+            rows = [{"contract_number": "-", "customer": "-", "contract_type": "-", "annual_value": 0, "status": "No data yet", "start_date": "-", "end_date": "-", "outstanding": 0}]
+        chart_data = [{"name": k.replace("_", " ").title(), "value": round(v, 1)} for k, v in by_type.items()]
+        return {"title": "AMC Contracts Report", "summary": {
+            "active_contracts": len(active), "arr": round(arr, 2), "mrr": round(arr / 12, 2),
+            "renewal_rate": renewal_rate, "outstanding": round(outstanding, 2),
+        }, "rows": rows, "chart_data": chart_data}
+
+    # === 15. ASSETS REPORT (Iter 43 Change 4) ===
+    elif report_type == "assets":
+        assets_docs = await db.assets.find({"active": {"$ne": False}}).to_list(2000)
+        by_status: Dict[str, int] = {}
+        total_book_value = 0.0
+        for a in assets_docs:
+            by_status[a.get("status", "available")] = by_status.get(a.get("status", "available"), 0) + 1
+            cost = a.get("purchase_cost", 0) or 0
+            life = a.get("useful_life_years", 5) or 5
+            try:
+                purchased = datetime.fromisoformat(a["purchase_date"]) if a.get("purchase_date") else None
+                if purchased and purchased.tzinfo is None: purchased = purchased.replace(tzinfo=timezone.utc)
+            except Exception:
+                purchased = None
+            if purchased and life > 0:
+                years_elapsed = (datetime.now(timezone.utc) - purchased).days / 365.25
+                total_book_value += cost * max(0.0, 1 - (years_elapsed / life))
+            else:
+                total_book_value += cost
+        rows = [{"asset_code": a.get("asset_code"), "name": a.get("name"), "category": a.get("category"),
+                 "status": a.get("status"), "assigned_to": a.get("assigned_to_name") or "-",
+                 "purchase_cost": round(a.get("purchase_cost", 0) or 0, 2)} for a in assets_docs]
+        if not rows:
+            rows = [{"asset_code": "-", "name": "-", "category": "-", "status": "No data yet", "assigned_to": "-", "purchase_cost": 0}]
+        chart_data = [{"name": k.replace("_", " ").title(), "value": v} for k, v in by_status.items()]
+        return {"title": "Assets Register Report", "summary": {
+            "total_assets": len(assets_docs), "total_book_value": round(total_book_value, 2),
+            "issued": by_status.get("issued", 0), "in_maintenance": by_status.get("in_maintenance", 0),
+        }, "rows": rows, "chart_data": chart_data}
+
+    # === 16. TOOLS REPORT (Iter 43 Change 4) — tool/equipment subset with utilisation ===
+    elif report_type == "tools":
+        tool_categories = {"power_tool", "hand_tool", "test_equipment"}
+        tools_docs = await db.assets.find({"active": {"$ne": False}, "category": {"$in": list(tool_categories)}}).to_list(2000)
+        tool_ids = [str(t["_id"]) for t in tools_docs]
+        maint_docs = await db.asset_maintenance.find({"asset_id": {"$in": tool_ids}}).to_list(5000) if tool_ids else []
+        maint_cost_by_tool: Dict[str, float] = {}
+        for m in maint_docs:
+            maint_cost_by_tool[m.get("asset_id")] = maint_cost_by_tool.get(m.get("asset_id"), 0) + (m.get("cost", 0) or 0)
+        issued_now = sum(1 for t in tools_docs if t.get("status") == "issued")
+        rows = [{"asset_code": t.get("asset_code"), "name": t.get("name"), "category": t.get("category"),
+                 "status": t.get("status"), "assigned_to": t.get("assigned_to_name") or "-",
+                 "maintenance_cost": round(maint_cost_by_tool.get(str(t["_id"]), 0), 2)} for t in tools_docs]
+        if not rows:
+            rows = [{"asset_code": "-", "name": "-", "category": "-", "status": "No data yet", "assigned_to": "-", "maintenance_cost": 0}]
+        chart_data = [{"name": "Available", "value": sum(1 for t in tools_docs if t.get("status") == "available")},
+                      {"name": "Issued", "value": issued_now},
+                      {"name": "In Maintenance", "value": sum(1 for t in tools_docs if t.get("status") == "in_maintenance")}]
+        return {"title": "Tools Utilisation Report", "summary": {
+            "total_tools": len(tools_docs), "issued_now": issued_now,
+            "utilisation_pct": round((issued_now / len(tools_docs)) * 100, 1) if tools_docs else 0,
+            "total_maintenance_cost": round(sum(maint_cost_by_tool.values()), 2),
+        }, "rows": rows, "chart_data": [c for c in chart_data if c["value"] > 0]}
+
+    # === 17. EXPENSES REPORT (Iter 43 Change 4) ===
+    elif report_type == "expenses":
+        q: Dict[str, Any] = {"entry_type": {"$in": ["operational_expense", "marketing_expense", "gst_input", "gst_paid"]}}
+        if date_from or date_to:
+            q["entry_date"] = {}
+            if date_from: q["entry_date"]["$gte"] = date_from
+            if date_to: q["entry_date"]["$lte"] = date_to
+        entries = await db.account_entries.find(q).sort("entry_date", -1).to_list(5000)
+        by_type: Dict[str, float] = {}
+        for e in entries:
+            by_type[e.get("entry_type")] = by_type.get(e.get("entry_type"), 0) + (e.get("amount", 0) or 0)
+        rows = [{"date": e.get("entry_date"), "type": (e.get("entry_type") or "").replace("_", " ").title(),
+                 "amount": round(e.get("amount", 0) or 0, 2), "description": e.get("description", ""),
+                 "channel": e.get("marketing_channel") or "-", "entered_by": e.get("entered_by", "")} for e in entries]
+        if not rows:
+            rows = [{"date": "-", "type": "-", "amount": 0, "description": "No data yet", "channel": "-", "entered_by": "-"}]
+        op_exp = by_type.get("operational_expense", 0)
+        mkt_exp = by_type.get("marketing_expense", 0)
+        gst_input = by_type.get("gst_input", 0)
+        gst_paid = by_type.get("gst_paid", 0)
+        chart_data = [{"name": k.replace("_", " ").title(), "value": round(v, 1)} for k, v in by_type.items()]
+        return {"title": "Expenses Report", "summary": {
+            "operational_expense": round(op_exp, 2), "marketing_expense": round(mkt_exp, 2),
+            "gst_input": round(gst_input, 2), "net_gst_liability": round(gst_paid - gst_input, 2),
         }, "rows": rows, "chart_data": chart_data}
 
     raise HTTPException(status_code=404, detail=f"Unknown report type: {report_type}")
@@ -5657,29 +5805,59 @@ async def delete_credit(credit_id: str, request: Request):
 
 # ================== PURCHASE ORDERS (INBOUND) ==================
 
+async def _next_doc_sequence(key: str) -> int:
+    doc = await db.counters.find_one_and_update(
+        {"_id": key}, {"$inc": {"seq": 1}}, upsert=True, return_document=ReturnDocument.AFTER,
+    )
+    return doc["seq"]
+
 @api_router.post("/purchase-orders")
 async def create_po(po: PurchaseOrderCreate, request: Request):
     user = await get_current_user(request)
     total = sum(i.get("qty",0) * i.get("unit_price",0) for i in po.items)
+    location_id = po.location_id or user.get("default_location_id")
+    loc_code = None
+    if location_id:
+        loc = await db.locations.find_one({"_id": ObjectId(location_id)})
+        loc_code = loc.get("code") if loc else None
+    seq = await _next_doc_sequence(f"po_number_{loc_code or 'HO'}")
     doc = {
+        "po_number": f"PO-{loc_code or 'HO'}-{seq:04d}",
         "supplier_name": po.supplier_name, "supplier_contact": po.supplier_contact,
         "items": po.items, "total_amount": round(total, 2),
         "expected_delivery": po.expected_delivery, "notes": po.notes,
+        "location_id": location_id,
         "status": "pending", "qc": None, "transport": None, "storage_location": None,
         "created_by": user["id"], "created_by_name": user["name"],
         "created_at": datetime.now(timezone.utc).isoformat()
     }
     result = await db.purchase_orders.insert_one(doc)
-    return {"id": str(result.inserted_id), "message": "PO created"}
+    return {"id": str(result.inserted_id), "po_number": doc["po_number"], "message": "PO created"}
 
 @api_router.get("/purchase-orders")
-async def list_pos(request: Request, status: str = None):
-    await get_current_user(request)
+async def list_pos(request: Request, status: str = None, location_id: str = None):
+    user = await get_current_user(request)
     query = {}
     if status and status != "all": query["status"] = status
+    loc_filter = location_scope_filter(user, location_id)
+    if loc_filter: query.update(loc_filter)
     pos = await db.purchase_orders.find(query).sort("created_at", -1).to_list(500)
     for p in pos: p["id"] = str(p.pop("_id"))
     return pos
+
+@api_router.delete("/purchase-orders/{po_id}")
+async def delete_po(po_id: str, request: Request):
+    """Iter 43 Change 2 — a PO can be deleted freely while still 'pending' (nothing physical
+    happened yet); once approved/arrived/received it must go through the existing reverse-inbound flow."""
+    user = await get_current_user(request)
+    po = await db.purchase_orders.find_one({"_id": ObjectId(po_id)})
+    if not po:
+        raise HTTPException(status_code=404, detail="Purchase order not found")
+    if po.get("status") != "pending":
+        raise HTTPException(status_code=400, detail="Only a still-pending PO can be deleted — use the reversal flow once it has progressed")
+    await db.purchase_orders.delete_one({"_id": ObjectId(po_id)})
+    await create_audit_log(user["id"], user["name"], "delete", "purchase_order", po_id, {"supplier_name": po.get("supplier_name")}, None)
+    return {"message": "Purchase order deleted"}
 
 @api_router.put("/purchase-orders/{po_id}/approve")
 async def approve_po(po_id: str, request: Request):
@@ -5793,13 +5971,23 @@ async def edit_inbound(po_id: str, payload: InboundEditRequest, request: Request
                 "created_by": current_user["id"], "created_at": now_iso,
             })
         new_received.append({**old_entry, "inventory_item_id": inv_id, "name": inv_item["name"],
-                              "sku_code": inv_item.get("sku_code"), "qty_received": new_qty, "received_at": old_entry.get("received_at", now_iso)})
+                              "sku_code": inv_item.get("sku_code"), "qty_received": new_qty,
+                              "notes": line.notes if line.notes is not None else old_entry.get("notes"),
+                              "received_at": old_entry.get("received_at", now_iso)})
 
     if movements:
         await db.inventory_movements.insert_many(movements)
-    await db.purchase_orders.update_one({"_id": ObjectId(po_id)}, {"$set": {
-        "received_items": new_received, "edited_at": now_iso, "edited_by": current_user["name"],
-    }})
+    edit_entry = {"edited_by": current_user["name"], "edited_at": now_iso, "deltas": deltas,
+                  "storage_location_changed": bool(payload.storage_location and payload.storage_location != po.get("storage_location"))}
+    update_fields = {
+        "received_items": new_received, "edited_at": now_iso, "edited_by": current_user["name"], "edited": True,
+    }
+    if payload.storage_location:
+        update_fields["storage_location"] = payload.storage_location
+    await db.purchase_orders.update_one({"_id": ObjectId(po_id)}, {
+        "$set": update_fields,
+        "$push": {"edit_history": edit_entry},
+    })
     await create_audit_log(current_user["id"], current_user["name"], "inbound_edited", "purchase_order", po_id,
                             old_by_id, new_received, details=json.dumps(deltas))
     return {"message": "Inbound updated", "deltas": deltas}
@@ -5822,7 +6010,7 @@ async def reverse_inbound(po_id: str, request: Request):
         await db.inbound_action_requests.insert_one({
             "po_id": po_id, "supplier_name": po.get("supplier_name"), "action": "reverse",
             "requested_by": current_user["id"], "requested_by_name": current_user["name"],
-            "status": "pending", "requested_at": now_iso,
+            "status": "pending", "requested_at": now_iso, "location_id": po.get("location_id"),
             "received_items_snapshot": po.get("received_items", []),
         })
         await create_audit_log(current_user["id"], current_user["name"], "inbound_reversal_requested", "purchase_order", po_id)
@@ -5855,21 +6043,24 @@ async def reverse_inbound(po_id: str, request: Request):
     return {"status": "reversed", "message": "Inbound reversed, stock reverted"}
 
 
-# ── Inbound reversal approval queue (managers without delete rights → admin) ──
+# ── Inbound reversal approval queue (managers without delete rights → admin, location-scoped) ──
 @api_router.get("/inbound-action-requests")
 async def list_inbound_action_requests(request: Request, status: Optional[str] = None):
-    await require_role("admin")(request)
+    user = await require_role("admin", "manager")(request)
     query = {"status": status} if status else {}
     docs = await db.inbound_action_requests.find(query).sort("requested_at", -1).to_list(200)
+    docs = [d for d in docs if _can_manage_request_location(user, d.get("location_id"))]
     return [{**{k: v for k, v in d.items() if k != "_id"}, "id": str(d["_id"])} for d in docs]
 
 
 @api_router.post("/inbound-action-requests/{req_id}/approve")
 async def approve_inbound_action_request(req_id: str, request: Request):
-    user = await require_role("admin")(request)
+    user = await require_role("admin", "manager")(request)
     doc = await db.inbound_action_requests.find_one({"_id": ObjectId(req_id)})
     if not doc or doc.get("status") != "pending":
         raise HTTPException(status_code=400, detail="This request is no longer pending")
+    if not _can_manage_request_location(user, doc.get("location_id")):
+        raise HTTPException(status_code=403, detail="This request belongs to a location outside your assignment")
     po = await db.purchase_orders.find_one({"_id": ObjectId(doc["po_id"])})
     if not po or po.get("status") != "completed":
         raise HTTPException(status_code=400, detail="PO is no longer in a completed state")
@@ -5906,8 +6097,81 @@ async def approve_inbound_action_request(req_id: str, request: Request):
 
 @api_router.post("/inbound-action-requests/{req_id}/reject")
 async def reject_inbound_action_request(req_id: str, request: Request):
-    user = await require_role("admin")(request)
+    user = await require_role("admin", "manager")(request)
+    doc = await db.inbound_action_requests.find_one({"_id": ObjectId(req_id)})
+    if not doc or doc.get("status") != "pending":
+        raise HTTPException(status_code=400, detail="This request is no longer pending")
+    if not _can_manage_request_location(user, doc.get("location_id")):
+        raise HTTPException(status_code=403, detail="This request belongs to a location outside your assignment")
     r = await db.inbound_action_requests.update_one(
+        {"_id": ObjectId(req_id), "status": "pending"},
+        {"$set": {"status": "rejected", "resolved_by": user["id"], "resolved_by_name": user["name"],
+                   "resolved_at": datetime.now(timezone.utc).isoformat()}})
+    if r.matched_count == 0:
+        raise HTTPException(status_code=400, detail="This request is no longer pending")
+    return {"message": "Request rejected"}
+
+
+# ── Generic action-request queue (delivery cancel, asset archive, sale cancel — Iter 42/43) ──
+async def _apply_action_request(doc: Dict[str, Any]):
+    rt, rid = doc["resource_type"], doc["resource_id"]
+    now_iso = datetime.now(timezone.utc).isoformat()
+    if rt == "delivery":
+        await db.deliveries.update_one({"_id": ObjectId(rid)}, {"$set": {"status": "cancelled", "cancelled_at": now_iso}})
+    elif rt == "asset":
+        await db.assets.update_one({"_id": ObjectId(rid)}, {"$set": {"active": False, "status": "scrapped"}})
+    elif rt == "sale":
+        from sales import apply_sale_cancellation
+        await apply_sale_cancellation(db, rid)
+    else:
+        raise HTTPException(status_code=400, detail=f"Unknown resource type: {rt}")
+
+
+def _can_manage_request_location(user: Dict[str, Any], location_id: Optional[str]) -> bool:
+    """Iter 43 Change 3c — managers may only approve/reject requests scoped to their assigned
+    location(s); admins and legacy (locationless) requests remain unrestricted."""
+    if user.get("role") == "admin" or not location_id:
+        return True
+    return location_id in (user.get("location_ids") or [])
+
+
+@api_router.get("/action-requests")
+async def list_action_requests(request: Request, status: Optional[str] = None, resource_type: Optional[str] = None):
+    user = await require_role("admin", "manager")(request)
+    query: Dict[str, Any] = {}
+    if status: query["status"] = status
+    if resource_type: query["resource_type"] = resource_type
+    docs = await db.action_requests.find(query).sort("requested_at", -1).to_list(200)
+    docs = [d for d in docs if _can_manage_request_location(user, d.get("location_id"))]
+    return [{**{k: v for k, v in d.items() if k != "_id"}, "id": str(d["_id"])} for d in docs]
+
+
+@api_router.post("/action-requests/{req_id}/approve")
+async def approve_action_request(req_id: str, request: Request):
+    user = await require_role("admin", "manager")(request)
+    doc = await db.action_requests.find_one({"_id": ObjectId(req_id)})
+    if not doc or doc.get("status") != "pending":
+        raise HTTPException(status_code=400, detail="This request is no longer pending")
+    if not _can_manage_request_location(user, doc.get("location_id")):
+        raise HTTPException(status_code=403, detail="This request belongs to a location outside your assignment")
+    await _apply_action_request(doc)
+    await db.action_requests.update_one({"_id": ObjectId(req_id)}, {"$set": {
+        "status": "approved", "resolved_by": user["id"], "resolved_by_name": user["name"],
+        "resolved_at": datetime.now(timezone.utc).isoformat(),
+    }})
+    await create_audit_log(user["id"], user["name"], f"{doc['resource_type']}_{doc['action']}_approved", doc["resource_type"], doc["resource_id"])
+    return {"message": "Request approved and applied"}
+
+
+@api_router.post("/action-requests/{req_id}/reject")
+async def reject_action_request(req_id: str, request: Request):
+    user = await require_role("admin", "manager")(request)
+    doc = await db.action_requests.find_one({"_id": ObjectId(req_id)})
+    if not doc or doc.get("status") != "pending":
+        raise HTTPException(status_code=400, detail="This request is no longer pending")
+    if not _can_manage_request_location(user, doc.get("location_id")):
+        raise HTTPException(status_code=403, detail="This request belongs to a location outside your assignment")
+    r = await db.action_requests.update_one(
         {"_id": ObjectId(req_id), "status": "pending"},
         {"$set": {"status": "rejected", "resolved_by": user["id"], "resolved_by_name": user["name"],
                    "resolved_at": datetime.now(timezone.utc).isoformat()}})
@@ -5927,6 +6191,7 @@ async def create_delivery(delivery: DeliveryOutboundCreate, request: Request):
         "vehicle_number": delivery.vehicle_number, "driver_contact": delivery.driver_contact,
         "dispatch_date": delivery.dispatch_date, "delivery_date": delivery.delivery_date,
         "distance_km": delivery.distance_km, "notes": delivery.notes,
+        "location_id": user.get("default_location_id"),
         "status": "dispatched", "created_by": user["id"], "created_by_name": user["name"],
         "created_at": datetime.now(timezone.utc).isoformat()
     }
@@ -5934,10 +6199,13 @@ async def create_delivery(delivery: DeliveryOutboundCreate, request: Request):
     return {"id": str(result.inserted_id), "message": "Delivery created"}
 
 @api_router.get("/deliveries")
-async def list_deliveries(request: Request, status: str = None):
-    await get_current_user(request)
+async def list_deliveries(request: Request, status: str = None, location_id: str = None):
+    user = await get_current_user(request)
     query = {}
     if status and status != "all": query["status"] = status
+    loc_filter = location_scope_filter(user, location_id)
+    if loc_filter:
+        query.update(loc_filter)
     dels = await db.deliveries.find(query).sort("created_at", -1).to_list(500)
     for d in dels: d["id"] = str(d.pop("_id"))
     return dels
@@ -5947,6 +6215,78 @@ async def complete_delivery(delivery_id: str, request: Request):
     await get_current_user(request)
     await db.deliveries.update_one({"_id": ObjectId(delivery_id)}, {"$set": {"status": "delivered", "completed_at": datetime.now(timezone.utc).isoformat()}})
     return {"message": "Delivery completed"}
+
+
+@api_router.put("/deliveries/{delivery_id}")
+async def edit_delivery(delivery_id: str, payload: DeliveryOutboundEdit, request: Request):
+    """Edit a delivery's items/transporter/dates. Dispatched deliveries editable by anyone with edit
+    rights; delivered ones require admin + a stated reason, since changing history is unusual."""
+    current_user = await get_current_user(request)
+    if not await check_module_permission(current_user, "module_delivery_outbound", "edit"):
+        raise HTTPException(status_code=403, detail="You don't have permission to edit deliveries")
+    d = await db.deliveries.find_one({"_id": ObjectId(delivery_id)})
+    if not d:
+        raise HTTPException(status_code=404, detail="Delivery not found")
+    if d.get("status") == "delivered":
+        if current_user["role"] != "admin":
+            raise HTTPException(status_code=403, detail="Only an admin can edit a delivery that has already been delivered")
+        if not payload.admin_reason:
+            raise HTTPException(status_code=400, detail="Please state a reason for editing a delivered outbound — this is unusual and gets logged")
+    elif d.get("status") != "dispatched":
+        raise HTTPException(status_code=400, detail=f"Cannot edit a delivery that is '{d.get('status')}'")
+
+    if payload.items is not None and d.get("project_id"):
+        recon = await db.material_reconciliation.find_one({"project_id": d["project_id"]})
+        if recon and not payload.confirm_reconciliation_impact:
+            return {"status": "needs_confirmation",
+                    "message": "This project's material reconciliation has already started — changing quantities here will change its 'issued' figures. Confirm to proceed."}
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+    before = {k: d.get(k) for k in ("items", "transporter_name", "vehicle_number", "driver_contact", "dispatch_date", "delivery_date", "notes")}
+    update_fields: Dict[str, Any] = {"edited": True, "edited_at": now_iso, "edited_by": current_user["name"]}
+    for field in ("items", "transporter_name", "vehicle_number", "driver_contact", "dispatch_date", "delivery_date", "notes"):
+        val = getattr(payload, field)
+        if val is not None:
+            update_fields[field] = val
+    if d.get("status") == "delivered":
+        update_fields["post_delivery_edit_reason"] = payload.admin_reason
+    after = {k: update_fields.get(k, before.get(k)) for k in before}
+    edit_entry = {"edited_by": current_user["name"], "edited_at": now_iso, "before": before, "after": after,
+                  "reason": payload.admin_reason if d.get("status") == "delivered" else None}
+    await db.deliveries.update_one({"_id": ObjectId(delivery_id)}, {"$set": update_fields, "$push": {"edit_history": edit_entry}})
+    await create_audit_log(current_user["id"], current_user["name"], "delivery_edited", "delivery", delivery_id, before, after)
+    return {"status": "updated", "message": "Delivery updated"}
+
+
+@api_router.delete("/deliveries/{delivery_id}")
+async def cancel_delivery(delivery_id: str, request: Request):
+    """Cancel a dispatched-but-not-yet-delivered outbound. No stock is decremented on dispatch
+    today, so cancellation has nothing to restore — it just voids the record."""
+    current_user = await get_current_user(request)
+    d = await db.deliveries.find_one({"_id": ObjectId(delivery_id)})
+    if not d:
+        raise HTTPException(status_code=404, detail="Delivery not found")
+    if d.get("status") != "dispatched":
+        raise HTTPException(status_code=400, detail="Only a dispatched (not yet delivered) outbound can be cancelled")
+
+    can_delete = await check_module_permission(current_user, "module_delivery_outbound", "delete")
+    now_iso = datetime.now(timezone.utc).isoformat()
+    if not can_delete:
+        existing = await db.action_requests.find_one({"resource_type": "delivery", "resource_id": delivery_id, "status": "pending"})
+        if existing:
+            return {"status": "pending_approval", "message": "A cancellation request for this delivery is already awaiting admin approval"}
+        await db.action_requests.insert_one({
+            "resource_type": "delivery", "resource_id": delivery_id, "action": "cancel",
+            "requested_by": current_user["id"], "requested_by_name": current_user["name"],
+            "status": "pending", "requested_at": now_iso, "location_id": d.get("location_id"),
+            "snapshot": {k: v for k, v in d.items() if k != "_id"},
+        })
+        await create_audit_log(current_user["id"], current_user["name"], "delivery_cancel_requested", "delivery", delivery_id)
+        return {"status": "pending_approval", "message": "You don't have permission to cancel this delivery — request sent to an admin for approval"}
+
+    await db.deliveries.update_one({"_id": ObjectId(delivery_id)}, {"$set": {"status": "cancelled", "cancelled_at": now_iso, "cancelled_by": current_user["name"]}})
+    await create_audit_log(current_user["id"], current_user["name"], "delivery_cancelled", "delivery", delivery_id, d.get("items"), None)
+    return {"status": "cancelled", "message": "Delivery cancelled"}
 
 # ================== BRAND RETURNS ==================
 

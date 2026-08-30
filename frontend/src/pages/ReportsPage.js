@@ -9,7 +9,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Badge } from '../components/ui/badge';
 import {
   Loader2, FileSpreadsheet, FileText, IndianRupee, TrendingUp, Briefcase,
-  Package, Users, Receipt, Star, AlertTriangle, Truck, ClipboardList, Megaphone, PackageCheck
+  Package, Users, Receipt, Star, AlertTriangle, Truck, ClipboardList, Megaphone, PackageCheck,
+  Wrench, ShieldCheck, Wallet
 } from 'lucide-react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -32,7 +33,11 @@ const REPORTS = [
   { id: 'outbound', label: 'Outbound Report', icon: Truck, desc: 'Deliveries, dispatch, transport tracking' },
   { id: 'audit', label: 'Audit Report', icon: ClipboardList, desc: 'Audits, checklist, issues, resolution' },
   { id: 'marketing', label: 'Marketing Report', icon: Megaphone, desc: 'Leads, conversions, site visits, quotes' },
-  { id: 'excess_material', label: 'Excess Material', icon: PackageCheck, desc: 'Quoted vs issued vs consumed, recoverable value' }
+  { id: 'excess_material', label: 'Excess Material', icon: PackageCheck, desc: 'Quoted vs issued vs consumed, recoverable value' },
+  { id: 'amc', label: 'AMC Contracts', icon: ShieldCheck, desc: 'ARR/MRR, renewals, outstanding by contract' },
+  { id: 'assets', label: 'Assets', icon: Package, desc: 'Register, book value, status breakdown' },
+  { id: 'tools', label: 'Tools', icon: Wrench, desc: 'Tool utilisation and maintenance cost' },
+  { id: 'expenses', label: 'Expenses', icon: Wallet, desc: 'Operational, marketing spend and GST input/paid' }
 ];
 
 function SummaryCard({ label, value }) {
@@ -154,7 +159,7 @@ export default function ReportsPage() {
       <div className="max-w-7xl mx-auto">
         <div className="mb-6">
           <h1 className="text-2xl font-bold font-['Outfit'] text-slate-900" data-testid="reports-title">Reports</h1>
-          <p className="text-sm text-slate-500">12 business intelligence reports</p>
+          <p className="text-sm text-slate-500">17 business intelligence reports</p>
         </div>
 
         {/* Filters */}
@@ -460,7 +465,7 @@ export default function ReportsPage() {
           <div className="text-center py-16">
             <TrendingUp className="h-12 w-12 text-slate-300 mx-auto mb-4" />
             <h3 className="text-lg font-semibold text-slate-600 mb-2">Select a Report</h3>
-            <p className="text-sm text-slate-400">Choose from 8 consolidated business intelligence reports</p>
+            <p className="text-sm text-slate-400">Choose from 17 consolidated business intelligence reports</p>
           </div>
         )}
       </div>

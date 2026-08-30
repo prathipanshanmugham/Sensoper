@@ -134,7 +134,15 @@ export const purchaseOrdersAPI = {
   qc: (id, data) => api.put(`/purchase-orders/${id}/qc`, data),
   inbound: (id, data) => api.put(`/purchase-orders/${id}/inbound`, data),
   editInbound: (id, data) => api.put(`/purchase-orders/${id}/inbound/edit`, data),
-  reverseInbound: (id) => api.delete(`/purchase-orders/${id}/inbound`)
+  reverseInbound: (id) => api.delete(`/purchase-orders/${id}/inbound`),
+  remove: (id) => api.delete(`/purchase-orders/${id}`)
+};
+
+// Generic action-request queue (delivery cancel / asset archive / sale cancel — location-scoped)
+export const actionRequestsAPI = {
+  list: (params = {}) => api.get('/action-requests', { params }),
+  approve: (id) => api.post(`/action-requests/${id}/approve`),
+  reject: (id) => api.post(`/action-requests/${id}/reject`)
 };
 
 // Inbound reversal approval queue (managers without delete rights → admin)
@@ -148,7 +156,9 @@ export const inboundApprovalsAPI = {
 export const deliveriesAPI = {
   create: (data) => api.post('/deliveries', data),
   list: (params = {}) => api.get('/deliveries', { params }),
-  complete: (id) => api.put(`/deliveries/${id}/complete`)
+  complete: (id) => api.put(`/deliveries/${id}/complete`),
+  edit: (id, data) => api.put(`/deliveries/${id}`, data),
+  cancel: (id) => api.delete(`/deliveries/${id}`)
 };
 
 // Brand Returns
@@ -245,6 +255,8 @@ export const salesAPI = {
   get: (id) => api.get(`/sales/${id}`),
   create: (data) => api.post('/sales', data),
   update: (id, data) => api.put(`/sales/${id}`, data),
+  edit: (id, data) => api.put(`/sales/${id}/edit`, data),
+  remove: (id) => api.delete(`/sales/${id}`),
   addPayment: (id, data) => api.post(`/sales/${id}/payment`, data),
   return: (id, data) => api.post(`/sales/${id}/return`, data),
   invoice: (id) => api.get(`/sales/${id}/invoice`),

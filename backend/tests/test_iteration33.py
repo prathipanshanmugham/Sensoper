@@ -16,7 +16,6 @@ import requests
 from datetime import datetime, timezone
 from bson import ObjectId
 from pymongo import MongoClient
-import os
 TEST_ADMIN_PASSWORD = os.environ.get("TEST_ADMIN_PASSWORD") or "Admin@123"
 
 

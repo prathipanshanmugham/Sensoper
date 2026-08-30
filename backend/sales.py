@@ -16,6 +16,7 @@ from datetime import datetime, timezone, timedelta
 from pydantic import BaseModel
 from bson import ObjectId
 from fastapi import APIRouter, HTTPException, Request
+from locations import location_scope_filter
 
 
 # ═══════════ Models ═══════════
@@ -72,6 +73,7 @@ class SaleCreate(BaseModel):
     notes: Optional[str] = None
     override_negative_stock: Optional[bool] = False
     lead_source_campaign: Optional[str] = None
+    location_id: Optional[str] = None
 
 
 class SaleUpdate(BaseModel):
@@ -79,6 +81,16 @@ class SaleUpdate(BaseModel):
     notes: Optional[str] = None
     delivery_mode: Optional[str] = None
     warranty_months: Optional[int] = None
+
+
+class SaleFullEdit(BaseModel):
+    """Full line-item edit — only the quantity/price DELTA vs the stored lines is applied to stock."""
+    lines: List[SaleLine] = None
+    customer: Optional[SaleCustomer] = None
+    discount_amount: Optional[float] = None
+    round_off: Optional[float] = None
+    override_negative_stock: Optional[bool] = False
+    admin_reason: Optional[str] = None
 
 
 class SalePaymentAdd(BaseModel):
@@ -98,7 +110,7 @@ class SaleReturn(BaseModel):
 
 def _round(v):
     try: return round(float(v or 0), 2)
-    except: return 0
+    except Exception: return 0
 
 
 def _compute_line(line: dict) -> dict:
@@ -125,15 +137,38 @@ def _compute_line(line: dict) -> dict:
     return line
 
 
-async def _generate_invoice_number(db) -> str:
+async def _generate_invoice_number(db, location_id: Optional[str] = None) -> str:
+    """Location-scoped invoice numbering (Iter 43 Change 3a) — SOC-{branchCode}/FY/NNNN when the
+    sale is tied to a location with a code, else the original global SOC/FY/NNNN series."""
     now = datetime.now(timezone.utc)
     yr = now.year % 100
     yr2 = (now.year + 1) % 100 if now.month >= 4 else yr
     yr_prev = yr - 1 if now.month < 4 else yr
     fy = f"{yr_prev:02d}-{yr2:02d}"
     prefix = "SOC"   # Sensoper Ops Counter
+    if location_id:
+        loc = await db.locations.find_one({"_id": ObjectId(location_id)})
+        if loc and loc.get("code"):
+            prefix = f"SOC-{loc['code']}"
     n = await db.sales.count_documents({"invoice_number": {"$regex": f"^{prefix}/{fy}/"}})
     return f"{prefix}/{fy}/{n+1:04d}"
+
+
+async def apply_sale_cancellation(db, sale_id: str, actor_name: str = "admin"):
+    """Restores stock + closes credit for a sale — used both by the direct DELETE (permitted users)
+    and by the generic action-request approval flow (server.py's `_apply_action_request`)."""
+    sale = await db.sales.find_one({"_id": ObjectId(sale_id)})
+    if not sale or sale.get("status") in ("returned", "cancelled"):
+        return
+    now = datetime.now(timezone.utc).isoformat()
+    await _restore_stock(db, sale.get("lines", []), sale_id, {"id": None, "name": actor_name})
+    await db.sales.update_one({"_id": ObjectId(sale_id)}, {"$set": {
+        "status": "cancelled", "cancelled_at": now, "cancelled_by": actor_name,
+    }})
+    await db.customer_credits.update_one(
+        {"reference_type": "sale", "reference_id": sale_id},
+        {"$set": {"balance": 0, "status": "cancelled"}}
+    )
 
 
 async def _decrement_stock(db, sale_lines, sale_id, override, user):
@@ -213,7 +248,7 @@ def _unify_customer_by_phone(db, customer, existing_customer_id):
 
 # ═══════════ Router ═══════════
 
-def create_router(db, get_current_user, require_role, generate_pdf=None, company_profile_fn=None):
+def create_router(db, get_current_user, require_role, generate_pdf=None, company_profile_fn=None, check_module_permission=None):
     """Factory returning an APIRouter mounted at /sales.
     `db`, `get_current_user`, `require_role` are injected from server.py so
     we don't pull them into a circular import.
@@ -228,9 +263,11 @@ def create_router(db, get_current_user, require_role, generate_pdf=None, company
                          start: Optional[str] = None, end: Optional[str] = None,
                          sale_type: Optional[str] = None, payment_status: Optional[str] = None,
                          staff: Optional[str] = None, item: Optional[str] = None,
-                         status: Optional[str] = None, limit: int = 200):
-        await get_current_user(request)
+                         status: Optional[str] = None, limit: int = 200, location_id: Optional[str] = None):
+        user = await get_current_user(request)
         query = {}
+        loc_filter = location_scope_filter(user, location_id)
+        if loc_filter: query.update(loc_filter)
         if start or end:
             query["sale_date"] = {}
             if start: query["sale_date"]["$gte"] = start
@@ -252,7 +289,7 @@ def create_router(db, get_current_user, require_role, generate_pdf=None, company
         if not end: end = now.date().isoformat()
         docs = await db.sales.find({
             "sale_date": {"$gte": start, "$lte": end},
-            "status": {"$ne": "cancelled"}
+            "status": {"$nin": ["cancelled", "returned"]}
         }).to_list(5000)
         total_revenue = sum(d.get("grand_total", 0) for d in docs)
         total_margin = sum(sum(l.get("margin_amount", 0) for l in (d.get("lines") or [])) for d in docs)
@@ -302,8 +339,10 @@ def create_router(db, get_current_user, require_role, generate_pdf=None, company
         # Compute lines
         lines = [_compute_line(l.model_dump()) for l in payload.lines]
 
-        # Company state from profile → GST split
-        profile = await company_profile_fn() if company_profile_fn else {}
+        location_id = payload.location_id or user.get("default_location_id")
+
+        # Company state from profile → GST split (location-specific profile wins if one exists)
+        profile = await company_profile_fn(location_id) if company_profile_fn else {}
         company_state = (profile or {}).get("state", "Tamil Nadu")
 
         subtotal = sum(float(l["quantity"]) * float(l["unit_price"]) for l in lines)
@@ -318,7 +357,7 @@ def create_router(db, get_current_user, require_role, generate_pdf=None, company
         amount_paid = sum(p.amount for p in (payload.payments or []))
         payment_status = "paid" if amount_paid >= grand_total - 1 else "partial" if amount_paid > 0 else "credit"
 
-        invoice_no = await _generate_invoice_number(db)
+        invoice_no = await _generate_invoice_number(db, location_id)
         now = datetime.now(timezone.utc).isoformat()
         sale_date = datetime.now(timezone.utc).date().isoformat()
 
@@ -344,6 +383,7 @@ def create_router(db, get_current_user, require_role, generate_pdf=None, company
             "sale_type": payload.sale_type,
             "customer": {**payload.customer.model_dump(), "unified_customer_id": unified_customer_id},
             "linked_project_id": payload.linked_project_id,
+            "location_id": location_id,
             "lead_source": payload.lead_source,
             "lead_source_campaign": payload.lead_source_campaign,
             "lines": lines,
@@ -449,6 +489,121 @@ def create_router(db, get_current_user, require_role, generate_pdf=None, company
         r = await db.sales.update_one({"_id": ObjectId(sale_id)}, {"$set": upd})
         if r.matched_count == 0: raise HTTPException(404, "Sale not found")
         return {"message": "updated"}
+
+    @router.put("/{sale_id}/edit")
+    async def edit_sale(sale_id: str, payload: SaleFullEdit, request: Request):
+        """Full line-item edit (Iter 43 Change 2c) — recomputes GST/totals and applies only the
+        quantity DELTA per inventory item to stock, mirroring Inbound/Outbound/Assets edit logic."""
+        user = await get_current_user(request)
+        if check_module_permission and not await check_module_permission(user, "module_direct_sales", "edit"):
+            raise HTTPException(403, "You don't have permission to edit sales")
+        sale = await db.sales.find_one({"_id": ObjectId(sale_id)})
+        if not sale: raise HTTPException(404, "Sale not found")
+        if sale.get("status") in ("returned", "cancelled"):
+            raise HTTPException(400, f"Cannot edit a sale that is '{sale.get('status')}'")
+
+        now = datetime.now(timezone.utc).isoformat()
+        old_lines = sale.get("lines", [])
+        new_lines_in = payload.lines if payload.lines is not None else old_lines
+        new_lines = [_compute_line(dict(l) if isinstance(l, dict) else l.model_dump()) for l in new_lines_in]
+
+        # Delta per inventory_item_id: positive delta = more sold now = further stock decrement
+        old_by_item: Dict[str, float] = {}
+        for l in old_lines:
+            iid = l.get("inventory_item_id")
+            if iid: old_by_item[iid] = old_by_item.get(iid, 0) + float(l.get("quantity") or 0)
+        new_by_item: Dict[str, float] = {}
+        for l in new_lines:
+            iid = l.get("inventory_item_id")
+            if iid: new_by_item[iid] = new_by_item.get(iid, 0) + float(l.get("quantity") or 0)
+
+        deltas = {}
+        for iid in set(old_by_item) | set(new_by_item):
+            d = new_by_item.get(iid, 0) - old_by_item.get(iid, 0)
+            if d: deltas[iid] = d
+
+        # Guard against negative stock before applying anything
+        if not payload.override_negative_stock:
+            for iid, d in deltas.items():
+                if d > 0:
+                    item = await db.inventory_items.find_one({"_id": ObjectId(iid)})
+                    available = (item or {}).get("quantity", 0)
+                    if available < d:
+                        raise HTTPException(400, f"Insufficient stock for {(item or {}).get('name', iid)}: available {available}, need {d} more")
+
+        movements = []
+        for iid, d in deltas.items():
+            await db.inventory_items.update_one({"_id": ObjectId(iid)}, {"$inc": {"quantity": -d}})
+            movements.append({
+                "inventory_item_id": iid, "movement_type": "sale_edit_adjustment",
+                "quantity": -d, "reference_type": "sale", "reference_id": sale_id,
+                "note": f"Sale edited: quantity adjusted by {d}", "created_by": user.get("id"), "created_at": now,
+            })
+        if movements:
+            await db.inventory_movements.insert_many(movements)
+
+        # Recompute totals
+        customer = payload.customer.model_dump() if payload.customer else sale.get("customer", {})
+        profile = await company_profile_fn(sale.get("location_id")) if company_profile_fn else {}
+        company_state = (profile or {}).get("state", "Tamil Nadu")
+        subtotal = sum(float(l["quantity"]) * float(l["unit_price"]) for l in new_lines)
+        header_discount = payload.discount_amount if payload.discount_amount is not None else sale.get("total_discount", 0) - sum(l.get("discount_amount", 0) for l in new_lines)
+        total_line_discount = sum(l.get("discount_amount", 0) for l in new_lines)
+        taxable_value = sum(float(l["quantity"]) * float(l["unit_price"]) - l.get("discount_amount", 0) for l in new_lines) - header_discount
+        cgst, sgst, igst = _split_gst(new_lines, customer.get("state"), company_state)
+        gst_total = sum(l.get("gst_amount", 0) for l in new_lines)
+        round_off = payload.round_off if payload.round_off is not None else sale.get("round_off", 0)
+        grand_total = taxable_value + gst_total + round_off
+        amount_paid = sale.get("amount_paid", 0)
+        balance_due = grand_total - amount_paid
+        payment_status = "paid" if amount_paid >= grand_total - 1 else "partial" if amount_paid > 0 else "credit"
+
+        before = {"lines": old_lines, "grand_total": sale.get("grand_total")}
+        update_fields = {
+            "lines": new_lines, "customer": customer,
+            "subtotal": _round(subtotal), "total_discount": _round(total_line_discount + header_discount),
+            "taxable_value": _round(taxable_value), "cgst": cgst, "sgst": sgst, "igst": igst,
+            "gst_total": _round(gst_total), "round_off": _round(round_off), "grand_total": _round(grand_total),
+            "balance_due": _round(balance_due), "payment_status": payment_status,
+            "edited": True, "edited_at": now, "edited_by": user.get("name"), "updated_at": now,
+        }
+        edit_entry = {"edited_by": user.get("name"), "edited_at": now, "before": before,
+                      "after": {"lines": new_lines, "grand_total": update_fields["grand_total"]}, "deltas": deltas,
+                      "reason": payload.admin_reason}
+        await db.sales.update_one({"_id": ObjectId(sale_id)}, {"$set": update_fields, "$push": {"edit_history": edit_entry}})
+        await db.customer_credits.update_one(
+            {"reference_type": "sale", "reference_id": sale_id},
+            {"$set": {"total_amount": update_fields["grand_total"], "balance": _round(balance_due),
+                      "status": "closed" if balance_due <= 0 else "outstanding"}}
+        )
+        return {"message": "Sale updated", "deltas": deltas, "grand_total": update_fields["grand_total"]}
+
+    @router.delete("/{sale_id}")
+    async def delete_sale(sale_id: str, request: Request):
+        """Cancel a wrongly-entered sale (distinct from a customer /return): restores full stock.
+        Permission-gated, with an admin-approval queue fallback (Iter 43 Change 2)."""
+        user = await get_current_user(request)
+        sale = await db.sales.find_one({"_id": ObjectId(sale_id)})
+        if not sale: raise HTTPException(404, "Sale not found")
+        if sale.get("status") in ("returned", "cancelled"):
+            raise HTTPException(400, f"Sale is already '{sale.get('status')}'")
+
+        can_delete = True if user.get("role") == "admin" else (await check_module_permission(user, "module_direct_sales", "delete") if check_module_permission else False)
+        now = datetime.now(timezone.utc).isoformat()
+        if not can_delete:
+            existing = await db.action_requests.find_one({"resource_type": "sale", "resource_id": sale_id, "status": "pending"})
+            if existing:
+                return {"status": "pending_approval", "message": "A cancellation request for this sale is already awaiting admin approval"}
+            await db.action_requests.insert_one({
+                "resource_type": "sale", "resource_id": sale_id, "action": "cancel",
+                "requested_by": user["id"], "requested_by_name": user["name"],
+                "status": "pending", "requested_at": now, "location_id": sale.get("location_id"),
+                "snapshot": {"invoice_number": sale.get("invoice_number"), "grand_total": sale.get("grand_total")},
+            })
+            return {"status": "pending_approval", "message": "You don't have permission to cancel this sale — request sent to an admin for approval"}
+
+        await apply_sale_cancellation(db, sale_id, user.get("name", "admin"))
+        return {"status": "cancelled", "message": "Sale cancelled; stock restored"}
 
     @router.get("/{sale_id}/invoice")
     async def get_invoice_pdf(sale_id: str, request: Request):

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { purchaseOrdersAPI, inventoryAPI, inboundApprovalsAPI } from '../utils/api';
+import { purchaseOrdersAPI, inventoryAPI, inboundApprovalsAPI, locationsAPI } from '../utils/api';
 import { useAuth } from '../contexts/AuthContext';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
@@ -23,7 +23,8 @@ export default function PurchaseInboundPage() {
   const [activeAction, setActiveAction] = useState(null); // {poId, type}
   const [saving, setSaving] = useState(false);
   const [filter, setFilter] = useState('all');
-  const [form, setForm] = useState({ supplier_name: '', supplier_contact: '', items: [{ name: '', qty: '', unit_price: '', inventory_item_id: '', sku_code: '' }], expected_delivery: '', notes: '' });
+  const [form, setForm] = useState({ supplier_name: '', supplier_contact: '', items: [{ name: '', qty: '', unit_price: '', inventory_item_id: '', sku_code: '' }], expected_delivery: '', notes: '', location_id: '' });
+  const [locations, setLocations] = useState([]);
   const [actionForm, setActionForm] = useState({});
   const [editInbound, setEditInbound] = useState(null); // { po, lines }
   const [reverseTarget, setReverseTarget] = useState(null); // po
@@ -35,6 +36,7 @@ export default function PurchaseInboundPage() {
   }, [filter]);
   useEffect(() => { fetch(); }, [fetch]);
   useEffect(() => { inventoryAPI.getItems().then(r => setInventoryItems(r.data || [])).catch(() => {}); }, []);
+  useEffect(() => { locationsAPI.list().then(r => setLocations(r.data || [])).catch(() => {}); }, []);
   const fetchApprovals = useCallback(async () => {
     if (user?.role !== 'admin') return;
     try { const r = await inboundApprovalsAPI.list('pending'); setPendingApprovals(r.data || []); } catch { /* noop */ }
@@ -61,6 +63,12 @@ export default function PurchaseInboundPage() {
     items[i] = { ...items[i], inventory_item_id: invId, name: inv?.name || items[i].name, sku_code: inv?.sku_code || '', unit_price: items[i].unit_price || inv?.unit_price || '' };
     return { ...p, items };
   });
+  const handleDeletePo = async (po) => {
+    if (!window.confirm(`Delete PO for ${po.supplier_name}? This cannot be undone.`)) return;
+    try { await purchaseOrdersAPI.remove(po.id); await fetch(); }
+    catch (err) { alert(err.response?.data?.detail || 'Could not delete this PO'); }
+  };
+
 
   const handleCreate = async () => {
     if (!form.supplier_name || form.items.length === 0) return;
@@ -68,7 +76,7 @@ export default function PurchaseInboundPage() {
     try {
       const items = form.items.filter(i => i.name).map(i => ({name: i.name, qty: parseFloat(i.qty) || 0, unit_price: parseFloat(i.unit_price) || 0, inventory_item_id: i.inventory_item_id || null, sku_code: i.sku_code || null}));
       await purchaseOrdersAPI.create({...form, items});
-      setShowCreate(false); setForm({ supplier_name: '', supplier_contact: '', items: [{ name: '', qty: '', unit_price: '', inventory_item_id: '', sku_code: '' }], expected_delivery: '', notes: '' }); await fetch();
+      setShowCreate(false); setForm({ supplier_name: '', supplier_contact: '', items: [{ name: '', qty: '', unit_price: '', inventory_item_id: '', sku_code: '' }], expected_delivery: '', notes: '', location_id: '' }); await fetch();
     } catch (err) { console.error(err); } finally { setSaving(false); }
   };
 
@@ -156,6 +164,16 @@ export default function PurchaseInboundPage() {
                 <div className="space-y-1"><Label className="text-xs">Supplier Name *</Label><Input value={form.supplier_name} onChange={(e) => setForm(p => ({...p, supplier_name: e.target.value}))} className="h-9" data-testid="po-supplier" /></div>
                 <div className="space-y-1"><Label className="text-xs">Contact</Label><Input value={form.supplier_contact} onChange={(e) => setForm(p => ({...p, supplier_contact: e.target.value}))} className="h-9" data-testid="po-contact" /></div>
                 <div className="space-y-1"><Label className="text-xs">Expected Delivery</Label><Input type="date" value={form.expected_delivery} onChange={(e) => setForm(p => ({...p, expected_delivery: e.target.value}))} className="h-9" data-testid="po-delivery" /></div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Receiving Branch</Label>
+                  <Select value={form.location_id || 'default'} onValueChange={(v) => setForm(p => ({...p, location_id: v === 'default' ? '' : v}))}>
+                    <SelectTrigger className="h-9" data-testid="po-location-select"><SelectValue placeholder="Your default branch" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="default">Your default branch</SelectItem>
+                      {locations.map(l => <SelectItem key={l.id} value={l.id}>{l.name} ({l.code})</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
               <div className="space-y-2">
                 <Label className="text-xs font-semibold">Items</Label>
@@ -227,6 +245,7 @@ export default function PurchaseInboundPage() {
                   <div>
                     <div className="flex items-center gap-2 flex-wrap">
                       <h3 className="font-semibold text-slate-900">{po.supplier_name}</h3>
+                      {po.po_number && <Badge variant="outline" className="text-[10px] font-mono" data-testid={`po-number-${po.id}`}>{po.po_number}</Badge>}
                       <Badge className={`text-[10px] ${STATUS_COLORS[po.status] || ''}`}>{STATUS_LABELS[po.status] || po.status}</Badge>
                     </div>
                     <p className="text-xs text-slate-500 mt-1">{po.items?.length || 0} items | ₹{(po.total_amount || 0).toLocaleString('en-IN')} | {new Date(po.created_at).toLocaleDateString('en-IN')}</p>
@@ -242,6 +261,7 @@ export default function PurchaseInboundPage() {
                   </div>
                   <div className="flex gap-1 shrink-0">
                     {po.status === 'pending' && <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => { setActiveAction({ poId: po.id, type: 'approve' }); handleAction(); }} data-testid={`approve-${po.id}`}>Approve</Button>}
+                    {po.status === 'pending' && <Button size="sm" variant="outline" className="h-7 text-xs gap-1 text-rose-600 border-rose-200" onClick={() => handleDeletePo(po)} data-testid={`delete-po-${po.id}`}><Trash2 className="h-3 w-3" />Delete</Button>}
                     {po.status === 'approved' && <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => setActiveAction({ poId: po.id, type: 'arrival' })} data-testid={`arrival-${po.id}`}>Record Arrival</Button>}
                     {po.status === 'arrived' && <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => setActiveAction({ poId: po.id, type: 'qc' })} data-testid={`qc-${po.id}`}>QC Check</Button>}
                     {po.status === 'qc_done' && <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => setActiveAction({ poId: po.id, type: 'inbound' })} data-testid={`inbound-${po.id}`}>Complete Inbound</Button>}

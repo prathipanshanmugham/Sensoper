@@ -12,7 +12,6 @@ import pytest
 import requests
 import os
 from datetime import datetime
-import os
 TEST_ADMIN_PASSWORD = os.environ.get("TEST_ADMIN_PASSWORD") or "Admin@123"
 
 

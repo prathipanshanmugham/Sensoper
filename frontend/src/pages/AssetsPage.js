@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { assetsAPI } from '../utils/api';
+import { assetsAPI, actionRequestsAPI } from '../utils/api';
 import { useAuth } from '../contexts/AuthContext';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
@@ -9,7 +9,7 @@ import { Badge } from '../components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '../components/ui/dialog';
 import { Textarea } from '../components/ui/textarea';
-import { Loader2, Plus, Wrench, Search, AlertTriangle, QrCode, FileText, FileSpreadsheet, ArrowLeftRight, History } from 'lucide-react';
+import { Loader2, Plus, Wrench, Search, AlertTriangle, QrCode, FileText, FileSpreadsheet, ArrowLeftRight, History, Pencil, Archive } from 'lucide-react';
 import QRCode from 'qrcode';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -51,6 +51,11 @@ export default function AssetsPage() {
   const [issueForm, setIssueForm] = useState({ assigned_to_name: '', expected_return_date: '', condition_out: 'good' });
   const [returnForm, setReturnForm] = useState({ condition_in: 'good', notes: '' });
   const [maintenanceForm, setMaintenanceForm] = useState({ type: 'scheduled', date: '', description: '', cost: '', is_calibration: false, next_due: '' });
+  const [showEdit, setShowEdit] = useState(null);
+  const [editForm, setEditForm] = useState({});
+  const [archiveTarget, setArchiveTarget] = useState(null);
+  const [pendingApprovals, setPendingApprovals] = useState([]);
+  const [actionError, setActionError] = useState('');
 
   const canManage = isAdmin || isManager;
 
@@ -66,13 +71,45 @@ export default function AssetsPage() {
   useEffect(() => { fetchAssets(); }, [fetchAssets]);
   useEffect(() => { assetsAPI.compliance(90).then(r => setCompliance(r.data)).catch(() => {}); }, []);
 
+  const fetchApprovals = useCallback(async () => {
+    if (!canManage) return;
+    try { const r = await actionRequestsAPI.list({ status: 'pending', resource_type: 'asset' }); setPendingApprovals(r.data || []); } catch { /* noop */ }
+  }, [canManage]);
+  useEffect(() => { fetchApprovals(); }, [fetchApprovals]);
+
+  const handleApproveArchive = async (id) => {
+    try { await actionRequestsAPI.approve(id); await fetchApprovals(); await fetchAssets(); }
+    catch (e) { alert(e.response?.data?.detail || 'Could not approve'); }
+  };
+  const handleRejectArchive = async (id) => {
+    try { await actionRequestsAPI.reject(id); await fetchApprovals(); }
+    catch (e) { alert(e.response?.data?.detail || 'Could not reject'); }
+  };
+
+  const openEdit = (a) => { setShowEdit(a); setEditForm({ name: a.name, make: a.make || '', model: a.model || '', serial_number: a.serial_number || '', purchase_cost: a.purchase_cost || '', useful_life_years: a.useful_life_years || 5, insurance_expiry: a.insurance_expiry || '', registration_expiry: a.registration_expiry || '', fitness_certificate_expiry: a.fitness_certificate_expiry || '', pollution_certificate_expiry: a.pollution_certificate_expiry || '', notes: a.notes || '' }); setActionError(''); };
+  const saveEdit = async () => {
+    setSaving(true); setActionError('');
+    try { await assetsAPI.update(showEdit.id, { ...editForm, purchase_cost: parseFloat(editForm.purchase_cost) || 0 }); setShowEdit(null); await fetchAssets(); await fetchReport(reportType); }
+    catch (e) { setActionError(e.response?.data?.detail || 'Could not save changes'); } finally { setSaving(false); }
+  };
+
+  const confirmArchive = async () => {
+    if (!archiveTarget) return;
+    setSaving(true); setActionError('');
+    try {
+      const r = await assetsAPI.remove(archiveTarget.id);
+      if (r.data.status === 'pending_approval') { setActionError(r.data.message); }
+      else { setArchiveTarget(null); await fetchAssets(); await fetchReport(reportType); }
+    } catch (e) { setActionError(e.response?.data?.detail || 'Could not archive this asset'); } finally { setSaving(false); }
+  };
+
   const handleCreate = async () => {
     setSaving(true);
     try {
       await assetsAPI.create({ ...form, purchase_cost: parseFloat(form.purchase_cost) || 0, calibration_interval_days: form.calibration_interval_days ? parseInt(form.calibration_interval_days) : null });
       setShowCreate(false);
       setForm({ name: '', category: 'power_tool', make: '', model: '', serial_number: '', purchase_date: '', purchase_cost: '', useful_life_years: 5, requires_calibration: false, calibration_interval_days: '', insurance_expiry: '', registration_expiry: '', fitness_certificate_expiry: '', pollution_certificate_expiry: '', notes: '' });
-      await fetchAssets();
+      await fetchAssets(); await fetchReport(reportType);
     } catch (e) { console.error(e); } finally { setSaving(false); }
   };
 
@@ -80,13 +117,13 @@ export default function AssetsPage() {
     setSaving(true);
     try {
       await assetsAPI.issue(showIssue.id, { ...issueForm, assigned_to: issueForm.assigned_to_name });
-      setShowIssue(null); await fetchAssets();
+      setShowIssue(null); await fetchAssets(); await fetchReport(reportType);
     } catch (e) { alert(e.response?.data?.detail || 'Could not issue asset'); } finally { setSaving(false); }
   };
 
   const handleReturn = async () => {
     setSaving(true);
-    try { await assetsAPI.returnAsset(showReturn.id, returnForm); setShowReturn(null); await fetchAssets(); }
+    try { await assetsAPI.returnAsset(showReturn.id, returnForm); setShowReturn(null); await fetchAssets(); await fetchReport(reportType); }
     catch (e) { alert(e.response?.data?.detail || 'Could not return asset'); } finally { setSaving(false); }
   };
 
@@ -94,7 +131,7 @@ export default function AssetsPage() {
     setSaving(true);
     try {
       await assetsAPI.logMaintenance(showMaintenance.id, { ...maintenanceForm, cost: parseFloat(maintenanceForm.cost) || 0 });
-      setShowMaintenance(null); await fetchAssets();
+      setShowMaintenance(null); await fetchAssets(); await fetchReport(reportType);
     } catch (e) { alert('Could not log maintenance'); } finally { setSaving(false); }
   };
 
@@ -140,6 +177,26 @@ export default function AssetsPage() {
           {canManage && <Button onClick={() => setShowCreate(true)} className="bg-emerald-600 hover:bg-emerald-700 text-white gap-1.5" data-testid="add-asset-btn"><Plus className="h-4 w-4" />Add Asset</Button>}
         </div>
 
+        {/* Pending archive approvals (admin/manager) */}
+        {pendingApprovals.length > 0 && (
+          <Card className="border-amber-200 bg-amber-50/50" data-testid="pending-asset-approvals">
+            <CardHeader className="py-3"><CardTitle className="text-sm text-amber-800">Pending Archive Approvals ({pendingApprovals.length})</CardTitle></CardHeader>
+            <CardContent className="pt-0 pb-3 space-y-2">
+              {pendingApprovals.map(req => (
+                <div key={req.id} className="flex items-center justify-between rounded border border-amber-200 bg-white p-2.5" data-testid={`asset-approval-req-${req.id}`}>
+                  <div className="text-xs">
+                    <p className="font-medium text-slate-800">{req.snapshot?.name} ({req.snapshot?.asset_code}) — requested by {req.requested_by_name}</p>
+                  </div>
+                  <div className="flex gap-1.5 shrink-0">
+                    <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => handleRejectArchive(req.id)} data-testid={`reject-asset-approval-${req.id}`}>Reject</Button>
+                    <Button size="sm" className="h-7 text-xs bg-emerald-600 text-white" onClick={() => handleApproveArchive(req.id)} data-testid={`approve-asset-approval-${req.id}`}>Approve</Button>
+                  </div>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        )}
+
         {/* Compliance banner */}
         {compliance?.count > 0 && (
           <Card className="border-rose-200 bg-rose-50/50" data-testid="compliance-banner">
@@ -179,6 +236,8 @@ export default function AssetsPage() {
                     {canManage && a.status === 'issued' && <Button size="sm" variant="outline" className="h-7 text-[11px] gap-1" onClick={() => { setShowReturn(a); setReturnForm({ condition_in: 'good', notes: '' }); }} data-testid={`return-asset-${a.id}`}>Return</Button>}
                     {canManage && <Button size="sm" variant="outline" className="h-7 text-[11px] gap-1" onClick={() => { setShowMaintenance(a); setMaintenanceForm({ type: 'scheduled', date: new Date().toISOString().slice(0, 10), description: '', cost: '', is_calibration: false, next_due: '' }); }} data-testid={`maintenance-asset-${a.id}`}><Wrench className="h-3 w-3" />Log Service</Button>}
                     <Button size="sm" variant="outline" className="h-7 text-[11px] gap-1" onClick={() => openQr(a)} data-testid={`qr-asset-${a.id}`}><QrCode className="h-3 w-3" />QR</Button>
+                    {canManage && <Button size="sm" variant="outline" className="h-7 text-[11px] gap-1 text-blue-600 border-blue-200" onClick={() => openEdit(a)} data-testid={`edit-asset-${a.id}`}><Pencil className="h-3 w-3" />Edit</Button>}
+                    {canManage && a.status === 'available' && <Button size="sm" variant="outline" className="h-7 text-[11px] gap-1 text-rose-600 border-rose-200" onClick={() => { setArchiveTarget(a); setActionError(''); }} data-testid={`archive-asset-${a.id}`}><Archive className="h-3 w-3" />Archive</Button>}
                   </div>
                 </CardContent>
               </Card>
@@ -318,6 +377,38 @@ export default function AssetsPage() {
               </div>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Asset Dialog */}
+      <Dialog open={!!showEdit} onOpenChange={v => !v && setShowEdit(null)}>
+        <DialogContent className="sm:max-w-lg max-h-[85vh] overflow-y-auto" data-testid="edit-asset-dialog">
+          <DialogHeader><DialogTitle>Edit Asset — {showEdit?.asset_code}</DialogTitle><DialogDescription>Status and assignment change via Issue/Return, not here.</DialogDescription></DialogHeader>
+          <div className="grid grid-cols-2 gap-2">
+            <Input placeholder="Name" value={editForm.name || ''} onChange={e => setEditForm(p => ({...p, name: e.target.value}))} className="h-9 col-span-2" data-testid="edit-asset-name-input" />
+            <Input placeholder="Make" value={editForm.make || ''} onChange={e => setEditForm(p => ({...p, make: e.target.value}))} className="h-9" />
+            <Input placeholder="Model" value={editForm.model || ''} onChange={e => setEditForm(p => ({...p, model: e.target.value}))} className="h-9" />
+            <Input placeholder="Serial Number" value={editForm.serial_number || ''} onChange={e => setEditForm(p => ({...p, serial_number: e.target.value}))} className="h-9" />
+            <Input type="number" placeholder="Purchase Cost (₹)" value={editForm.purchase_cost || ''} onChange={e => setEditForm(p => ({...p, purchase_cost: e.target.value}))} className="h-9" data-testid="edit-asset-cost-input" />
+            <Input type="number" placeholder="Useful Life (years)" value={editForm.useful_life_years || ''} onChange={e => setEditForm(p => ({...p, useful_life_years: e.target.value}))} className="h-9" />
+            <Input type="date" placeholder="Insurance Expiry" value={editForm.insurance_expiry || ''} onChange={e => setEditForm(p => ({...p, insurance_expiry: e.target.value}))} className="h-9" />
+            <Input type="date" placeholder="Registration Expiry" value={editForm.registration_expiry || ''} onChange={e => setEditForm(p => ({...p, registration_expiry: e.target.value}))} className="h-9" />
+            <Textarea placeholder="Notes" value={editForm.notes || ''} onChange={e => setEditForm(p => ({...p, notes: e.target.value}))} className="col-span-2" />
+            {actionError && <p className="text-xs text-rose-600 flex items-center gap-1 col-span-2" data-testid="edit-asset-error"><AlertTriangle className="h-3.5 w-3.5 shrink-0" />{actionError}</p>}
+          </div>
+          <DialogFooter><Button variant="outline" onClick={() => setShowEdit(null)}>Cancel</Button><Button onClick={saveEdit} disabled={saving} className="bg-blue-600 hover:bg-blue-700 text-white" data-testid="save-asset-edit-btn">{saving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Save Changes'}</Button></DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Archive Asset Confirmation */}
+      <Dialog open={!!archiveTarget} onOpenChange={v => !v && setArchiveTarget(null)}>
+        <DialogContent data-testid="archive-asset-dialog">
+          <DialogHeader><DialogTitle className="flex items-center gap-2 text-rose-700"><Archive className="h-5 w-5" />Archive This Asset?</DialogTitle><DialogDescription>Marks it scrapped and removes it from the active register.</DialogDescription></DialogHeader>
+          <div className="space-y-1 text-sm">
+            <p>{archiveTarget?.name} ({archiveTarget?.asset_code})</p>
+            {actionError && <p className="text-xs text-rose-600 flex items-center gap-1 mt-2" data-testid="archive-asset-error"><AlertTriangle className="h-3.5 w-3.5 shrink-0" />{actionError}</p>}
+          </div>
+          <DialogFooter><Button variant="outline" onClick={() => setArchiveTarget(null)}>Cancel</Button><Button onClick={confirmArchive} disabled={saving} className="bg-rose-600 hover:bg-rose-700 text-white" data-testid="confirm-archive-asset-btn">{saving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Archive'}</Button></DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

@@ -15,7 +15,6 @@ import pytest
 import requests
 import os
 import uuid
-import os
 TEST_ADMIN_PASSWORD = os.environ.get("TEST_ADMIN_PASSWORD") or "Admin@123"
 
 

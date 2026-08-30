@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
-import { companyAPI } from '../utils/api';
+import { companyAPI, locationsAPI } from '../utils/api';
 import { formatApiErrorDetail } from '../contexts/AuthContext';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
@@ -9,6 +9,7 @@ import { Textarea } from '../components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
 import { Switch } from '../components/ui/switch';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '../components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
 import { 
@@ -27,6 +28,7 @@ import {
 
 export default function CompanyProfile() {
   const [profiles, setProfiles] = useState([]);
+  const [locations, setLocations] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showDialog, setShowDialog] = useState(false);
   const [editingProfile, setEditingProfile] = useState(null);
@@ -48,6 +50,7 @@ export default function CompanyProfile() {
 
   useEffect(() => {
     fetchProfiles();
+    locationsAPI.list().then(r => setLocations(r.data || [])).catch(() => {});
   }, [fetchProfiles]);
 
   const [formData, setFormData] = useState({
@@ -62,6 +65,8 @@ export default function CompanyProfile() {
     website: '',
     gst_number: '',
     pan_number: '',
+    state: '',
+    location_id: '',
     bank_details: {
       account_name: '',
       account_number: '',
@@ -88,6 +93,8 @@ export default function CompanyProfile() {
       website: '',
       gst_number: '',
       pan_number: '',
+      state: '',
+      location_id: '',
       bank_details: {
         account_name: '',
         account_number: '',
@@ -117,6 +124,8 @@ export default function CompanyProfile() {
       website: profile.website || '',
       gst_number: profile.gst_number || '',
       pan_number: profile.pan_number || '',
+      state: profile.state || '',
+      location_id: profile.location_id || '',
       bank_details: profile.bank_details || {
         account_name: '',
         account_number: '',
@@ -464,6 +473,30 @@ export default function CompanyProfile() {
                     placeholder="XXXXX1234X"
                     data-testid="pan-input"
                   />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>State (for GST split)</Label>
+                  <Input
+                    value={formData.state}
+                    onChange={(e) => updateField('state', e.target.value)}
+                    placeholder="Tamil Nadu"
+                    data-testid="company-state-input"
+                  />
+                  <p className="text-xs text-slate-400">Used to decide CGST/SGST vs IGST on Direct Sales invoices.</p>
+                </div>
+                <div className="space-y-2">
+                  <Label>Scoped Location (optional)</Label>
+                  <Select value={formData.location_id || 'none'} onValueChange={(v) => updateField('location_id', v === 'none' ? '' : v)}>
+                    <SelectTrigger data-testid="company-location-select"><SelectValue placeholder="Global (all locations)" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Global (all locations)</SelectItem>
+                      {locations.map(l => <SelectItem key={l.id} value={l.id}>{l.name}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-slate-400">Set this to give one branch its own GSTIN/state — it overrides the global profile for that branch's sales.</p>
                 </div>
               </div>
               

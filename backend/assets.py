@@ -107,7 +107,7 @@ async def _next_sequence(db, key: str) -> int:
     return doc["seq"]
 
 
-def create_router(db, get_current_user, require_role, create_audit_log):
+def create_router(db, get_current_user, require_role, create_audit_log, check_module_permission):
     router = APIRouter()
 
     @router.get("/assets")
@@ -179,16 +179,46 @@ def create_router(db, get_current_user, require_role, create_audit_log):
     async def update_asset(asset_id: str, payload: Dict[str, Any], request: Request):
         user = await require_role("admin", "manager")(request)
         payload.pop("_id", None); payload.pop("id", None)
-        payload["updated_at"] = datetime.now(timezone.utc).isoformat()
-        r = await db.assets.update_one({"_id": ObjectId(asset_id)}, {"$set": payload})
-        if r.matched_count == 0:
+        blocked_fields = [f for f in ("status", "assigned_to", "assigned_to_name", "assigned_project_id") if f in payload]
+        if blocked_fields:
+            raise HTTPException(status_code=400, detail=f"{', '.join(blocked_fields)} can only change via Issue / Return, so the movement log stays the source of truth")
+        existing = await db.assets.find_one({"_id": ObjectId(asset_id)})
+        if not existing:
             raise HTTPException(status_code=404, detail="Asset not found")
-        await create_audit_log(user["id"], user["name"], "asset_updated", "asset", asset_id)
+        before = {k: existing.get(k) for k in payload}
+        now_iso = datetime.now(timezone.utc).isoformat()
+        payload["updated_at"] = now_iso
+        await db.assets.update_one({"_id": ObjectId(asset_id)}, {
+            "$set": payload,
+            "$push": {"edit_history": {"edited_by": user["name"], "edited_at": now_iso, "before": before, "after": {k: payload.get(k) for k in before}}},
+        })
+        await create_audit_log(user["id"], user["name"], "asset_updated", "asset", asset_id, before, payload)
         return {"message": "Asset updated"}
 
     @router.delete("/assets/{asset_id}")
     async def delete_asset(asset_id: str, request: Request):
-        user = await require_role("admin")(request)
+        user = await get_current_user(request)
+        a = await db.assets.find_one({"_id": ObjectId(asset_id)})
+        if not a:
+            raise HTTPException(status_code=404, detail="Asset not found")
+        if a.get("status") != "available":
+            raise HTTPException(status_code=400, detail=f"Asset must be available (not '{a.get('status')}') before it can be archived — return it first")
+
+        now_iso = datetime.now(timezone.utc).isoformat()
+        can_delete = True if user.get("role") == "admin" else await check_module_permission(user, "module_assets", "delete")
+        if not can_delete:
+            existing = await db.action_requests.find_one({"resource_type": "asset", "resource_id": asset_id, "status": "pending"})
+            if existing:
+                return {"status": "pending_approval", "message": "An archive request for this asset is already awaiting admin approval"}
+            await db.action_requests.insert_one({
+                "resource_type": "asset", "resource_id": asset_id, "action": "archive",
+                "requested_by": user["id"], "requested_by_name": user["name"],
+                "status": "pending", "requested_at": now_iso, "location_id": a.get("location_id"),
+                "snapshot": {"name": a.get("name"), "asset_code": a.get("asset_code")},
+            })
+            await create_audit_log(user["id"], user["name"], "asset_archive_requested", "asset", asset_id)
+            return {"status": "pending_approval", "message": "You don't have permission to archive this asset — request sent to an admin for approval"}
+
         await db.assets.update_one({"_id": ObjectId(asset_id)}, {"$set": {"active": False, "status": "scrapped"}})
         await create_audit_log(user["id"], user["name"], "asset_deleted", "asset", asset_id)
         return {"message": "Asset removed"}

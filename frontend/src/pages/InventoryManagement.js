@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
-import { inventoryAPI } from '../utils/api';
-import { formatApiErrorDetail } from '../contexts/AuthContext';
+import { inventoryAPI, locationsAPI } from '../utils/api';
+import { useAuth, formatApiErrorDetail } from '../contexts/AuthContext';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
@@ -23,15 +23,19 @@ const IMPORT_STATUS_STYLES = {
 };
 
 export default function InventoryManagement() {
+  const { user } = useAuth();
   const [items, setItems] = useState([]);
   const [alerts, setAlerts] = useState([]);
   const [categories, setCategories] = useState([]);
+  const [locations, setLocations] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showItemDialog, setShowItemDialog] = useState(false);
   const [showCatDialog, setShowCatDialog] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterCategory, setFilterCategory] = useState('all');
+  const [filterLocation, setFilterLocation] = useState('all');
+  const [branchSort, setBranchSort] = useState(null); // 'asc' | 'desc' | null
   const [imagePreviewOk, setImagePreviewOk] = useState(true);
   const [newCat, setNewCat] = useState({ name: '', slug: '', description: '' });
   
@@ -39,7 +43,7 @@ export default function InventoryManagement() {
     name: '', sku_code: '', category: '',
     zone: '', aisle: '', shelf: '', rack: '', bin_location: '',
     quantity: 0, unit_price: 0, supplier: '', gst_percentage: 18, hsn_code: '', reorder_level: 10,
-    image_url: '', active: true, qc_checklist: [], procurement_date: ''
+    image_url: '', active: true, qc_checklist: [], procurement_date: '', location_id: ''
   });
   const [newQcItem, setNewQcItem] = useState('');
   
@@ -125,12 +129,13 @@ export default function InventoryManagement() {
 
   const fetchData = useCallback(async () => {
     try {
-      const [itemsRes, alertsRes, catsRes] = await Promise.all([
-        inventoryAPI.getItems(), inventoryAPI.getAlerts(), inventoryAPI.getCategories()
+      const [itemsRes, alertsRes, catsRes, locsRes] = await Promise.all([
+        inventoryAPI.getItems(), inventoryAPI.getAlerts(), inventoryAPI.getCategories(), locationsAPI.list()
       ]);
       setItems(itemsRes.data);
       setAlerts(alertsRes.data);
       setCategories(catsRes.data);
+      setLocations(locsRes.data || []);
     } catch (err) { console.error('Failed to fetch inventory:', err); }
     finally { setLoading(false); }
   }, []);
@@ -150,7 +155,8 @@ export default function InventoryManagement() {
         reorder_level: item.reorder_level || 10, image_url: item.image_url || '',
         active: item.active !== undefined ? item.active : true,
         qc_checklist: Array.isArray(item.qc_checklist) ? item.qc_checklist : [],
-        procurement_date: item.procurement_date || ''
+        procurement_date: item.procurement_date || '',
+        location_id: item.location_id || ''
       });
     } else {
       setEditingItem(null);
@@ -158,7 +164,7 @@ export default function InventoryManagement() {
         name: '', sku_code: '', category: categories[0]?.slug || '',
         zone: '', aisle: '', shelf: '', rack: '', bin_location: '',
         quantity: 0, unit_price: 0, supplier: '', gst_percentage: 18, hsn_code: '', reorder_level: 10,
-        image_url: '', active: true, qc_checklist: [], procurement_date: ''
+        image_url: '', active: true, qc_checklist: [], procurement_date: '', location_id: user?.default_location_id || ''
       });
     }
     setNewQcItem('');
@@ -187,10 +193,11 @@ export default function InventoryManagement() {
     setActionLoading(true);
     setError('');
     try {
+      const payload = { ...itemForm, location_id: itemForm.location_id || '' };
       if (editingItem) {
-        await inventoryAPI.updateItem(editingItem.id, itemForm);
+        await inventoryAPI.updateItem(editingItem.id, payload);
       } else {
-        await inventoryAPI.createItem(itemForm);
+        await inventoryAPI.createItem(payload);
       }
       setShowItemDialog(false);
       fetchData();
@@ -225,14 +232,24 @@ export default function InventoryManagement() {
     if (searchQuery && !item.name.toLowerCase().includes(searchQuery.toLowerCase()) &&
         !item.sku_code.toLowerCase().includes(searchQuery.toLowerCase())) return false;
     if (filterCategory !== 'all' && item.category !== filterCategory) return false;
+    if (filterLocation === 'global' && item.location_id) return false;
+    if (filterLocation !== 'all' && filterLocation !== 'global' && item.location_id !== filterLocation) return false;
     return true;
   });
 
   const getCategoryLabel = (slug) => categories.find(c => c.slug === slug)?.name || slug;
+  const getBranchLabel = (item) => locations.find(l => l.id === item.location_id)?.name || 'Global';
   const getWarehouseLocation = (item) => {
     const parts = [item.zone, item.aisle, item.shelf, item.rack, item.bin_location].filter(Boolean);
     return parts.length > 0 ? parts.join(' > ') : '-';
   };
+
+  const sortedFilteredItems = [...filteredItems].sort((a, b) => {
+    if (!branchSort) return 0;
+    const cmp = getBranchLabel(a).localeCompare(getBranchLabel(b));
+    return branchSort === 'asc' ? cmp : -cmp;
+  });
+  const toggleBranchSort = () => setBranchSort(p => p === 'asc' ? 'desc' : p === 'desc' ? null : 'asc');
 
   return (
     <div className="min-h-screen bg-slate-50 py-6 px-4">
@@ -252,7 +269,7 @@ export default function InventoryManagement() {
             <CardContent className="py-3 px-4 flex flex-wrap gap-2 items-center">
               <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0" />
               <span className="text-sm font-medium text-amber-800">Low Stock:</span>
-              {alerts.map(a => <Badge key={a.id} variant="outline" className="bg-white text-amber-800 border-amber-300 text-xs">{a.name} ({a.quantity})</Badge>)}
+              {alerts.map(a => <Badge key={a.id} variant="outline" className="bg-white text-amber-800 border-amber-300 text-xs" data-testid={`alert-${a.id}`}>{a.name} ({a.quantity}){a.location_id ? ` · ${locations.find(l => l.id === a.location_id)?.name || 'Branch'}` : ''}</Badge>)}
             </CardContent>
           </Card>
         )}
@@ -272,6 +289,16 @@ export default function InventoryManagement() {
                   {categories.map(c => <SelectItem key={c.id} value={c.slug}>{c.name}</SelectItem>)}
                 </SelectContent>
               </Select>
+              {locations.length > 0 && (
+                <Select value={filterLocation} onValueChange={setFilterLocation}>
+                  <SelectTrigger className="w-full sm:w-[180px] h-11" data-testid="filter-location"><SelectValue placeholder="Branch" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Branches</SelectItem>
+                    <SelectItem value="global">Global (unassigned)</SelectItem>
+                    {locations.map(l => <SelectItem key={l.id} value={l.id}>{l.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              )}
               <div className="flex flex-wrap gap-2">
                 <Link to="/dashboard/inventory/kits" className="flex-1 sm:flex-none">
                   <Button variant="outline" className="w-full h-11 border-emerald-300 text-emerald-700 hover:bg-emerald-50" data-testid="material-kits-btn"><Layers className="h-4 w-4 mr-1" />Solution Kits</Button>
@@ -288,7 +315,7 @@ export default function InventoryManagement() {
 
         {loading ? (
           <div className="flex items-center justify-center py-12"><Loader2 className="h-8 w-8 animate-spin text-emerald-600" /></div>
-        ) : filteredItems.length === 0 ? (
+        ) : sortedFilteredItems.length === 0 ? (
           <Card className="border-slate-200"><CardContent className="py-12 text-center"><Package className="h-12 w-12 mx-auto mb-4 text-slate-300" /><p className="text-slate-500">No items found</p></CardContent></Card>
         ) : (
           <>
@@ -299,7 +326,8 @@ export default function InventoryManagement() {
                   <tr className="border-b border-slate-200 bg-slate-50">
                     <th className="text-left py-3 px-4 text-xs font-semibold uppercase text-slate-500">Item</th>
                     <th className="text-left py-3 px-4 text-xs font-semibold uppercase text-slate-500">Category</th>
-                    <th className="text-left py-3 px-4 text-xs font-semibold uppercase text-slate-500">Location</th>
+                    <th className="text-left py-3 px-4 text-xs font-semibold uppercase text-slate-500 cursor-pointer select-none" onClick={toggleBranchSort} data-testid="sort-branch-header">Branch{branchSort === 'asc' ? ' ▲' : branchSort === 'desc' ? ' ▼' : ''}</th>
+                    <th className="text-left py-3 px-4 text-xs font-semibold uppercase text-slate-500">Bin Location</th>
                     <th className="text-right py-3 px-4 text-xs font-semibold uppercase text-slate-500">Qty</th>
                     <th className="text-right py-3 px-4 text-xs font-semibold uppercase text-slate-500">Price</th>
                     <th className="text-right py-3 px-4 text-xs font-semibold uppercase text-slate-500">GST</th>
@@ -308,7 +336,7 @@ export default function InventoryManagement() {
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredItems.map(item => (
+                  {sortedFilteredItems.map(item => (
                     <tr key={item.id} className="border-b border-slate-100 hover:bg-slate-50" data-testid={`item-row-${item.id}`}>
                       <td className="py-3 px-4">
                         <div className="flex items-center gap-3">
@@ -334,6 +362,7 @@ export default function InventoryManagement() {
                         </div>
                       </td>
                       <td className="py-3 px-4"><Badge variant="outline" className="text-xs">{getCategoryLabel(item.category)}</Badge></td>
+                      <td className="py-3 px-4"><Badge variant="outline" className={`text-xs ${item.location_id ? 'border-blue-200 bg-blue-50 text-blue-700' : 'border-slate-200 text-slate-500'}`} data-testid={`branch-badge-${item.id}`}>{getBranchLabel(item)}</Badge></td>
                       <td className="py-3 px-4 text-sm text-slate-600"><div className="flex items-center gap-1"><Warehouse className="h-3 w-3 text-slate-400" />{getWarehouseLocation(item)}</div></td>
                       <td className="py-3 px-4 text-right"><span className={item.quantity <= item.reorder_level ? 'text-red-600 font-semibold' : 'text-slate-900'}>{item.quantity}</span>{item.quantity <= item.reorder_level && <AlertTriangle className="h-3 w-3 inline ml-1 text-red-500" />}</td>
                       <td className="py-3 px-4 text-right font-medium text-slate-900">₹{item.unit_price.toLocaleString('en-IN')}</td>
@@ -353,7 +382,7 @@ export default function InventoryManagement() {
 
             {/* Mobile Cards */}
             <div className="md:hidden space-y-3">
-              {filteredItems.map(item => (
+              {sortedFilteredItems.map(item => (
                 <Card key={item.id} className="border-slate-200" data-testid={`item-card-${item.id}`}>
                   <CardContent className="p-4">
                     <div className="flex items-start gap-3">
@@ -385,6 +414,7 @@ export default function InventoryManagement() {
                         </div>
                         <div className="flex flex-wrap items-center gap-2 mt-2">
                           <Badge variant="outline" className="text-xs">{getCategoryLabel(item.category)}</Badge>
+                          <Badge variant="outline" className={`text-xs ${item.location_id ? 'border-blue-200 bg-blue-50 text-blue-700' : 'border-slate-200 text-slate-500'}`} data-testid={`branch-badge-mobile-${item.id}`}>{getBranchLabel(item)}</Badge>
                           <span className={`text-sm font-medium ${item.quantity <= item.reorder_level ? 'text-red-600' : 'text-slate-900'}`}>Qty: {item.quantity}</span>
                           <span className="text-sm font-semibold text-slate-900">₹{item.unit_price.toLocaleString('en-IN')}</span>
                         </div>
@@ -464,6 +494,17 @@ export default function InventoryManagement() {
                 <SelectTrigger className="h-11" data-testid="item-category-select"><SelectValue placeholder="Select category" /></SelectTrigger>
                 <SelectContent>{categories.map(c => <SelectItem key={c.id} value={c.slug}>{c.name}</SelectItem>)}</SelectContent>
               </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Branch</Label>
+              <Select value={itemForm.location_id || 'global'} onValueChange={(v) => setItemForm(p => ({ ...p, location_id: v === 'global' ? '' : v }))}>
+                <SelectTrigger className="h-11" data-testid="item-location-select"><SelectValue placeholder="Global (all branches)" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="global">Global (all branches)</SelectItem>
+                  {locations.map(l => <SelectItem key={l.id} value={l.id}>{l.name} ({l.code})</SelectItem>)}
+                </SelectContent>
+              </Select>
+              <p className="text-[11px] text-slate-400">Restricts who can see this item — staff outside this branch won't see it in their inventory list.</p>
             </div>
 
             <div className="p-3 bg-slate-50 rounded-lg border border-slate-200">
