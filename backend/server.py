@@ -1576,6 +1576,7 @@ async def get_inventory_items(
             "sku_code": item["sku_code"],
             "category": item["category"],
             "location_id": item.get("location_id"),
+            "addon_group": item.get("addon_group"),
             "zone": item.get("zone", ""),
             "aisle": item.get("aisle", ""),
             "shelf": item.get("shelf", ""),
@@ -1624,6 +1625,8 @@ async def get_inventory_item(item_id: str, request: Request):
         "name": item["name"],
         "sku_code": item["sku_code"],
         "category": item["category"],
+        "location_id": item.get("location_id"),
+        "addon_group": item.get("addon_group"),
         "zone": item.get("zone", ""),
         "aisle": item.get("aisle", ""),
         "shelf": item.get("shelf", ""),
@@ -1685,6 +1688,7 @@ async def create_inventory_item(item: InventoryItemCreate, request: Request):
         "qc_checklist": item.qc_checklist,
         "procurement_date": item.procurement_date,
         "location_id": item.location_id or None,
+        "addon_group": item.addon_group,
         "created_at": datetime.now(timezone.utc).isoformat(),
         "updated_at": datetime.now(timezone.utc).isoformat()
     }
@@ -1738,6 +1742,8 @@ async def update_inventory_item(item_id: str, updates: InventoryItemUpdate, requ
         update_data["category"] = updates.category
     if updates.location_id is not None:
         update_data["location_id"] = updates.location_id or None
+    if updates.addon_group is not None:
+        update_data["addon_group"] = updates.addon_group
     if updates.unit_price is not None:
         update_data["unit_price"] = updates.unit_price
     if updates.supplier is not None:

@@ -259,7 +259,7 @@ export default function AssetsPage() {
               {reportData && (
                 <>
                   <div className="flex justify-between items-center flex-wrap gap-2">
-                    <div className="flex gap-3 text-xs text-slate-600">
+                    <div className="flex gap-3 text-xs text-slate-600" data-testid="asset-report-summary">
                       {Object.entries(reportData.summary || {}).map(([k, v]) => <span key={k}><strong>{typeof v === 'number' ? v.toLocaleString('en-IN') : v}</strong> {k.replace(/_/g, ' ')}</span>)}
                     </div>
                     <div className="flex gap-2">

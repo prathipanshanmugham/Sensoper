@@ -1,218 +1,98 @@
-# Sensoper Controls & Renewables - Solar ERP
+# Sensoper Controls & Renewables — Solar ERP — PRD
 
-## Iteration 42 (Aug 2026) — 8 major changes, delivered in one pass, tested end-to-end
-Status: DONE — 35/35 backend pytest green, frontend flows verified by testing agent, all 5 post-test action items fixed and re-verified.
+## Original problem statement (Iteration 43)
+1. Branch/Location name editable, joining by ID not name.
+2. Editable records with delta-based stock tracking + admin-approval routing for
+   Purchase Inbound, Purchase Outbound (Deliveries), Direct Sales, Assets.
+3. Deep multi-location linkage across processes: doc numbering, stock, GST, approvals.
+4. New Reports tiles: AMC, Assets, Tools, Expenses.
+5. Performance Master Report (consolidated vs per-location PDF/Excel) — DEFERRED.
+Follow-up asks (same iteration): PO delete-while-pending (no approval), Inventory
+location scoping with sortable Branch column + location-based visibility.
 
-1. **Inventory import bug + UX overhaul** — Fixed multipart Content-Type bug (`'multipart/form-data'` string strips the boundary) across all 6 upload call sites in `frontend/src/utils/api.js`. Rebuilt `/api/inventory/import`: flexible column alias matching (`backend/inventory_import.py`), header-row auto-detection, currency/thousands cleaning, duplicate-SKU flagging, preview-before-commit (`/inventory/import/preview`), dry-run mode, column-mapping UI when headers can't be matched, downloadable CSV error report.
-2. **Purchase Inbound edit/delete** — `complete_inbound` now permission-gated, idempotent (blocks double-receipt), matches by `inventory_item_id`/`sku_code` (never silent-skips). Added `PUT /inbound/edit` (delta-only stock changes, Pydantic-validated non-empty lines), `DELETE /inbound` (reversal with negative-stock guard), and an admin approval queue (`inbound_action_requests`) for users without delete rights. PurchaseInboundPage.js has Edit/Reverse buttons, receipt history, and an admin approvals banner.
-3. **Manual System Size** — Removed the auto-suggester for On-Grid/Off-Grid/Hybrid; System Size (kW) is now a required manual field in Quick Inputs with a non-binding reference line. Panel Count/Inverter/Generation/Cost/Subsidy still auto-derive from the entered size (Auto/Override pattern retained). Solar Pump keeps its HP-based suggestion engine unchanged (explicit exception).
-4. **Excess Material Report** — New `material_reconciliation` collection (`backend/reconciliation.py`), reconciliation form on `ProjectDetails.js` (visible when status=completed), returns increment stock via the standard movement trail, damaged items route to `returns`. New "Excess Material" tile on ReportsPage with by-item over-issue % and unreturned-by-project tables.
-5. **AMC module** — Brand new `backend/amc.py`: contracts, service visits, dashboard (ARR/MRR/penetration/renewal-rate/8 KPIs), Recurring Revenue Report, create-from-completed-project, renew/bulk-renew/cancel. New page `/dashboard/amc`.
-6. **Assets & Tools** — Brand new `backend/assets.py`: register, issue/return, maintenance, compliance (90-day expiry banner), QR code (client-side via `qrcode` lib), depreciation/utilisation/write-off/7 reports. New page `/dashboard/assets`.
-7. **Branch name editable** — `ExpansionPage.js` branch edit dialog (name/address/district/state/opened date/monthly cost/staff count/districts served), audit-logged on rename. District-score aggregation already joins by district string, unaffected by renames.
-8. **Multi-location (scoped)** — New `backend/locations.py`: locations registry, `location_scope_filter` helper, user `location_ids`/`default_location_id` assignment. Read-filtering wired into Projects, Inventory, Assets, AMC lists. New `/dashboard/locations` admin page. Deliberately scoped per user's explicit approval — not full per-collection enforcement.
+## Status: Iteration 43 — COMPLETE & TESTED (Aug/Sep 2026)
 
-### Post-test-agent fixes (same session)
-- Fixed DOM-nesting warning in AssetsPage detail dialog (Badge inside `<p>` → `<div>`).
-- `PUT /inbound/edit` now uses a Pydantic model requiring a non-empty `lines` list (was a silent-wipe risk on malformed bodies); Save button disabled client-side when no editable lines.
-- `GET /assets/reports/*` now excludes soft-deleted (scrapped) assets from register/depreciation/utilisation, while `writeoff` report still includes them — register totals now reconcile with the visible grid.
-- Removed dead `BILLING_MONTHS` lookup in AMC's `_monthly_value`.
-- Replaced `count_documents()+1` sequence generation for `asset_code`/`contract_number` with an atomic `counters` collection (`find_one_and_update` + `$inc`) to avoid duplicate codes under concurrency/soft-deletes.
+### What shipped
+- **Change 1 (Branch/Location editable)**: was already implemented pre-session via
+  `LocationsPage.js` + `PUT /api/locations/{id}` (joins by ID). Verified, no changes needed.
+- **Change 2 (Editable records + approval routing)**:
+  - Purchase Inbound / Outbound / Assets: PUT+DELETE with delta stock (done in prior session).
+  - Direct Sales: NEW `PUT /api/sales/{id}/edit` (delta-based line edit, negative-stock guard)
+    and `DELETE /api/sales/{id}` (full cancel + stock restore), with `db.action_requests`
+    approval-queue fallback for non-privileged users (mirrors assets/deliveries pattern).
+  - Frontend: Edit/Delete UI + "Pending Approvals" banners added to DirectSalesPage.js,
+    DeliveryOutboundPage.js, AssetsPage.js.
+  - Generic `/api/action-requests` + `/api/inbound-action-requests` approve/reject now
+    **location-scoped**: managers can only act on requests from their assigned location(s);
+    admins unrestricted (`_can_manage_request_location` helper in server.py).
+- **Change 3 (Deep multi-location linkage)**:
+  - `location_id` added to Sales, Purchase Orders, Inventory Items.
+  - Location-scoped invoice numbering: `SOC-{branchCode}/FY/NNNN` (sales.py `_generate_invoice_number`).
+  - Location-scoped PO numbering: `PO-{branchCode}-NNNN` via `_next_doc_sequence` counter.
+  - Per-location Company Profile override: `state` + `location_id` fields on CompanyProfile
+    (used for CGST/SGST vs IGST split); `_get_active_company_profile(location_id)` tries the
+    location-scoped profile first, falls back to global active one.
+  - Inventory: non-admin users see only their assigned location(s) + legacy/global items
+    (`location_scope_filter`, already existed in locations.py — just needed items to actually
+    set `location_id`). Admins get a Branch filter + sortable Branch column on Inventory page.
+  - PO can be deleted freely while `status == 'pending'` (no approval needed) via
+    `DELETE /api/purchase-orders/{id}` — 400 if already progressed past pending.
+- **Change 4 (New Reports)**: 4 tiles added to ReportsPage.js — AMC Contracts, Assets, Tools,
+  Expenses — each with summary cards + table + PDF/Excel export (matches existing 13-report pattern).
+  Backend cases added to `/api/reports/{report_type}` in server.py.
+- **Change 5 (Performance Master Report)**: DEFERRED — not built, backlog item.
 
-### Deferred (explicitly, per user's "do the best" instruction on Iter41 continuity)
-- Iter41 Phase 2 (per-system-type calculator UI split into separate files) — superseded/partially folded into Change 3's pump exception; full component split not done.
-- Iter41 Phase 3 (plain-language 6-page quote PDF) — not started.
-- Iter41 Phase 4 (global responsive/UI polish across 26 pages) — not started.
-- `server.py` (6,850 lines) still needs router extraction — inbound/import blocks are good next candidates alongside the already-extracted assets/amc/locations/reconciliation routers.
+### Testing (3 passes, all issues fixed)
+- Pass 1 (iteration_45.json): found company-profile state/location_id silently dropped (HIGH),
+  po_number/location UI wiring gaps (MEDIUM), sales summary counting returned sales (LOW),
+  Assets report staleness (LOW) — all fixed.
+- Pass 2 (inline report): backend 22/23 pytest, Inventory branch-scoping UI fully verified;
+  found inventory item detail endpoint missing location_id/addon_group, inventory filter-bar
+  CSS collapse — fixed; 4 items left untested (ran out of turns).
+- Pass 3 (iteration_46.json): 47/48 pytest, all 4 previously-untested UI flows now PASS
+  (PO delete pending-only + button visibility by status, Quick Sale branch dropdown +
+  location-scoped invoice, Assets report auto-refresh, sanity regression on Sales/Deliveries/
+  Assets/Reports). Found addon_group never persisted + filter-bar overflow at 1920px regression
+  — both fixed and manually verified via curl + screenshot post-fix.
 
-## Known non-blocking notes (Iter 42)
-- Untyped `Dict[str, Any]` bodies on `PUT /locations/{id}`, `PUT /assets/{id}`, `PUT /amc/contracts/{id}` allow arbitrary field injection (only `_id`/`id` stripped) — acceptable for admin/manager-only endpoints, consider allow-lists later.
-- `location_scope_filter` no-ops (returns `{}`) for admins and for any user with no `location_ids` assigned — intentional backward-compatibility behavior for the scoped Change 8 implementation.
-- Recharts `<Cell>` component still must never be used (causes blank-screen crash) — confirmed avoided in all new charts (AMCDashboard uses plain `<Bar fill="#10b981">`).
+## Architecture
+```
+/app/backend/
+  server.py         # Core (~7200 lines) — PO, inventory, company profile, action-requests, reports
+  sales.py          # Direct Sales — create/edit/delete/return/invoice, location-scoped invoicing
+  assets.py         # Assets & Tools CRUD + archive-with-approval
+  amc.py            # AMC contracts
+  locations.py      # Multi-location registry + location_scope_filter (shared helper)
+  reconciliation.py # Material reconciliation
+  inventory_import.py
+/app/frontend/src/pages/
+  DirectSalesPage.js, DeliveryOutboundPage.js, AssetsPage.js, PurchaseInboundPage.js,
+  InventoryManagement.js, ReportsPage.js, CompanyProfile.js, LocationsPage.js
+```
 
-## Tech Stack
-- Frontend: React, Tailwind CSS, Shadcn UI, Recharts, jsPDF, xlsx/SheetJS, DOMPurify
-- Backend: FastAPI, MongoDB, Motor (Async), JWT Auth (cookie-based)
+## Key patterns established this iteration
+- Editable-record pattern: PUT `.../edit` recomputes totals from new line items, diffs
+  old-vs-new quantity per inventory_item_id, applies only the DELTA to stock via `$inc`,
+  writes a delta-only movement/audit entry. DELETE reverses fully (restore stock, mark
+  cancelled) with a `db.action_requests` approval-queue fallback when the actor lacks
+  the module's `delete` permission (checked via `check_module_permission`).
+- Location scoping: `location_scope_filter(user, location_id_param)` from locations.py —
+  admins see everything (optionally filtered), everyone else sees their assigned
+  `location_ids` + legacy/global (location_id absent) documents. Reused across sales,
+  inventory, deliveries, purchase orders, action-request queues.
 
-## Implemented Modules
+## Known limitations / backlog
+- P2: Performance Master Report (consolidated vs per-location PDF/Excel) — not built.
+- P2: Invoice/PO sequence numbers use `count_documents()` + regex, not an atomic counter —
+  theoretical risk of duplicate numbers under concurrent creates (flagged by testing agent,
+  low real-world risk given current usage volume).
+- P3: Company profile create/update use hand-written field lists instead of
+  `model_dump(exclude_unset=True)` — same class of bug that caused the state/location_id
+  loss could recur if new fields are added without updating both create+update+GET.
+- P3: server.py is ~7200 lines — further modularization (company profile, PO, action-requests
+  into their own files) would help maintainability but is not urgent.
 
-### Core
-- [x] Role-based Auth, Dynamic Form Builder, Multi-step Site Visit Form
-- [x] Dynamic Cost Estimation, PDF Quotation, Approvals, Permissions, Inventory
-
-### Intelligence
-- [x] CEO Dashboard (KPIs, Revenue Trend, Sales Funnel, **Credit Aging + Top Debtors**)
-- [x] Profit Leakage Alerts (7 types, risk scoring, configurable thresholds)
-- [x] **12 Reports** with charts + PDF/Excel export
-
-### Operations
-- [x] Customer Credits, Purchase Inbound (5-step PO flow), Delivery Outbound
-- [x] Brand Returns, Weekly Audits, Daily Updates (**7 types: Progress, Leads, Invoicing, Material, Payment, Installation, O&M**)
-- [x] Payment Tracking, Material Usage Logging, Data Completeness Score
-
-### Reports (12 total)
-1. Sales & Revenue (tabs: overview, lead_sources)
-2. Profit & Leakage (tabs: profit, material_variance)
-3. Project Execution
-4. Inventory & Material (tabs: stock_levels, material_usage, alerts, **movement — Fast/Slow moving with Product · Status · Procurement Date · Last Used · Usage Count · Movement Type; filter by movement_type**)
-5. Customer Credit
-6. Team Performance
-7. Compliance & Tax
-8. Customer Satisfaction
-9. **Inbound Report** (PO details, QC, transport)
-10. **Outbound Report** (deliveries, dispatch, transport)
-11. **Audit Report** (checklist, issues, resolution)
-12. **Marketing Report** (leads from daily updates, conversions)
-
-### Inventory Enhancements
-- [x] Image URL field (pasteable https link + live preview, replacing file upload — Feb 2026)
-- [x] Margin % per product (internal)
-- [x] Active/Inactive status (green/grey dot in list)
-- [x] QC Checklist template per product
-- [x] Procurement Date field (used for movement analysis — Feb 2026)
-- [x] Fast / Slow moving classification (≥5 usages in last 30 days = Fast) — Feb 2026
-
-### Filters (cleaned)
-- Date range, System type, Status only (customer/staff filters removed)
-- Inventory → Movement tab: adds Movement Type filter (All / Fast / Slow)
-
-## P1 - Upcoming
-- [x] Project-level PDF/Excel download in ProjectDetails *(shipped Feb 2026)*
-- [x] In-app notification bell for alerts *(shipped Feb 2026)*
-- [x] Inventory UI updates — status dot + QC checklist *(shipped Feb 2026)*
-- [x] Decouple Leads & Invoicing in Daily Updates *(shipped Feb 2026)*
-- [x] Currency consistency *(shipped Feb 2026)*
-- [x] Inventory movement intelligence — Fast/Slow + procurement_date + URL-based image *(shipped Feb 2026)*
-- [x] **Accounts module** — Customer Credits page renamed to **Accounts**. Sub-tabs: Customer Credits | Accounts (Cash on Hand + Account Balance — Meter Reading dropped) | **Expenses** (Operational Expense + GST Input). Backend `/api/accounts/summary` returns per-type snapshots + `operational_expense_mtd` + `gst_input_mtd` totals. *(Feb 2026)*
-- [x] **Readings module** *(Feb 2026)*
-- [x] **CEO Dashboard refresh** — 4-card snapshot row (Cash · Op Exp MTD · GST Input MTD · Account Balance) + **Net Cash Flow** strip with explicit `+₹` / `-₹` sign + Readings card. *(Feb 2026, Net-Cash-Flow sign added May 2026)*
-- [x] **What3Words integration** — `Auto-fill from GPS` button on Site Visit form Location step. Browser geolocation → W3W v3 API (key `REACT_APP_W3W_API_KEY=G4IVNNAW`) → autofills `site_location_words` + lat/lng + nearestPlace. Privacy-friendly: GPS button only, no auto-fetch on typing. *(May 2026)*
-- [x] **Permissions refresh** — module-level access matrix (view/create/edit/delete/export × 16 modules) with admin lock + mobile cards *(shipped Feb 2026)*
-- [x] **PWA + offline support** — manifest, service worker (cache-first static, network-first navigation, offline fallback, no-cache /api/*, background-sync queue for /api/readings & /api/accounts), install prompt, CLEAR_CACHE on logout *(shipped Feb 2026)*
-- [x] **Login/Register password-eye toggle** — Eye/EyeOff icon button toggles input type between password ↔ text. *(shipped May 2026)*
-- [x] **Accounting page reorganized into 5 tabs** — `Customer | Credits | Accounts | Expenses | GST`. New `Customer` tab aggregates per-customer (invoices/total/paid/balance/overdue) with search. GST tab snapshot now includes **Total GST Paid (MTD)**, **Input Credits (MTD)**, **Net GST Liability (MTD)** (paid − input). Backend `/api/accounts` accepts `entry_type=gst_paid`; `/api/accounts/summary` exposes `gst_paid_mtd`, `gst_input_mtd`, `gst_net_mtd`. *(May 2026)*
-- [x] **CEO Dashboard symmetric refresh** — Net Cash Flow strip removed. Layout: 8 KPI cards (4×2) → 4 financial snapshots (Cash · Op Exp MTD · GST Input MTD · Account Balance) → 4-col charts row (Revenue 2col + Project Status 1col + Readings 1col) → Sales Funnel + Top Staff (2×1) → Credit overview. *(May 2026)*
-- [x] **Solar Project Report rendered as charts & graphs** — Live wizard preview and Quotation PDF both use charts instead of tables. Apple-style "At a Glance" plain-English hero (YOU INVEST / YOU SAVE MONTHLY / COST RECOVERED IN / TOTAL SAVED 25 YRS) + layman captions under every chart. PDF section is try/catch-wrapped; `drawBarChartV` hardened against NaN. Friendly text only — 'units' not 'u', 'Year 1' not 'Y1', '3 kWp and above' not '≥3 kWp'. *(May 2026)*
-- [x] **Project Completion via Drive Link + Inverter Login (no upload)** — Mark-complete dialog replaced with Google Drive link input + Inverter Login (URL/Username/Password with show-toggle, Notes). Display card on project page shows the handover info with reveal+copy buttons. Backend validates URL prefix; legacy `completion_media` array kept for backward compat. *(May 2026)*
-- [x] **AI / auto-suggestions completely removed** — `aiAPI` import removed from `SiteVisitForm.js`; AI Recommendation button gone; Smart System Suggestions card replaced with manual "Proposed Solution" entry (system_kw, panel_count, inverter_kw, panel_area, notes) persisted under `custom_fields.proposed_solution`. *(May 2026)*
-- [x] **Solar Report — no duplicate fields, no irradiance** — Refactored to consume customer/electrical/solar-system data via props from upstream wizard steps. Only 5 unique inputs remain: TNEB Service No, Avg Monthly Bill, Tariff Category, System Type, Cost per kWp (+ battery days when off-grid/hybrid). GPS / NASA POWER / irradiance UI removed entirely; specific yield fixed internally at 4.0 kWh/kWp/day (Indian residential on-grid baseline). *(May 2026)*
-- [x] **What3Words graceful degradation** — `fetchW3W` always saves GPS coordinates first, then enriches with W3W; W3W failures (401/402/429/network) show actionable error message + the GPS is still captured. API key `G4IVNNAW` retained in `frontend/.env`. *(May 2026)*
-- [x] **Inventory bulk import + Excel/PDF export** — New backend endpoints: `GET /api/inventory/template` (sample xlsx), `POST /api/inventory/import` (.xlsx/.csv, upserts by `sku_code`, returns created/updated/errors), `GET /api/inventory/export?format=xlsx|pdf` (full inventory; PDF via reportlab landscape A4). Inventory page toolbar gets three new buttons: Import, Excel, PDF. Import dialog with Template download + summary panel. Routes namespaced under `/inventory/` (not `/inventory/items/`) to avoid conflict with `/items/{item_id}`. *(May 2026)*
-- [x] **Dashboard conversion-rate math fixed** — Drafts no longer inflate the denominator on `/api/dashboard/stats` or `/api/dashboard/ceo`. Leads = total − drafts. Sales funnel `total_leads` aligned. *(Feb 2026)*
-- [x] **Load Details removed from Site & Electrical step** — Obsolete `load_m` collapsible section dropped; sanction-load / monthly-units validation removed (those inputs now live solely inside the Solar Project Calculator). *(Feb 2026)*
-- [x] **Terms & Conditions choosable per project + active toggle removed** — New `GET /api/terms/{id}` endpoint. Project schema accepts `terms_id` (POST/PUT/GET). Site Documentation step has a dropdown to pick a T&C template (falls back to Standard Terms if none selected). T&C admin page lost the Active switch, the Active badge, the "only one active" restriction, and the "cannot delete active" server-side block. *(Feb 2026)*
-- [x] **Solar Project Calculator — fully editable manual mode** — `SolarReportSection` rewritten: every input is editable (Monthly Consumption, Bill, Sanctioned Load, Connection Type, Tariff, System Type, Panel Wattage, Cost per kWp, Specific Yield). TNEB lookup demoted to optional "Prefill from TNEB" block. Read-only upstream summary removed. ProjectDetails PDF accepts new `avg_monthly_consumption_units` key with legacy fallback. *(Feb 2026)*
-- [x] **Solar Calculator → "Proposed Solution & Materials" merge** — Separate `SolarReportSection` removed entirely. New `ProposedSolutionSection` lives inside the Materials step (step renamed to "Proposed Solution & Materials" in stepper + page title). All inputs are pure manual entry (system size, panel/inverter/battery details, generation, EB consumption, tariff, cost, subsidy, diesel offset, life, degradation, notes). Live-computed metrics displayed: payback, ROI, monthly/annual/lifetime savings, diesel/petrol saved, CO₂ reduction, annual generation. No auto-sizing API any more. *(Feb 2026)*
-- [x] **Universal Notes feature** — Every project carries an editable `notes` field + `notes_history` array. Backend: new `POST /api/projects/{id}/notes` appends timestamped entries with author info; `PUT /api/projects/{id}` accepts `notes` and is allowed for ANY status when *only* notes is being changed (so completed projects stay editable for follow-ups/service logs). UI: dedicated Notes card on `ProjectDetails` with Edit-main + Append-timestamped flows + reverse-chronological history. Final step's "Shadow Analysis Notes" textarea renamed to "Notes" and bound to the same field. Lazy migration: legacy `additional.shadow_analysis_notes` returns through `notes` on GET when the new field is empty. *(Feb 2026)*
-- [x] **Hybrid auto-calc + Manual Override** — `ProposedSolutionSection` now has 8 *driver inputs* (Monthly EB Bill / Units, Roof Area, Tariff, Connection Type, Tariff Category, Location, System Type, Backup hrs) that auto-suggest 11 *output fields* (System Size, Panel Count, Panel Area, Roof Util %, Monthly+Annual Gen, Inverter, Battery kWh+count, Total Cost, Subsidy). Every field shows an **"Auto Calculated"** badge by default; if the user types over it the badge flips to **"Manual Override"** with a one-click reset icon. **Auto Calculate** button clears all overrides and refreshes everything. Smart recalculation: editing any driver re-derives non-overridden fields live. Subsidy formula follows PM Surya Ghar Feb 2026 schedule (cap ₹78k, residential on-grid domestic only). State-specific specific yield lookup. *(Feb 2026)*
-- [x] **Iteration 39 — Direct Sales + Expansion Capacity + Subsidy + Marketing/CAC (Feb 2026)**:
-  - **Change 1 — Direct Sales module**: New `backend/sales.py` (17 endpoints: list/get/create/update/return/payment/summary/invoice) with atomic stock decrement via `$inc`, snapshot cost_price for locked-in historical margin, shared `inventory_movements` trail with Purchase Inbound / Delivery Outbound, auto-generated FY-scoped invoice numbers (`SOC/YY-YY/NNNN`), CGST/SGST vs IGST split based on customer_state vs company profile state, credit sales open a `customer_credits` record, unified `customers` collection keyed by phone that merges walk-in buyers with project customers. Frontend `/dashboard/sales` (all roles) with 5-KPI strip, Quick Sale panel (customer + item picker + running GST totals + payment mode), sortable Sales list & Items-sold pivot toggle. `module_direct_sales` added to permissions matrix (admin/manager/staff). Wired into CEO dashboard — response now splits `project_revenue` vs `direct_sales.{revenue,margin,count}` and `kpis.total_revenue` blends both.
-  - **Change 2 — Expansion Capacity + Subsidy Lifecycle**: `expansion.compute_district_scores()` now emits `kwp_installed / kwp_quoted / kwp_pipeline / hp_pump / capacity_conversion_pct / avg_system_kw` per district and `by_system_type: {kwp,count,revenue}` mix plus `by_customer_type` split. Company-wide `totals.kwp_installed_all / hp_pump_all` + `system_type_mix` on overview. Pump HP tracked separately from kWp (never summed). New `subsidy_tracking` collection with per-project lifecycle (`eligible → applied → under_review → approved → disbursed | rejected`), computed `days_to_disburse`. `GET /api/subsidy/tracking/{project_id}`, `POST /api/subsidy/tracking` (upsert), `GET /api/subsidy/analytics` returns totals + by_scheme + stuck applications (>60d in applied/under_review) + rejection reasons + avg days-to-disburse + eligible→disbursed conversion %.
-  - **Change 3 — Marketing Expense + CAC**: `marketing_expense` added to `ACCOUNT_TYPES`. `GET /api/accounts/marketing-summary?start&end` returns spend by channel / campaign / district / month. `GET /api/reports/cac?attribution_window_days=90` computes blended-CAC, paid-CAC (excludes referral/organic), LTV (revenue-per-unified-customer), LTV:CAC ratio, marketing-% of revenue, channel performance table (spend/customers/revenue/CAC/ROI), and an **explicit unattributed bucket** with `unattributed_pct`. Divide-by-zero guard: CAC returns `None` when customers = 0. `lead_source` field flows from Direct Sales form + project custom_fields for attribution.
-  - **Tests**: 6 new pytests in `test_iter39.py` (GST intra vs inter-state split, discount+margin math, CAC divide-by-zero, `_round_v` None safety) — all 28 tests pass across the calc + health/expansion + iter39 suites.
-
-- [x] **Iteration 38 — India Choropleth + Full PIN Import + Location-Verified Badge (Feb 2026)**:
-  - **India Opportunity Choropleth**: New `IndiaChoropleth` SVG component on `/dashboard/expansion` — 32 hand-crafted state polygons in a normalised 1000×1000 viewBox, colour-graded by the max district score in each state (Strong / Watch / Serve / No Case / No Data). Hovering a state shows a tooltip with max score + projects + district count + top district; clicking a state filters the ranked table below (toggle-off if clicked again). Existing branches render as dark pins using lat/lon converted to the same viewBox. Legend strip in the header.
-  - **Full PIN CSV Import**: New endpoint `POST /api/calculate/pincodes/import` accepts a multipart CSV (up to 20 MB), de-duplicates by `pincode`, and streams in chunks of 5000 rows for memory safety. Accepts the India-Post schema (`Pincode, District, StateName, Latitude, Longitude`) with case-insensitive headers and normalised state-name spellings. Skips invalid PINs and existing rows. Response reports inserted/skipped_existing/skipped_invalid/total_after. UI file-picker in the Admin Utilities panel with a live result summary card.
-  - **Location Verified ✓ badge**: When a PIN resolves to a real district (not the fallback estimate), the Proposed Solution PIN block replaces the neutral DISCOM chip with an emerald `Location Verified` badge (icon + DISCOM name). The Review-and-Submit dialog also renders a compact `✓ Location Verified · PIN · District, State` line so field staff can confirm the Expansion prerequisite is cleared before submitting.
-  - Backend + frontend curl + Playwright smoke tests all green; test CSV of 7 rows imported cleanly, backfill unchanged.
-
-- [x] **Iteration 38 — Admin Config UIs + PIN Backfill Migration (Feb 2026)**:
-  - **Admin Config UIs**: New `AdvancedConfigSection` (mounted under `/dashboard/pricing-config`, admin only) surfaces three previously JSON-only config singletons through form UIs — Solar Calculator constants (cost/kWp per system type, default specific yield, battery unit size, system life, panel degradation, PM Surya Ghar slabs + cap, PM-KUSUM benchmark, diesel prices), Company Health Score (5 pillar weights, 8 targets, band thresholds — with live "current sum" indicator), and Expansion Module (8 sub-component weights, 5 thresholds, 3 band thresholds — with live sum). Each card has an in-place Reload/Save with success confirmation.
-  - **PIN Backfill Migration**: New admin endpoint `POST /api/projects/backfill-locations` with `dry_run` + `only_missing` flags. Extracts 6-digit PIN via regex from `customer.address / location.address / location.site_location_words`, looks it up in `db.pincodes` for full district+state+DISCOM auto-fill, else falls back to a state-name keyword scan (15 hint patterns) for partial state+DISCOM fill. Live UI preview + execute buttons in the Admin Utilities card. On the 140-project test DB: 3 full matches + 53 partial state hints out of 140 projects.
-  - **Seed Utilities**: The same Admin Utilities panel exposes the DISCOM/pincode seed action so a fresh instance can bootstrap TANGEDCO/KSEB/BESCOM/FALLBACK plus 18 sample PINs in one click.
-  - **Route + Nav**: New sidebar item "Pricing & Config" (admin only, Settings icon) → `/dashboard/pricing-config`. `App.js` route added.
-  - Full stack curl-verified: PUT to each of `/api/calculate/config`, `/api/dashboard/health/config`, `/api/expansion/config` persists and echoes back the new value.
-
-- [x] **Iteration 38 — Phases B & C: CEO Health Score + Expansion Module (Feb 2026)**:
-  - **Phase B — Company Health Score**: New `backend/health.py` computes a 0-100 composite from 5 admin-weightable pillars — Sales & Growth (25%), Profitability (25%), Cash & Collections (20%), Operations (20%), Team & Compliance (10%). Each pillar breaks into 3-4 metrics scored 0-100 with plain-language "What's dragging the score" (top 3 lowest metrics named). Backed by `db.health_config` (singleton, weights + targets + bands admin-editable) and `db.health_snapshots` (monthly persistence, idempotent). New endpoints: `GET/PUT /api/dashboard/health/config`, `POST /api/dashboard/health/snapshot`, `GET /api/dashboard/health/history?months=N`. Payload also joined to `/api/dashboard/ceo` under `health_score`.
-  - **Phase B UI — `HealthScoreCard`**: hero gauge (SVG needle 0-180°, gradient arc), verdict banner (Strong/Healthy/Needs Attention/Critical), 5-pillar strip with weight badges + colour-coded bars, "What's dragging the score" panel, save-monthly-snapshot link, 90-day trend sparkline from health history. Drill-through per pillar navigates to the owner page (Sales→Reports, Cash→Accounts, Ops→Inventory, Profit→Alerts).
-  - **Phase C — Expansion Module**: New `backend/expansion.py` scores every district on 8 admin-weightable sub-components (Demand Density 20, Revenue Share 15, Growth Momentum 15, Margin Quality 15, Service Burden 10, Travel Cost Drag 10, Payment Health 10, Market Headroom 5). Districts under 10 projects flagged `confidence_low: true` and greyed in the UI so nobody opens a branch on 3 lucky jobs. Break-even simulator answers "how many projects/month do we need and are we there yet". Backed by `db.expansion_config` + `db.branches`. Full CRUD: `GET /api/expansion/{overview, district/{name}, config}`, `POST /api/expansion/{simulate}`, `GET/POST/PUT/DELETE /api/expansion/branches`. Distance-drag score uses Haversine to the nearest branch.
-  - **Phase C UI — `/dashboard/expansion`** (admin/manager, `module_expansion` permission): summary card, state filter, ranked opportunity table with band badges, "View" opens district drawer with 8-axis radar chart + metric grid, break-even simulator dialog with editable inputs + coloured gap indicator, branches registry dialog (add/remove/list with lat/lon + monthly cost).
-  - **Tests**: 9 pytest (`test_health_and_expansion.py`) + 9 API integration (`test_iter42_api.py`) all green; full Playwright validation of the CEO dashboard health card, expansion table, district drawer, simulator, and branches dialog (`iteration_42.json` — `retest_needed: false`).
-
-- [x] **Iteration 38 — Phase A (Change 1): Server-side Solar Calculator + PIN/DISCOM engine + Solar Pump AC/DC split (Feb 2026)**:
-  - New backend package `/app/backend/calculators/` (10 files: base, tariffs, subsidy, geo, ongrid, offgrid, hybrid, pump, seed_data, __init__) — no more constants in the browser. All rates, subsidies, cost/kWp are DB-backed and admin-editable so quotes are reproducible after tariff revisions.
-  - PIN-code driven DISCOM slab engine: 5 seed DISCOMs (TANGEDCO, TNPDCL, KSEB, BESCOM, FALLBACK) with telescopic domestic + commercial + industrial + agricultural + HT slabs; 18 pincodes across TN/KL/KA with district-level `specific_yield_kwh_per_kwp_day`.
-  - Slab-aware bill savings: pre-solar vs post-solar computed on the actual slab curve — removing 300 units from a 500-unit TN Domestic bill saves ₹1,570 (top-slab-first), not the flat-rate average. Zero-rate Agricultural tariff returns `payback: None` instead of divide-by-zero.
-  - `LocationDetails` schema extended with `pincode / district / state / discom_id`. `calculation_snapshot` (versioned constants used) is persisted on every project so an old quote reproduces its original numbers even after a tariff change.
-  - Solar Pump split into **DC** (MPPT + BLDC direct-coupled, 85% motor efficiency) vs **AC** (VFD + induction, 75% motor efficiency × 95% VFD efficiency) paths. TDH assembly captures static/dynamic water level, delivery head, horizontal pipe run with Hazen-Williams friction loss. Pump HP rounds to standard 0.5/1/2/3/5/7.5/10/12.5/15 HP with warnings when the required duty jumps > 0.6 HP, when bore casing is too narrow (min ≥ 90-200mm by HP), or when the DC string voltage falls outside the controller's MPPT window. PM-KUSUM subsidy separately configurable per component (B/C) with central/state/farmer split.
-  - New API surface: `POST /api/calculate/solution`, `GET /api/calculate/lookup/{pincode}`, `POST /api/calculate/bill-savings`, `GET|PUT /api/calculate/config`, admin CRUD on `/api/calculate/discoms` and `/api/calculate/pincodes`, `POST /api/calculate/seed-defaults` (idempotent).
-  - Frontend `ProposedSolutionSection` became a thin client: PIN Code block (600ms debounced lookup + 600ms debounced full calculation), TANGEDCO/KSEB/BESCOM badge, yield display, 3-number bill-savings strip (Pre / Post / Monthly Saving), tariff category dropdown populated from the resolved DISCOM's categories. Solar Pump path toggle (DC/AC), full TDH input set, PM-KUSUM section, live warnings panel.
-  - 13 pytest unit tests + 11 integration API tests cover slab math, back-solve, top-slab-first savings, PM Surya Ghar slabs, PM-KUSUM shares, TN-vs-KL sizing differences, agricultural ₹0-tariff no-crash, DC pump sizing, casing warning, AC > DC array kWp, and override-wins.
-
-- [x] **Iteration 40 — Phases 2, 3, 4 (Feb 2026)**: Added Solar Pump as 4th system type with per-type detail blocks (On-Grid net-metering, Off-Grid DoD/autonomy/MPPT, Hybrid chemistry/grid-charge, Solar Pump HP/head/LPH). Material Kits (Solution Kits) — new backend collection with CRUD + auto-match, dedicated `/dashboard/inventory/kits` admin page, one-click "Apply Kit" in Materials step. Draft resume banner (localStorage) + Review & Submit dialog on wizard final step.
-  - **Phase 1**: What3Words made manual-only (API removed), Google Drive folder link made optional, JWT_SECRET fail-fast startup validation, test suite refactored to use `TEST_ADMIN_PASSWORD` env var.
-  - **Phase 2 — 4th System Type "Solar Pump" + per-type detail fields**: `ProposedSolutionSection` now offers On-Grid / Off-Grid / Hybrid / **Solar Pump** with system-type-specific detail blocks — On-Grid: Net Metering + Export Limit; Off-Grid: DoD + Autonomy Days + Charge Controller (MPPT/PWM); Hybrid: Grid-Charging toggle + Battery Chemistry (LiFePO4/Li-ion/Tubular/Gel); Solar Pump: HP + Pump Type (Submersible/Surface/Openwell) + Total Head + Discharge (LPH) + Controller (DC/VFD) + Water Source. Auto-sizing: Solar Pump derives system_size_kw = HP × 0.75 × 1.2. `ProjectDetails` System Configuration card renders per-type detail sub-block.
-  - **Phase 3 — Material Kits (Solution Kits)**: New backend collection `material_kits` with full CRUD `/api/material-kits` + `/match` endpoint (range-first, then nearest-capacity) + `/seed-starter` (8 idempotent kits: 2 per system type). Dedicated admin page `/dashboard/inventory/kits` with filter chips, kit editor (inventory-item picker + free-text lines + qty formula), and Seed Starter Kits button. Inventory page toolbar gains a "Solution Kits" link. In the New Project wizard's Materials step, kits auto-suggest based on `system_type + capacity`, one-click "Apply Kit" populates `selected_items`; "Browse all kits" details expander shows the full library.
-  - **Phase 4 — Draft Resume + Review dialog**: LocalStorage-backed draft autosave (3-second debounce). On wizard mount, if a fresh draft exists (customer name set, <7 days old) a **Resume Draft** amber banner offers Resume / Discard. Last-step submit now opens a **Review & Submit** dialog showing Customer, Location, Proposed Solution (with type-specific summary), Materials count + total, Documentation status. Back-to-Edit or final submit from the dialog; localStorage draft is cleared on successful create. *(Feb 2026)*
-
-## P2 - Future
-- [ ] WhatsApp Business API & Email delivery for quote sharing
-- [ ] Refactor server.py (~5700 lines) into modular routers
-- [ ] Embed Unicode font in jsPDF so ₹ renders natively in PDFs
-- [ ] Dead Stock classification (no movement for extended duration)
-- [ ] Reorder Suggestions card driven by Fast-moving + low stock
-- [ ] Extend attribution: multi-touch CAC (first-touch vs last-touch weighting)
-
-## Iteration 44 — 7-Change Master Spec (in progress)
-**Overall goal:** rebuild solar calculator into 4-stage guided flow, replace flat pricing with real per-product catalogue, generalise diesel → fuel model, split materials into kit + add-ons, add Kit Quotation PDF (lump-sum), rebuild pump physics with string voltage validation and ROI-by-replacement.
-
-**Delivery plan (phased):**
-- ✅ **Phase 1 (Feb 2026) — Changes 6 & 7 (data foundation):** Product Catalogue + Fuel Model
-- ⏳ **Phase 2 — Changes 1 & 5:** 4-stage guided calculator + Show Working + rebuilt pump physics
-- ⏳ **Phase 3 — Changes 2, 3 & 4:** Add-ons materials rebuild + grouped PDF section + Kit Quotation PDF
-- ⏳ **Phase 4:** End-to-end regression, migration checks, PDF text-layer scrub audit
-
-### Phase 1 — landed Feb 2026
-- **`backend/catalogue.py`** (new, ~430 lines): 7 product collections (`panel_products` / `inverter_products` / `battery_products` / `pump_products` / `structure_products` / `service_rates` / `fuel_types`) + `addon_groups` + `price_history` + `pricing_config` keyed defaults. Each product carries `effective_from` for versioning, per-product `margin_pct`, `linked_inventory_item_id`, `supplier`, `active` soft-delete, plus category-specific string-design specs (Voc/Vmp/Isc/Imp/temp_coef on panels, MPPT window + absolute-max on inverters and pump controllers).
-- **CRUD**: `GET/POST/PUT/DELETE /api/catalogue/products/{cat}`, `POST /api/catalogue/products/{cat}/import` (multipart CSV), `GET /api/catalogue/products/{cat}/{pid}/history`, `GET/PUT /api/catalogue/config`, `POST /api/catalogue/seed` (idempotent — migrates legacy `thresholds.pricing` into a Generic/Unbranded fallback product per category so existing projects still open), `GET /api/catalogue/addon-groups`.
-- **Fuel model** replaces the hardcoded `FUEL_LITRES_PER_KWH = 0.28` in `ProposedSolutionSection.js`. Seeded with Diesel/Petrol/Kerosene/LPG/CNG/Grid Electricity, each carrying `energy_content_kwh_per_unit`, `genset_efficiency_pct`, auto-derived `effective_kwh_per_unit` and `units_per_kwh`, `default_price_per_unit`, `co2_kg_per_unit`, plus `source_note` + `last_reviewed_date` audit fields. Diesel now derives 0.31 L/kWh (was 0.28).
-- **8 admin-managed add-on groups** seeded: Safety & Protection, Monitoring, Structure Upgrades, Electrical Extras, Civil Work, Water & Plumbing, Service & AMC, Miscellaneous — each with `display_order`, `description`, `show_on_pdf`, `optional_priced_separately` toggle for Phase 3 PDF grouping.
-- **`PricingConfig.js`** rebuilt as 8-tab UI (Panels · Inverters · Batteries · Pumps & Ctrl · Structure & BOS · Services & Rates · Fuel Types · Global Defaults). Per-tab: paginated list + search summary, New/Edit/Delete/Import CSV, price versioning via `effective_from`, per-product margin, auto-derive `price_per_watt` for panels and `kWh` for batteries on save. Global Defaults tab exposes admin-configurable `kit_rounding_step` (Change 4), `string_low_temp_default_c` (Change 5), `pump_oversizing_factor`, `pump_derating_factor`, `specific_yield_kwh_per_kwp_day` etc. — every constant Phase 2 needs.
-- **Tests**: `test_iter44_catalogue.py` — 8/8 pass (idempotent seed, auto-derived fields, history + soft-delete, config persistence, addon groups ordering, non-admin write blocked).
-
-### Phase 2 — landed Feb 2026 (Changes 1 & 5)
-- **`backend/calculators/working.py`** (new): `compile_stages_ongrid` + `compile_stages_pump` turn a raw breakdown into 4 structured stages (Consumption → Sizing → Cost → Savings). Each `WorkingLine` carries `label`, `inputs`, `operation`, `constant`, `result`, `unit`, `why`, `source` so the UI can Show-Working with plain-language explanations.
-- **String-voltage validation** (`validate_string_voltage`): computes Voc-at-Tmin per module using panel `temp_coefficient_voc`, multiplies by modules-in-series, checks against controller `controller_input_v_absolute_max` — returns exact "reduce modules-in-series to at most N" advice when it fails. This is the single most common cause of a solar pump that never runs. Site Tmin resolved as `pincode.min_temp_c` > `pricing_config.string_low_temp_default_c` (both admin-configurable).
-- **Pump ROI-by-replacement** (`pump_roi`): 4 modes — `diesel` (uses fuel_types collection instead of hardcoded 0.28 L/kWh), `grid` (routes to zero_tariff automatically when tariff ≤ 0 — no divide-by-zero), `manual` (hire hours × rate), `zero_tariff` (crop value / reliability). CO₂ offset computed from selected fuel's factor, not diesel-only.
-- **Endpoint additions**: `/api/calculate/solution` now returns `stages` + `roi_details`. New `POST /api/calculate/pump/string-voltage` validates a candidate string design against the catalogue's pump + panel electrical specs.
-- **`frontend/src/components/GuidedSolutionFlow.js`** (new): renders the 4 stages as collapsible cards with per-line "Show working" toggles, a pinned 5-KPI headline strip (System / Total / Subsidy / Customer Pays / Payback), a warnings block, and a dedicated red-banner for string-voltage errors that shows Voc@Tmin vs the controller limit. Mounted inside `ProposedSolutionSection.js` above the existing form so the calculator user reads top-to-bottom without needing to hunt for numbers.
-- **Tests**: `test_iter44_stages_and_pump.py` — 7/7 pass. Total: 15/15 across Phase 1 + Phase 2 backend.
-
-### Phase 3 — landed Feb 2026 (Changes 2, 3 & 4)
-- **Add-ons & Extras materials rebuild** on `SiteVisitForm.js`: renamed the section, dropped the per-category `Select`-dropdown grid, replaced with a universal searchable combobox spanning all inventory (name / SKU / category / price / stock) plus a 6-chip Quick-Add strip. Removed the hard "add at least one inventory item" validation so a project with no add-ons submits cleanly.
-- **`addon_group` field** added to `InventoryItemCreate` / `InventoryItemUpdate` — links each inventory item to one of the 8 seeded groups (Safety & Protection / Monitoring / Structure Upgrades / Electrical Extras / Civil Work / Water & Plumbing / Service & AMC / Miscellaneous).
-- **`frontend/src/utils/kitQuotationPDF.js`** (new — Kit Quotation PDF, Change 4):
-  - `buildKitPresentation()` returns a separate presentation data shape (NOT the raw project.selected_items) so per-item `unit_price` values physically cannot reach the PDF's text layer.
-  - Renders one lump-sum system line ("5 kWp On-Grid Solar Power Plant .... ₹2,50,000") followed by an inclusions bullet list carrying qty + name + specs but NO prices.
-  - Add-on groups render as separate lump-sum lines with their own inclusion sub-lists. Groups can be flagged `optional_priced_separately` — those print with "(Optional — priced separately)" and are excluded from the grand total.
-  - Kit price rounds to admin-configurable step (`kit_rounding_step` from `pricing_config.defaults`, default ₹500, mode `nearest`/`up`/`down`).
-  - Grand-total block: System Total, Add-ons Total, GST %, Less Subsidy, Net Payable (bold, brand-coloured).
-  - **New "Kit Quotation" button** on `ProjectDetails.js` sits next to "Detailed PDF" and Excel.
-- **Contract test** (`frontend/src/utils/kitQuotationPDF.spec.js`) — 19/19 assertions pass, verifies the presentation shape contains zero `unit_price` keys and no rupee amounts in inclusions strings; `pdftotext`-style extraction confirms the generated PDF's text layer carries no per-item prices.
-- **Kit Price Explainer modal** (`components/KitPriceExplainerModal.js`, new): opens from an "Explain" ghost button next to Kit Quotation. Splits into a rose-accented sales/internal pane (Core System line-items with unit cost + margin % + line-with-margin + rounded lump per group + roll-up totals: raw cost, weighted margin ₹, cost+margin, rounding impact, effective margin ₹ and %) and an emerald-accented customer pane that mirrors the actual Kit PDF (lump-sum system line, inclusions, add-on groups, GST, subsidy, net payable). Bottom reconciliation strip shows Sales cost+margin → After Rounding → Customer lump-sum with a clear delta so the sales person can defend any rounding move on the phone. Toggle to hide the customer pane when only the internal breakdown is needed. Uses the shared `buildKitSalesBreakdown` helper (exported from `kitQuotationPDF.js`) — mirrors the customer helper exactly but keeps raw prices; never piped into the PDF generator.
-
-## Iteration 41 — Rebuild Phased Delivery (in progress)
-**Scope**: (1) Orphan PDF fields + unit fix + PDF audit  ·  (2) 5 per-system calculators + Pump Suggestion Engine + Voc/MPPT block validation  ·  (3) 6-page customer-facing PDF  ·  (4) Responsive/accessibility pass across 26 pages.
-
-- ✅ **Phase 1 (Change 1) — Feb 2026 — landed**
-  - **New "Load & Electrical Details" section** on `SiteVisitForm.js` inside the site_electrical step. Adds real inputs for every field the PDF prints: Service Type dropdown (LT Domestic / LT Commercial / LT Industrial / Agricultural / HT), Connection Phase (Single / Three), Sanctioned Load, Connected Load, Monthly Consumption, EB Tariff, Cable Length + Inverter→Panel Distance both with ft/m toggle.
-  - **Unit standardisation**: `toMetres(val, unit)` converts on submit, so `cable_length_meters` and `inverter_to_panel_distance` are always stored in metres regardless of user's entry unit. `cable_length_unit` and `inverter_to_panel_unit` are persisted alongside for round-trip editing. PDF labels now say "m" and the value in metres.
-  - **EB tariff auto-prefill** from `proposed_solution.tariff_per_unit` (which comes from `calc/lookup/{pincode}` → DISCOM tariff). Prefilled values render with a blue "prefilled — editable" badge and a light-blue input background so nobody mistakes a default for a surveyed figure. Editing clears the prefilled flag. `service_type` also prefills from `tariff_category` (Domestic → LT Domestic, etc.).
-  - **Duplicate-field resolution**: `electrical.*` chosen as canonical over `site_measurements.load.*`. PDF and on-screen Electrical Details card read `project.electrical.connected_load_kw ?? project.site_measurements.load.connected_load ?? 0` and the same fallback for `monthly_consumption_units`, so old projects still display correctly.
-  - **PDF audit pass**: replaced hard-coded rows with a conditional-row builder — a row is only added when its source has a real value. No more "0 kW", "₹0/unit", "-" placeholders. Same treatment for the on-screen Electrical Details card (`InfoRow` now returns null for empty values).
-  - **Backend schema**: `ElectricalDetails` and `AdditionalInputs` Pydantic models extended with `connection_phase`, `_prefilled`, `cable_length_unit`, `inverter_to_panel_unit`; both switched to `extra: "allow"` for forward-compat.
-  - **Testing**: 34/34 backend pytests pass (no regressions). End-to-end curl POST + GET round-trip persists every new field. Detailed PDF text-extraction confirms: Service Type / Connection Phase / Sanctioned / Connected / Monthly / EB Tariff / Cable Length / Inverter→Panel all present with correct values and units, none orphaned.
-
-- ⏳ **Phase 2 (Change 2)**: 5 per-system calculator components + Pump Suggestion Engine + Voc-at-Tmin blocking validation
-- ⏳ **Phase 3 (Change 3)**: 6-page customer-facing PDF
-- ⏳ **Phase 4 (Change 4)**: Responsive + accessibility pass with testing_agent_v3_fork
-
-## Latest — Iteration 43 (Feb 2026)
-- [x] **Deferred Iter-39 Frontends — all 4 landed in one shot**:
-  1. **Subsidy Tracking Card** (`components/SubsidyTrackingCard.js`) — mounted on ProjectDetails after Notes. Renders 5-step lifecycle timeline (Eligible → Applied → Under Review → Approved → Disbursed) with the current stage ring-highlighted, quick-advance button that stamps today's date on transition, Mark Rejected with reason capture, amounts strip (Eligible / Approved / Disbursed), dates strip + Cycle days badge, and a full Edit dialog covering scheme (PM Surya Ghar / KUSUM-B / KUSUM-C / State), application number, 4 amount fields, 5 date fields (application / approval / disbursement / DISCOM inspection / net meter), and notes. Backend `POST /api/subsidy/tracking` now merges with existing DB doc so `days_to_disburse` computes on incremental updates.
-  2. **Marketing Expense Form** on `components/AccountsSection.js` — extended entry types with `marketing_expense`. Added 3-column snapshot row (Cash on Hand / Account Balance / Marketing Expense), "New Marketing Spend" pill button, and an inline form row with Channel (10 options: Google Ads, Meta, WhatsApp, Hoardings, Local Events, Print, TV/Radio, Referral, Organic, Other) + Campaign Name + Target District. Marketing 90-day mini summary strip (spend / entries / channels used / top channel). `AccountEntryCreate` schema now accepts and persists `marketing_channel`, `campaign_name`, `target_district`.
-  3. **Expansion Analytics — 6 chart visuals** on `ExpansionPage.js` — new `CapacityCharts` component renders Installed vs Pipeline stacked bar (top 8 districts), System-Type Mix donut (on-grid/off-grid/hybrid/solar-pump split by kWp + count + revenue), Cumulative Capacity Growth line, Opportunity Score vs Installed scatter (bubble sized by project count), Customer Segment Mix horizontal bar, and Capacity Funnel progress rows (Quoted → Pipeline → Installed with quote→install conversion %). All Recharts usage uses stackId/dataKey/fill props (no `<Cell>` — known crash pattern deliberately avoided).
-  4. **CAC / Marketing Report UI** on `ReportsPage.js` — when the Marketing report tab is active, a CAC panel renders above the existing Marketing table: 4 KPI cards (Marketing Spend, New Customers with % unattributed, Blended CAC + Paid CAC, LTV:CAC + LTV), Channel Performance table (channel · spend · customers · CAC · ROI), and Attribution Split panel with per-channel horizontal bars sorted by customer count.
-  - **Testing**: `test_iter43_api.py` (6/6 backend tests pass) + full Playwright end-to-end via testing agent — `iteration_43.json` returns 100% backend / 100% frontend with no critical or minor blockers.
+## Credentials
+See /app/memory/test_credentials.md — admin@sensoper.com / Admin@123, plus
+qa_mgr_iter46@sensoper.com / Manager@123 and qa_staff_iter46@sensoper.com / Staff@123
+(test accounts created by testing agent for permission/location-scoping tests).

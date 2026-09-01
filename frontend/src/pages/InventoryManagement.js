@@ -277,13 +277,13 @@ export default function InventoryManagement() {
         {/* Filters */}
         <Card className="border-slate-200 mb-4">
           <CardContent className="p-3 sm:p-4">
-            <div className="flex flex-col sm:flex-row gap-3">
-              <div className="relative flex-1">
+            <div className="flex flex-col sm:flex-row sm:flex-wrap gap-3">
+              <div className="relative flex-1 min-w-[220px]">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
                 <Input placeholder="Search..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="pl-10 h-11" data-testid="search-items" />
               </div>
               <Select value={filterCategory} onValueChange={setFilterCategory}>
-                <SelectTrigger className="w-full sm:w-[180px] h-11" data-testid="filter-category"><SelectValue placeholder="Category" /></SelectTrigger>
+                <SelectTrigger className="w-full sm:w-[180px] h-11 shrink-0" data-testid="filter-category"><SelectValue placeholder="Category" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Categories</SelectItem>
                   {categories.map(c => <SelectItem key={c.id} value={c.slug}>{c.name}</SelectItem>)}
@@ -291,7 +291,7 @@ export default function InventoryManagement() {
               </Select>
               {locations.length > 0 && (
                 <Select value={filterLocation} onValueChange={setFilterLocation}>
-                  <SelectTrigger className="w-full sm:w-[180px] h-11" data-testid="filter-location"><SelectValue placeholder="Branch" /></SelectTrigger>
+                  <SelectTrigger className="w-full sm:w-[180px] h-11 shrink-0" data-testid="filter-location"><SelectValue placeholder="Branch" /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">All Branches</SelectItem>
                     <SelectItem value="global">Global (unassigned)</SelectItem>
@@ -299,7 +299,7 @@ export default function InventoryManagement() {
                   </SelectContent>
                 </Select>
               )}
-              <div className="flex flex-wrap gap-2">
+              <div className="flex flex-wrap gap-2 shrink-0">
                 <Link to="/dashboard/inventory/kits" className="flex-1 sm:flex-none">
                   <Button variant="outline" className="w-full h-11 border-emerald-300 text-emerald-700 hover:bg-emerald-50" data-testid="material-kits-btn"><Layers className="h-4 w-4 mr-1" />Solution Kits</Button>
                 </Link>

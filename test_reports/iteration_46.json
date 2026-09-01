@@ -1,0 +1,33 @@
+{
+  "summary": "3rd-pass verification of Sensoper Solar ERP Iteration 43 follow-up. Backend: new pytest file test_iter48_api.py (7 tests) + regression re-run of test_iter47_api.py & test_iter46_iter43_features.py => 47 passed / 1 failed. Frontend (admin@sensoper.com, 1920x1080): FIX-VERIFY 2 (inventory search width), UNTESTED-1 (PO pending Approve+Delete, delete removes card, no delete btn for approved/arrived/qc_done/completed, API 400 on non-pending, 404 on missing), UNTESTED-2 (Quick Sale Branch dropdown + location-scoped invoice SOC-HO/26-27/0004 with matching location_id), UNTESTED-3 (Assets embedded report auto-refresh after create/edit/issue/return/archive without manual refresh), UNTESTED-4 (Direct Sales edit/cancel with correct stock deltas 100->98->97->100, Delivery Outbound edit saved & reflected, cancel buttons present, Asset edit/archive OK, all 4 Reports tiles AMC/Assets/Tools/Expenses render summary+table+PDF/Excel with no console errors). Also root-caused the cosmetic <option>-in-<span> warning. 2 issues found: addon_group never persisted by inventory create/update, and the inventory filter bar now overflows its Card at 1920px.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST/PUT /api/inventory/items", "issue": "addon_group is declared on InventoryItemCreate (server.py L263) and InventoryItemUpdate (L285) but is never written to Mongo in create_inventory_item (L1669-1692) or update_inventory_item (L1714-1760). Result: GET /api/inventory/items/{id} always returns addon_group=null, so the FIX-VERIFY 1 field exists but can never hold a value via the API. Also GET /api/inventory/items (list projection L1573-1597) still omits addon_group entirely."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Inventory page filter bar (/dashboard/inventory) at 1920x1080", "issues": ["FIX-VERIFY 2 partially regressed: search input no longer collapses (measured exactly 220px) BUT the row now horizontally overflows its Card — flex row scrollWidth=1334 vs clientWidth=1118; the 'Categories' and 'Add Item' buttons render outside the card (Add Item right edge x=1863 vs card right edge x=1664) and spill over the page background. Cause: `min-w-[220px]` on search + `shrink-0` on both selects AND on the buttons wrapper leaves nothing shrinkable/wrappable. Suggested fix: add `flex-wrap` to the outer sm:flex-row container (or drop `shrink-0` from the buttons wrapper) so the 6 action buttons wrap to a second line instead of overflowing."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_iter48_api.py", "/app/test_reports/pytest/iter48_results.xml"],
+  "action_items": [
+    "Persist addon_group in create_inventory_item and update_inventory_item (and add it to the list-endpoint projection) so the detail field is actually usable.",
+    "Fix the Inventory filter-bar horizontal overflow at >=1440px (allow the action-button group to wrap instead of shrink-0)."
+  ],
+  "critical_code_review_comments": [
+    "server.py: inventory item create/update silently drop a field accepted by the Pydantic model (addon_group) — a silent-data-loss pattern; consider building the insert doc from item.model_dump() instead of hand-listing keys.",
+    "Cosmetic React warning RCA: the Emergent dev-time visual-editing instrumentation wraps the dynamic text child of PurchaseInboundPage.js line 184 (`{inv.name} ({inv.sku_code})` inside <option> of the po-item-link-N native <select>) in <span style=\"display:contents\" data-ve-dynamic=\"true\">, which React flags as '<option> cannot be a child of <span>'. It is dev-tooling-only (not in prod build) and harmless; if you want it silenced, precompute the label into a plain string variable outside JSX or use the option's `label` attribute."
+  ],
+  "updated_files": ["/app/backend/tests/test_iter48_api.py", "/app/frontend/src/pages/AssetsPage.js (added data-testid=\"asset-report-summary\" to the embedded report summary row — test-only attribute)"],
+  "success_rate": {"backend": "98% (47/48 pytest)", "frontend": "95% (all 6 requested flows pass; 1 filter-bar layout overflow)"},
+  "seed_data_creation": "Created and then removed: inventory items TEST-I48-001/002, POs TEST_ITER48*(hard-deleted from Mongo), assets TEST_ITER48*(hard-deleted). Remaining artifacts I could not hard-delete: 5 sales with customer names TEST_ITER48* (invoices SOC-HO/26-27/0002-0004, SOC/26-27/0023) — DELETE /api/sales only soft-cancels, they now show status 'cancelled' and stock was fully restored. Also changed vehicle_number of one pre-existing delivery to 'TN-QA-4848' during the edit regression test.",
+  "should_call_test_agent_after_fix": false,
+  "should_main_agent_self_test": true,
+  "test_credentials": "admin@sensoper.com / Admin@123 (used for all flows)",
+  "context_for_next_testing_agent": "Route note: Direct Sales lives at /dashboard/sales (NOT /dashboard/direct-sales — unknown routes silently render the dashboard). PO delete-when-pending, Quick Sale branch scoping, Assets report auto-refresh, Reports AMC/Assets/Tools/Expenses tiles, Delivery edit, Sales edit/cancel stock deltas are all verified PASSING as of this pass; no need to retest. Only open items: addon_group persistence (backend) and Inventory filter-bar overflow at 1920px. Reusable backend suite: /app/backend/tests/test_iter48_api.py.",
+  "rca_of_the_issue": "addon_group: the endpoint hand-builds the Mongo document key-by-key and the Iter-44 addon_group field was added to the models only, never to the insert/update dict — so the value is accepted (HTTP 200) and discarded. Inventory overflow: the fix for the collapsing search added min-w to the search and shrink-0 to every sibling, so the total intrinsic width (1334px) of search+2 selects+6 buttons exceeds the available 1118px inside the max-w container and, with no flex-wrap on the row, the trailing buttons paint outside the Card."
+}
