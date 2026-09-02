@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Badge } from '../components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../components/ui/dialog';
-import { Loader2, Plus, Save, Trash2, Edit, Activity, AlertTriangle, CheckCircle2, Clock, MapPin, User, Cpu } from 'lucide-react';
+import { Loader2, Plus, Save, Trash2, Edit, Activity, AlertTriangle, CheckCircle2, Clock, MapPin, User, Cpu, Zap, X } from 'lucide-react';
 
 const STATUS_META = {
   active: { label: 'Active', color: 'bg-blue-100 text-blue-700 border-blue-200', icon: Clock },
@@ -21,7 +21,7 @@ const blankForm = {
   device_id: '', device_type: '', device_serial: '',
   customer_name: '', customer_phone: '', customer_account: '',
   start_date: new Date().toISOString().slice(0, 10), days: 30,
-  status: 'active', notes: ''
+  status: 'active', estimated_monthly_kwh: 0, notes: ''
 };
 
 function computeEnd(start, days) {
@@ -46,6 +46,9 @@ export default function ReadingsPage() {
   const [form, setForm] = useState(blankForm);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [genFor, setGenFor] = useState(null);
+  const [genForm, setGenForm] = useState({ date: new Date().toISOString().slice(0, 7), kwh: '' });
+  const [genSaving, setGenSaving] = useState(false);
 
   const fetchAll = useCallback(async () => {
     setLoading(true);
@@ -70,7 +73,8 @@ export default function ReadingsPage() {
       site_name: r.site_name || '', site_ref: r.site_ref || '', site_address: r.site_address || '',
       device_id: r.device_id || '', device_type: r.device_type || '', device_serial: r.device_serial || '',
       customer_name: r.customer_name || '', customer_phone: r.customer_phone || '', customer_account: r.customer_account || '',
-      start_date: r.start_date || '', days: r.days || 30, status: r.status || 'active', notes: r.notes || ''
+      start_date: r.start_date || '', days: r.days || 30, status: r.status || 'active',
+      estimated_monthly_kwh: r.estimated_monthly_kwh || 0, notes: r.notes || ''
     });
     setError('');
     setOpenForm(true);
@@ -80,7 +84,7 @@ export default function ReadingsPage() {
     if (!form.site_name || !form.start_date) { setError('Site name and start date are required'); return; }
     setSaving(true); setError('');
     try {
-      const payload = { ...form, days: parseInt(form.days, 10) || 0 };
+      const payload = { ...form, days: parseInt(form.days, 10) || 0, estimated_monthly_kwh: parseFloat(form.estimated_monthly_kwh) || 0 };
       if (editingId) await readingsAPI.update(editingId, payload);
       else await readingsAPI.create(payload);
       setOpenForm(false);
@@ -98,6 +102,19 @@ export default function ReadingsPage() {
   const markComplete = async (r) => {
     try { await readingsAPI.update(r.id, { status: 'completed' }); await fetchAll(); }
     catch (e) { alert(e.response?.data?.detail || 'Failed'); }
+  };
+
+  const openGenDialog = (r) => { setGenFor(r); setGenForm({ date: new Date().toISOString().slice(0, 7), kwh: '' }); };
+
+  const handleLogGeneration = async () => {
+    if (!genFor || !genForm.kwh) return;
+    setGenSaving(true);
+    try {
+      await readingsAPI.logGeneration(genFor.id, { date: genForm.date, kwh: parseFloat(genForm.kwh) });
+      setGenFor(null);
+      await fetchAll();
+    } catch (e) { alert(e.response?.data?.detail || 'Failed to log generation'); }
+    finally { setGenSaving(false); }
   };
 
   return (
@@ -158,6 +175,7 @@ export default function ReadingsPage() {
                         <th className="px-4 py-2.5 text-left text-xs font-semibold text-slate-600">Device</th>
                         <th className="px-4 py-2.5 text-left text-xs font-semibold text-slate-600">Start → End</th>
                         <th className="px-4 py-2.5 text-left text-xs font-semibold text-slate-600">Days</th>
+                        <th className="px-4 py-2.5 text-left text-xs font-semibold text-slate-600">Generation</th>
                         <th className="px-4 py-2.5 text-left text-xs font-semibold text-slate-600">Status</th>
                         <th className="px-4 py-2.5"></th>
                       </tr></thead>
@@ -175,9 +193,14 @@ export default function ReadingsPage() {
                               <td className="px-4 py-2.5"><div className="text-slate-700">{r.device_type || '-'}</div><div className="text-xs text-slate-400 font-mono">{r.device_serial || r.device_id || ''}</div></td>
                               <td className="px-4 py-2.5 text-xs text-slate-600 whitespace-nowrap">{r.start_date} → <span className={r.status === 'overdue' ? 'text-red-600 font-semibold' : ''}>{r.end_date}</span></td>
                               <td className="px-4 py-2.5 text-slate-700">{r.days}</td>
+                              <td className="px-4 py-2.5 text-xs">
+                                <div className="text-slate-700">{r.total_actual_kwh || 0} kWh actual</div>
+                                <div className="text-slate-400">Est. {r.estimated_monthly_kwh || 0}/mo · {r.generation_logs?.length || 0} logs</div>
+                              </td>
                               <td className="px-4 py-2.5"><Badge className={`text-[10px] gap-1 ${meta.color}`} data-testid={`status-${r.id}`}><StatusIcon className="h-3 w-3" />{meta.label}</Badge></td>
                               <td className="px-4 py-2.5">
                                 <div className="flex justify-end gap-1">
+                                  <Button variant="ghost" size="sm" className="h-7 text-xs text-amber-600" onClick={() => openGenDialog(r)} data-testid={`log-generation-${r.id}`}><Zap className="h-3.5 w-3.5" /></Button>
                                   {r.status !== 'completed' && (
                                     <Button variant="ghost" size="sm" className="h-7 text-xs text-emerald-600" onClick={() => markComplete(r)} data-testid={`complete-${r.id}`}>Complete</Button>
                                   )}
@@ -211,6 +234,7 @@ export default function ReadingsPage() {
                           </div>
                           <div className="flex gap-1 mt-3">
                             {r.status !== 'completed' && <Button variant="outline" size="sm" className="h-8 text-xs flex-1" onClick={() => markComplete(r)}>Complete</Button>}
+                            <Button variant="outline" size="sm" className="h-8 text-xs text-amber-600" onClick={() => openGenDialog(r)}><Zap className="h-3.5 w-3.5" /></Button>
                             <Button variant="outline" size="sm" className="h-8 text-xs" onClick={() => openEdit(r)}><Edit className="h-3.5 w-3.5" /></Button>
                             <Button variant="outline" size="sm" className="h-8 text-xs text-red-500" onClick={() => handleDelete(r.id)}><Trash2 className="h-3.5 w-3.5" /></Button>
                           </div>
@@ -261,13 +285,41 @@ export default function ReadingsPage() {
                   </SelectContent>
                 </Select>
               </div>
-              <div className="space-y-1"><Label className="text-xs">Notes</Label><Input value={form.notes} onChange={(e) => setForm(p => ({...p, notes: e.target.value}))} className="h-9" /></div>
+              <div className="space-y-1"><Label className="text-xs">Estimated Generation (kWh/month)</Label><Input type="number" min="0" value={form.estimated_monthly_kwh} onChange={(e) => setForm(p => ({...p, estimated_monthly_kwh: e.target.value}))} className="h-9" data-testid="reading-estimated-kwh" /></div>
             </div>
+            <div className="space-y-1"><Label className="text-xs">Notes</Label><Input value={form.notes} onChange={(e) => setForm(p => ({...p, notes: e.target.value}))} className="h-9" /></div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setOpenForm(false)}>Cancel</Button>
             <Button onClick={handleSave} disabled={saving} className="bg-emerald-600 hover:bg-emerald-700 text-white gap-2" data-testid="save-reading-btn">
               {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}{editingId ? 'Save Changes' : 'Create'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Log Generation Dialog */}
+      <Dialog open={!!genFor} onOpenChange={(v) => !v && setGenFor(null)}>
+        <DialogContent className="max-w-md" data-testid="log-generation-dialog">
+          <DialogHeader><DialogTitle>Log Actual Generation — {genFor?.site_name}</DialogTitle></DialogHeader>
+          <div className="space-y-3 py-2">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1"><Label className="text-xs">Month</Label><Input type="month" value={genForm.date} onChange={(e) => setGenForm(p => ({...p, date: e.target.value}))} className="h-9" data-testid="generation-month" /></div>
+              <div className="space-y-1"><Label className="text-xs">kWh Generated *</Label><Input type="number" min="0" value={genForm.kwh} onChange={(e) => setGenForm(p => ({...p, kwh: e.target.value}))} className="h-9" data-testid="generation-kwh" /></div>
+            </div>
+            {genFor?.generation_logs?.length > 0 && (
+              <div className="border-t border-slate-100 pt-2 space-y-1 max-h-32 overflow-y-auto" data-testid="generation-log-list">
+                <p className="text-[10px] uppercase text-slate-400">Logged so far</p>
+                {genFor.generation_logs.map((l, i) => (
+                  <div key={i} className="flex justify-between text-xs text-slate-600"><span>{l.date}</span><span>{l.kwh} kWh</span></div>
+                ))}
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setGenFor(null)}><X className="h-4 w-4 mr-1" />Cancel</Button>
+            <Button onClick={handleLogGeneration} disabled={genSaving} className="bg-amber-600 hover:bg-amber-700 text-white gap-2" data-testid="save-generation-btn">
+              {genSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Zap className="h-4 w-4" />}Log
             </Button>
           </DialogFooter>
         </DialogContent>

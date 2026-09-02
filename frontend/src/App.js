@@ -18,6 +18,7 @@ import MaterialKitsPage from "./pages/MaterialKitsPage";
 import ExpansionPage from "./pages/ExpansionPage";
 import PricingConfig from "./pages/PricingConfig";
 import PricelistPage from "./pages/PricelistPage";
+import VendorsPage from "./pages/VendorsPage";
 import DirectSalesPage from "./pages/DirectSalesPage";
 import AuditLogs from "./pages/AuditLogs";
 import CompanyProfile from "./pages/CompanyProfile";
@@ -129,6 +130,7 @@ function AppRoutes() {
       <Route path="/dashboard/expansion" element={<ProtectedRoute allowedRoles={["admin", "manager"]}><DashboardLayout><ExpansionPage /></DashboardLayout></ProtectedRoute>} />
       <Route path="/dashboard/pricing-config" element={<ProtectedRoute allowedRoles={["admin"]}><DashboardLayout><PricingConfig /></DashboardLayout></ProtectedRoute>} />
       <Route path="/dashboard/pricelist" element={<ProtectedRoute allowedRoles={["admin"]}><DashboardLayout><PricelistPage /></DashboardLayout></ProtectedRoute>} />
+      <Route path="/dashboard/vendors" element={<ProtectedRoute allowedRoles={["admin", "manager"]}><DashboardLayout><VendorsPage /></DashboardLayout></ProtectedRoute>} />
       <Route path="/dashboard/sales" element={<ProtectedRoute><DashboardLayout><DirectSalesPage /></DashboardLayout></ProtectedRoute>} />
       <Route path="/dashboard/readings" element={<ProtectedRoute><DashboardLayout><ReadingsPage /></DashboardLayout></ProtectedRoute>} />
       <Route path="/dashboard/assets" element={<ProtectedRoute><DashboardLayout><AssetsPage /></DashboardLayout></ProtectedRoute>} />

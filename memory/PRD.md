@@ -29,17 +29,18 @@ User explicitly requested this be built in 4 batches, testing (pytest + testing_
   - Fixed post-testing: company name field mismatch (`company_name` not `name`), PDF currency 3-decimal rounding bug, stale selling-price cell after margin edit (now recomputes when no explicit selling_price override exists; forces input remount via `key`).
 - Backend: no changes needed — `catalogue.py` CRUD already supported everything. New regression suite `backend/tests/test_iter44_batch_b_pricelist.py` (17/18 pass, RBAC verified 403 for non-admin writes).
 
-### Remaining — Batches C & D (NOT STARTED)
-- P1: Customer Credit report — restrict to purely financial data (remove project cost/margin).
-- P1: Assets register bug (blank list/categories) — debug `assets.py` vs `AssetsPage.js` contract.
-- P1: Reading Analysis report (generation trend, actual vs estimate).
-- P1: Audit module extension (deadlines, owners, PDF).
-- P1: Employee Performance report (auto + manual metrics, PDF).
-- P1: Vendors tab (supplier CRUD, GSTIN, PO history linkage).
-- P1: Operational Expense report.
+### Batch C+D — DONE (2026-09-02, tested via testing_agent, 21/21 new pytest pass)
+- **Verified already-satisfied (no code change needed)**: (5) Customer Credit report/page already financial-data-only (no cost/margin leak). (6) Assets register already renders correctly (list + category filter) — bug not reproducible.
+- **Reading Analysis report** (new report_type + `ReadingsPage.js`): readings now carry `estimated_monthly_kwh` + a `generation_logs` array (Log Generation dialog, amber lightning icon per row). Reports > Reading Analysis shows actual vs estimated kWh, variance %, monthly trend chart. Sites with zero logs show "No Logs Yet" (not misleading -100%).
+- **Audit owner** (`WeeklyAuditPage.js`, `PUT /audits/{id}/issue`): issue form now has an Owner field, shown in the issue list as "· Owner: X". Deadlines + PDF export already existed (audit report already supports generic PDF/Excel via Reports page).
+- **Employee Performance report** (new report_type + `employee_scores` collection): auto metrics (projects_handled/completed, revenue, daily_updates_logged) merged with manual scores. "Log Performance" star-icon dialog added to `UserManagement.js` (period, score 1-5, notes) → `POST /employee-scores` (admin/manager only).
+- **Vendors tab** (new `backend/vendors.py` + `VendorsPage.js`, nav item, admin+manager): supplier CRUD (name, category, GSTIN, contact), search, PO History dialog (`GET /vendors/{id}/purchase-orders`, matches `purchase_orders.supplier_name` case-insensitive against vendor name).
+- **Operational Expense report** (new report_type): focused view of `entry_type=operational_expense` only, with monthly trend chart (existing "Expenses" report unchanged, kept both).
+- Fixed post-testing: ReportsPage summary cards no longer show ₹ prefix on kWh/count/staff/entries values, and % suffix added for variance/pct fields; `employee_performance` field renamed `projects_assigned`→`projects_handled` (accuracy, it's creator-based not assignee-based); `vendors.py` router instantiated inside factory (was module-level, latent duplicate-registration risk); vendor search debounced 300ms.
+- New regression suite `backend/tests/test_iter44_batch_cd.py` (21/21 pass) covering vendors CRUD/RBAC, readings generation logs + report math, audit owner persistence, employee-scores CRUD/RBAC, operational_expense isolation, and the two "already satisfied" regression checks.
 
 ## Architecture notes
-- Modularity rule: new features go in dedicated router files (`invoicing.py`, `catalogue.py`, etc.), never grow `server.py`.
+- Modularity rule: new features go in dedicated router files (`invoicing.py`, `catalogue.py`, `vendors.py`, etc.), never grow `server.py`.
 - Recharts `<Cell>` component crashes React — avoid, use CSS/props instead.
 - Catalogue collections: `panel_products`, `inverter_products`, `battery_products`, `pump_products`, `structure_products`, `service_rates`, `fuel_types`, `price_history`, `addon_groups`. Global defaults in `pricing_config` (incl. `gst_pct`).
 - Company profile field is `company_name` (not `name`) — GST invoice util already correct, price list util fixed to match.

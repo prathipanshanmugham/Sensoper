@@ -8,7 +8,7 @@ import {
   LayoutDashboard, FolderPlus, Users, LogOut, FileText, TrendingUp,
   Menu, X, Package, History, ScrollText, Building2, ClipboardCheck, Shield,
   Layers, BarChart3, CalendarDays, AlertTriangle, CreditCard, Truck, Undo2, ClipboardList, Bell, Activity, MapPin, Settings, ShoppingCart,
-  Wrench, RefreshCw, Map, Tags
+  Wrench, RefreshCw, Map, Tags, Store
 } from 'lucide-react';
 
 const LOGO_URL = "https://customer-assets.emergentagent.com/job_solar-estimator-14/artifacts/2dpfr2zb_slg.png";
@@ -87,6 +87,7 @@ export default function DashboardLayout({ children }) {
     { icon: History, label: 'Audit Logs', href: '/dashboard/audit-logs', show: isAdmin },
     { icon: Settings, label: 'Pricing & Config', href: '/dashboard/pricing-config', show: isAdmin },
     { icon: Tags, label: 'Pricelist', href: '/dashboard/pricelist', show: isAdmin },
+    { icon: Store, label: 'Vendors', href: '/dashboard/vendors', show: isAdmin || isManager },
   ].filter(item => item.show);
 
   const isActive = (href) => {

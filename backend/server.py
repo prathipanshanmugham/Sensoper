@@ -2365,6 +2365,13 @@ from invoicing import create_router as _create_invoicing_router  # noqa: E402
 _invoicing_router = _create_invoicing_router(db=db, get_current_user=get_current_user, create_audit_log=create_audit_log)
 api_router.include_router(_invoicing_router)
 
+# ═══════════ VENDORS / SUPPLIERS (Iter 44 Batch C) ═══════════
+from vendors import create_router as _create_vendors_router  # noqa: E402
+_vendors_router = _create_vendors_router(
+    db=db, get_current_user=get_current_user, require_role=require_role, create_audit_log=create_audit_log,
+)
+api_router.include_router(_vendors_router)
+
 
 # ═══════════ SUBSIDY TRACKING (Iter 39 Change 2c) ═══════════
 
@@ -4971,6 +4978,104 @@ async def get_report(report_type: str, request: Request, date_from: str = None, 
             "gst_input": round(gst_input, 2), "net_gst_liability": round(gst_paid - gst_input, 2),
         }, "rows": rows, "chart_data": chart_data}
 
+    # === OPERATIONAL EXPENSE (Iter 44 Batch D) — focused monthly-trend view ===
+    elif report_type == "operational_expense":
+        q: Dict[str, Any] = {"entry_type": "operational_expense"}
+        if date_from or date_to:
+            q["entry_date"] = {}
+            if date_from: q["entry_date"]["$gte"] = date_from
+            if date_to: q["entry_date"]["$lte"] = date_to
+        entries = await db.account_entries.find(q).sort("entry_date", -1).to_list(5000)
+        monthly: Dict[str, float] = defaultdict(float)
+        for e in entries:
+            monthly[(e.get("entry_date") or "")[:7]] += e.get("amount", 0) or 0
+        rows = [{"date": e.get("entry_date"), "amount": round(e.get("amount", 0) or 0, 2),
+                 "description": e.get("description", ""), "entered_by": e.get("entered_by", "")} for e in entries]
+        if not rows:
+            rows = [{"date": "-", "amount": 0, "description": "No data yet", "entered_by": "-"}]
+        total = sum(e.get("amount", 0) or 0 for e in entries)
+        chart_data = [{"name": k, "value": round(v, 1)} for k, v in sorted(monthly.items())[-12:]]
+        return {"title": "Operational Expense Report", "summary": {
+            "total_expense": round(total, 2), "entries": len(entries),
+            "avg_per_entry": round(total / len(entries), 2) if entries else 0,
+        }, "rows": rows, "chart_data": chart_data}
+
+    # === READING ANALYSIS (Iter 44 Batch D) — generation trend vs estimate ===
+    elif report_type == "reading_analysis":
+        docs = await db.readings.find({}).to_list(2000)
+        rows = []
+        monthly_actual: Dict[str, float] = defaultdict(float)
+        total_est = total_act = 0.0
+        for d in docs:
+            logs = d.get("generation_logs", []) or []
+            actual_total = sum((l.get("kwh", 0) or 0) for l in logs)
+            est_monthly = d.get("estimated_monthly_kwh", 0) or 0
+            if not logs:
+                est_total = 0.0
+                variance_pct = 0
+                status = "No Logs Yet"
+            else:
+                est_total = est_monthly * len(logs)
+                variance_pct = round(((actual_total - est_total) / est_total) * 100, 1) if est_total else 0
+                status = "Above Estimate" if variance_pct > 0 else "Below Estimate" if variance_pct < 0 else "On Track"
+            for l in logs:
+                monthly_actual[l.get("date", "")] += l.get("kwh", 0) or 0
+            rows.append({
+                "site_name": d.get("site_name", ""), "device_id": d.get("device_id", ""),
+                "estimated_monthly_kwh": round(est_monthly, 1), "logs_count": len(logs),
+                "actual_total_kwh": round(actual_total, 1), "estimated_total_kwh": round(est_total, 1),
+                "variance_pct": variance_pct, "status": status,
+            })
+            total_est += est_total; total_act += actual_total
+        if not rows:
+            rows = [{"site_name": "-", "device_id": "-", "estimated_monthly_kwh": 0, "logs_count": 0, "actual_total_kwh": 0, "estimated_total_kwh": 0, "variance_pct": 0, "status": "No data yet"}]
+        chart_data = [{"name": k, "value": round(v, 1)} for k, v in sorted(monthly_actual.items())[-12:]]
+        return {"title": "Reading Analysis Report", "summary": {
+            "sites_tracked": len(docs), "total_estimated_kwh": round(total_est, 1),
+            "total_actual_kwh": round(total_act, 1),
+            "overall_variance_pct": round(((total_act - total_est) / total_est) * 100, 1) if total_est else 0,
+        }, "rows": rows, "chart_data": chart_data}
+
+    # === EMPLOYEE PERFORMANCE (Iter 44 Batch D) — auto activity + manual scores ===
+    elif report_type == "employee_performance":
+        all_users = await db.users.find({}).to_list(500)
+        team: Dict[str, Any] = defaultdict(lambda: {"name": "", "assigned": 0, "completed": 0, "revenue": 0.0})
+        for p in projects:
+            uid = p.get("created_by", "")
+            team[uid]["name"] = p.get("created_by_name", "Unknown")
+            team[uid]["assigned"] += 1
+            if p.get("status") == "completed": team[uid]["completed"] += 1
+            if p.get("status") in ["approved", "completed"]: team[uid]["revenue"] += p.get("cost_estimation", {}).get("total_cost", 0)
+        activity_counts: Dict[str, int] = defaultdict(int)
+        daily_docs = await db.daily_updates.find({}).to_list(5000)
+        for du in daily_docs:
+            activity_counts[du.get("created_by", "")] += 1
+        scores = await db.employee_scores.find({}).sort("created_at", -1).to_list(2000)
+        latest_score: Dict[str, dict] = {}
+        for s in scores:
+            uid = s.get("user_id", "")
+            if uid not in latest_score:
+                latest_score[uid] = s
+        rows = []
+        for u in all_users:
+            uid = str(u["_id"])
+            t = team.get(uid, {"assigned": 0, "completed": 0, "revenue": 0.0})
+            sc = latest_score.get(uid)
+            rows.append({
+                "staff": u.get("name", ""), "role": u.get("role", ""),
+                "projects_handled": t["assigned"], "projects_completed": t["completed"],
+                "revenue": round(t["revenue"]), "daily_updates_logged": activity_counts.get(uid, 0),
+                "manual_score": sc.get("score") if sc else "-", "score_period": sc.get("period", "") if sc else "-",
+                "manual_notes": sc.get("notes", "") if sc else "",
+            })
+        rows.sort(key=lambda r: r["revenue"], reverse=True)
+        chart_data = [{"name": r["staff"][:15], "value": r["projects_handled"]} for r in rows[:8] if r["projects_handled"] > 0]
+        scored_count = sum(1 for r in rows if r["manual_score"] != "-")
+        return {"title": "Employee Performance Report", "summary": {
+            "total_staff": len(rows), "scored_staff": scored_count,
+            "avg_projects_handled": round(sum(r["projects_handled"] for r in rows) / len(rows), 1) if rows else 0,
+        }, "rows": rows, "chart_data": chart_data}
+
     raise HTTPException(status_code=404, detail=f"Unknown report type: {report_type}")
 
 # ================== ALERT ENGINE & RISK SCORING ==================
@@ -6372,9 +6477,47 @@ async def update_audit(audit_id: str, request: Request):
 async def add_audit_issue(audit_id: str, request: Request):
     body = await request.json()
     await get_current_user(request)
-    issue = {"description": body.get("description",""), "severity": body.get("severity","medium"), "fix_deadline": body.get("fix_deadline",""), "status": "open", "created_at": datetime.now(timezone.utc).isoformat()}
+    issue = {"description": body.get("description",""), "severity": body.get("severity","medium"), "owner_name": body.get("owner_name",""), "fix_deadline": body.get("fix_deadline",""), "status": "open", "created_at": datetime.now(timezone.utc).isoformat()}
     await db.audits.update_one({"_id": ObjectId(audit_id)}, {"$push": {"issues": issue}})
     return {"message": "Issue added"}
+
+# ================== EMPLOYEE PERFORMANCE — MANUAL SCORES (Iter 44 Batch C) ==================
+
+class EmployeeScoreCreate(BaseModel):
+    user_id: str
+    period: str  # YYYY-MM
+    score: int  # 1-5
+    notes: Optional[str] = ""
+
+@api_router.post("/employee-scores")
+async def create_employee_score(payload: EmployeeScoreCreate, request: Request):
+    user = await require_role("admin", "manager")(request)
+    if not (1 <= payload.score <= 5):
+        raise HTTPException(status_code=400, detail="Score must be between 1 and 5")
+    target = await db.users.find_one({"_id": ObjectId(payload.user_id)})
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found")
+    doc = {
+        "user_id": payload.user_id, "user_name": target.get("name", ""),
+        "period": payload.period, "score": payload.score, "notes": payload.notes,
+        "entered_by": user["id"], "entered_by_name": user["name"],
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    result = await db.employee_scores.insert_one(doc)
+    await create_audit_log(user["id"], user["name"], "create", "employee_score", str(result.inserted_id), None, {"user_name": doc["user_name"], "score": doc["score"]})
+    doc.pop("_id", None)
+    doc["id"] = str(result.inserted_id)
+    return doc
+
+@api_router.get("/employee-scores")
+async def list_employee_scores(request: Request, user_id: Optional[str] = None, period: Optional[str] = None):
+    await require_role("admin", "manager")(request)
+    q: Dict[str, Any] = {}
+    if user_id: q["user_id"] = user_id
+    if period: q["period"] = period
+    docs = await db.employee_scores.find(q).sort("created_at", -1).to_list(500)
+    for d in docs: d["id"] = str(d.pop("_id"))
+    return docs
 
 # ================== HEALTH CHECK ==================
 
@@ -6423,6 +6566,9 @@ async def startup_event():
     await db.approvals.create_index("requested_by")
     await db.approvals.create_index("timestamp")
     await db.role_permissions.create_index("role_name", unique=True)
+    await db.vendors.create_index("name")
+    await db.employee_scores.create_index("user_id")
+    await db.employee_scores.create_index("period")
     
     # Seed admin user
     admin_email = os.environ.get("ADMIN_EMAIL", "admin@sensoper.com")
@@ -6723,6 +6869,7 @@ class ReadingCreate(BaseModel):
     start_date: str  # YYYY-MM-DD
     days: int = 30
     status: str = "active"  # active | completed | overdue
+    estimated_monthly_kwh: float = 0
     notes: Optional[str] = ""
 
 class ReadingUpdate(BaseModel):
@@ -6738,7 +6885,12 @@ class ReadingUpdate(BaseModel):
     start_date: Optional[str] = None
     days: Optional[int] = None
     status: Optional[str] = None
+    estimated_monthly_kwh: Optional[float] = None
     notes: Optional[str] = None
+
+class GenerationLogCreate(BaseModel):
+    date: str  # YYYY-MM
+    kwh: float
 
 READING_STATUSES = {"active", "completed", "overdue"}
 
@@ -6773,6 +6925,9 @@ def _serialise_reading(d: dict) -> dict:
         "end_date": end_date,
         "status": derived_status,
         "notes": d.get("notes", ""),
+        "estimated_monthly_kwh": d.get("estimated_monthly_kwh", 0),
+        "generation_logs": d.get("generation_logs", []),
+        "total_actual_kwh": round(sum((l.get("kwh", 0) or 0) for l in d.get("generation_logs", [])), 1),
         "created_by": d.get("created_by", ""),
         "created_at": d.get("created_at"),
         "updated_at": d.get("updated_at")
@@ -6848,6 +7003,18 @@ async def delete_reading(reading_id: str, request: Request):
     await db.readings.delete_one({"_id": ObjectId(reading_id)})
     await create_audit_log(user["id"], user.get("name",""), "delete", "reading", reading_id, existing, None)
     return {"message": "Deleted"}
+
+@api_router.post("/readings/{reading_id}/generation")
+async def log_generation(reading_id: str, payload: GenerationLogCreate, request: Request):
+    user = await get_current_user(request)
+    existing = await db.readings.find_one({"_id": ObjectId(reading_id)})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Reading not found")
+    entry = {"date": payload.date, "kwh": payload.kwh, "logged_by": user.get("name", ""), "created_at": datetime.now(timezone.utc).isoformat()}
+    await db.readings.update_one({"_id": ObjectId(reading_id)}, {"$push": {"generation_logs": entry}})
+    await create_audit_log(user["id"], user.get("name",""), "update", "reading_generation", reading_id, None, entry)
+    fresh = await db.readings.find_one({"_id": ObjectId(reading_id)})
+    return _serialise_reading(fresh)
 
 
 

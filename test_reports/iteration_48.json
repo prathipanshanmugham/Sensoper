@@ -1,0 +1,44 @@
+{
+  "summary": "Iteration 44 Batch C+D full test pass (backend + frontend). New pytest suite /app/backend/tests/test_iter44_batch_cd.py (21 tests, 21 passed) covering Vendors CRUD/search/PO-history/RBAC/invalid-ids, Readings estimated_monthly_kwh + generation logs + reading_analysis math, Audit issue owner_name persistence, employee-scores POST/GET + validation + RBAC, operational_expense report isolation + date filter, and regression checks (customer_credit no cost/margin leak, assets list + category filter). Frontend Playwright flows all passed: Vendors nav (admin) -> create/search/edit/PO-history/archive; Readings Log Generation dialog (2 entries, Generation column shows 'kWh actual' / 'Est. .. logs'); Audit issue with Owner rendered as '· Owner: Ravi QA · Due: 2026-07-30'; User Management Log Performance dialog submits and shows in Employee Performance report; all 3 new report cards render summary+chart+table; PDF/Excel export clicked with no JS errors; Assets page renders 1 asset with populated category filter (item 6 claim verified); Customer Credit report columns are financial-only (item 5 claim verified). Staff RBAC verified both API (403) and UI (Vendors/Reports/User Management nav hidden, /dashboard/vendors redirects to /dashboard).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /api/reports/reading_analysis", "issue": "estimated_total_kwh = estimated_monthly_kwh * (len(logs) or 1). A site with an estimate but zero generation logs is reported as actual=0 vs estimated=est_monthly => variance -100% / 'Below Estimate', which is misleading. Suggest a distinct status such as 'No logs yet' or excluding zero-log sites from variance."},
+      {"endpoint": "GET /api/reports/employee_performance", "issue": "Rows include every user document (20 incl. inactive/test accounts), and projects_assigned/completed/revenue are derived from project.created_by (creator) rather than an assignee field although the column is labelled 'Projects Assigned'."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "ReportsPage SummaryCard", "issue": "Generic formatter prefixes a rupee symbol to any numeric summary value > 999 (ReportsPage.js line 246), so Reading Analysis shows 'TOTAL ESTIMATED KWH = Rs 1,350' and 'TOTAL ACTUAL KWH = Rs 1,310' (kWh rendered as currency). 'OVERALL VARIANCE PCT = -3' also lacks a % suffix and drops the decimal.", "selector": "[data-testid='report-summary']", "priority": "MEDIUM"},
+      {"component": "VendorsPage", "issue": "Archive uses browser window.confirm() instead of the app's shadcn AlertDialog — inconsistent with rest of app UX.", "selector": "[data-testid^='delete-vendor-']", "priority": "LOW"},
+      {"component": "VendorsPage search", "issue": "No debounce: fetchAll is keyed on `search`, so a GET /api/vendors fires on every keystroke.", "selector": "[data-testid='vendor-search-input']", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Reports > Reading Analysis", "issues": ["kWh KPIs displayed with rupee symbol", "variance percentage shown without % unit"]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter44_batch_cd.py",
+    "/app/test_reports/pytest/iter44_cd_results.xml"
+  ],
+  "action_items": [
+    "ReportsPage.js line 246: make the currency prefix report/field aware (skip kWh, count and pct keys) and append % to variance/pct keys.",
+    "reading_analysis: give zero-log sites a neutral status instead of -100% 'Below Estimate'.",
+    "employee_performance: filter out inactive/test users or rename columns to reflect that metrics are creator-based, not assignee-based.",
+    "Optional polish: debounce vendor search input; replace window.confirm archive with AlertDialog."
+  ],
+  "critical_code_review_comments": [
+    "backend/vendors.py declares `router = APIRouter()` at module scope but registers routes inside create_router(); a second create_router() call would duplicate route registration. Move APIRouter() inside the factory.",
+    "GET /vendors/{id}/purchase-orders links POs by case-insensitive exact vendor.name match — renaming a vendor silently breaks PO history. Consider storing vendor_id on purchase_orders.",
+    "backend/server.py is 7368 lines — reports block alone spans ~500 lines; split reports/readings/audits into modules like vendors.py."
+  ],
+  "updated_files": ["/app/backend/tests/test_iter44_batch_cd.py"],
+  "success_rate": {"backend": "100% (21/21 new-feature tests)", "frontend": "100% of tested flows (3 cosmetic/UX issues noted)"},
+  "seed_data_creation": "Created + deleted reading 'TEST_Site_Gen' (3 generation logs), archived vendor TEST_UI_Vendor_QA1, account_entries TEST_op_exp / TEST_mkt_exp (2026-07-05), employee score for qa_staff_iter46 (2026-07, score 4) and for System Admin (2026-06, score 2 via UI), audit issue 'TEST UI issue owner check' owner 'Ravi QA'. Reading 'Coimbatore Roof A' now has 3 generation logs (2026-05:410, 2026-06:470, 2026-08:430).",
+  "should_call_test_agent_after_fix": false,
+  "should_main_agent_self_test": true,
+  "test_credentials": "admin@sensoper.com / Admin@123; staff qa_staff_iter46@sensoper.com / Staff@123 (used for RBAC)",
+  "context_for_next_testing_agent": "Run `pytest tests/test_iter44_batch_cd.py` for Batch C+D regression. Old suites (test_iteration15/17/18 etc.) ERROR at setup because they read a BASE_URL env var that is not exported in this shell — environmental, NOT code regressions; new tests read REACT_APP_BACKEND_URL from /app/frontend/.env. Auth is cookie-based (POST /api/auth/login sets httpOnly cookies; no bearer token in body) — use requests.Session. POST account entry endpoint is POST /api/accounts (not /accounts/entries); POST /api/readings requires start_date. Reports endpoints are admin/manager only (403 for staff).",
+  "rca_of_the_issue": "Only cosmetic findings. The kWh-as-rupees display comes from the shared SummaryCard formatting rule (value > 999 => currency) in ReportsPage.js, which the new non-currency reports inherit; no backend defect."
+}

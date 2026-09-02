@@ -10,7 +10,7 @@ import { Badge } from '../components/ui/badge';
 import {
   Loader2, FileSpreadsheet, FileText, IndianRupee, TrendingUp, Briefcase,
   Package, Users, Receipt, Star, AlertTriangle, Truck, ClipboardList, Megaphone, PackageCheck,
-  Wrench, ShieldCheck, Wallet
+  Wrench, ShieldCheck, Wallet, Activity, UserCheck
 } from 'lucide-react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -37,7 +37,10 @@ const REPORTS = [
   { id: 'amc', label: 'AMC Contracts', icon: ShieldCheck, desc: 'ARR/MRR, renewals, outstanding by contract' },
   { id: 'assets', label: 'Assets', icon: Package, desc: 'Register, book value, status breakdown' },
   { id: 'tools', label: 'Tools', icon: Wrench, desc: 'Tool utilisation and maintenance cost' },
-  { id: 'expenses', label: 'Expenses', icon: Wallet, desc: 'Operational, marketing spend and GST input/paid' }
+  { id: 'expenses', label: 'Expenses', icon: Wallet, desc: 'Operational, marketing spend and GST input/paid' },
+  { id: 'operational_expense', label: 'Operational Expense', icon: Wallet, desc: 'Operational spend only, monthly trend' },
+  { id: 'reading_analysis', label: 'Reading Analysis', icon: Activity, desc: 'Generation trend vs estimate' },
+  { id: 'employee_performance', label: 'Employee Performance', icon: UserCheck, desc: 'Auto activity + manual scores' }
 ];
 
 function SummaryCard({ label, value }) {
@@ -50,6 +53,14 @@ function SummaryCard({ label, value }) {
 }
 
 const formatHeader = (key) => key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+
+const formatSummaryValue = (key, v) => {
+  if (typeof v !== 'number') return v;
+  const k = key.toLowerCase();
+  if (k.includes('pct') || k.includes('percent') || k.includes('rate')) return `${v}%`;
+  if (k.includes('kwh') || k.includes('count') || k.includes('staff') || k.includes('entries') || k.includes('logs') || k.includes('sites')) return v.toLocaleString('en-IN');
+  return v > 999 ? `₹${v.toLocaleString('en-IN')}` : v;
+};
 
 export default function ReportsPage() {
   const [searchParams] = useSearchParams();
@@ -159,7 +170,7 @@ export default function ReportsPage() {
       <div className="max-w-7xl mx-auto">
         <div className="mb-6">
           <h1 className="text-2xl font-bold font-['Outfit'] text-slate-900" data-testid="reports-title">Reports</h1>
-          <p className="text-sm text-slate-500">17 business intelligence reports</p>
+          <p className="text-sm text-slate-500">{REPORTS.length} business intelligence reports</p>
         </div>
 
         {/* Filters */}
@@ -240,7 +251,7 @@ export default function ReportsPage() {
               {reportData.summary && (
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4" data-testid="report-summary">
                   {Object.entries(reportData.summary).map(([k, v]) => (
-                    <SummaryCard key={k} label={formatHeader(k)} value={typeof v === 'number' && v > 999 ? `₹${v.toLocaleString('en-IN')}` : v} />
+                    <SummaryCard key={k} label={formatHeader(k)} value={formatSummaryValue(k, v)} />
                   ))}
                 </div>
               )}
@@ -465,7 +476,7 @@ export default function ReportsPage() {
           <div className="text-center py-16">
             <TrendingUp className="h-12 w-12 text-slate-300 mx-auto mb-4" />
             <h3 className="text-lg font-semibold text-slate-600 mb-2">Select a Report</h3>
-            <p className="text-sm text-slate-400">Choose from 17 consolidated business intelligence reports</p>
+            <p className="text-sm text-slate-400">Choose from {REPORTS.length} consolidated business intelligence reports</p>
           </div>
         )}
       </div>

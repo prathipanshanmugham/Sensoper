@@ -392,7 +392,8 @@ export const readingsAPI = {
   summary: () => api.get('/readings/summary'),
   create: (data) => api.post('/readings', data),
   update: (id, data) => api.put(`/readings/${id}`, data),
-  delete: (id) => api.delete(`/readings/${id}`)
+  delete: (id) => api.delete(`/readings/${id}`),
+  logGeneration: (id, data) => api.post(`/readings/${id}/generation`, data)
 };
 
 // Solar Report API (TNEB fetch + sizing calc + PDF merge)
@@ -458,6 +459,21 @@ export const locationsAPI = {
   update: (id, data) => api.put(`/locations/${id}`, data),
   remove: (id) => api.delete(`/locations/${id}`),
   assignUser: (userId, data) => api.put(`/users/${userId}/locations`, data)
+};
+
+// Vendors / Suppliers (Iter 44 Batch C)
+export const vendorsAPI = {
+  list: (params = {}) => api.get('/vendors', { params }),
+  create: (data) => api.post('/vendors', data),
+  update: (id, data) => api.put(`/vendors/${id}`, data),
+  remove: (id) => api.delete(`/vendors/${id}`),
+  purchaseOrders: (id) => api.get(`/vendors/${id}/purchase-orders`)
+};
+
+// Employee Performance manual scores (Iter 44 Batch C)
+export const employeeScoresAPI = {
+  list: (params = {}) => api.get('/employee-scores', { params }),
+  create: (data) => api.post('/employee-scores', data)
 };
 
 export default api;

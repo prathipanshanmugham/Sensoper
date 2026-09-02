@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
-import { usersAPI } from '../utils/api';
+import { usersAPI, employeeScoresAPI } from '../utils/api';
 import { formatApiErrorDetail } from '../contexts/AuthContext';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
@@ -17,7 +17,8 @@ import {
   Trash2,
   Loader2,
   Shield,
-  User as UserIcon
+  User as UserIcon,
+  Star
 } from 'lucide-react';
 
 const roleConfig = {
@@ -41,6 +42,9 @@ export default function UserManagement() {
   });
   const [actionLoading, setActionLoading] = useState(false);
   const [error, setError] = useState('');
+  const [scoreUser, setScoreUser] = useState(null);
+  const [scoreForm, setScoreForm] = useState({ period: new Date().toISOString().slice(0, 7), score: 4, notes: '' });
+  const [scoreSaving, setScoreSaving] = useState(false);
 
   const fetchUsers = useCallback(async () => {
     try {
@@ -56,6 +60,21 @@ export default function UserManagement() {
   useEffect(() => {
     fetchUsers();
   }, [fetchUsers]);
+
+  const openScoreDialog = (user) => {
+    setScoreUser(user);
+    setScoreForm({ period: new Date().toISOString().slice(0, 7), score: 4, notes: '' });
+  };
+
+  const handleLogScore = async () => {
+    if (!scoreUser) return;
+    setScoreSaving(true);
+    try {
+      await employeeScoresAPI.create({ user_id: scoreUser.id, period: scoreForm.period, score: parseInt(scoreForm.score, 10), notes: scoreForm.notes });
+      setScoreUser(null);
+    } catch (e) { alert(e.response?.data?.detail || 'Failed to log score'); }
+    finally { setScoreSaving(false); }
+  };
 
   const openCreateDialog = () => {
     setEditingUser(null);
@@ -178,6 +197,15 @@ export default function UserManagement() {
                         </div>
                       </div>
                       <div className="flex gap-2">
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          className="text-amber-600 hover:text-amber-700 hover:bg-amber-50"
+                          onClick={() => openScoreDialog(user)}
+                          data-testid={`log-performance-${user.id}`}
+                        >
+                          <Star className="h-4 w-4" />
+                        </Button>
                         <Button
                           variant="outline"
                           size="icon"
@@ -319,6 +347,38 @@ export default function UserManagement() {
             >
               {actionLoading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
               Delete User
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Log Performance Dialog */}
+      <Dialog open={!!scoreUser} onOpenChange={(v) => !v && setScoreUser(null)}>
+        <DialogContent data-testid="log-performance-dialog">
+          <DialogHeader><DialogTitle>Log Performance — {scoreUser?.name}</DialogTitle></DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label htmlFor="score-period">Period</Label>
+              <Input id="score-period" type="month" value={scoreForm.period} onChange={(e) => setScoreForm(p => ({...p, period: e.target.value}))} data-testid="score-period-input" />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="score-value">Score (1-5)</Label>
+              <Select value={String(scoreForm.score)} onValueChange={(v) => setScoreForm(p => ({...p, score: v}))}>
+                <SelectTrigger id="score-value" data-testid="score-value-select"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {[1, 2, 3, 4, 5].map(n => <SelectItem key={n} value={String(n)}>{n}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="score-notes">Notes</Label>
+              <Input id="score-notes" value={scoreForm.notes} onChange={(e) => setScoreForm(p => ({...p, notes: e.target.value}))} placeholder="Optional remarks" data-testid="score-notes-input" />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setScoreUser(null)}>Cancel</Button>
+            <Button onClick={handleLogScore} disabled={scoreSaving} className="bg-amber-600 hover:bg-amber-700 text-white gap-2" data-testid="save-score-btn">
+              {scoreSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Star className="h-4 w-4" />}Log Score
             </Button>
           </DialogFooter>
         </DialogContent>

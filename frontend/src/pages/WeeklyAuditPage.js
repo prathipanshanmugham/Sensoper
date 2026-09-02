@@ -19,7 +19,7 @@ export default function WeeklyAuditPage() {
   const [saving, setSaving] = useState(false);
   const [filter, setFilter] = useState('all');
   const [form, setForm] = useState({ title: '', auditor_name: '', project_id: '', deadline: '', checklist: CHECKLIST_DEFAULTS.map(item => ({ item, status: 'pending', notes: '' })), notes: '' });
-  const [issueForm, setIssueForm] = useState({ description: '', severity: 'medium', fix_deadline: '' });
+  const [issueForm, setIssueForm] = useState({ description: '', severity: 'medium', owner_name: '', fix_deadline: '' });
 
   const fetch = useCallback(async () => {
     try { const res = await auditsAPI.list({ status: filter !== 'all' ? filter : undefined }); setAudits(res.data); }
@@ -41,7 +41,7 @@ export default function WeeklyAuditPage() {
   const handleAddIssue = async () => {
     if (!issueForm.description || !showIssue) return;
     setSaving(true);
-    try { await auditsAPI.addIssue(showIssue, issueForm); setShowIssue(null); setIssueForm({ description: '', severity: 'medium', fix_deadline: '' }); await fetch(); }
+    try { await auditsAPI.addIssue(showIssue, issueForm); setShowIssue(null); setIssueForm({ description: '', severity: 'medium', owner_name: '', fix_deadline: '' }); await fetch(); }
     catch (err) { console.error(err); } finally { setSaving(false); }
   };
 
@@ -110,15 +110,17 @@ export default function WeeklyAuditPage() {
           <Card className="border-red-200 mb-4" data-testid="issue-form">
             <CardContent className="p-4 space-y-3">
               <h3 className="font-semibold text-sm">Log Issue</h3>
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-4 gap-3">
                 <div className="space-y-1"><Label className="text-xs">Description *</Label><Input value={issueForm.description} onChange={(e) => setIssueForm(p => ({...p, description: e.target.value}))} className="h-9" data-testid="issue-desc" /></div>
                 <div className="space-y-1"><Label className="text-xs">Severity</Label>
                   <Select value={issueForm.severity} onValueChange={(v) => setIssueForm(p => ({...p, severity: v}))}><SelectTrigger className="h-9" data-testid="issue-severity"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="low">Low</SelectItem><SelectItem value="medium">Medium</SelectItem><SelectItem value="high">High</SelectItem></SelectContent></Select>
                 </div>
-                <div className="flex items-end gap-2">
-                  <Button variant="outline" size="sm" onClick={() => setShowIssue(null)}><X className="h-4 w-4" /></Button>
-                  <Button size="sm" onClick={handleAddIssue} disabled={saving} className="bg-red-600 text-white" data-testid="save-issue-btn"><AlertCircle className="h-4 w-4 mr-1" />Log</Button>
-                </div>
+                <div className="space-y-1"><Label className="text-xs">Owner</Label><Input value={issueForm.owner_name} onChange={(e) => setIssueForm(p => ({...p, owner_name: e.target.value}))} placeholder="Responsible for fix" className="h-9" data-testid="issue-owner" /></div>
+                <div className="space-y-1"><Label className="text-xs">Fix Deadline</Label><Input type="date" value={issueForm.fix_deadline} onChange={(e) => setIssueForm(p => ({...p, fix_deadline: e.target.value}))} className="h-9" data-testid="issue-fix-deadline" /></div>
+              </div>
+              <div className="flex gap-2 justify-end">
+                <Button variant="outline" size="sm" onClick={() => setShowIssue(null)}><X className="h-4 w-4" /></Button>
+                <Button size="sm" onClick={handleAddIssue} disabled={saving} className="bg-red-600 text-white" data-testid="save-issue-btn"><AlertCircle className="h-4 w-4 mr-1" />Log</Button>
               </div>
             </CardContent>
           </Card>
@@ -156,6 +158,8 @@ export default function WeeklyAuditPage() {
                       <div key={`${a.id}-issue-${i}`} className="flex items-center gap-2 text-xs">
                         <AlertCircle className={`h-3 w-3 ${issue.severity === 'high' ? 'text-red-500' : issue.severity === 'medium' ? 'text-amber-500' : 'text-slate-400'}`} />
                         <span className="text-slate-700">{issue.description}</span>
+                        {issue.owner_name && <span className="text-slate-400">· Owner: {issue.owner_name}</span>}
+                        {issue.fix_deadline && <span className="text-slate-400">· Due: {issue.fix_deadline}</span>}
                         <Badge variant="outline" className="text-[9px]">{issue.status}</Badge>
                       </div>
                     ))}
