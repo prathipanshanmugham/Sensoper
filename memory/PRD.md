@@ -1,98 +1,51 @@
-# Sensoper Controls & Renewables — Solar ERP — PRD
+# Sensoper Solar ERP — PRD
 
-## Original problem statement (Iteration 43)
-1. Branch/Location name editable, joining by ID not name.
-2. Editable records with delta-based stock tracking + admin-approval routing for
-   Purchase Inbound, Purchase Outbound (Deliveries), Direct Sales, Assets.
-3. Deep multi-location linkage across processes: doc numbering, stock, GST, approvals.
-4. New Reports tiles: AMC, Assets, Tools, Expenses.
-5. Performance Master Report (consolidated vs per-location PDF/Excel) — DEFERRED.
-Follow-up asks (same iteration): PO delete-while-pending (no approval), Inventory
-location scoping with sortable Branch column + location-based visibility.
+## Original problem statement (Iteration 44, 4 batches)
+1. Indian tax invoice (PDF) generation in Project details (configurable sequence, GSTIN, HSN/SAC, CGST/SGST vs IGST).
+2. Project profit calculator — admin-only, on project detail page.
+3. Simplify Solar Calculator (Step 4): System Type + kW + Panel/Inverter picker from catalogue, cost/subsidy/payback, full engine behind "Advanced" toggle.
+4. Pricelist tab: manage catalogue, generate PDF.
+5. Customer Credit report restricted to financial data only.
+6. Assets register bug fix (blank list/categories).
+7. Reading Analysis report (generation trend, vs estimate).
+8. Audit module extension (deadlines, PDF).
+9. Employee Performance report (auto + manual metrics, PDF).
+10. Vendors tab.
+11. Operational Expense report.
 
-## Status: Iteration 43 — COMPLETE & TESTED (Aug/Sep 2026)
+User explicitly requested this be built in 4 batches, testing (pytest + testing_agent) after each batch.
 
-### What shipped
-- **Change 1 (Branch/Location editable)**: was already implemented pre-session via
-  `LocationsPage.js` + `PUT /api/locations/{id}` (joins by ID). Verified, no changes needed.
-- **Change 2 (Editable records + approval routing)**:
-  - Purchase Inbound / Outbound / Assets: PUT+DELETE with delta stock (done in prior session).
-  - Direct Sales: NEW `PUT /api/sales/{id}/edit` (delta-based line edit, negative-stock guard)
-    and `DELETE /api/sales/{id}` (full cancel + stock restore), with `db.action_requests`
-    approval-queue fallback for non-privileged users (mirrors assets/deliveries pattern).
-  - Frontend: Edit/Delete UI + "Pending Approvals" banners added to DirectSalesPage.js,
-    DeliveryOutboundPage.js, AssetsPage.js.
-  - Generic `/api/action-requests` + `/api/inbound-action-requests` approve/reject now
-    **location-scoped**: managers can only act on requests from their assigned location(s);
-    admins unrestricted (`_can_manage_request_location` helper in server.py).
-- **Change 3 (Deep multi-location linkage)**:
-  - `location_id` added to Sales, Purchase Orders, Inventory Items.
-  - Location-scoped invoice numbering: `SOC-{branchCode}/FY/NNNN` (sales.py `_generate_invoice_number`).
-  - Location-scoped PO numbering: `PO-{branchCode}-NNNN` via `_next_doc_sequence` counter.
-  - Per-location Company Profile override: `state` + `location_id` fields on CompanyProfile
-    (used for CGST/SGST vs IGST split); `_get_active_company_profile(location_id)` tries the
-    location-scoped profile first, falls back to global active one.
-  - Inventory: non-admin users see only their assigned location(s) + legacy/global items
-    (`location_scope_filter`, already existed in locations.py — just needed items to actually
-    set `location_id`). Admins get a Branch filter + sortable Branch column on Inventory page.
-  - PO can be deleted freely while `status == 'pending'` (no approval needed) via
-    `DELETE /api/purchase-orders/{id}` — 400 if already progressed past pending.
-- **Change 4 (New Reports)**: 4 tiles added to ReportsPage.js — AMC Contracts, Assets, Tools,
-  Expenses — each with summary cards + table + PDF/Excel export (matches existing 13-report pattern).
-  Backend cases added to `/api/reports/{report_type}` in server.py.
-- **Change 5 (Performance Master Report)**: DEFERRED — not built, backlog item.
+## Status by batch
 
-### Testing (3 passes, all issues fixed)
-- Pass 1 (iteration_45.json): found company-profile state/location_id silently dropped (HIGH),
-  po_number/location UI wiring gaps (MEDIUM), sales summary counting returned sales (LOW),
-  Assets report staleness (LOW) — all fixed.
-- Pass 2 (inline report): backend 22/23 pytest, Inventory branch-scoping UI fully verified;
-  found inventory item detail endpoint missing location_id/addon_group, inventory filter-bar
-  CSS collapse — fixed; 4 items left untested (ran out of turns).
-- Pass 3 (iteration_46.json): 47/48 pytest, all 4 previously-untested UI flows now PASS
-  (PO delete pending-only + button visibility by status, Quick Sale branch dropdown +
-  location-scoped invoice, Assets report auto-refresh, sanity regression on Sales/Deliveries/
-  Assets/Reports). Found addon_group never persisted + filter-bar overflow at 1920px regression
-  — both fixed and manually verified via curl + screenshot post-fix.
+### Batch A — DONE (tested, 14/14 pytest, testing_agent pass)
+- `ProjectProfitCard.js` — admin-only profit calculator on project detail.
+- GST Tax Invoice: `invoicing.py`, `ProjectInvoiceCard.js`, `gstInvoicePDF.js`. CGST/SGST vs IGST by state, HSN/SAC auto-fetch, configurable invoice prefix/next-number in Company Profile.
 
-## Architecture
-```
-/app/backend/
-  server.py         # Core (~7200 lines) — PO, inventory, company profile, action-requests, reports
-  sales.py          # Direct Sales — create/edit/delete/return/invoice, location-scoped invoicing
-  assets.py         # Assets & Tools CRUD + archive-with-approval
-  amc.py            # AMC contracts
-  locations.py      # Multi-location registry + location_scope_filter (shared helper)
-  reconciliation.py # Material reconciliation
-  inventory_import.py
-/app/frontend/src/pages/
-  DirectSalesPage.js, DeliveryOutboundPage.js, AssetsPage.js, PurchaseInboundPage.js,
-  InventoryManagement.js, ReportsPage.js, CompanyProfile.js, LocationsPage.js
-```
+### Batch B — DONE (2026-09-02, tested via testing_agent + self-verify, all pass)
+- **Simplified Solar Calculator** (`ProposedSolutionSection.js`): default/simple view = System Type, System Size (kW), Monthly EB Bill, Location, Panel picker (catalogue), Inverter picker (catalogue), Total Cost (auto), Subsidy ₹ (always manual — no auto slab), Net Cost (auto). "Show more options" toggle reveals the full pre-existing advanced engine unchanged (driver inputs, on-grid/hybrid/off-grid/pump blocks, hardware overrides, fuel, ROI).
+  - Cost formula: panel cost = catalogue price-per-watt × kW×1000 if panel selected, else 45% flat share of COST_PER_KWP; inverter cost = catalogue selling price if selected, else 15% flat share; BOS = flat 40% share.
+  - `calcSubsidy()` slab function removed — subsidy is now always a manual/custom entry per user's explicit choice.
+- **Pricelist page** (`PricelistPage.js`, new route `/dashboard/pricelist`, admin-only nav item): flat searchable/filterable table across all 6 catalogue categories, inline-editable Margin % / Selling Price (Rate for services), "Generate Price List PDF" button (`priceListPDF.js` — company-branded, per-item CGST+SGST breakup using global `gst_pct`).
+  - Fixed post-testing: company name field mismatch (`company_name` not `name`), PDF currency 3-decimal rounding bug, stale selling-price cell after margin edit (now recomputes when no explicit selling_price override exists; forces input remount via `key`).
+- Backend: no changes needed — `catalogue.py` CRUD already supported everything. New regression suite `backend/tests/test_iter44_batch_b_pricelist.py` (17/18 pass, RBAC verified 403 for non-admin writes).
 
-## Key patterns established this iteration
-- Editable-record pattern: PUT `.../edit` recomputes totals from new line items, diffs
-  old-vs-new quantity per inventory_item_id, applies only the DELTA to stock via `$inc`,
-  writes a delta-only movement/audit entry. DELETE reverses fully (restore stock, mark
-  cancelled) with a `db.action_requests` approval-queue fallback when the actor lacks
-  the module's `delete` permission (checked via `check_module_permission`).
-- Location scoping: `location_scope_filter(user, location_id_param)` from locations.py —
-  admins see everything (optionally filtered), everyone else sees their assigned
-  `location_ids` + legacy/global (location_id absent) documents. Reused across sales,
-  inventory, deliveries, purchase orders, action-request queues.
+### Remaining — Batches C & D (NOT STARTED)
+- P1: Customer Credit report — restrict to purely financial data (remove project cost/margin).
+- P1: Assets register bug (blank list/categories) — debug `assets.py` vs `AssetsPage.js` contract.
+- P1: Reading Analysis report (generation trend, actual vs estimate).
+- P1: Audit module extension (deadlines, owners, PDF).
+- P1: Employee Performance report (auto + manual metrics, PDF).
+- P1: Vendors tab (supplier CRUD, GSTIN, PO history linkage).
+- P1: Operational Expense report.
 
-## Known limitations / backlog
-- P2: Performance Master Report (consolidated vs per-location PDF/Excel) — not built.
-- P2: Invoice/PO sequence numbers use `count_documents()` + regex, not an atomic counter —
-  theoretical risk of duplicate numbers under concurrent creates (flagged by testing agent,
-  low real-world risk given current usage volume).
-- P3: Company profile create/update use hand-written field lists instead of
-  `model_dump(exclude_unset=True)` — same class of bug that caused the state/location_id
-  loss could recur if new fields are added without updating both create+update+GET.
-- P3: server.py is ~7200 lines — further modularization (company profile, PO, action-requests
-  into their own files) would help maintainability but is not urgent.
+## Architecture notes
+- Modularity rule: new features go in dedicated router files (`invoicing.py`, `catalogue.py`, etc.), never grow `server.py`.
+- Recharts `<Cell>` component crashes React — avoid, use CSS/props instead.
+- Catalogue collections: `panel_products`, `inverter_products`, `battery_products`, `pump_products`, `structure_products`, `service_rates`, `fuel_types`, `price_history`, `addon_groups`. Global defaults in `pricing_config` (incl. `gst_pct`).
+- Company profile field is `company_name` (not `name`) — GST invoice util already correct, price list util fixed to match.
+
+## Known housekeeping (not urgent, flagged by testing_agent)
+- Catalogue has ~14 leftover `TEST Panel_TEST_*` / `TEST Inv_TEST_*` rows from earlier test iterations, visible in Pricelist/PDF. Cleanup recommended whenever convenient.
 
 ## Credentials
-See /app/memory/test_credentials.md — admin@sensoper.com / Admin@123, plus
-qa_mgr_iter46@sensoper.com / Manager@123 and qa_staff_iter46@sensoper.com / Staff@123
-(test accounts created by testing agent for permission/location-scoping tests).
+See `/app/memory/test_credentials.md`. Admin: admin@sensoper.com / Admin@123

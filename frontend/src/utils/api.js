@@ -145,6 +145,15 @@ export const actionRequestsAPI = {
   reject: (id) => api.post(`/action-requests/${id}/reject`)
 };
 
+// GST Tax Invoice + Profit Calculator (Iter 44 Batch A)
+export const invoicingAPI = {
+  getSettings: () => api.get('/invoice-settings'),
+  updateSettings: (data) => api.put('/invoice-settings', data),
+  getInvoice: (projectId) => api.get(`/projects/${projectId}/invoice`),
+  generateInvoice: (projectId, data = {}) => api.post(`/projects/${projectId}/invoice`, data),
+  getProfit: (projectId) => api.get(`/projects/${projectId}/profit`)
+};
+
 // Inbound reversal approval queue (managers without delete rights → admin)
 export const inboundApprovalsAPI = {
   list: (status = null) => api.get('/inbound-action-requests', { params: status ? { status } : {} }),

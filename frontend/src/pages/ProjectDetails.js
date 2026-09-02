@@ -53,6 +53,8 @@ import KitPriceExplainerModal from '../components/KitPriceExplainerModal';
 import MaterialReconciliationCard from '../components/MaterialReconciliationCard';
 import { generateKitQuotationPDF } from '../utils/kitQuotationPDF';
 import { catalogueAPI } from '../utils/api';
+import ProjectInvoiceCard from '../components/ProjectInvoiceCard';
+import ProjectProfitCard from '../components/ProjectProfitCard';
 
 function stripHtml(html) { return DOMPurify.sanitize(html, { ALLOWED_TAGS: [] }); }
 function parseTermsHtml(html) {
@@ -1302,6 +1304,7 @@ export default function ProjectDetails() {
             {(project.status === 'approved' || project.status === 'completed') && (
               <Button variant="outline" onClick={shareViaWhatsApp} className="gap-2" data-testid="share-whatsapp-btn"><Share2 className="h-4 w-4" />WhatsApp</Button>
             )}
+            {(isAdmin || isManager) && <ProjectInvoiceCard projectId={id} companyProfile={companyProfile} />}
           </div>
         </div>
 
@@ -1502,6 +1505,9 @@ export default function ProjectDetails() {
 
             {/* Excess Material Reconciliation — required once a project is completed (Iter 42 Change 4) */}
             {project.status === 'completed' && <MaterialReconciliationCard projectId={id} />}
+
+            {/* Profit Calculator — admin only, reads the same cost_estimation as everything else (Iter 44 Batch A) */}
+            <ProjectProfitCard projectId={id} isAdmin={isAdmin} />
 
             {/* Site Documentation */}
             {project.drive_folder_link && (

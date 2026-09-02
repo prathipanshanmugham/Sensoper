@@ -738,6 +738,7 @@ def calculate_cost_estimation(selected_items: list, manual_costs: list) -> dict:
         items_breakdown.append({
             "name": item["name"],
             "category": item["category"],
+            "inventory_item_id": item.get("inventory_item_id"),
             "unit_price": item["unit_price"],
             "quantity": item["quantity"],
             "gst_percentage": item["gst_percentage"],
@@ -2358,6 +2359,11 @@ api_router.include_router(_locations_router)
 # ═══════════ CATALOGUE + FUEL MODEL (Iter 44 Phase 1 — Changes 6 & 7) ═══════════
 from catalogue import attach as _attach_catalogue  # noqa: E402
 _attach_catalogue(api_router, db, get_current_user)
+
+# ═══════════ GST TAX INVOICE + PROFIT CALCULATOR (Iter 44 Batch A) ═══════════
+from invoicing import create_router as _create_invoicing_router  # noqa: E402
+_invoicing_router = _create_invoicing_router(db=db, get_current_user=get_current_user, create_audit_log=create_audit_log)
+api_router.include_router(_invoicing_router)
 
 
 # ═══════════ SUBSIDY TRACKING (Iter 39 Change 2c) ═══════════

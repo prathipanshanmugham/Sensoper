@@ -1,0 +1,42 @@
+{
+  "summary": "Iteration 44 Batch A (GST Tax Invoice + admin-only Profit Calculator) tested end-to-end. Backend: 25/25 pytest passed (14 pre-existing dev suite + 11 new API re-verification tests I wrote covering invoice-settings role gating, invoice idempotency, GST split consistency and profit 403s for manager/staff). Frontend: full UI flow verified as admin, manager and staff on real projects — Generate Invoice button visibility/role gating, preview dialog contents, real PDF download (validated by extracting PDF text), invoice-number idempotency, admin-configurable prefix affecting the NEXT invoice, intra-state CGST+SGST vs inter-state IGST, admin-only Profit Calculator card, and Kit Quotation / Detailed PDF regression (both still download fine). All requested Batch A behaviours work. Two data/content gaps found on the invoice PDF (supplier GSTIN/address blank, HSN/SAC blank on legacy projects).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/projects/{id}/invoice", "issue": "Supplier identity falls back to a hardcoded name/state only ('Sensoper Controls & Renewables' / 'Tamil Nadu') because no company_profiles doc currently has is_active=true (GET /api/company/active also returns its own hardcoded default). Result: the generated tax invoice has company.gstin='' and company.address='' -> PDF prints 'GSTIN: —' and no supplier address, which is invalid for a GST tax invoice. Suggest reusing the same default object as /api/company/active, or falling back to the first/only profile, and/or making an active profile mandatory."},
+      {"endpoint": "POST /api/projects/{id}/invoice", "issue": "HSN/SAC comes out empty for all existing projects: stored cost_estimation.items_breakdown entries do not carry inventory_item_id (the new passthrough only applies when the estimate is recalculated). Verified 26 invoiceable projects — 0 items had inventory_item_id, so every invoice line shows HSN '—'. Consider a name-based inventory lookup fallback, or backfill."},
+      {"endpoint": "POST /api/projects/{id}/invoice + GET /api/projects/{id}/profit", "issue": "Design question, please confirm intent: cost_estimation.manual_costs are simultaneously billed to the customer as zero-GST invoice line items AND subtracted as 'other_direct_costs' in the profit calculator (so they always net to zero profit). If manual costs are internal overheads rather than billable items, they should not appear as invoice lines."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Invoice preview dialog", "issues": ["Line-item GST column shows a bare combined figure for intra-state (e.g. '₹2700') with no CGST/SGST label, while inter-state rows are labelled 'IGST ₹9000' — minor inconsistency; the PDF does show CGST/SGST correctly.", "Dialog shows Customer GSTIN but not billing/shipping address (the PDF does) — acceptable, noting only."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter44_batch_a_ui_support.py",
+    "/app/backend/tests/test_iter44_batch_a_invoicing.py",
+    "/app/test_reports/pytest/iter44_batchA_ui.xml"
+  ],
+  "action_items": [
+    "Make the tax invoice pick up a real supplier GSTIN/address/authorized signatory (no company profile is currently is_active=true; invoicing.py's fallback omits address/GSTIN entirely).",
+    "Add an HSN/SAC fallback (or backfill inventory_item_id) so existing projects don't print '—' in the HSN column.",
+    "Confirm whether manual_costs should be billable invoice lines (currently they are, at 0% GST) and also counted as other direct costs in the profit calculator."
+  ],
+  "critical_code_review_comments": [
+    "invoicing.py line 192: `db.company_profiles.find_one({'is_active': True})` silently yields {} in this environment; the fallback should mirror the /api/company/active default (name, address, gstin, signatory) instead of only name+state.",
+    "invoicing.py: module-level `router = APIRouter(...)` at line 23 is dead code (the real router is built in create_router) — remove to avoid confusion.",
+    "invoicing.py `_next_invoice_number()` increments the sequence via find_one_and_update AFTER the payload validation but the project/cost checks happen earlier — good; no gap-on-error observed in testing.",
+    "ProjectInvoiceCard.js imports Card/CardContent/CardHeader/CardTitle but never uses them (dead imports)."
+  ],
+  "updated_files": ["/app/backend/tests/test_iter44_batch_a_ui_support.py"],
+  "success_rate": {"backend": "100% (25/25)", "frontend": "100% of Batch A flows"},
+  "seed_data_creation": "No new seed data. Generated real invoices on existing projects: INV-1000 (6a9887592ef42d265853916d, IGST/Karnataka - created by dev's own pytest), INV-1001 (6a819befd79454a5f4147583, zero-value test project), SNSINV-7001 (6a128252a4dc5d9786601a75, intra-state CGST 1350 + SGST 1350). Invoice settings were changed for the prefix test and RESTORED to prefix=INV, next_number=1003.",
+  "should_call_test_agent_after_fix": false,
+  "should_main_agent_self_test": true,
+  "test_credentials": "admin@sensoper.com/Admin@123, qa_mgr_iter46@sensoper.com/Manager@123, qa_staff_iter46@sensoper.com/Staff@123. NOTE: /app/memory/test_credentials.md only lists the admin account — manager/staff creds should be added there.",
+  "context_for_next_testing_agent": "Batch A verified in full. Detailed evidence: (1) admin+manager see [data-testid=generate-invoice-btn]; staff cannot even open project detail (redirected to /dashboard/projects which shows 0 projects for staff), so no button/card. (2) [data-testid=profit-calculator-card] renders only for admin; GET /api/projects/{id}/profit returns 403 for both manager and staff (verified via API). (3) GET /api/invoice-settings: admin 200, manager 200, staff 403; PUT: manager 403. (4) Re-clicking Generate Invoice returns the same number and the dialog text 'the number never changes'. (5) Changing prefix to SNSINV/7001 in the Company Profile card produced SNSINV-7001 on the next uninvoiced project. (6) PDFs verified by pdfplumber text extraction: 'TAX INVOICE' header, Bill To/Ship To, Place of Supply, HSN/SAC column, CGST+SGST rows for intra-state and IGST for inter-state, amount in words, declaration, 'For <company> / Authorized Signatory'. (7) Kit Quotation and Detailed PDF downloads still work (8.8 KB and 977 KB PDFs). Useful uninvoiced projects remaining: 6a10c6964e2ead4bd4dc84ea, 6a10948dd47a3db7d8965b4d. Batches B/C/D not built yet.",
+  "rca_of_the_issue": "Blank supplier GSTIN/address on the invoice PDF is not a code bug in the numbering/GST logic but a fallback gap: no company_profiles document has is_active=true in this environment, and invoicing.py's fallback only defaults company_name and state, leaving gstin/address/signatory empty strings. Blank HSN/SAC is because the new inventory_item_id passthrough in calculate_cost_estimation only affects newly computed estimates — all 26 existing invoiceable projects have items_breakdown without inventory_item_id, so the HSN lookup map is empty."
+}

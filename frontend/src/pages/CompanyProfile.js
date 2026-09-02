@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
-import { companyAPI, locationsAPI } from '../utils/api';
+import { companyAPI, locationsAPI, invoicingAPI } from '../utils/api';
 import { formatApiErrorDetail } from '../contexts/AuthContext';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
@@ -36,6 +36,8 @@ export default function CompanyProfile() {
   const [actionLoading, setActionLoading] = useState(false);
   const [error, setError] = useState('');
   const [uploading, setUploading] = useState(false);
+  const [invoiceSettings, setInvoiceSettings] = useState({ prefix: 'INV', next_number: 1 });
+  const [savingInvoiceSettings, setSavingInvoiceSettings] = useState(false);
 
   const fetchProfiles = useCallback(async () => {
     try {
@@ -51,7 +53,17 @@ export default function CompanyProfile() {
   useEffect(() => {
     fetchProfiles();
     locationsAPI.list().then(r => setLocations(r.data || [])).catch(() => {});
+    invoicingAPI.getSettings().then(r => setInvoiceSettings(r.data)).catch(() => {});
   }, [fetchProfiles]);
+
+  const saveInvoiceSettings = async () => {
+    setSavingInvoiceSettings(true);
+    try {
+      const r = await invoicingAPI.updateSettings(invoiceSettings);
+      setInvoiceSettings(r.data);
+    } catch (e) { alert(e.response?.data?.detail || 'Could not save invoice settings'); }
+    finally { setSavingInvoiceSettings(false); }
+  };
 
   const [formData, setFormData] = useState({
     company_name: '',
@@ -237,6 +249,23 @@ export default function CompanyProfile() {
             <p className="text-sm text-blue-800">
               <strong>Note:</strong> Only one profile can be active at a time. The active profile will be used in all PDF quotations and branding across the application.
             </p>
+          </CardContent>
+        </Card>
+
+        {/* Invoice Numbering */}
+        <Card className="border-slate-200 mb-6" data-testid="invoice-settings-card">
+          <CardHeader className="pb-3"><CardTitle className="text-base">GST Tax Invoice Numbering</CardTitle></CardHeader>
+          <CardContent className="flex flex-wrap items-end gap-3">
+            <div className="space-y-1.5">
+              <Label className="text-xs">Prefix</Label>
+              <Input value={invoiceSettings.prefix} onChange={e => setInvoiceSettings(p => ({ ...p, prefix: e.target.value }))} className="h-9 w-40" data-testid="invoice-prefix-input" />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Next Invoice Number</Label>
+              <Input type="number" value={invoiceSettings.next_number} onChange={e => setInvoiceSettings(p => ({ ...p, next_number: parseInt(e.target.value) || 1 }))} className="h-9 w-40" data-testid="invoice-next-number-input" />
+            </div>
+            <Button size="sm" onClick={saveInvoiceSettings} disabled={savingInvoiceSettings} className="h-9" data-testid="save-invoice-settings-btn">{savingInvoiceSettings ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Save'}</Button>
+            <p className="text-xs text-slate-400 w-full">Applies to the "Generate Invoice" tax invoice on each project — separate from the sales quotation PDF and Direct Sales invoicing.</p>
           </CardContent>
         </Card>
 

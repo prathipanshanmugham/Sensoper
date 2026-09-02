@@ -10,7 +10,7 @@ import {
   Package, Leaf, Calendar, TrendingUp, Fuel, Sun,
   Wand2, Loader2, RotateCcw, MapPin, Zap, ChevronDown, ChevronUp, CheckCircle2, AlertTriangle, Info
 } from 'lucide-react';
-import { calcAPI } from '../utils/api';
+import { calcAPI, catalogueAPI } from '../utils/api';
 import GuidedSolutionFlow from './GuidedSolutionFlow';
 
 // ───────────────────────── default form shape ─────────────────────────
@@ -83,6 +83,12 @@ const blank = {
   // ───── Notes ─────
   notes: '',
 
+  // ───── Catalogue-driven costing (Iter 44 Batch B) ─────
+  _catalogue_panel_id: '',
+  _catalogue_inverter_id: '',
+  _catalogue_panel_price_per_watt: '',
+  _catalogue_inverter_price: '',
+
   // ───── Internal state ─────
   _overrides: {},
   _derived: {},
@@ -112,17 +118,8 @@ const SPECIFIC_YIELD = {
 };
 const DEFAULT_SPECIFIC_YIELD = 4.2;
 
-// PM Surya Ghar subsidy (Feb 2026 — residential on-grid only)
-// First 1 kW: ₹30,000 ; 1-2 kW: +₹30,000 ; 2-3 kW: +₹18,000 ; cap ₹78,000.
-const calcSubsidy = (kwp, tariff_category, system_type) => {
-  if (system_type !== 'on-grid') return 0;
-  if (tariff_category !== 'Domestic') return 0;
-  if (kwp <= 0) return 0;
-  if (kwp <= 1) return Math.round(kwp * 30000);
-  if (kwp <= 2) return Math.round(30000 + (kwp - 1) * 30000);
-  if (kwp <= 3) return Math.round(60000 + (kwp - 2) * 18000);
-  return 78000;
-};
+// Subsidy is ALWAYS a custom/manual entry (no auto slab calculation) — sales staff
+// enter the actual approved subsidy amount for the customer's case.
 
 // Auto-calc engine — pure function of drivers + overrides
 function autoCalc(d) {
@@ -203,13 +200,19 @@ function autoCalc(d) {
   }
 
   // Step 7 — cost & subsidy
+  // Panel & inverter cost use catalogue product prices when picked from the Pricelist
+  // (Batch B); otherwise fall back to the flat ₹/kWp estimate split by typical share.
   const costPerKwp = COST_PER_KWP[d.system_type] || COST_PER_KWP['on-grid'];
+  const panelPricePerWatt = num(d._catalogue_panel_price_per_watt);
+  const inverterFlatPrice = num(d._catalogue_inverter_price);
+  const panelCost = panelPricePerWatt > 0 ? panelPricePerWatt * sysKw * 1000 : costPerKwp * 0.45 * sysKw;
+  const inverterCost = inverterFlatPrice > 0 ? inverterFlatPrice : costPerKwp * 0.15 * sysKw;
+  const bosCost = costPerKwp * 0.40 * sysKw;
   const totalCost = ov.total_cost
     ? num(d.total_cost)
-    : Math.round(sysKw * costPerKwp);
-  const subsidy = ov.subsidy
-    ? num(d.subsidy)
-    : calcSubsidy(sysKw, d.tariff_category, d.system_type);
+    : Math.round(panelCost + inverterCost + bosCost);
+  // Subsidy is always custom/manual — never auto-suggested.
+  const subsidy = num(d.subsidy);
   const netCost = Math.max(totalCost - subsidy, 0);
 
   // Step 8 — savings
@@ -367,6 +370,7 @@ export default function ProposedSolutionSection({ value, onChange }) {
     data.estimated_generation_units_annual, data.inverter_kw,
     data.battery_kwh, data.battery_count, data.total_cost, data.subsidy,
     data.diesel_offset_liters_yearly,
+    data._catalogue_panel_price_per_watt, data._catalogue_inverter_price,
     JSON.stringify(overrides),
   ]);
 
@@ -425,6 +429,39 @@ export default function ProposedSolutionSection({ value, onChange }) {
     delete nextOv[field];
     onChange({ ...data, [field]: engine[field], _overrides: nextOv });
   }, [data, onChange, engine]);
+
+  // ═════ Catalogue Panel / Inverter picker (Iter 44 Batch B — simple mode) ═════
+  const [catPanels, setCatPanels] = useState([]);
+  const [catInverters, setCatInverters] = useState([]);
+  useEffect(() => {
+    catalogueAPI.list('panel', true).then((r) => setCatPanels(r.data || [])).catch(() => {});
+    catalogueAPI.list('inverter', true).then((r) => setCatInverters(r.data || [])).catch(() => {});
+  }, []);
+
+  const selectPanel = useCallback((pid) => {
+    const p = catPanels.find((x) => x.id === pid);
+    if (!p) return;
+    const sell = p.selling_price != null ? p.selling_price : (p.purchase_price || 0) * (1 + (p.margin_pct ?? 15) / 100);
+    onChange({
+      ...data,
+      _catalogue_panel_id: pid,
+      panel_model: `${p.make} ${p.model}`,
+      panel_wattage_w: p.wattage,
+      _catalogue_panel_price_per_watt: p.wattage > 0 ? sell / p.wattage : 0,
+    });
+  }, [data, onChange, catPanels]);
+
+  const selectInverter = useCallback((iid) => {
+    const iv = catInverters.find((x) => x.id === iid);
+    if (!iv) return;
+    const sell = iv.selling_price != null ? iv.selling_price : (iv.purchase_price || 0) * (1 + (iv.margin_pct ?? 15) / 100);
+    onChange({
+      ...data,
+      _catalogue_inverter_id: iid,
+      inverter_model: `${iv.make} ${iv.model}`,
+      _catalogue_inverter_price: sell,
+    });
+  }, [data, onChange, catInverters]);
 
   // ═════ Server-side calculation (thin-client mode) ═════
   const [pinInfo, setPinInfo] = useState(null);       // resolved PIN → district/state/DISCOM/yield
@@ -739,6 +776,60 @@ export default function ProposedSolutionSection({ value, onChange }) {
             </p>
           )}
         </div>
+
+        {/* ───── Panel & Inverter Picker + Cost Summary (Iter 44 Batch B — always visible) ───── */}
+        {data.system_type !== 'solar-pump' && (
+          <div className="rounded-lg border border-slate-200 bg-white p-3 space-y-3" data-testid="ps-simple-hardware-block">
+            <p className="text-[11px] uppercase tracking-wider text-slate-600 font-semibold flex items-center gap-1.5">
+              <Package className="h-3.5 w-3.5" /> Panel &amp; Inverter (from Pricelist)
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label className="text-xs">Panel</Label>
+                <Select value={data._catalogue_panel_id || ''} onValueChange={selectPanel}>
+                  <SelectTrigger className="h-10 bg-white" data-testid="ps-panel-picker"><SelectValue placeholder="Select a panel..." /></SelectTrigger>
+                  <SelectContent>
+                    {catPanels.map((p) => (
+                      <SelectItem key={p.id} value={p.id}>{p.make} {p.model} — {p.wattage}W</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Inverter</Label>
+                <Select value={data._catalogue_inverter_id || ''} onValueChange={selectInverter}>
+                  <SelectTrigger className="h-10 bg-white" data-testid="ps-inverter-picker"><SelectValue placeholder="Select an inverter..." /></SelectTrigger>
+                  <SelectContent>
+                    {catInverters.map((iv) => (
+                      <SelectItem key={iv.id} value={iv.id}>{iv.make} {iv.model} — {iv.rated_kw}kW</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="grid grid-cols-3 gap-2 pt-2 border-t border-slate-100">
+              <div className="text-center">
+                <p className="text-[9px] uppercase tracking-wider text-slate-500">Total Cost</p>
+                <p className="text-sm font-bold text-slate-700" data-testid="ps-simple-total-cost">{engine.total_cost > 0 ? inr(engine.total_cost) : '—'}</p>
+              </div>
+              <div className="space-y-1 text-center">
+                <Label className="text-[9px] uppercase tracking-wider text-slate-500">Subsidy (₹)</Label>
+                <Input
+                  type="number"
+                  value={data.subsidy ?? ''}
+                  onChange={(e) => updateAutoField('subsidy', e.target.value)}
+                  placeholder="0"
+                  className="h-8 text-center text-sm"
+                  data-testid="ps-simple-subsidy-input"
+                />
+              </div>
+              <div className="text-center">
+                <p className="text-[9px] uppercase tracking-wider text-emerald-600">Net Cost</p>
+                <p className="text-sm font-bold text-emerald-700" data-testid="ps-simple-net-cost">{engine.net_cost > 0 ? inr(engine.net_cost) : '—'}</p>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* ───── Show / Hide advanced ───── */}
         <button
