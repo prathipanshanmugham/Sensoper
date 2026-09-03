@@ -2,18 +2,22 @@ import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { dashboardAPI, healthAPI } from '../utils/api';
 import HealthScoreCard from '../components/HealthScoreCard';
+import { useLocationScope, LocationScopeSelect } from '../components/LocationScope';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
 import {
   BarChart3, TrendingUp, IndianRupee, CheckCircle2, Clock, Package,
   AlertTriangle, Users, Loader2, ClipboardCheck, ArrowUpRight,
-  Wallet, Banknote, Activity, Receipt, Calculator, MapPin
+  Wallet, Banknote, Activity, Receipt, Calculator, MapPin, Download
 } from 'lucide-react';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   BarChart, Bar
 } from 'recharts';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
+import { loadUnicodeFont } from '../utils/pdfFont';
 
 const COLORS = ['#10b981', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
 const STATUS_COLORS = { draft: '#f59e0b', submitted: '#3b82f6', approved: '#10b981', rejected: '#ef4444', completed: '#059669', deletion_requested: '#f97316' };
@@ -40,6 +44,7 @@ function KpiCard({ title, value, icon: Icon, color = 'emerald', subtitle, onClic
 
 export default function CeoDashboard() {
   const navigate = useNavigate();
+  const locScope = useLocationScope('ceo_location_scope');
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [sparkline, setSparkline] = useState([]);
@@ -47,7 +52,7 @@ export default function CeoDashboard() {
   const fetchData = useCallback(async () => {
     try {
       const [dashRes, histRes] = await Promise.all([
-        dashboardAPI.getCeo(),
+        dashboardAPI.getCeo(locScope.locationId ? { location_id: locScope.locationId } : {}),
         healthAPI.getHistory(6).catch(() => ({ data: [] }))
       ]);
       setData(dashRes.data);
@@ -57,7 +62,7 @@ export default function CeoDashboard() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [locScope.locationId]);
 
   const handleSnapshot = async () => {
     try {
@@ -65,6 +70,37 @@ export default function CeoDashboard() {
       const h = await healthAPI.getHistory(6);
       setSparkline((h.data || []).map(s => ({ month: s.month, score: s.score })));
     } catch { /* ignore */ }
+  };
+
+  const handleExportPdf = async () => {
+    if (!data) return;
+    const doc = new jsPDF();
+    const FONT = await loadUnicodeFont(doc);
+    doc.setFontSize(18); doc.setTextColor(16, 185, 129);
+    doc.text('Sensoper Controls & Renewables', 14, 18);
+    doc.setFontSize(14); doc.setTextColor(30, 41, 59);
+    doc.text('CEO Dashboard Summary', 14, 28);
+    doc.setFontSize(9); doc.setTextColor(100, 116, 139);
+    doc.text(`Generated: ${new Date().toLocaleDateString('en-IN')}  ·  Location: ${locScope.locationLabel}`, 14, 34);
+    const kpiRows = [
+      ['Total Revenue', `Rs ${(data.kpis.total_revenue || 0).toLocaleString('en-IN')}`],
+      ['Total Profit', `Rs ${(data.kpis.total_profit || 0).toLocaleString('en-IN')}`],
+      ['Conversion Rate', `${data.kpis.conversion_rate}%`],
+      ['Active Projects', data.kpis.active_projects],
+      ['Completed Projects', data.kpis.completed_projects],
+      ['Pending Approvals', data.kpis.pending_approvals],
+      ['Inventory Value', `Rs ${(data.kpis.inventory_value || 0).toLocaleString('en-IN')}`],
+      ['Low Stock Alerts', data.kpis.low_stock_alerts],
+      ['Total Outstanding (Credit)', `Rs ${(data.kpis.total_outstanding || 0).toLocaleString('en-IN')}`],
+      ['Overdue Amount', `Rs ${(data.kpis.overdue_amount || 0).toLocaleString('en-IN')}`],
+    ];
+    autoTable(doc, { startY: 42, head: [['KPI', 'Value']], body: kpiRows, theme: 'striped', styles: { font: FONT }, headStyles: { font: FONT, fillColor: [16, 185, 129], textColor: 255 }, bodyStyles: { font: FONT } });
+    let y = doc.lastAutoTable.finalY + 10;
+    if (data.top_staff?.length) {
+      doc.setFontSize(11); doc.setTextColor(30, 41, 59); doc.text('Top Performing Staff', 14, y); y += 4;
+      autoTable(doc, { startY: y, head: [['Staff', 'Projects', 'Revenue']], body: data.top_staff.map(s => [s.name, s.count, `Rs ${(s.revenue || 0).toLocaleString('en-IN')}`]), theme: 'striped', styles: { font: FONT }, headStyles: { font: FONT, fillColor: [59, 130, 246], textColor: 255 }, bodyStyles: { font: FONT } });
+    }
+    doc.save(`CEO_Dashboard_${new Date().toISOString().slice(0, 10)}.pdf`);
   };
 
   useEffect(() => { fetchData(); }, [fetchData]);
@@ -89,11 +125,13 @@ export default function CeoDashboard() {
   return (
     <div className="min-h-screen bg-slate-50 py-6 px-4">
       <div className="max-w-7xl mx-auto">
-        <div className="flex items-center gap-4 mb-6">
+        <div className="flex items-center gap-4 mb-6 flex-wrap">
           <div className="flex-1">
             <h1 className="text-2xl font-bold font-['Outfit'] text-slate-900" data-testid="ceo-title">CEO Dashboard</h1>
             <p className="text-sm text-slate-500">High-level business overview</p>
           </div>
+          <div className="w-48"><LocationScopeSelect scope={locScope} testIdPrefix="ceo-location" /></div>
+          <Button variant="outline" onClick={handleExportPdf} className="gap-2" data-testid="ceo-export-pdf-btn"><Download className="h-4 w-4" />Export PDF</Button>
           <Button variant="outline" onClick={() => navigate('/dashboard/expansion')} className="gap-2" data-testid="goto-expansion-btn"><MapPin className="h-4 w-4" />Expansion</Button>
           <Button variant="outline" onClick={() => navigate('/dashboard/reports')} className="gap-2" data-testid="goto-reports-btn"><BarChart3 className="h-4 w-4" />Reports</Button>
         </div>

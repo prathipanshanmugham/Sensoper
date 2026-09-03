@@ -1,0 +1,48 @@
+{
+  "summary": "Iteration 45 session test pass: (A) Verified the rewritten simplified Solar Calculator (Step 4 of new project form) end-to-end and (B) fully tested the new location-scoped report export feature across Reports, Assets, CEO, AMC and Expansion pages, plus staff RBAC and the Assets register/category regression. Backend: created /app/backend/tests/test_iter45_location_scope.py (34 tests) covering /api/locations, /api/reports/{type} (5 types, with & without location_id, bogus location_id, staff 403), /api/dashboard/ceo, /api/assets/reports/{4 types}, /api/amc/{dashboard,recurring-revenue-report,contracts}, /api/expansion/overview, /api/calculate/config, /api/inventory/items?category=solar_panels|inverters and POST /api/calculate/solution (pump). All 34 pass. Frontend (Playwright, admin login): Calculator On-Grid shows EXACTLY System Type, System Size (kW), Panel picker, Inverter picker + result strip (Cost / Subsidy input / Net Cost / Payback) - no legacy toggles or driver inputs; panel dropdown had 6 live inventory items, inverter 2; 5 kW + Test Solar Panel + Growatt 5kW gave Total ₹2,78,750 / Payback 4.2 yrs, and a ₹50,000 subsidy correctly reduced Net Cost to ₹2,28,750 (exact math verified). Switching to Solar Pump swapped to the hydraulic flow (path/flow/head/bore/controller Vmax/string V + Calculate Pump Sizing) with the 3 simple fields removed; Calculate returned 10.23 kWp / 10 HP / ₹6,64,950 / Net ₹5,13,866 with the HP-rounding warning. Location scoping: all 5 new selects/buttons render with the documented data-testids; report re-fetches carry location_id; report-location-label updates; PDF+Excel downloads succeeded on Reports, Assets(PDF), CEO, AMC and Expansion. Staff (qa_staff_iter46) is correctly redirected to /dashboard with no Reports nav/content. Assets category filter regression is fixed (9 options).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /api/reports/assets?location_id=<loc>", "issue": "When the scoped location has no assets the report still returns one placeholder row of dashes and the UI footer says '1 records' while all summary KPIs are 0. Cosmetic/misleading; prefer returning rows: [] so the empty state renders."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "AssetsPage.exportReportExcel", "issue": "Silent no-op: `if (!reportData?.rows?.length) return;` means clicking Excel on a report with 0 rows (easy to hit after scoping to a location with no data) does nothing - no download, no toast, no disabled state. Reproduced: Utilisation report scoped to 'Head Office Chennai' (0 rows) -> Excel click produced no download while PDF exported an empty table.", "selector": "[data-testid='asset-report-export-excel-btn']", "priority": "MEDIUM"},
+      {"component": "AMCDashboard.exportRevenueExcel / ExpansionPage.exportDistrictsPDF+Excel", "issue": "Same silent-return-on-empty pattern (`!revenueReport?.rows?.length` / `!filteredDistricts.length`). Buttons should be disabled or show a 'nothing to export' toast instead of being dead clicks.", "selector": "[data-testid='amc-export-excel-btn'], [data-testid='expansion-export-pdf-btn'], [data-testid='expansion-export-excel-btn']", "priority": "LOW"},
+      {"component": "AssetsPage Reports card", "issue": "PDF/Excel buttons had no data-testid - added asset-report-export-pdf-btn / asset-report-export-excel-btn (fixed by testing agent).", "selector": "[data-testid='asset-report-export-pdf-btn']", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Reports page filters card", "issues": ["Date From / Date To use the native browser date input (mm/dd/yyyy + native picker icon) instead of the shadcn Calendar/Popover used elsewhere - inconsistent with the app's design system.", "Location select is the widest visual element in the row and is left-most; fine, but when a location with no data is chosen the results card shows a table of '-' plus '1 records', which reads like data exists."]},
+      {"screen": "SiteVisitForm step indicator", "issues": ["Step chips (Customer/Location/EB Details/Proposed Solution...) have no data-testid, so tests must click Next repeatedly to reach step 4. Recommend data-testid=\"step-chip-{slug}\"."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter45_location_scope.py",
+    "/app/test_reports/pytest/iter45_locscope.xml"
+  ],
+  "action_items": [
+    "Replace the silent `return` in the Excel/PDF export handlers (AssetsPage, AMCDashboard, ExpansionPage) with a disabled button or a toast so empty-data exports give feedback.",
+    "Consider returning rows: [] (not a placeholder dash row) from /api/reports/assets when the location scope yields no assets, so the '1 records' / all-dash table stops appearing.",
+    "Optional: swap the Reports page native date inputs for the shadcn calendar component for design consistency.",
+    "Optional: add data-testid to the SiteVisitForm step chips to make step navigation testable."
+  ],
+  "critical_code_review_comments": [
+    "LocationScope.useLocationScope persists locationId in localStorage under a global key (e.g. 'assets_location_scope') that is NOT namespaced per user. After a user switch on the same browser, the previous user's location choice is restored; for a non-admin whose stored id is outside their scope the code only corrects it when locations.length > 0. Namespace the key with the user id and always validate the stored id against the fetched list.",
+    "AssetsPage has two mount-time effects that both fetch the register report (useEffect(() => fetchReport('register'), []) and useEffect on locScope.locationId), causing a duplicate /assets/reports/register call on every page load. Collapse into one effect keyed on locScope.ready + locationId.",
+    "ExpansionPage hardcodes the string 'Location: All Locations — Consolidated' in both exports. Intentional (expansion is district-based) but should be a named constant/comment so a future dev doesn't assume it is scoped.",
+    "React key warning is logged repeatedly on the AMC Recurring Revenue Report table ('Encountered two children with the same key') - contract codes AMC-0001..AMC-0016 are duplicated across seeded data, so the row key is not unique. Use the contract id, not the code."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter45_location_scope.py",
+    "/app/frontend/src/pages/AssetsPage.js"
+  ],
+  "success_rate": {"backend": "100% (34/34)", "frontend": "95% (all flows pass; 1 dead Excel button on empty data)"},
+  "seed_data_creation": "No persistent data created. A draft site visit (TEST_Iter45 Calc / 9876500045) was filled in the new-project wizard but never submitted. Existing locations used: 'Head Office Chennai' (6a8dfd7a802363e4f7a04a44) and 'TEST_Loc_8b06a9_0'.",
+  "should_call_test_agent_after_fix": false,
+  "should_main_agent_self_test": true,
+  "test_credentials": "admin@sensoper.com / Admin@123 (admin, cookie-based auth - login sets httponly access_token cookie, there is NO token in the JSON body); qa_staff_iter46@sensoper.com / Staff@123 (staff, no locations assigned)",
+  "context_for_next_testing_agent": "Auth is cookie-based: POST /api/auth/login sets httponly access_token/refresh_token cookies; use a requests.Session and do NOT expect a token in the response body (previous template-style Bearer fixtures fail). Asset report ids use British spelling: register, issue_log, maintenance, compliance, utilisation, depreciation, writeoff. To reach Step 4 (Proposed Solution) in the wizard: fill customer-name/phone/address, Next, then location-address-input (required: 'Enter What3Words or site address'), then Next twice. Location scope selects are backed by localStorage so the previously chosen location persists between runs - reset to 'All Locations — Consolidated' first. Everything in this session's scope passed except the empty-data Excel dead click documented above; pytest suite /app/backend/tests/test_iter45_location_scope.py is the regression entry point.",
+  "rca_of_the_issue": "Excel dead click: AssetsPage.exportReportExcel (and AMC/Expansion equivalents) guard with an early `return` when rows are empty. Location scoping makes empty reports common (a location with no assets), so users perceive the Excel button as broken. Fix = disable the button (or toast) when reportData.rows.length === 0. The '1 records / all dashes' table comes from the backend assets report emitting a placeholder row instead of an empty list when the scoped query matches nothing."
+}

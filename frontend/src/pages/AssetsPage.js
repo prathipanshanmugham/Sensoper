@@ -15,8 +15,9 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import * as XLSX from 'xlsx';
 import { saveAs } from 'file-saver';
+import { useLocationScope, LocationScopeSelect } from '../components/LocationScope';
 
-const CATEGORIES = ['vehicle', 'power_tool', 'hand_tool', 'test_equipment', 'safety', 'it', 'furniture', 'other'];
+const CATEGORIES = ['vehicle', 'power_tool', 'hand_tool', 'test_equipment', 'safety', 'it', 'furniture', 'other']; // fallback until /assets/categories loads
 const STATUS_STYLES = {
   available: 'bg-emerald-100 text-emerald-700', issued: 'bg-blue-100 text-blue-700',
   in_maintenance: 'bg-amber-100 text-amber-700', under_repair: 'bg-orange-100 text-orange-700',
@@ -31,7 +32,9 @@ const REPORTS = [
 
 export default function AssetsPage() {
   const { user, isAdmin, isManager } = useAuth();
+  const locScope = useLocationScope('assets_location_scope');
   const [assets, setAssets] = useState([]);
+  const [categories, setCategories] = useState(CATEGORIES);
   const [compliance, setCompliance] = useState(null);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -70,6 +73,10 @@ export default function AssetsPage() {
   }, [categoryFilter, statusFilter, search]);
   useEffect(() => { fetchAssets(); }, [fetchAssets]);
   useEffect(() => { assetsAPI.compliance(90).then(r => setCompliance(r.data)).catch(() => {}); }, []);
+  // Single source of truth for the category dropdowns — merges the canonical list with
+  // any category value actually stored on an asset, so the filter can never diverge from
+  // what's really in the list (Iter 45 assets register fix).
+  useEffect(() => { assetsAPI.categories().then(r => setCategories(r.data.categories || CATEGORIES)).catch(() => {}); }, []);
 
   const fetchApprovals = useCallback(async () => {
     if (!canManage) return;
@@ -146,22 +153,26 @@ export default function AssetsPage() {
 
   const fetchReport = async (type) => {
     setReportType(type); setReportData(null);
-    try { const r = await assetsAPI.report(type); setReportData(r.data); } catch (e) { console.error(e); }
+    try { const params = locScope.locationId ? { location_id: locScope.locationId } : {}; const r = await assetsAPI.report(type, params); setReportData(r.data); } catch (e) { console.error(e); }
   };
-  useEffect(() => { fetchReport('register'); }, []);
+  useEffect(() => { fetchReport(reportType); }, [locScope.locationId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const exportReportPDF = () => {
     if (!reportData) return;
     const doc = new jsPDF({ orientation: 'landscape' });
     doc.setFontSize(16); doc.text(reportData.title, 14, 16);
+    doc.setFontSize(9); doc.setTextColor(100, 116, 139); doc.text(`Location: ${locScope.locationLabel}`, 14, 22);
     const cols = reportData.rows?.length ? Object.keys(reportData.rows[0]) : [];
-    autoTable(doc, { startY: 24, head: [cols], body: reportData.rows.map(r => cols.map(c => r[c])), theme: 'striped', headStyles: { fillColor: [16, 185, 129] } });
+    autoTable(doc, { startY: 28, head: [cols], body: reportData.rows.map(r => cols.map(c => r[c])), theme: 'striped', headStyles: { fillColor: [16, 185, 129] } });
     doc.save(`${reportData.title.replace(/\s+/g, '_')}.pdf`);
   };
   const exportReportExcel = () => {
     if (!reportData?.rows?.length) return;
+    const wb = XLSX.utils.book_new();
+    const ws0 = XLSX.utils.aoa_to_sheet([[reportData.title], [`Location: ${locScope.locationLabel}`]]);
+    XLSX.utils.book_append_sheet(wb, ws0, 'Info');
     const ws = XLSX.utils.json_to_sheet(reportData.rows);
-    const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Data');
+    XLSX.utils.book_append_sheet(wb, ws, 'Data');
     const buf = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
     saveAs(new Blob([buf], { type: 'application/octet-stream' }), `${reportData.title.replace(/\s+/g, '_')}.xlsx`);
   };
@@ -212,7 +223,7 @@ export default function AssetsPage() {
         {/* Filters */}
         <Card className="border-slate-200"><CardContent className="p-4 grid grid-cols-1 sm:grid-cols-3 gap-3">
           <div className="relative"><Search className="absolute left-2.5 top-2.5 h-4 w-4 text-slate-400" /><Input placeholder="Search assets…" value={search} onChange={e => setSearch(e.target.value)} className="pl-8 h-9" data-testid="asset-search" /></div>
-          <Select value={categoryFilter} onValueChange={setCategoryFilter}><SelectTrigger className="h-9" data-testid="asset-category-filter"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All Categories</SelectItem>{CATEGORIES.map(c => <SelectItem key={c} value={c}>{c.replace(/_/g, ' ')}</SelectItem>)}</SelectContent></Select>
+          <Select value={categoryFilter} onValueChange={setCategoryFilter}><SelectTrigger className="h-9" data-testid="asset-category-filter"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All Categories</SelectItem>{categories.map(c => <SelectItem key={c} value={c}>{c.replace(/_/g, ' ')}</SelectItem>)}</SelectContent></Select>
           <Select value={statusFilter} onValueChange={setStatusFilter}><SelectTrigger className="h-9" data-testid="asset-status-filter"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All Status</SelectItem>{Object.keys(STATUS_STYLES).map(s => <SelectItem key={s} value={s}>{s.replace(/_/g, ' ')}</SelectItem>)}</SelectContent></Select>
         </CardContent></Card>
 
@@ -225,9 +236,9 @@ export default function AssetsPage() {
                   <div className="flex justify-between items-start gap-2">
                     <div className="min-w-0">
                       <p className="text-sm font-semibold text-slate-900 truncate cursor-pointer hover:underline" onClick={() => openDetail(a)}>{a.name}</p>
-                      <p className="text-[11px] text-slate-400">{a.asset_code} · {a.category.replace(/_/g, ' ')}</p>
+                      <p className="text-[11px] text-slate-400">{a.asset_code} · {(a.category || 'uncategorized').replace(/_/g, ' ')}</p>
                     </div>
-                    <Badge className={STATUS_STYLES[a.status] || ''}>{a.status.replace(/_/g, ' ')}</Badge>
+                    <Badge className={STATUS_STYLES[a.status] || ''}>{(a.status || 'unknown').replace(/_/g, ' ')}</Badge>
                   </div>
                   <p className="text-xs text-slate-500">Book value: ₹{(a.current_book_value || 0).toLocaleString('en-IN')}</p>
                   {a.assigned_to_name && <p className="text-xs text-blue-600">With: {a.assigned_to_name}</p>}
@@ -251,10 +262,13 @@ export default function AssetsPage() {
           <Card className="border-slate-200" data-testid="assets-reports-card">
             <CardHeader className="border-b py-3"><CardTitle className="text-base font-['Outfit']">Reports</CardTitle></CardHeader>
             <CardContent className="p-4 space-y-3">
-              <div className="flex gap-2 flex-wrap">
-                {REPORTS.map(r => (
-                  <button key={r.id} onClick={() => fetchReport(r.id)} className={`px-3 py-1.5 text-xs rounded-full border ${reportType === r.id ? 'bg-emerald-100 border-emerald-300 text-emerald-800 font-medium' : 'bg-white border-slate-200 text-slate-600'}`} data-testid={`asset-report-${r.id}`}>{r.label}</button>
-                ))}
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <div className="flex gap-2 flex-wrap">
+                  {REPORTS.map(r => (
+                    <button key={r.id} onClick={() => fetchReport(r.id)} className={`px-3 py-1.5 text-xs rounded-full border ${reportType === r.id ? 'bg-emerald-100 border-emerald-300 text-emerald-800 font-medium' : 'bg-white border-slate-200 text-slate-600'}`} data-testid={`asset-report-${r.id}`}>{r.label}</button>
+                  ))}
+                </div>
+                <div className="w-48"><LocationScopeSelect scope={locScope} testIdPrefix="asset-report-location" className="h-8 text-xs" /></div>
               </div>
               {reportData && (
                 <>
@@ -263,8 +277,8 @@ export default function AssetsPage() {
                       {Object.entries(reportData.summary || {}).map(([k, v]) => <span key={k}><strong>{typeof v === 'number' ? v.toLocaleString('en-IN') : v}</strong> {k.replace(/_/g, ' ')}</span>)}
                     </div>
                     <div className="flex gap-2">
-                      <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={exportReportPDF}><FileText className="h-3 w-3" />PDF</Button>
-                      <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={exportReportExcel}><FileSpreadsheet className="h-3 w-3" />Excel</Button>
+                      <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={exportReportPDF} disabled={!reportData.rows?.length} data-testid="asset-report-export-pdf-btn"><FileText className="h-3 w-3" />PDF</Button>
+                      <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={exportReportExcel} disabled={!reportData.rows?.length} data-testid="asset-report-export-excel-btn"><FileSpreadsheet className="h-3 w-3" />Excel</Button>
                     </div>
                   </div>
                   <div className="overflow-x-auto border rounded-lg max-h-72 overflow-y-auto">
@@ -289,7 +303,7 @@ export default function AssetsPage() {
           <DialogHeader><DialogTitle>Add Asset</DialogTitle></DialogHeader>
           <div className="grid grid-cols-2 gap-2">
             <Input placeholder="Name" value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))} className="h-9 col-span-2" data-testid="asset-name-input" />
-            <Select value={form.category} onValueChange={v => setForm(p => ({ ...p, category: v }))}><SelectTrigger className="h-9" data-testid="asset-category-input"><SelectValue /></SelectTrigger><SelectContent>{CATEGORIES.map(c => <SelectItem key={c} value={c}>{c.replace(/_/g, ' ')}</SelectItem>)}</SelectContent></Select>
+            <Select value={form.category} onValueChange={v => setForm(p => ({ ...p, category: v }))}><SelectTrigger className="h-9" data-testid="asset-category-input"><SelectValue /></SelectTrigger><SelectContent>{categories.map(c => <SelectItem key={c} value={c}>{c.replace(/_/g, ' ')}</SelectItem>)}</SelectContent></Select>
             <Input placeholder="Make" value={form.make} onChange={e => setForm(p => ({ ...p, make: e.target.value }))} className="h-9" />
             <Input placeholder="Model" value={form.model} onChange={e => setForm(p => ({ ...p, model: e.target.value }))} className="h-9" />
             <Input placeholder="Serial Number" value={form.serial_number} onChange={e => setForm(p => ({ ...p, serial_number: e.target.value }))} className="h-9" />

@@ -14,7 +14,7 @@ import autoTable from 'jspdf-autotable';
 
 const CURRENCY = (v) => `Rs. ${(v || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}`;
 
-export function generateGstInvoicePDF(invoice, companyProfile) {
+export function generateGstInvoicePDF(invoice, companyProfile, format = 'list') {
   const doc = new jsPDF();
   const pageW = doc.internal.pageSize.getWidth();
   const m = 14;
@@ -61,20 +61,48 @@ export function generateGstInvoicePDF(invoice, companyProfile) {
   doc.text(`Place of Supply: ${invoice.place_of_supply}`, m, y);
   y += 6;
 
-  // ============ Line items ============
-  const body = (invoice.line_items || []).map((li, i) => [
-    i + 1, li.description, li.hsn_sac || '—', li.quantity, CURRENCY(li.unit_price),
-    CURRENCY(li.taxable_value), `${li.gst_pct}%`,
-    invoice.total_igst > 0 ? CURRENCY(li.igst) : CURRENCY(li.cgst + li.sgst),
-  ]);
+  // ============ Line items — List (per line) or Combined (rolled up per GST rate slab) ============
+  let body, head;
+  if (format === 'combined') {
+    const byRate = new Map();
+    (invoice.line_items || []).forEach((li) => {
+      const key = li.gst_pct;
+      const g = byRate.get(key) || { gst_pct: key, taxable_value: 0, cgst: 0, sgst: 0, igst: 0 };
+      g.taxable_value += li.taxable_value; g.cgst += li.cgst; g.sgst += li.sgst; g.igst += li.igst;
+      byRate.set(key, g);
+    });
+    body = [...byRate.values()].sort((a, b) => a.gst_pct - b.gst_pct).map((g) => [
+      `Goods/Services taxed @ ${g.gst_pct}%`, CURRENCY(g.taxable_value), `${g.gst_pct}%`,
+      invoice.total_igst > 0 ? CURRENCY(g.igst) : CURRENCY(g.cgst + g.sgst),
+    ]);
+    head = [['Description', 'Taxable Value', 'GST%', invoice.total_igst > 0 ? 'IGST' : 'CGST+SGST']];
+  } else {
+    body = (invoice.line_items || []).map((li, i) => [
+      i + 1, li.description, li.hsn_sac || '—', li.quantity, CURRENCY(li.unit_price),
+      CURRENCY(li.taxable_value), `${li.gst_pct}%`,
+      invoice.total_igst > 0 ? CURRENCY(li.igst) : CURRENCY(li.cgst + li.sgst),
+    ]);
+    head = [['#', 'Description', 'HSN/SAC', 'Qty', 'Unit Price', 'Taxable Value', 'GST%', invoice.total_igst > 0 ? 'IGST' : 'CGST+SGST']];
+  }
   autoTable(doc, {
     startY: y, margin: { left: m, right: m }, theme: 'grid',
     styles: { fontSize: 8, cellPadding: 2.5 },
     headStyles: { fillColor: pRgb, textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 8 },
-    head: [['#', 'Description', 'HSN/SAC', 'Qty', 'Unit Price', 'Taxable Value', 'GST%', invoice.total_igst > 0 ? 'IGST' : 'CGST+SGST']],
-    body,
+    head, body,
   });
   y = doc.lastAutoTable.finalY + 4;
+
+  // Combined format still discloses every HSN/SAC covered — consolidation changes
+  // presentation, not the tax information disclosed (compliance requirement).
+  if (format === 'combined') {
+    const hsnList = [...new Set((invoice.line_items || []).map(li => li.hsn_sac).filter(Boolean))];
+    if (hsnList.length) {
+      doc.setFont('helvetica', 'italic'); doc.setFontSize(8); doc.setTextColor(80, 80, 80);
+      const hsnLines = doc.splitTextToSize(`HSN/SAC Codes Covered: ${hsnList.join(', ')}`, pageW - 2 * m);
+      hsnLines.forEach(l => { doc.text(l, m, y); y += 4; });
+      y += 3;
+    }
+  }
 
   // ============ Totals ============
   const totalRows = [['Total Taxable Value', CURRENCY(invoice.total_taxable_value)]];
@@ -110,5 +138,5 @@ export function generateGstInvoicePDF(invoice, companyProfile) {
   doc.text(invoice.company?.authorized_signatory || 'Authorized Signatory', pageW - m, y, { align: 'right' }); y += 4.5;
   if (invoice.company?.designation) { doc.text(invoice.company.designation, pageW - m, y, { align: 'right' }); }
 
-  doc.save(`TaxInvoice_${invoice.invoice_number}.pdf`);
+  doc.save(`TaxInvoice_${invoice.invoice_number}${format === 'combined' ? '_Combined' : ''}.pdf`);
 }

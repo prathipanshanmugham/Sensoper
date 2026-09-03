@@ -262,6 +262,7 @@ class InventoryItemCreate(BaseModel):
     procurement_date: Optional[str] = None
     addon_group: Optional[str] = None                # Iter 44 Change 3 — links to addon_groups collection
     location_id: Optional[str] = None
+    specs: Dict[str, Any] = {}                        # Iter 45 — electrical specs (wattage_w, voc, rated_kw, ...) for calculator use
 
 class InventoryItemUpdate(BaseModel):
     name: Optional[str] = None
@@ -284,6 +285,7 @@ class InventoryItemUpdate(BaseModel):
     procurement_date: Optional[str] = None
     addon_group: Optional[str] = None                # Iter 44 Change 3
     location_id: Optional[str] = None
+    specs: Optional[Dict[str, Any]] = None            # Iter 45
 
 class InventoryCategoryCreate(BaseModel):
     name: str
@@ -1578,6 +1580,7 @@ async def get_inventory_items(
             "category": item["category"],
             "location_id": item.get("location_id"),
             "addon_group": item.get("addon_group"),
+            "specs": item.get("specs", {}),
             "zone": item.get("zone", ""),
             "aisle": item.get("aisle", ""),
             "shelf": item.get("shelf", ""),
@@ -1628,6 +1631,7 @@ async def get_inventory_item(item_id: str, request: Request):
         "category": item["category"],
         "location_id": item.get("location_id"),
         "addon_group": item.get("addon_group"),
+        "specs": item.get("specs", {}),
         "zone": item.get("zone", ""),
         "aisle": item.get("aisle", ""),
         "shelf": item.get("shelf", ""),
@@ -1690,6 +1694,7 @@ async def create_inventory_item(item: InventoryItemCreate, request: Request):
         "procurement_date": item.procurement_date,
         "location_id": item.location_id or None,
         "addon_group": item.addon_group,
+        "specs": item.specs or {},
         "created_at": datetime.now(timezone.utc).isoformat(),
         "updated_at": datetime.now(timezone.utc).isoformat()
     }
@@ -1745,6 +1750,8 @@ async def update_inventory_item(item_id: str, updates: InventoryItemUpdate, requ
         update_data["location_id"] = updates.location_id or None
     if updates.addon_group is not None:
         update_data["addon_group"] = updates.addon_group
+    if updates.specs is not None:
+        update_data["specs"] = updates.specs
     if updates.unit_price is not None:
         update_data["unit_price"] = updates.unit_price
     if updates.supplier is not None:
@@ -2774,28 +2781,29 @@ async def calc_solution(payload: CalculateSolutionRequest, request: Request):
 
 @api_router.post("/calculate/pump/string-voltage")
 async def validate_pump_string_voltage(payload: Dict[str, Any], request: Request):
-    """Iter 44 Phase 2 — validate a pump string design against controller MPPT + absolute-max limits
-    using per-DISCOM/pincode admin-configurable low-temp reference.
-    """
+    """Iter 45 — validates a pump string design against controller MPPT + absolute-max
+    limits using per-DISCOM/pincode admin-configurable low-temp reference. Reads pump and
+    panel specs from inventory_items.specs (catalogue collections were removed — this is
+    now the single source of truth for both pricing and string-design specs)."""
     await get_current_user(request)
     from calculators.working import validate_string_voltage
 
-    pump_id = payload.get("pump_product_id")
-    panel_id = payload.get("panel_product_id")
+    pump_item_id = payload.get("pump_item_id") or payload.get("pump_product_id")
+    panel_item_id = payload.get("panel_item_id") or payload.get("panel_product_id")
     modules_in_series = int(payload.get("modules_in_series") or 0)
     strings_in_parallel = int(payload.get("strings_in_parallel") or 1)
     pincode = payload.get("pincode")
 
-    if not (pump_id and panel_id):
-        raise HTTPException(400, "pump_product_id and panel_product_id are required")
+    if not (pump_item_id and panel_item_id):
+        raise HTTPException(400, "pump_item_id and panel_item_id are required")
 
     try:
-        pump = await db.pump_products.find_one({"_id": ObjectId(pump_id)})
-        panel = await db.panel_products.find_one({"_id": ObjectId(panel_id)})
+        pump_item = await db.inventory_items.find_one({"_id": ObjectId(pump_item_id)})
+        panel_item = await db.inventory_items.find_one({"_id": ObjectId(panel_item_id)})
     except Exception:
-        raise HTTPException(400, "invalid product id(s)")
-    if not (pump and panel):
-        raise HTTPException(404, "pump or panel not found in catalogue")
+        raise HTTPException(400, "invalid item id(s)")
+    if not (pump_item and panel_item):
+        raise HTTPException(404, "pump or panel item not found in inventory")
 
     # Resolve low-temp reference: per-pincode override > global default (from pricing_config)
     site_tmin = None
@@ -2808,7 +2816,7 @@ async def validate_pump_string_voltage(payload: Dict[str, Any], request: Request
         site_tmin = float(pc.get("string_low_temp_default_c", -10))
 
     return validate_string_voltage(
-        pump_product=pump, panel_product=panel,
+        pump_product=pump_item.get("specs", {}), panel_product=panel_item.get("specs", {}),
         modules_in_series=modules_in_series, strings_in_parallel=strings_in_parallel,
         site_min_temp_c=site_tmin,
     )
@@ -4155,12 +4163,13 @@ async def get_dashboard_stats(request: Request):
 # ================== CEO DASHBOARD ==================
 
 @api_router.get("/dashboard/ceo")
-async def get_ceo_dashboard(request: Request):
+async def get_ceo_dashboard(request: Request, location_id: Optional[str] = None):
     user = await get_current_user(request)
     if user["role"] not in ["admin", "manager"]:
         raise HTTPException(status_code=403, detail="CEO dashboard is admin/manager only")
     
-    query = {"deleted_at": {"$exists": False}}
+    loc_filter = location_scope_filter(user, location_id)
+    query = {"deleted_at": {"$exists": False}, **loc_filter}
     all_projects = await db.projects.find(query).to_list(5000)
     
     # Status counts
@@ -4223,7 +4232,7 @@ async def get_ceo_dashboard(request: Request):
     top_staff = sorted(staff_perf.values(), key=lambda x: x["revenue"], reverse=True)[:5]
     
     # Inventory value
-    inv_items = await db.inventory_items.find().to_list(1000)
+    inv_items = await db.inventory_items.find(loc_filter).to_list(1000)
     inventory_value = sum(i.get("unit_price", 0) * i.get("quantity", 0) for i in inv_items)
     low_stock = sum(1 for i in inv_items if i.get("quantity", 0) <= i.get("reorder_level", 5))
     
@@ -4571,12 +4580,13 @@ async def _get_filtered_projects(query_base, date_from, date_to, system_type, st
     return await db.projects.find(query).to_list(5000)
 
 @api_router.get("/reports/{report_type}")
-async def get_report(report_type: str, request: Request, date_from: str = None, date_to: str = None, system_type: str = None, status: str = None, project_id: str = None, tab: str = None, movement_type: str = None):
+async def get_report(report_type: str, request: Request, date_from: str = None, date_to: str = None, system_type: str = None, status: str = None, project_id: str = None, tab: str = None, movement_type: str = None, location_id: str = None):
     user = await get_current_user(request)
     if user["role"] not in ["admin", "manager"]:
         raise HTTPException(status_code=403, detail="Reports are admin/manager only")
-    projects = await _get_filtered_projects({}, date_from, date_to, system_type, status, None, None, project_id)
-    inv_items = await db.inventory_items.find().to_list(1000)
+    loc_filter = location_scope_filter(user, location_id)
+    projects = await _get_filtered_projects(loc_filter, date_from, date_to, system_type, status, None, None, project_id)
+    inv_items = await db.inventory_items.find(loc_filter).to_list(1000)
     from collections import defaultdict, Counter
 
     # === 1. SALES & REVENUE ===
@@ -4799,7 +4809,7 @@ async def get_report(report_type: str, request: Request, date_from: str = None, 
 
     # === 9. INBOUND REPORT ===
     elif report_type == "inbound":
-        pos = await db.purchase_orders.find().sort("created_at", -1).to_list(500)
+        pos = await db.purchase_orders.find(loc_filter).sort("created_at", -1).to_list(500)
         rows = []
         for po in pos:
             po_id = str(po["_id"])
@@ -4813,7 +4823,7 @@ async def get_report(report_type: str, request: Request, date_from: str = None, 
 
     # === 10. OUTBOUND REPORT ===
     elif report_type == "outbound":
-        dels = await db.deliveries.find().sort("created_at", -1).to_list(500)
+        dels = await db.deliveries.find(loc_filter).sort("created_at", -1).to_list(500)
         rows = [{"customer": d.get("customer_name",""), "items_count": len(d.get("items",[])), "transporter": d.get("transporter_name","N/A"), "vehicle": d.get("vehicle_number","N/A"), "distance_km": d.get("distance_km",0), "dispatch": d.get("dispatch_date",""), "delivery": d.get("delivery_date",""), "status": d.get("status","")} for d in dels]
         chart_data = [{"name": "Dispatched", "value": sum(1 for r in rows if r["status"]=="dispatched")}, {"name": "Delivered", "value": sum(1 for r in rows if r["status"]=="delivered")}]
         return {"title": "Outbound Report", "summary": {"total_deliveries": len(rows), "delivered": sum(1 for r in rows if r["status"]=="delivered"), "total_distance": sum(r["distance_km"] for r in rows)}, "rows": rows, "chart_data": [c for c in chart_data if c["value"]>0]}
@@ -4876,7 +4886,7 @@ async def get_report(report_type: str, request: Request, date_from: str = None, 
 
     # === 14. AMC REPORT (Iter 43 Change 4) ===
     elif report_type == "amc":
-        contracts = await db.amc_contracts.find({}).to_list(2000)
+        contracts = await db.amc_contracts.find(loc_filter).to_list(2000)
         active = [c for c in contracts if c.get("status") == "active"]
         arr = sum(c.get("annual_value", 0) or 0 for c in active)
         outstanding = sum(c.get("outstanding", 0) or 0 for c in contracts)
@@ -4900,7 +4910,7 @@ async def get_report(report_type: str, request: Request, date_from: str = None, 
 
     # === 15. ASSETS REPORT (Iter 43 Change 4) ===
     elif report_type == "assets":
-        assets_docs = await db.assets.find({"active": {"$ne": False}}).to_list(2000)
+        assets_docs = await db.assets.find({"active": {"$ne": False}, **loc_filter}).to_list(2000)
         by_status: Dict[str, int] = {}
         total_book_value = 0.0
         for a in assets_docs:
@@ -4920,8 +4930,6 @@ async def get_report(report_type: str, request: Request, date_from: str = None, 
         rows = [{"asset_code": a.get("asset_code"), "name": a.get("name"), "category": a.get("category"),
                  "status": a.get("status"), "assigned_to": a.get("assigned_to_name") or "-",
                  "purchase_cost": round(a.get("purchase_cost", 0) or 0, 2)} for a in assets_docs]
-        if not rows:
-            rows = [{"asset_code": "-", "name": "-", "category": "-", "status": "No data yet", "assigned_to": "-", "purchase_cost": 0}]
         chart_data = [{"name": k.replace("_", " ").title(), "value": v} for k, v in by_status.items()]
         return {"title": "Assets Register Report", "summary": {
             "total_assets": len(assets_docs), "total_book_value": round(total_book_value, 2),
@@ -4931,7 +4939,7 @@ async def get_report(report_type: str, request: Request, date_from: str = None, 
     # === 16. TOOLS REPORT (Iter 43 Change 4) — tool/equipment subset with utilisation ===
     elif report_type == "tools":
         tool_categories = {"power_tool", "hand_tool", "test_equipment"}
-        tools_docs = await db.assets.find({"active": {"$ne": False}, "category": {"$in": list(tool_categories)}}).to_list(2000)
+        tools_docs = await db.assets.find({"active": {"$ne": False}, "category": {"$in": list(tool_categories)}, **loc_filter}).to_list(2000)
         tool_ids = [str(t["_id"]) for t in tools_docs]
         maint_docs = await db.asset_maintenance.find({"asset_id": {"$in": tool_ids}}).to_list(5000) if tool_ids else []
         maint_cost_by_tool: Dict[str, float] = {}
@@ -6633,6 +6641,8 @@ async def startup_event():
         {"name": "Batteries", "slug": "batteries", "description": "Battery storage systems"},
         {"name": "Mounting Structures", "slug": "mounting_structures", "description": "Panel mounting and racking"},
         {"name": "Cables & Accessories", "slug": "cables_accessories", "description": "Wiring, connectors, and accessories"},
+        {"name": "Pumps", "slug": "pumps", "description": "Solar pumps and pump controllers"},
+        {"name": "BOS", "slug": "bos", "description": "Balance of system — DCDB/ACDB, earthing, lightning arrestors, connectors"},
     ]
     for cat in default_categories:
         existing_cat = await db.inventory_categories.find_one({"slug": cat["slug"]})

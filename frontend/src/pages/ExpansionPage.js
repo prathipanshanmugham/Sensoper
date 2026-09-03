@@ -16,11 +16,14 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   PieChart, Pie, LineChart, Line, ScatterChart, Scatter, ZAxis, Legend
 } from 'recharts';
-import {
-  Loader2, ArrowLeft, MapPin, TrendingUp, AlertTriangle, Plus, Trash2, Calculator,
-  Layers, Info, Building2, Zap, Sun, PieChart as PieIcon, Activity, Pencil
+import { Loader2, ArrowLeft, MapPin, TrendingUp, AlertTriangle, Plus, Trash2, Calculator,
+  Layers, Info, Building2, Zap, Sun, PieChart as PieIcon, Activity, Pencil, FileText, FileSpreadsheet
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
+import * as XLSX from 'xlsx';
+import { saveAs } from 'file-saver';
 
 const BAND_STYLES = {
   strong:   { color: 'text-emerald-700', bg: 'bg-emerald-100 border-emerald-200', label: 'Strong Case' },
@@ -360,6 +363,27 @@ export default function ExpansionPage() {
 
   const meta = (b) => BAND_STYLES[b] || BAND_STYLES.no_case;
 
+  const exportDistrictsPDF = () => {
+    if (!filteredDistricts.length) return;
+    const doc = new jsPDF({ orientation: 'landscape' });
+    doc.setFontSize(16); doc.text('Expansion Analysis — Ranked Opportunities', 14, 16);
+    doc.setFontSize(9); doc.setTextColor(100, 116, 139); doc.text('Location: All Locations — Consolidated', 14, 22);
+    const cols = ['district', 'state', 'score', 'projects', 'revenue', 'margin_pct'];
+    const body = filteredDistricts.map(d => [d.district, d.state || '-', d.score.toFixed(1), d.metrics.projects, d.metrics.revenue, `${d.metrics.margin_pct}%`]);
+    autoTable(doc, { startY: 28, head: [['District', 'State', 'Score', 'Projects', 'Revenue', 'Margin']], body, theme: 'striped', headStyles: { fillColor: [16, 185, 129] } });
+    doc.save(`Expansion_Districts_${new Date().toISOString().slice(0, 10)}.pdf`);
+  };
+  const exportDistrictsExcel = () => {
+    if (!filteredDistricts.length) return;
+    const wb = XLSX.utils.book_new();
+    const ws0 = XLSX.utils.aoa_to_sheet([['Expansion Analysis — Ranked Opportunities'], ['Location: All Locations — Consolidated']]);
+    XLSX.utils.book_append_sheet(wb, ws0, 'Info');
+    const ws = XLSX.utils.json_to_sheet(filteredDistricts.map(d => ({ District: d.district, State: d.state || '-', Score: d.score, Projects: d.metrics.projects, Revenue: d.metrics.revenue, 'Margin %': d.metrics.margin_pct })));
+    XLSX.utils.book_append_sheet(wb, ws, 'Districts');
+    const buf = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+    saveAs(new Blob([buf], { type: 'application/octet-stream' }), `Expansion_Districts_${new Date().toISOString().slice(0, 10)}.xlsx`);
+  };
+
   return (
     <div className="min-h-screen bg-slate-50 py-6 px-4">
       <div className="max-w-6xl mx-auto">
@@ -416,7 +440,13 @@ export default function ExpansionPage() {
 
             {/* Opportunity table */}
             <Card className="border-slate-200" data-testid="expansion-table">
-              <CardHeader className="pb-3"><CardTitle className="text-base font-['Outfit']">Ranked Opportunities</CardTitle></CardHeader>
+              <CardHeader className="pb-3 flex-row items-center justify-between">
+                <CardTitle className="text-base font-['Outfit']">Ranked Opportunities</CardTitle>
+                <div className="flex gap-2">
+                  <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={exportDistrictsPDF} disabled={!filteredDistricts.length} data-testid="expansion-export-pdf-btn"><FileText className="h-3 w-3" />PDF</Button>
+                  <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={exportDistrictsExcel} disabled={!filteredDistricts.length} data-testid="expansion-export-excel-btn"><FileSpreadsheet className="h-3 w-3" />Excel</Button>
+                </div>
+              </CardHeader>
               <CardContent className="p-0 overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead className="text-[10px] uppercase tracking-wider text-slate-500 bg-slate-50">

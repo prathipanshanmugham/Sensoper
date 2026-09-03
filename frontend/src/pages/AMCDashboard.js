@@ -1,14 +1,19 @@
 import { useState, useEffect, useCallback } from 'react';
 import { amcAPI, projectsAPI } from '../utils/api';
 import { useAuth } from '../contexts/AuthContext';
+import { useLocationScope, LocationScopeSelect } from '../components/LocationScope';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../components/ui/dialog';
-import { Loader2, RefreshCw, Plus, IndianRupee, Zap, Users, TrendingUp, CalendarClock, Sparkles } from 'lucide-react';
+import { Loader2, RefreshCw, Plus, IndianRupee, Zap, Users, TrendingUp, CalendarClock, Sparkles, FileText, FileSpreadsheet } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
+import * as XLSX from 'xlsx';
+import { saveAs } from 'file-saver';
 
 const STATUS_STYLES = { active: 'bg-emerald-100 text-emerald-700', expiring: 'bg-amber-100 text-amber-700', expired: 'bg-rose-100 text-rose-700', renewed: 'bg-blue-100 text-blue-700', cancelled: 'bg-slate-200 text-slate-600', 'on-hold': 'bg-violet-100 text-violet-700' };
 
@@ -25,6 +30,7 @@ function KpiCard({ label, value, icon: Icon, testid }) {
 
 export default function AMCDashboard() {
   const { isAdmin, isManager } = useAuth();
+  const locScope = useLocationScope('amc_location_scope');
   const canManage = isAdmin || isManager;
   const [dashboard, setDashboard] = useState(null);
   const [contracts, setContracts] = useState([]);
@@ -41,14 +47,35 @@ export default function AMCDashboard() {
 
   const fetchAll = useCallback(async () => {
     try {
-      const [d, c] = await Promise.all([amcAPI.dashboard(), amcAPI.list(statusFilter !== 'all' ? { status: statusFilter } : {})]);
+      const locParams = locScope.locationId ? { location_id: locScope.locationId } : {};
+      const [d, c] = await Promise.all([amcAPI.dashboard(locParams), amcAPI.list({ ...(statusFilter !== 'all' ? { status: statusFilter } : {}), ...locParams })]);
       setDashboard(d.data); setContracts(c.data);
     } catch (e) { console.error(e); } finally { setLoading(false); }
-  }, [statusFilter]);
+  }, [statusFilter, locScope.locationId]);
   useEffect(() => { fetchAll(); }, [fetchAll]);
 
-  const fetchRevenueReport = async () => { try { const r = await amcAPI.recurringRevenueReport(); setRevenueReport(r.data); } catch (e) { console.error(e); } };
-  useEffect(() => { if (tab === 'revenue') fetchRevenueReport(); }, [tab]);
+  const fetchRevenueReport = async () => { try { const r = await amcAPI.recurringRevenueReport(locScope.locationId ? { location_id: locScope.locationId } : {}); setRevenueReport(r.data); } catch (e) { console.error(e); } };
+  useEffect(() => { if (tab === 'revenue') fetchRevenueReport(); }, [tab, locScope.locationId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const exportRevenuePDF = () => {
+    if (!revenueReport) return;
+    const doc = new jsPDF({ orientation: 'landscape' });
+    doc.setFontSize(16); doc.text(revenueReport.title, 14, 16);
+    doc.setFontSize(9); doc.setTextColor(100, 116, 139); doc.text(`Location: ${locScope.locationLabel}`, 14, 22);
+    const cols = ['contract_number', 'customer', 'annual_value', 'status', 'end_date', 'outstanding'];
+    autoTable(doc, { startY: 28, head: [cols.map(c => c.replace(/_/g, ' '))], body: revenueReport.rows.map(r => cols.map(c => r[c])), theme: 'striped', headStyles: { fillColor: [16, 185, 129] } });
+    doc.save(`AMC_Recurring_Revenue_${new Date().toISOString().slice(0, 10)}.pdf`);
+  };
+  const exportRevenueExcel = () => {
+    if (!revenueReport?.rows?.length) return;
+    const wb = XLSX.utils.book_new();
+    const ws0 = XLSX.utils.aoa_to_sheet([[revenueReport.title], [`Location: ${locScope.locationLabel}`]]);
+    XLSX.utils.book_append_sheet(wb, ws0, 'Info');
+    const ws = XLSX.utils.json_to_sheet(revenueReport.rows);
+    XLSX.utils.book_append_sheet(wb, ws, 'Data');
+    const buf = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+    saveAs(new Blob([buf], { type: 'application/octet-stream' }), `AMC_Recurring_Revenue_${new Date().toISOString().slice(0, 10)}.xlsx`);
+  };
 
   const openFromProject = async () => {
     setShowFromProject(true);
@@ -86,7 +113,8 @@ export default function AMCDashboard() {
             <p className="text-sm text-slate-500">Recurring maintenance revenue — tracked separately from project revenue</p>
           </div>
           {canManage && (
-            <div className="flex gap-2">
+            <div className="flex gap-2 items-end">
+              <div className="w-44"><LocationScopeSelect scope={locScope} testIdPrefix="amc-location" /></div>
               <Button variant="outline" onClick={openFromProject} className="gap-1.5" data-testid="create-amc-from-project-btn"><Sparkles className="h-4 w-4" />From Completed Project</Button>
               <Button onClick={() => setShowCreate(true)} className="bg-emerald-600 hover:bg-emerald-700 text-white gap-1.5" data-testid="add-amc-btn"><Plus className="h-4 w-4" />New Contract</Button>
             </div>
@@ -163,7 +191,13 @@ export default function AMCDashboard() {
 
         {tab === 'revenue' && revenueReport && (
           <Card className="border-slate-200" data-testid="amc-revenue-report">
-            <CardHeader className="py-3"><CardTitle className="text-sm font-['Outfit']">Recurring Revenue Report</CardTitle></CardHeader>
+            <CardHeader className="py-3 flex-row items-center justify-between">
+              <CardTitle className="text-sm font-['Outfit']">Recurring Revenue Report</CardTitle>
+              <div className="flex gap-2">
+                <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={exportRevenuePDF} disabled={!revenueReport.rows?.length} data-testid="amc-export-pdf-btn"><FileText className="h-3 w-3" />PDF</Button>
+                <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={exportRevenueExcel} disabled={!revenueReport.rows?.length} data-testid="amc-export-excel-btn"><FileSpreadsheet className="h-3 w-3" />Excel</Button>
+              </div>
+            </CardHeader>
             <CardContent className="space-y-3">
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 {Object.entries(revenueReport.summary).map(([k, v]) => (
@@ -174,7 +208,7 @@ export default function AMCDashboard() {
                 <table className="w-full text-xs">
                   <thead className="bg-slate-50"><tr><th className="text-left p-2">Contract</th><th className="text-left p-2">Customer</th><th className="text-right p-2">Annual Value</th><th className="text-left p-2">Status</th><th className="text-right p-2">Outstanding</th></tr></thead>
                   <tbody className="divide-y divide-slate-100">
-                    {revenueReport.rows.map((r, i) => <tr key={i}><td className="p-2">{r.contract_number}</td><td className="p-2">{r.customer}</td><td className="p-2 text-right">₹{(r.annual_value || 0).toLocaleString('en-IN')}</td><td className="p-2">{r.status}</td><td className="p-2 text-right">₹{(r.outstanding || 0).toLocaleString('en-IN')}</td></tr>)}
+                    {revenueReport.rows.map((r, i) => <tr key={r.id || i}><td className="p-2">{r.contract_number}</td><td className="p-2">{r.customer}</td><td className="p-2 text-right">₹{(r.annual_value || 0).toLocaleString('en-IN')}</td><td className="p-2">{r.status}</td><td className="p-2 text-right">₹{(r.outstanding || 0).toLocaleString('en-IN')}</td></tr>)}
                   </tbody>
                 </table>
               </div>

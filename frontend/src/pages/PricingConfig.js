@@ -13,99 +13,10 @@ import { Checkbox } from '../components/ui/checkbox';
 import AdvancedConfigSection from '../components/AdvancedConfigSection';
 import {
   ArrowLeft, Save, Loader2, Plus, Trash2, Edit, Upload,
-  Sun, Zap, Battery, Droplet, Wrench, Settings2, Fuel, Sprout
+  Settings2, Fuel, Sprout
 } from 'lucide-react';
 
 const CAT_META = {
-  panel:     { icon: Sun,      label: 'Panels',           color: 'amber',   fields: [
-    { key: 'make', label: 'Make', required: true },
-    { key: 'model', label: 'Model', required: true },
-    { key: 'wattage', label: 'Wattage (W)', type: 'number', required: true },
-    { key: 'technology', label: 'Technology', type: 'select', opts: ['Mono PERC', 'TOPCon', 'HJT', 'Bifacial', 'Poly'] },
-    { key: 'efficiency_pct', label: 'Efficiency (%)', type: 'number' },
-    { key: 'voc', label: 'Voc (V)', type: 'number' },
-    { key: 'vmp', label: 'Vmp (V)', type: 'number' },
-    { key: 'isc', label: 'Isc (A)', type: 'number' },
-    { key: 'imp', label: 'Imp (A)', type: 'number' },
-    { key: 'temp_coefficient_voc', label: 'Voc Temp Coef (%/°C)', type: 'number', hint: 'Typical −0.29 for Si' },
-    { key: 'area_sqft', label: 'Area (sq ft)', type: 'number' },
-    { key: 'purchase_price', label: 'Purchase ₹', type: 'number' },
-    { key: 'selling_price', label: 'Selling ₹', type: 'number' },
-    { key: 'margin_pct', label: 'Margin %', type: 'number' },
-    { key: 'tier', label: 'Tier', type: 'select', opts: ['Tier 1', 'Tier 2', 'Tier 3'] },
-    { key: 'is_dcr', label: 'DCR Compliant', type: 'bool' },
-    { key: 'warranty_product_years', label: 'Product Wty (yr)', type: 'number' },
-    { key: 'warranty_performance_years', label: 'Perf Wty (yr)', type: 'number' },
-    { key: 'supplier', label: 'Supplier' },
-  ], summary: (p) => `${p.wattage}W · ${p.technology} · ₹${p.price_per_watt || (p.purchase_price / (p.wattage || 1)).toFixed(2)}/W` },
-  inverter:  { icon: Zap,      label: 'Inverters',        color: 'blue', fields: [
-    { key: 'make', label: 'Make', required: true },
-    { key: 'model', label: 'Model', required: true },
-    { key: 'type', label: 'Type', type: 'select', opts: ['on-grid', 'off-grid', 'hybrid', 'pump_drive'] },
-    { key: 'rated_kw', label: 'Rated kW', type: 'number', required: true },
-    { key: 'max_dc_input_kw', label: 'Max DC Input kW', type: 'number' },
-    { key: 'mppt_count', label: 'MPPT Count', type: 'number' },
-    { key: 'mppt_voltage_min', label: 'MPPT V min', type: 'number' },
-    { key: 'mppt_voltage_max', label: 'MPPT V max', type: 'number' },
-    { key: 'max_input_voltage', label: 'Max Input V (Voc-Tmin limit)', type: 'number', hint: 'Critical for string design' },
-    { key: 'output_phase', label: 'Output Phase', type: 'select', opts: ['single', 'three'] },
-    { key: 'battery_compatible', label: 'Battery Compatible', type: 'bool' },
-    { key: 'efficiency_pct', label: 'Efficiency %', type: 'number' },
-    { key: 'purchase_price', label: 'Purchase ₹', type: 'number' },
-    { key: 'selling_price', label: 'Selling ₹', type: 'number' },
-    { key: 'margin_pct', label: 'Margin %', type: 'number' },
-    { key: 'warranty_years', label: 'Warranty (yr)', type: 'number' },
-    { key: 'supplier', label: 'Supplier' },
-  ], summary: (p) => `${p.rated_kw}kW ${p.type} · ${p.mppt_count} MPPT · ₹${(p.purchase_price || 0).toLocaleString('en-IN')}` },
-  battery:   { icon: Battery,  label: 'Batteries',        color: 'green', fields: [
-    { key: 'make', label: 'Make', required: true },
-    { key: 'model', label: 'Model', required: true },
-    { key: 'chemistry', label: 'Chemistry', type: 'select', opts: ['LiFePO4', 'Li-ion', 'Tubular', 'Gel'] },
-    { key: 'capacity_ah', label: 'Ah', type: 'number', required: true },
-    { key: 'voltage', label: 'Voltage', type: 'number' },
-    { key: 'dod_pct', label: 'DoD %', type: 'number' },
-    { key: 'cycles', label: 'Cycles', type: 'number' },
-    { key: 'warranty_years', label: 'Warranty (yr)', type: 'number' },
-    { key: 'purchase_price', label: 'Purchase ₹', type: 'number' },
-    { key: 'selling_price', label: 'Selling ₹', type: 'number' },
-    { key: 'margin_pct', label: 'Margin %', type: 'number' },
-    { key: 'supplier', label: 'Supplier' },
-  ], summary: (p) => `${p.chemistry} · ${p.capacity_ah}Ah/${p.voltage}V · ₹${(p.purchase_price || 0).toLocaleString('en-IN')}` },
-  pump:      { icon: Droplet,  label: 'Pumps & Ctrl',    color: 'sky', fields: [
-    { key: 'make', label: 'Make', required: true },
-    { key: 'model', label: 'Model', required: true },
-    { key: 'hp', label: 'HP', type: 'number', required: true },
-    { key: 'voltage', label: 'Voltage', type: 'number' },
-    { key: 'phase', label: 'Phase', type: 'select', opts: ['single', 'three'] },
-    { key: 'ac_or_dc', label: 'AC/DC', type: 'select', opts: ['AC', 'DC'] },
-    { key: 'pump_type', label: 'Pump Type', type: 'select', opts: ['submersible', 'surface', 'openwell'] },
-    { key: 'body_diameter_mm', label: 'Body Ø (mm)', type: 'number' },
-    { key: 'min_bore_casing_mm', label: 'Min Casing Ø (mm)', type: 'number' },
-    { key: 'max_head_m', label: 'Max Head (m)', type: 'number' },
-    { key: 'max_discharge_lph', label: 'Max Discharge (LPH)', type: 'number' },
-    { key: 'controller_type', label: 'Controller', type: 'select', opts: ['MPPT', 'VFD'] },
-    { key: 'controller_input_v_min', label: 'Ctrl V min', type: 'number' },
-    { key: 'controller_input_v_max', label: 'Ctrl V max', type: 'number' },
-    { key: 'controller_input_v_absolute_max', label: 'Ctrl V abs max (Voc-Tmin limit)', type: 'number' },
-    { key: 'controller_input_current_max', label: 'Ctrl I max', type: 'number' },
-    { key: 'motor_efficiency_pct', label: 'Motor eff %', type: 'number' },
-    { key: 'pump_efficiency_pct', label: 'Pump eff %', type: 'number' },
-    { key: 'purchase_price', label: 'Purchase ₹', type: 'number' },
-    { key: 'selling_price', label: 'Selling ₹', type: 'number' },
-    { key: 'margin_pct', label: 'Margin %', type: 'number' },
-    { key: 'supplier', label: 'Supplier' },
-  ], summary: (p) => `${p.hp}HP ${p.ac_or_dc} · ${p.pump_type} · ${p.max_head_m}m/${p.max_discharge_lph}LPH · ₹${(p.purchase_price || 0).toLocaleString('en-IN')}` },
-  structure: { icon: Wrench,   label: 'Structure & BOS',  color: 'slate', fields: [
-    { key: 'name', label: 'Name', required: true },
-    { key: 'category', label: 'Category', type: 'select', opts: ['structure', 'cable', 'dcdb', 'acdb', 'earthing', 'la', 'connector'] },
-    { key: 'mounting_surface', label: 'Mounting', type: 'select', opts: ['roof', 'ground', 'pole'] },
-    { key: 'height_ft', label: 'Height (ft)', type: 'number' },
-    { key: 'material', label: 'Material' },
-    { key: 'unit', label: 'Unit', type: 'select', opts: ['per_kw', 'per_unit', 'per_meter'] },
-    { key: 'purchase_price', label: 'Price', type: 'number', required: true },
-    { key: 'margin_pct', label: 'Margin %', type: 'number' },
-    { key: 'supplier', label: 'Supplier' },
-  ], summary: (p) => `${p.name} · ${p.unit} · ₹${(p.purchase_price || 0).toLocaleString('en-IN')}` },
   service:   { icon: Settings2, label: 'Services & Rates', color: 'violet', fields: [
     { key: 'name', label: 'Service Name', required: true },
     { key: 'system_type_scope', label: 'System Scope', type: 'select', opts: ['any', 'on-grid', 'off-grid', 'hybrid', 'solar-pump'] },
@@ -124,10 +35,10 @@ const CAT_META = {
     { key: 'last_reviewed_date', label: 'Last reviewed', type: 'date' },
   ], summary: (p) => `${p.name} · ${p.energy_content_kwh_per_unit} kWh/${p.unit} · ${p.units_per_kwh?.toFixed(3) || '?'} ${p.unit}/kWh · ₹${p.default_price_per_unit}/${p.unit}` },
 };
-const CAT_ORDER = ['panel', 'inverter', 'battery', 'pump', 'structure', 'service', 'fuel'];
+const CAT_ORDER = ['service', 'fuel'];
 
 export default function PricingConfig() {
-  const [active, setActive] = useState('panel');
+  const [active, setActive] = useState('service');
   const [products, setProducts] = useState({});           // cat -> list
   const [loading, setLoading] = useState(true);
   const [showEditor, setShowEditor] = useState(false);
@@ -201,17 +112,17 @@ export default function PricingConfig() {
         <div className="flex items-center gap-3">
           <Link to="/dashboard/settings"><Button variant="ghost" size="icon"><ArrowLeft className="h-5 w-5" /></Button></Link>
           <div>
-            <h1 className="text-2xl font-bold font-['Outfit']">Pricing & Product Catalogue</h1>
-            <p className="text-sm text-slate-500">Per-product prices, string-design specs, fuel model, and calculator constants.</p>
+            <h1 className="text-2xl font-bold font-['Outfit']">Pricing & Config</h1>
+            <p className="text-sm text-slate-500">Service rates, fuel model, add-on groups and calculator constants. Panel/inverter/battery/pump/structure pricing lives on the <Link to="/dashboard/pricelist" className="underline">Pricelist</Link> tab now, backed directly by Inventory.</p>
           </div>
         </div>
         <Button onClick={seed} variant="outline" className="gap-1.5" data-testid="pricing-seed-btn">
-          <Sprout className="h-4 w-4" />Seed Generic Fallback
+          <Sprout className="h-4 w-4" />Seed Defaults
         </Button>
       </div>
 
       <Tabs value={active} onValueChange={setActive}>
-        <TabsList className="grid grid-cols-4 sm:grid-cols-8 h-auto p-1" data-testid="pricing-tabs">
+        <TabsList className="grid grid-cols-3 h-auto p-1" data-testid="pricing-tabs">
           {CAT_ORDER.map(cat => {
             const m = CAT_META[cat]; const Icon = m.icon;
             return (

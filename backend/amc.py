@@ -7,6 +7,7 @@ from bson import ObjectId
 from pymongo import ReturnDocument
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
+from locations import location_scope_filter
 
 BILLING_MONTHS = {"monthly": 1, "quarterly": 3, "half-yearly": 6, "annual": 12}
 
@@ -71,9 +72,10 @@ def create_router(db, get_current_user, require_role, create_audit_log):
 
     @router.get("/amc/contracts")
     async def list_contracts(request: Request, status: Optional[str] = None, system_type: Optional[str] = None,
-                              district: Optional[str] = None, search: Optional[str] = None):
-        await get_current_user(request)
-        query: Dict[str, Any] = {}
+                              district: Optional[str] = None, search: Optional[str] = None, location_id: Optional[str] = None):
+        user = await get_current_user(request)
+        loc_filter = location_scope_filter(user, location_id)
+        query: Dict[str, Any] = dict(loc_filter)
         if status: query["status"] = status
         if system_type: query["system_type"] = system_type
         if district: query["district"] = district
@@ -255,9 +257,10 @@ def create_router(db, get_current_user, require_role, create_audit_log):
 
     # ── Dashboard ──
     @router.get("/amc/dashboard")
-    async def amc_dashboard(request: Request):
-        await get_current_user(request)
-        contracts = await db.amc_contracts.find({}).to_list(5000)
+    async def amc_dashboard(request: Request, location_id: Optional[str] = None):
+        user = await get_current_user(request)
+        loc_filter = location_scope_filter(user, location_id)
+        contracts = await db.amc_contracts.find(loc_filter).to_list(5000)
         active = [c for c in contracts if c.get("status") == "active"]
         capacity_by_type: Dict[str, float] = {}
         pump_hp_total = 0.0
@@ -295,7 +298,7 @@ def create_router(db, get_current_user, require_role, create_audit_log):
             "status": "scheduled", "scheduled_date": {"$lt": today.isoformat()},
         })
 
-        commissioned_projects = await db.projects.count_documents({"status": "completed"})
+        commissioned_projects = await db.projects.count_documents({"status": "completed", **loc_filter})
         penetration_pct = round((len(active) / commissioned_projects) * 100, 1) if commissioned_projects else 0
 
         return {
@@ -309,9 +312,10 @@ def create_router(db, get_current_user, require_role, create_audit_log):
         }
 
     @router.get("/amc/recurring-revenue-report")
-    async def recurring_revenue_report(request: Request):
-        await require_role("admin", "manager")(request)
-        contracts = await db.amc_contracts.find({}).to_list(5000)
+    async def recurring_revenue_report(request: Request, location_id: Optional[str] = None):
+        user = await require_role("admin", "manager")(request)
+        loc_filter = location_scope_filter(user, location_id)
+        contracts = await db.amc_contracts.find(loc_filter).to_list(5000)
         active = [c for c in contracts if c.get("status") == "active"]
         arr = sum((c.get("annual_value", 0) or 0) for c in active)
         mrr = arr / 12

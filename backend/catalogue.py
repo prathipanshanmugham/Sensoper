@@ -1,17 +1,18 @@
 """
-Product Catalogue + Fuel Model (Iteration 44 — Phase 1)
-=========================================================
-Replaces the 9 flat pricing constants (panel_price_per_watt, inverter_price_per_kw, ...)
-with a real catalogue: panel_products, inverter_products, battery_products, pump_products,
-structure_products, service_rates + a fuel_types collection that generalises the diesel-only
-assumptions in ProposedSolutionSection.
+Product Catalogue (service rates + fuel model + addon groups) + Global Pricing Defaults
+=========================================================================================
+Iteration 45 correction: the earlier panel/inverter/battery/pump/structure product
+collections were removed — they duplicated pricing data that already lives on
+`inventory_items` (unit_price, margin_pct, gst_percentage, sku_code, hsn_code, category)
+and risked the two drifting apart. Real catalogue data was migrated into inventory_items
+(with a `specs` sub-object for the electrical fields the calculator needs) and the
+Pricelist tab now reads/writes inventory_items directly — see migrate_catalogue_to_inventory.py.
 
-Every product carries:
- * effective_from date for price versioning (a quote snapshots the price used, editing a
-   price later does not silently mutate old quotes)
- * per-product margin_pct (with global default fallback)
- * source_note + last_reviewed_date on constants so whoever updates a value records provenance
- * linked_inventory_item_id so pricing and stock stay one source of truth
+What remains here has no inventory_items equivalent:
+ * service_rates — labour/installation rates (not a physical stock item)
+ * fuel_types — energy-conversion assumptions used by pump ROI/diesel-offset math
+ * addon_groups — categorisation tags already linked from inventory_items.addon_group
+ * pricing_config — global engineering constants (GST%, kit rounding, yield assumptions)
 
 All routes are auth-guarded and admin-only for writes.
 """
@@ -31,141 +32,17 @@ router = APIRouter(prefix="/catalogue", tags=["catalogue"])
 # COLLECTIONS
 # ---------------------------------------------------------------------------
 COLLECTIONS = {
-    "panel":     "panel_products",
-    "inverter":  "inverter_products",
-    "battery":   "battery_products",
-    "pump":      "pump_products",
-    "structure": "structure_products",
     "service":   "service_rates",
     "fuel":      "fuel_types",
     "history":   "price_history",
     "addon_group": "addon_groups",
 }
-CATEGORIES = ["panel", "inverter", "battery", "pump", "structure", "service"]
+CATEGORIES = ["service"]
 
 
 # ---------------------------------------------------------------------------
 # PYDANTIC MODELS
 # ---------------------------------------------------------------------------
-class PanelProduct(BaseModel):
-    make: str
-    model: str
-    wattage: float
-    technology: str = "Mono PERC"      # Mono PERC | TOPCon | HJT | Bifacial | Poly
-    cell_type: str = ""
-    efficiency_pct: Optional[float] = None
-    voc: Optional[float] = None
-    vmp: Optional[float] = None
-    isc: Optional[float] = None
-    imp: Optional[float] = None
-    temp_coefficient_voc: Optional[float] = -0.29   # %/°C, typical for silicon
-    dimensions_mm: Optional[str] = None
-    area_sqft: Optional[float] = None
-    weight_kg: Optional[float] = None
-    purchase_price: Optional[float] = None
-    price_per_watt: Optional[float] = None          # derived if purchase_price + wattage present
-    selling_price: Optional[float] = None
-    margin_pct: Optional[float] = None
-    warranty_product_years: int = 12
-    warranty_performance_years: int = 25
-    supplier: str = ""
-    lead_time_days: int = 15
-    tier: str = "Tier 2"                             # Tier 1 | Tier 2 | Tier 3
-    is_dcr: bool = False
-    active: bool = True
-    effective_from: Optional[str] = None
-    linked_inventory_item_id: Optional[str] = None
-
-class InverterProduct(BaseModel):
-    make: str
-    model: str
-    type: str = "on-grid"                            # on-grid | off-grid | hybrid | pump_drive
-    rated_kw: float
-    max_dc_input_kw: Optional[float] = None
-    mppt_count: int = 1
-    mppt_voltage_min: Optional[float] = None
-    mppt_voltage_max: Optional[float] = None
-    max_input_voltage: Optional[float] = None        # Voc-at-Tmin limit
-    max_input_current_per_mppt: Optional[float] = None
-    output_phase: str = "single"                     # single | three
-    output_voltage: int = 230
-    battery_compatible: bool = False
-    battery_voltage: Optional[float] = None
-    efficiency_pct: float = 96.0
-    purchase_price: Optional[float] = None
-    selling_price: Optional[float] = None
-    margin_pct: Optional[float] = None
-    warranty_years: int = 5
-    supplier: str = ""
-    active: bool = True
-    effective_from: Optional[str] = None
-    linked_inventory_item_id: Optional[str] = None
-
-class BatteryProduct(BaseModel):
-    make: str
-    model: str
-    chemistry: str = "LiFePO4"                       # LiFePO4 | Li-ion | Tubular | Gel
-    capacity_ah: float
-    voltage: float = 12.0
-    kwh: Optional[float] = None
-    dod_pct: float = 80.0
-    cycles: int = 3000
-    warranty_years: int = 5
-    purchase_price: Optional[float] = None
-    selling_price: Optional[float] = None
-    margin_pct: Optional[float] = None
-    supplier: str = ""
-    active: bool = True
-    effective_from: Optional[str] = None
-    linked_inventory_item_id: Optional[str] = None
-
-class PumpProduct(BaseModel):
-    make: str
-    model: str
-    hp: float
-    kw: Optional[float] = None
-    voltage: float = 230
-    phase: str = "single"                            # single | three
-    ac_or_dc: str = "AC"                              # AC | DC
-    pump_type: str = "submersible"                    # submersible | surface | openwell
-    body_diameter_mm: Optional[float] = None          # for bore-casing fit
-    min_bore_casing_mm: Optional[float] = None
-    max_head_m: Optional[float] = None
-    max_discharge_lph: Optional[float] = None
-    curve_points: Optional[List[Dict[str, float]]] = None   # [{head_m, lph}, ...]
-    controller_make: str = ""
-    controller_model: str = ""
-    controller_type: str = "MPPT"                     # MPPT | VFD
-    controller_input_v_min: Optional[float] = None
-    controller_input_v_max: Optional[float] = None
-    controller_input_v_absolute_max: Optional[float] = None    # Voc-at-Tmin absolute limit
-    controller_input_current_max: Optional[float] = None
-    motor_efficiency_pct: Optional[float] = None
-    pump_efficiency_pct: Optional[float] = None
-    purchase_price: Optional[float] = None
-    selling_price: Optional[float] = None
-    margin_pct: Optional[float] = None
-    warranty_years: int = 5
-    supplier: str = ""
-    active: bool = True
-    effective_from: Optional[str] = None
-    linked_inventory_item_id: Optional[str] = None
-
-class StructureProduct(BaseModel):
-    name: str
-    category: str = "structure"                       # structure | cable | dcdb | acdb | earthing | la | connector
-    mounting_surface: str = "roof"                    # roof | ground | pole
-    height_ft: Optional[float] = None
-    material: str = "GI"
-    unit: str = "per_kw"                              # per_kw | per_unit | per_meter
-    purchase_price: float = 0.0
-    selling_price: Optional[float] = None
-    margin_pct: Optional[float] = None
-    supplier: str = ""
-    active: bool = True
-    effective_from: Optional[str] = None
-    linked_inventory_item_id: Optional[str] = None
-
 class ServiceRate(BaseModel):
     name: str
     system_type_scope: str = "any"                    # any | on-grid | off-grid | hybrid | solar-pump
@@ -263,11 +140,6 @@ async def list_products(cat: str, request: Request, active_only: bool = False):
 
 
 MODEL_MAP: Dict[str, type[BaseModel]] = {
-    "panel": PanelProduct,
-    "inverter": InverterProduct,
-    "battery": BatteryProduct,
-    "pump": PumpProduct,
-    "structure": StructureProduct,
     "service": ServiceRate,
     "fuel": FuelType,
     "addon_group": AddonGroup,
@@ -299,14 +171,6 @@ async def create_product(cat: str, payload: dict, request: Request):
     if not doc.get("effective_from"):
         doc["effective_from"] = date.today().isoformat()
 
-    # Panel: auto-derive price_per_watt when missing
-    if cat == "panel" and doc.get("purchase_price") and doc.get("wattage") and not doc.get("price_per_watt"):
-        doc["price_per_watt"] = round(doc["purchase_price"] / doc["wattage"], 3)
-
-    # Battery: auto-derive kWh
-    if cat == "battery" and doc.get("capacity_ah") and doc.get("voltage") and not doc.get("kwh"):
-        doc["kwh"] = round(doc["capacity_ah"] * doc["voltage"] / 1000.0, 3)
-
     # Fuel: auto-derive effective_kwh_per_unit + units_per_kwh
     if cat == "fuel":
         eff = doc.get("energy_content_kwh_per_unit", 0) * (doc.get("genset_efficiency_pct", 30) / 100.0)
@@ -337,14 +201,6 @@ async def update_product(cat: str, pid: str, payload: dict, request: Request):
     update = {k: v for k, v in payload.items() if k in MODEL_MAP[cat].model_fields}
     update["updated_at"] = datetime.now(timezone.utc).isoformat()
 
-    if cat == "panel" and update.get("purchase_price") and (update.get("wattage") or before.get("wattage")):
-        w = update.get("wattage") or before.get("wattage")
-        update["price_per_watt"] = round(update["purchase_price"] / w, 3)
-    if cat == "battery":
-        ah = update.get("capacity_ah") or before.get("capacity_ah")
-        v = update.get("voltage") or before.get("voltage")
-        if ah and v:
-            update["kwh"] = round(ah * v / 1000.0, 3)
     if cat == "fuel":
         e = update.get("energy_content_kwh_per_unit") or before.get("energy_content_kwh_per_unit", 0)
         g = update.get("genset_efficiency_pct") or before.get("genset_efficiency_pct", 30)
@@ -406,8 +262,6 @@ async def import_csv(cat: str, request: Request, file: UploadFile = File(...)):
             doc["created_at"] = datetime.now(timezone.utc).isoformat()
             if not doc.get("effective_from"):
                 doc["effective_from"] = date.today().isoformat()
-            if cat == "panel" and doc.get("purchase_price") and doc.get("wattage") and not doc.get("price_per_watt"):
-                doc["price_per_watt"] = round(doc["purchase_price"] / doc["wattage"], 3)
             if cat == "fuel":
                 eff = doc.get("energy_content_kwh_per_unit", 0) * (doc.get("genset_efficiency_pct", 30) / 100.0)
                 doc["effective_kwh_per_unit"] = round(eff, 4)
@@ -454,86 +308,12 @@ async def update_config(payload: dict, request: Request):
 # ---------------------------------------------------------------------------
 @router.post("/seed")
 async def seed_catalogue(request: Request):
-    """Idempotent — seeds one Generic/Unbranded product per category so existing projects
-    (that were priced against the flat global constants) still open and price."""
+    """Idempotent — seeds service rates, fuel types and addon groups."""
     await _require_admin(request)
     seeded = {}
 
-    # 1) Migrate old flat pricing → Generic fallback products
     old = await _db.thresholds.find_one({"key": "pricing"}) or {}
-    panel_pw = old.get("panel_price_per_watt", 25)
-    inv_pkw = old.get("inverter_price_per_kw", 8000)
-    struct_pkw = old.get("structure_price_per_kw", 5000)
-    bat_pah = old.get("battery_price_per_ah", 150)
-    wiring_pm = old.get("wiring_price_per_meter", 50)
     labor_pkw = old.get("labor_price_per_kw", 3000)
-    trans_base = old.get("transportation_base", 5000)
-
-    # Panels — Generic 540W
-    if not await _db[COLLECTIONS["panel"]].find_one({"make": "Generic", "model": "540W Mono"}):
-        await _db[COLLECTIONS["panel"]].insert_one({
-            **PanelProduct(make="Generic", model="540W Mono", wattage=540, technology="Mono PERC",
-                efficiency_pct=20.5, voc=49.8, vmp=41.5, isc=13.8, imp=13.02,
-                area_sqft=24.0, purchase_price=540 * panel_pw, price_per_watt=panel_pw,
-                margin_pct=15, tier="Tier 2", supplier="Generic").model_dump(),
-            "effective_from": date.today().isoformat(),
-            "created_at": datetime.now(timezone.utc).isoformat(),
-        })
-        seeded["panel"] = 1
-
-    # Inverters — Generic 5kW ongrid
-    if not await _db[COLLECTIONS["inverter"]].find_one({"make": "Generic", "model": "5kW On-Grid"}):
-        await _db[COLLECTIONS["inverter"]].insert_one({
-            **InverterProduct(make="Generic", model="5kW On-Grid", type="on-grid", rated_kw=5,
-                max_dc_input_kw=6.5, mppt_count=2, mppt_voltage_min=120, mppt_voltage_max=500,
-                max_input_voltage=550, purchase_price=5 * inv_pkw, margin_pct=15,
-                supplier="Generic").model_dump(),
-            "effective_from": date.today().isoformat(),
-            "created_at": datetime.now(timezone.utc).isoformat(),
-        })
-        seeded["inverter"] = 1
-
-    # Battery — Generic tubular 150Ah
-    if not await _db[COLLECTIONS["battery"]].find_one({"make": "Generic", "model": "150Ah Tubular"}):
-        await _db[COLLECTIONS["battery"]].insert_one({
-            **BatteryProduct(make="Generic", model="150Ah Tubular", chemistry="Tubular",
-                capacity_ah=150, voltage=12, kwh=1.8, dod_pct=50, cycles=1500,
-                purchase_price=150 * bat_pah, margin_pct=15, supplier="Generic").model_dump(),
-            "effective_from": date.today().isoformat(),
-            "created_at": datetime.now(timezone.utc).isoformat(),
-        })
-        seeded["battery"] = 1
-
-    # Pump — Generic 3HP DC
-    if not await _db[COLLECTIONS["pump"]].find_one({"make": "Generic", "model": "3HP DC Submersible"}):
-        await _db[COLLECTIONS["pump"]].insert_one({
-            **PumpProduct(make="Generic", model="3HP DC Submersible", hp=3, kw=2.24, voltage=220,
-                phase="single", ac_or_dc="DC", pump_type="submersible", body_diameter_mm=100,
-                min_bore_casing_mm=125, max_head_m=60, max_discharge_lph=5000,
-                controller_type="MPPT", controller_input_v_min=120, controller_input_v_max=380,
-                controller_input_v_absolute_max=450, controller_input_current_max=15,
-                motor_efficiency_pct=85, pump_efficiency_pct=55,
-                purchase_price=80000, margin_pct=15, supplier="Generic").model_dump(),
-            "effective_from": date.today().isoformat(),
-            "created_at": datetime.now(timezone.utc).isoformat(),
-        })
-        seeded["pump"] = 1
-
-    # Structure & BOS lines — Generic per-kW
-    for name, per, price in [
-        ("Structure (GI, roof)",  "per_kw", struct_pkw),
-        ("DC + AC Cabling",       "per_meter", wiring_pm),
-        ("DCDB / ACDB / Earthing / LA (kit)", "per_kw", 800),
-        ("Transportation",        "flat", trans_base),
-    ]:
-        if not await _db[COLLECTIONS["structure"]].find_one({"name": name}):
-            await _db[COLLECTIONS["structure"]].insert_one({
-                **StructureProduct(name=name, unit=per, purchase_price=price, margin_pct=15,
-                    supplier="Generic").model_dump(),
-                "effective_from": date.today().isoformat(),
-                "created_at": datetime.now(timezone.utc).isoformat(),
-            })
-    seeded["structure"] = 4
 
     # Service rates — installation / commissioning
     for name, scope, unit, rate in [

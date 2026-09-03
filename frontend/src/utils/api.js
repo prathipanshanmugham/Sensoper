@@ -55,7 +55,7 @@ export const usersAPI = {
 // Dashboard API
 export const dashboardAPI = {
   getStats: () => api.get('/dashboard/stats'),
-  getCeo: () => api.get('/dashboard/ceo')
+  getCeo: (params = {}) => api.get('/dashboard/ceo', { params })
 };
 
 // Reports API
@@ -255,7 +255,8 @@ export const calcAPI = {
   listDiscoms: (params = {}) => api.get('/calculate/discoms', { params }),
   getDiscom: (id) => api.get(`/calculate/discoms/${id}`),
   listPincodes: (params = {}) => api.get('/calculate/pincodes', { params }),
-  seedDefaults: () => api.post('/calculate/seed-defaults')
+  seedDefaults: () => api.post('/calculate/seed-defaults'),
+  validatePumpStringVoltage: (payload) => api.post('/calculate/pump/string-voltage', payload)
 };
 
 // Direct Sales API (Iter 39 Change 1)
@@ -432,7 +433,8 @@ export const assetsAPI = {
   returnAsset: (id, data) => api.post(`/assets/${id}/return`, data),
   logMaintenance: (id, data) => api.post(`/assets/${id}/maintenance`, data),
   compliance: (days = 90) => api.get('/assets/compliance', { params: { days } }),
-  report: (type) => api.get(`/assets/reports/${type}`)
+  categories: () => api.get('/assets/categories'),
+  report: (type, params = {}) => api.get(`/assets/reports/${type}`, { params })
 };
 
 // AMC Contracts (Iter 42 Change 5)
@@ -448,8 +450,8 @@ export const amcAPI = {
   scheduleVisit: (id, data) => api.post(`/amc/contracts/${id}/visits`, data),
   completeVisit: (id, data) => api.put(`/amc/visits/${id}/complete`, data),
   listVisits: (params = {}) => api.get('/amc/visits', { params }),
-  dashboard: () => api.get('/amc/dashboard'),
-  recurringRevenueReport: () => api.get('/amc/recurring-revenue-report')
+  dashboard: (params = {}) => api.get('/amc/dashboard', { params }),
+  recurringRevenueReport: (params = {}) => api.get('/amc/recurring-revenue-report', { params })
 };
 
 // Multi-location (Iter 42 Change 8)

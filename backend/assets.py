@@ -7,6 +7,7 @@ from bson import ObjectId
 from pymongo import ReturnDocument
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
+from locations import location_scope_filter
 
 ASSET_CATEGORIES = ["vehicle", "power_tool", "hand_tool", "test_equipment", "safety", "it", "furniture", "other"]
 ASSET_STATUSES = ["available", "issued", "in_maintenance", "under_repair", "lost", "scrapped", "sold"]
@@ -121,6 +122,18 @@ def create_router(db, get_current_user, require_role, create_audit_log, check_mo
         if search: query["name"] = {"$regex": search, "$options": "i"}
         docs = await db.assets.find(query).sort("created_at", -1).to_list(2000)
         return [_serialize(d) for d in docs]
+
+    @router.get("/assets/categories")
+    async def list_asset_categories(request: Request):
+        """Single source of truth for the category filter/create dropdowns — the canonical
+        list merged with any distinct category value actually stored on an active asset, so
+        the dropdown can never diverge from what the list/filter query can actually match
+        (Iter 45 fix: previously the frontend used its own hardcoded list, which silently
+        excluded any asset saved with a category outside that list)."""
+        await get_current_user(request)
+        stored = await db.assets.distinct("category", {"active": {"$ne": False}})
+        merged = sorted(set(ASSET_CATEGORIES) | {c for c in stored if c})
+        return {"categories": merged}
 
     @router.post("/assets")
     async def create_asset(payload: AssetCreate, request: Request):
@@ -280,9 +293,10 @@ def create_router(db, get_current_user, require_role, create_audit_log, check_mo
         return {"message": "Maintenance logged"}
 
     @router.get("/assets/reports/{report_type}")
-    async def asset_report(report_type: str, request: Request):
-        await require_role("admin", "manager")(request)
-        all_docs = await db.assets.find({}).to_list(5000)
+    async def asset_report(report_type: str, request: Request, location_id: Optional[str] = None):
+        user = await require_role("admin", "manager")(request)
+        loc_filter = location_scope_filter(user, location_id)
+        all_docs = await db.assets.find(loc_filter).to_list(5000)
         active_docs = [d for d in all_docs if d.get("active", True) is not False]
         assets = [_serialize(d) for d in active_docs]
         all_assets = [_serialize(d) for d in all_docs]

@@ -5,12 +5,19 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import { Loader2, Receipt, Download } from 'lucide-react';
 import { generateGstInvoicePDF } from '../utils/gstInvoicePDF';
 
-/** GST Tax Invoice — separate legal document from the sales quotation PDF (Iter 44 Batch A). */
+const FORMAT_STORAGE_KEY = 'sensoper_invoice_format_pref';
+
+/** GST Tax Invoice — separate legal document from the sales quotation PDF (Iter 44 Batch A).
+ * Offers List (per line item) and Combined (rolled up per GST rate slab) formats — both
+ * legally complete, last choice remembered per-browser (Iter 45). */
 export default function ProjectInvoiceCard({ projectId, companyProfile }) {
   const [invoice, setInvoice] = useState(null);
   const [showPreview, setShowPreview] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [format, setFormat] = useState(() => localStorage.getItem(FORMAT_STORAGE_KEY) || 'list');
+
+  const chooseFormat = (f) => { setFormat(f); localStorage.setItem(FORMAT_STORAGE_KEY, f); };
 
   const handleGenerate = async () => {
     setLoading(true); setError('');
@@ -22,13 +29,19 @@ export default function ProjectInvoiceCard({ projectId, companyProfile }) {
     finally { setLoading(false); }
   };
 
-  const handleDownload = () => { if (invoice) generateGstInvoicePDF(invoice, companyProfile); };
+  const handleDownload = () => { if (invoice) generateGstInvoicePDF(invoice, companyProfile, format); };
 
   return (
     <>
-      <Button variant="outline" onClick={handleGenerate} disabled={loading} className="gap-2 border-blue-300 text-blue-700 hover:bg-blue-50" data-testid="generate-invoice-btn">
-        {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Receipt className="h-4 w-4" />}Generate Invoice
-      </Button>
+      <div className="inline-flex items-center gap-2">
+        <Button variant="outline" onClick={handleGenerate} disabled={loading} className="gap-2 border-blue-300 text-blue-700 hover:bg-blue-50" data-testid="generate-invoice-btn">
+          {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Receipt className="h-4 w-4" />}Generate Invoice
+        </Button>
+        <div className="inline-flex rounded-md border border-slate-200 overflow-hidden" data-testid="invoice-format-toggle">
+          <button type="button" onClick={() => chooseFormat('list')} className={`px-2.5 py-1.5 text-xs font-medium ${format === 'list' ? 'bg-blue-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}`} data-testid="invoice-format-list">List</button>
+          <button type="button" onClick={() => chooseFormat('combined')} className={`px-2.5 py-1.5 text-xs font-medium ${format === 'combined' ? 'bg-blue-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}`} data-testid="invoice-format-combined">Combined</button>
+        </div>
+      </div>
       {error && <p className="text-xs text-rose-600 mt-1" data-testid="invoice-error">{error}</p>}
 
       <Dialog open={showPreview} onOpenChange={setShowPreview}>

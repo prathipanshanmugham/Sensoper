@@ -48,5 +48,25 @@ User explicitly requested this be built in 4 batches, testing (pytest + testing_
 ## Known housekeeping (not urgent, flagged by testing_agent)
 - Catalogue has ~14 leftover `TEST Panel_TEST_*` / `TEST Inv_TEST_*` rows from earlier test iterations, visible in Pricelist/PDF. Cleanup recommended whenever convenient.
 
+## Iteration 45 — DONE (2026-09-03, tested via testing_agent, 34/34 new pytest pass)
+1. **Invoice Combined/List format toggle** — done in a prior session (`ProjectInvoiceCard.js`, `gstInvoicePDF.js`).
+2. **Calculator simplified to strict 4 fields** (`ProposedSolutionSection.js`): System Type, System Size (kW), Panel picker, Inverter picker (live from `inventory_items`) → result strip (Total Cost, manual Subsidy, Net Cost, Payback). No advanced toggle, no driver inputs. Solar Pump keeps its own hydraulic flow (path/flow/head/bore/controller-Vmax/string-V → `POST /calculate/solution`). Verified exact math by testing_agent (5kW example: ₹2,78,750 total, ₹50k subsidy → ₹2,28,750 net).
+3/4. **Catalogue → inventory_items migration** — done in a prior session; `panel_products` etc. dropped, Pricelist/Calculator read directly from `inventory_items`.
+5. **Assets register blank-list/category bug** — fixed in a prior session + regression test `test_iter45_assets_fix.py`.
+6. **Location-scoped report exports (this session)**: new shared hook `frontend/src/components/LocationScope.js` (`useLocationScope` + `LocationScopeSelect`) — admins get "All Locations — Consolidated" + any location; non-admins restricted to their assigned location(s) (auto-selected+disabled if exactly one). Wired into:
+   - Reports page (generic `/api/reports/{type}` engine — sales_revenue/profit_leakage/project_execution/inventory_material/amc/assets/tools/inbound/outbound all scope-filtered via `location_scope_filter()`), location label + PDF/Excel headers show it.
+   - Assets page's own Reports tab (`/assets/reports/{type}?location_id=`).
+   - CEO Dashboard (`/dashboard/ceo?location_id=`) + new "Export PDF" KPI-summary button.
+   - AMC Dashboard (`/amc/{dashboard,contracts,recurring-revenue-report}?location_id=`) + new PDF/Excel export on Recurring Revenue Report tab.
+   - Expansion page: PDF/Excel export added to Ranked Opportunities table (company-wide, no location scoping — expansion data is district/market-based, not org-location-based).
+   - Backend: `location_scope_filter()` from `locations.py` (pre-existing, unchanged) now also applied in `assets.py::asset_report` and `amc.py` (contracts/dashboard/revenue-report), plus `server.py`'s reports engine and CEO dashboard.
+   - Post-testing fixes: Excel export buttons now `disabled` when `rows.length===0` (previously silent dead-click) on Assets/AMC/Expansion; `/api/reports/assets` returns `rows: []` instead of a misleading "No data yet" placeholder row when scoped to an empty location; `useLocationScope` localStorage key now namespaced per user id (was previously bleeding a stale location choice across user switches on the same browser).
+   - Regression suite: `backend/tests/test_iter45_location_scope.py` (34/34 pass) — locations list, reports×5 types with/without location_id + bogus id + staff 403, CEO dashboard, assets reports×4 types, AMC×3 endpoints, expansion overview, calculator config/solution.
+
+### Remaining backlog from testing_agent (not urgent)
+- `AssetsPage`/`AMCDashboard`/`ExpansionPage` empty-export buttons now disabled (fixed) rather than toast-driven — acceptable UX, no further action needed unless requested.
+- Reports page date filters use native `<input type=date>` instead of the shadcn Calendar — cosmetic inconsistency, optional.
+- `SiteVisitForm` step chips have no `data-testid` — optional testability improvement, not user-facing.
+
 ## Credentials
 See `/app/memory/test_credentials.md`. Admin: admin@sensoper.com / Admin@123

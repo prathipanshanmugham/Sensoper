@@ -10,13 +10,14 @@ import { Badge } from '../components/ui/badge';
 import {
   Loader2, FileSpreadsheet, FileText, IndianRupee, TrendingUp, Briefcase,
   Package, Users, Receipt, Star, AlertTriangle, Truck, ClipboardList, Megaphone, PackageCheck,
-  Wrench, ShieldCheck, Wallet, Activity, UserCheck
+  Wrench, ShieldCheck, Wallet, Activity, UserCheck, MapPin
 } from 'lucide-react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import * as XLSX from 'xlsx';
 import { saveAs } from 'file-saver';
 import { loadUnicodeFont } from '../utils/pdfFont';
+import { useLocationScope, LocationScopeSelect } from '../components/LocationScope';
 
 const PIE_COLORS = ['#10b981', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#84cc16'];
 
@@ -64,6 +65,7 @@ const formatSummaryValue = (key, v) => {
 
 export default function ReportsPage() {
   const [searchParams] = useSearchParams();
+  const locScope = useLocationScope('reports_location_scope');
   const [activeReport, setActiveReport] = useState(searchParams.get('type') || '');
   const [activeTab, setActiveTab] = useState('');
   const [reportData, setReportData] = useState(null);
@@ -113,11 +115,12 @@ export default function ReportsPage() {
       if (f.status !== 'all') params.status = f.status;
       if (f.movement_type !== 'all' && type === 'inventory_material' && tab === 'movement') params.movement_type = f.movement_type;
       if (tab) params.tab = tab;
+      if (locScope.locationId) params.location_id = locScope.locationId;
       const res = await reportsAPI.get(type, params);
       setReportData(res.data);
     } catch (err) { console.error('Report fetch failed:', err); }
     finally { setLoading(false); }
-  }, [filters]);
+  }, [filters, locScope.locationId]);
 
   const handleSelectReport = (type) => {
     setActiveReport(type);
@@ -129,6 +132,11 @@ export default function ReportsPage() {
     setActiveTab(tab);
     fetchReport(activeReport, tab);
   };
+
+  useEffect(() => {
+    if (activeReport) fetchReport(activeReport, activeTab);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [locScope.locationId]);
 
   const getColumns = () => {
     if (!reportData?.rows?.length) return [];
@@ -144,7 +152,7 @@ export default function ReportsPage() {
     doc.setFontSize(14); doc.setTextColor(30, 41, 59);
     doc.text(reportData.title, 14, 28);
     doc.setFontSize(9); doc.setTextColor(100, 116, 139);
-    doc.text(`Generated: ${new Date().toLocaleDateString('en-IN')}`, 14, 34);
+    doc.text(`Generated: ${new Date().toLocaleDateString('en-IN')}  ·  Location: ${locScope.locationLabel}`, 14, 34);
     if (reportData.summary) {
       let y = 42; doc.setFontSize(10); doc.setTextColor(30, 41, 59);
       Object.entries(reportData.summary).forEach(([k, v]) => { doc.text(`${formatHeader(k)}: ${typeof v === 'number' ? v.toLocaleString('en-IN') : v}`, 14, y); y += 6; });
@@ -159,6 +167,8 @@ export default function ReportsPage() {
   const exportExcel = () => {
     if (!reportData) return;
     const wb = XLSX.utils.book_new();
+    const ws0 = XLSX.utils.aoa_to_sheet([[reportData.title], [`Location: ${locScope.locationLabel}`], [`Generated: ${new Date().toLocaleDateString('en-IN')}`]]);
+    XLSX.utils.book_append_sheet(wb, ws0, 'Info');
     if (reportData.summary) { const ws1 = XLSX.utils.json_to_sheet(Object.entries(reportData.summary).map(([k, v]) => ({ Metric: formatHeader(k), Value: v }))); XLSX.utils.book_append_sheet(wb, ws1, 'Summary'); }
     if (reportData.rows?.length) { const cols = getColumns(); const ws2 = XLSX.utils.json_to_sheet(reportData.rows.map(r => { const row = {}; cols.forEach(c => { row[formatHeader(c)] = r[c]; }); return row; })); XLSX.utils.book_append_sheet(wb, ws2, 'Data'); }
     const buf = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
@@ -176,7 +186,8 @@ export default function ReportsPage() {
         {/* Filters */}
         <Card className="border-slate-200 mb-5" data-testid="filters-card">
           <CardContent className="p-4">
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+              <div className="space-y-1"><Label className="text-xs">Location</Label><LocationScopeSelect scope={locScope} testIdPrefix="report-location" /></div>
               <div className="space-y-1"><Label className="text-xs">Date From</Label><Input type="date" value={filters.date_from} onChange={(e) => setFilters(p => ({...p, date_from: e.target.value}))} className="h-9" data-testid="filter-date-from" /></div>
               <div className="space-y-1"><Label className="text-xs">Date To</Label><Input type="date" value={filters.date_to} onChange={(e) => setFilters(p => ({...p, date_to: e.target.value}))} className="h-9" data-testid="filter-date-to" /></div>
               <div className="space-y-1"><Label className="text-xs">System Type</Label>
@@ -227,7 +238,10 @@ export default function ReportsPage() {
           <Card className="border-slate-200" data-testid="report-results">
             <CardHeader className="border-b border-slate-200 py-4">
               <div className="flex items-center justify-between flex-wrap gap-2">
-                <CardTitle className="font-['Outfit'] text-lg">{reportData.title}</CardTitle>
+                <div>
+                  <CardTitle className="font-['Outfit'] text-lg">{reportData.title}</CardTitle>
+                  <p className="text-[11px] text-slate-400 flex items-center gap-1 mt-0.5" data-testid="report-location-label"><MapPin className="h-3 w-3" />{locScope.locationLabel}</p>
+                </div>
                 <div className="flex gap-2">
                   <Button variant="outline" size="sm" onClick={exportPDF} className="gap-1.5 h-8 text-xs" data-testid="export-pdf-btn"><FileText className="h-3.5 w-3.5" />PDF</Button>
                   <Button variant="outline" size="sm" onClick={exportExcel} className="gap-1.5 h-8 text-xs" data-testid="export-excel-btn"><FileSpreadsheet className="h-3.5 w-3.5" />Excel</Button>
