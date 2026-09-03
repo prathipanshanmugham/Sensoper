@@ -39,6 +39,9 @@ import WeeklyAuditPage from "./pages/WeeklyAuditPage";
 import AssetsPage from "./pages/AssetsPage";
 import AMCDashboard from "./pages/AMCDashboard";
 import LocationsPage from "./pages/LocationsPage";
+import PartnersPage from "./pages/PartnersPage";
+import PartnerDetail from "./pages/PartnerDetail";
+import EcommercePage from "./pages/EcommercePage";
 
 // Protected Route Component
 function ProtectedRoute({ children, allowedRoles = null }) {
@@ -136,6 +139,9 @@ function AppRoutes() {
       <Route path="/dashboard/assets" element={<ProtectedRoute><DashboardLayout><AssetsPage /></DashboardLayout></ProtectedRoute>} />
       <Route path="/dashboard/amc" element={<ProtectedRoute allowedRoles={["admin", "manager"]}><DashboardLayout><AMCDashboard /></DashboardLayout></ProtectedRoute>} />
       <Route path="/dashboard/locations" element={<ProtectedRoute allowedRoles={["admin"]}><DashboardLayout><LocationsPage /></DashboardLayout></ProtectedRoute>} />
+      <Route path="/dashboard/partners" element={<ProtectedRoute><DashboardLayout><PartnersPage /></DashboardLayout></ProtectedRoute>} />
+      <Route path="/dashboard/partners/:id" element={<ProtectedRoute><DashboardLayout><PartnerDetail /></DashboardLayout></ProtectedRoute>} />
+      <Route path="/dashboard/ecommerce" element={<ProtectedRoute><DashboardLayout><EcommercePage /></DashboardLayout></ProtectedRoute>} />
       {/* Default Redirect */}
       <Route path="/" element={<Navigate to="/dashboard" replace />} />
       <Route path="*" element={<Navigate to="/dashboard" replace />} />

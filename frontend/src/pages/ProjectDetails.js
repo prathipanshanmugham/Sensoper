@@ -21,7 +21,7 @@ import autoTable from 'jspdf-autotable';
 import QRCode from 'qrcode';
 import * as XLSX from 'xlsx';
 import { saveAs } from 'file-saver';
-import { loadUnicodeFont } from '../utils/pdfFont';
+import { loadUnicodeFont, loadTermsFont } from '../utils/pdfFont';
 
 const API_URL = process.env.REACT_APP_BACKEND_URL;
 
@@ -55,6 +55,7 @@ import { generateKitQuotationPDF } from '../utils/kitQuotationPDF';
 import { catalogueAPI } from '../utils/api';
 import ProjectInvoiceCard from '../components/ProjectInvoiceCard';
 import ProjectProfitCard from '../components/ProjectProfitCard';
+import ProjectPartnerCard from '../components/ProjectPartnerCard';
 
 function stripHtml(html) { return DOMPurify.sanitize(html, { ALLOWED_TAGS: [] }); }
 function parseTermsHtml(html) {
@@ -80,6 +81,7 @@ export default function ProjectDetails() {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [deletionReason, setDeletionReason] = useState('');
   const [terms, setTerms] = useState(null);
+  const [invoiceTerms, setInvoiceTerms] = useState(null);
   const [companyProfile, setCompanyProfile] = useState(null);
   const [itemMargins, setItemMargins] = useState({});
   const [marginLoading, setMarginLoading] = useState(false);
@@ -112,18 +114,23 @@ export default function ProjectDetails() {
       (res.data.selected_items || []).forEach((item, idx) => { margins[idx] = item.margin_percentage || 0; });
       setItemMargins(margins);
       // Load terms — prefer project's selected template, fall back to active
+      let quoteLang = 'en';
       try {
         if (res.data.terms_id) {
           const tRes = await termsAPI.getById(res.data.terms_id);
           setTerms(tRes.data);
+          quoteLang = tRes.data.language || 'en';
         } else {
-          const tRes = await termsAPI.getActive();
+          const tRes = await termsAPI.getActive('en', 'quotation');
           setTerms(tRes.data);
         }
       } catch (e) {
         // Fall back to active if the specific terms_id lookup fails (e.g., template deleted)
-        try { const fb = await termsAPI.getActive(); setTerms(fb.data); } catch (e2) { console.error('Failed to fetch terms:', e2); }
+        try { const fb = await termsAPI.getActive('en', 'quotation'); setTerms(fb.data); } catch (e2) { console.error('Failed to fetch terms:', e2); }
       }
+      // Invoice terms use the same category system but are chosen at the template
+      // level (no per-project invoice_terms_id) — matched to the quotation's language.
+      try { const iRes = await termsAPI.getActive(quoteLang, 'invoice'); setInvoiceTerms(iRes.data); } catch (e) { console.error('Failed to fetch invoice terms:', e); }
     } catch (error) { navigate('/dashboard/projects'); }
     finally { setLoading(false); }
   }, [id, navigate]);
@@ -295,6 +302,7 @@ export default function ProjectDetails() {
       d.setDrawColor(200, 200, 200); d.setLineWidth(0.3); d.line(m, pageHeight - 12, pageWidth - m, pageHeight - 12);
       d.setFontSize(7); d.setTextColor(150, 150, 150);
       d.text(cp.company_name || 'Sensoper Controls & Renewables', m, pageHeight - 6);
+      if (terms) { d.text(`Terms: ${terms.title || 'Standard Terms'} v${terms.version ?? 0}`, pageWidth / 2, pageHeight - 6, { align: 'center' }); }
       d.text(`Page ${pg} of ${total}`, pageWidth - m, pageHeight - 6, { align: 'right' });
     };
 
@@ -495,10 +503,10 @@ export default function ProjectDetails() {
     if (y > pageHeight - 45) { doc.addPage(); drawHeader(doc); y = 48; }
     doc.setFontSize(10); doc.setFont(FONT, 'bold'); doc.setTextColor(80, 80, 80);
     doc.text('Terms & Conditions', m, y); doc.setDrawColor(180, 180, 180); doc.setLineWidth(0.3); doc.line(m, y + 1.5, m + 48, y + 1.5); y += 7;
-    const termsList = terms?.content ? parseTermsHtml(terms.content)
-      : ['This quotation is valid for 30 days.', '50% advance payment required.', 'Balance on installation completion.', 'Installation: 7-14 working days after delivery.', '5-year workmanship warranty.', 'Panel warranty per manufacturer.'];
+    const termsFont = await loadTermsFont(doc, terms, FONT);
+    const termsList = terms?.content ? parseTermsHtml(terms.content) : ['No terms configured yet — set one under Terms & Conditions.'];
     autoTable(doc, { startY: y, margin: { left: m, right: m }, theme: 'plain',
-      styles: { font: FONT, fontSize: 7.5, cellPadding: { top: 1.5, bottom: 1.5, left: 2, right: 2 }, textColor: [80, 80, 80] },
+      styles: { font: termsFont, fontSize: 7.5, cellPadding: { top: 1.5, bottom: 1.5, left: 2, right: 2 }, textColor: [80, 80, 80] },
       body: termsList.map((t, i) => [`${i + 1}. ${t}`]),
       didDrawPage: (data) => { drawHeader(data.doc); },
     });
@@ -1297,14 +1305,14 @@ export default function ProjectDetails() {
                   catalogueAPI.getConfig(),
                   catalogueAPI.addonGroups(),
                 ]);
-                await generateKitQuotationPDF(project, companyProfile, cfg.data, groups.data);
+                await generateKitQuotationPDF(project, companyProfile, cfg.data, groups.data, terms);
               } catch (e) { alert('Kit PDF failed: ' + (e.message || 'unknown')); }
             }} className="gap-2 border-emerald-300 text-emerald-700 hover:bg-emerald-50" data-testid="download-kit-pdf-btn"><Download className="h-4 w-4" />Kit Quotation</Button>
             <Button variant="ghost" onClick={() => setShowKitExplainer(true)} className="gap-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100" data-testid="explain-kit-price-btn" title="Sales-side breakdown vs customer-side lump sum"><FileSpreadsheet className="h-4 w-4" />Explain</Button>
             {(project.status === 'approved' || project.status === 'completed') && (
               <Button variant="outline" onClick={shareViaWhatsApp} className="gap-2" data-testid="share-whatsapp-btn"><Share2 className="h-4 w-4" />WhatsApp</Button>
             )}
-            {(isAdmin || isManager) && <ProjectInvoiceCard projectId={id} companyProfile={companyProfile} />}
+            {(isAdmin || isManager) && <ProjectInvoiceCard projectId={id} companyProfile={companyProfile} terms={invoiceTerms} />}
           </div>
         </div>
 
@@ -1508,6 +1516,9 @@ export default function ProjectDetails() {
 
             {/* Profit Calculator — admin only, reads the same cost_estimation as everything else (Iter 44 Batch A) */}
             <ProjectProfitCard projectId={id} isAdmin={isAdmin} />
+
+            {/* Labour & Subcontractor assignment — inline from Project Details (Iter 46 Change 1 / Task 3) */}
+            {(isAdmin || isManager) && <ProjectPartnerCard projectId={id} canManage={isAdmin || isManager} />}
 
             {/* Site Documentation */}
             {project.drive_folder_link && (

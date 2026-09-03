@@ -28,10 +28,12 @@ export default function TermsConditions() {
   const [showPreviewDialog, setShowPreviewDialog] = useState(false);
   const [editingTerm, setEditingTerm] = useState(null);
   const [previewContent, setPreviewContent] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState('all');
   const [formData, setFormData] = useState({
     title: '',
     content: '',
-    language: 'en'
+    language: 'en',
+    category: 'quotation'
   });
   const [actionLoading, setActionLoading] = useState(false);
   const [error, setError] = useState('');
@@ -53,7 +55,7 @@ export default function TermsConditions() {
 
   const openCreateDialog = () => {
     setEditingTerm(null);
-    setFormData({ title: '', content: '', language: 'en' });
+    setFormData({ title: '', content: '', language: 'en', category: categoryFilter !== 'all' ? categoryFilter : 'quotation' });
     setError('');
     setShowDialog(true);
   };
@@ -63,7 +65,8 @@ export default function TermsConditions() {
     setFormData({
       title: term.title,
       content: term.content,
-      language: term.language || 'en'
+      language: term.language || 'en',
+      category: term.category || 'quotation'
     });
     setError('');
     setShowDialog(true);
@@ -93,6 +96,15 @@ export default function TermsConditions() {
     }
   };
 
+  const handleActivate = async (term) => {
+    try {
+      await termsAPI.update(term.id, { is_active: true });
+      fetchTerms();
+    } catch (err) {
+      alert(err.response?.data?.detail || 'Failed to activate terms');
+    }
+  };
+
   const handleDelete = async (term) => {
     if (!window.confirm('Are you sure you want to delete this version?')) return;
     
@@ -108,6 +120,9 @@ export default function TermsConditions() {
     setPreviewContent(content);
     setShowPreviewDialog(true);
   };
+
+  const CATEGORY_LABELS = { quotation: 'Quotation', invoice: 'Invoice', amc: 'AMC' };
+  const visibleTerms = categoryFilter === 'all' ? terms : terms.filter(t => (t.category || 'quotation') === categoryFilter);
 
   const defaultTermsTemplate = `<ol>
 <li>This quotation is valid for 30 days from the date of issue.</li>
@@ -152,18 +167,29 @@ export default function TermsConditions() {
         <Card className="border-blue-200 bg-blue-50 mb-6">
           <CardContent className="p-4">
             <p className="text-sm text-blue-800">
-              <strong>Note:</strong> Create multiple Terms & Conditions templates. While creating a project you can pick which template to attach to that quotation.
+              <strong>Note:</strong> Create multiple Terms & Conditions templates per document type. While creating a project you can pick which Quotation template to attach. Invoice and AMC documents always use the active template for their category.
               Use HTML tags for formatting (ol, li, strong, em, etc.)
             </p>
           </CardContent>
         </Card>
+
+        {/* Category Filter */}
+        <div className="flex gap-2 mb-5" data-testid="terms-category-filter">
+          {['all', 'quotation', 'invoice', 'amc'].map(c => (
+            <button key={c} onClick={() => setCategoryFilter(c)}
+              className={`px-3 py-1.5 text-xs rounded-full border ${categoryFilter === c ? 'bg-emerald-100 border-emerald-300 text-emerald-800 font-medium' : 'bg-white border-slate-200 text-slate-600'}`}
+              data-testid={`terms-category-tab-${c}`}>
+              {c === 'all' ? 'All' : CATEGORY_LABELS[c]}
+            </button>
+          ))}
+        </div>
 
         {/* Terms List */}
         {loading ? (
           <div className="flex items-center justify-center py-12">
             <Loader2 className="h-8 w-8 animate-spin text-[#4ADE40]" />
           </div>
-        ) : terms.length === 0 ? (
+        ) : visibleTerms.length === 0 ? (
           <Card className="border-slate-200">
             <CardContent className="py-12 text-center">
               <FileText className="h-12 w-12 mx-auto mb-4 text-slate-300" />
@@ -177,23 +203,30 @@ export default function TermsConditions() {
           </Card>
         ) : (
           <div className="space-y-4">
-            {terms.map((term) => (
+            {visibleTerms.map((term) => (
               <Card key={term.id} className="border-slate-200" data-testid={`terms-card-${term.id}`}>
                 <CardContent className="p-6">
                   <div className="flex items-start justify-between gap-4">
                     <div className="flex-1">
-                      <div className="flex items-center gap-3 mb-2">
+                      <div className="flex items-center gap-3 mb-2 flex-wrap">
                         <h3 className="text-lg font-semibold text-slate-900">{term.title}</h3>
                         <Badge variant="outline" className="text-slate-500">v{term.version}</Badge>
                         <Badge className={term.language === 'en' ? 'bg-blue-100 text-blue-800' : 'bg-purple-100 text-purple-800'}>
                           {term.language === 'en' ? 'English' : 'Tamil'}
                         </Badge>
+                        <Badge className="bg-amber-100 text-amber-800">{CATEGORY_LABELS[term.category || 'quotation']}</Badge>
+                        {term.is_active && <Badge className="bg-emerald-100 text-emerald-800" data-testid={`terms-active-badge-${term.id}`}>Active</Badge>}
                       </div>
                       <p className="text-sm text-slate-500">
                         Created by {term.created_by_name} • {new Date(term.created_at).toLocaleDateString('en-IN')}
                       </p>
                     </div>
                     <div className="flex items-center gap-3">
+                      {!term.is_active && (
+                        <Button variant="outline" size="sm" className="text-emerald-700 border-emerald-300 hover:bg-emerald-50" onClick={() => handleActivate(term)} data-testid={`activate-terms-${term.id}`}>
+                          Set Active
+                        </Button>
+                      )}
                       <Button
                         variant="outline"
                         size="icon"
@@ -240,7 +273,7 @@ export default function TermsConditions() {
                 {error}
               </div>
             )}
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-3 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="title">Title</Label>
                 <Input
@@ -250,6 +283,22 @@ export default function TermsConditions() {
                   placeholder="e.g., Standard Terms v2"
                   data-testid="terms-title-input"
                 />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="category">Document Type</Label>
+                <Select
+                  value={formData.category}
+                  onValueChange={(v) => setFormData(prev => ({ ...prev, category: v }))}
+                >
+                  <SelectTrigger data-testid="terms-category-select">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="quotation">Quotation</SelectItem>
+                    <SelectItem value="invoice">Invoice</SelectItem>
+                    <SelectItem value="amc">AMC</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="language">Language</Label>

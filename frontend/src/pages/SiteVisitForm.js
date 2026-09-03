@@ -206,7 +206,7 @@ export default function SiteVisitForm() {
     try { const res = await formTabsAPI.getAll(); setAllTabs((res.data || []).filter(t => t.active !== false)); } catch (err) { console.error(err); }
   }, []);
   const fetchTermsList = useCallback(async () => {
-    try { const res = await termsAPI.getAll(); setTermsList(res.data || []); } catch (err) { console.error(err); }
+    try { const res = await termsAPI.getAll('quotation'); setTermsList(res.data || []); } catch (err) { console.error(err); }
   }, []);
   const fetchRefCandidates = useCallback(async () => {
     try { const res = await projectsAPI.getReferenceCandidates(); setRefCandidates(res.data || []); } catch (err) { console.error(err); }

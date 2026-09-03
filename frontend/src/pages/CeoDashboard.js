@@ -164,6 +164,30 @@ export default function CeoDashboard() {
           <KpiCard title="Low Stock Alerts" value={kpis.low_stock_alerts} icon={AlertTriangle} color="amber" onClick={() => navigate('/dashboard/inventory')} />
         </div>
 
+        {/* Revenue breakdown by channel — kept as separate identifiable lines, never blended into one number */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6" data-testid="revenue-breakdown-grid">
+          <Card className="border-slate-200" data-testid="revenue-project-card">
+            <CardContent className="p-4">
+              <p className="text-xs text-slate-500">Project Revenue</p>
+              <p className="text-xl font-bold font-['Outfit'] text-slate-900">₹{(data?.project_revenue || 0).toLocaleString('en-IN')}</p>
+            </CardContent>
+          </Card>
+          <Card className="border-slate-200 cursor-pointer hover:border-blue-300" onClick={() => navigate('/dashboard/sales')} data-testid="revenue-direct-sales-card">
+            <CardContent className="p-4">
+              <p className="text-xs text-slate-500">Counter Sale Revenue</p>
+              <p className="text-xl font-bold font-['Outfit'] text-slate-900">₹{(data?.direct_sales?.revenue || 0).toLocaleString('en-IN')}</p>
+              <p className="text-[11px] text-slate-400 mt-1">{data?.direct_sales?.count || 0} sales · margin ₹{(data?.direct_sales?.margin || 0).toLocaleString('en-IN')}</p>
+            </CardContent>
+          </Card>
+          <Card className="border-slate-200 cursor-pointer hover:border-emerald-300" onClick={() => navigate('/dashboard/ecommerce')} data-testid="revenue-ecommerce-card">
+            <CardContent className="p-4">
+              <p className="text-xs text-slate-500">Ecommerce Revenue</p>
+              <p className="text-xl font-bold font-['Outfit'] text-slate-900">₹{(data?.ecommerce?.revenue || 0).toLocaleString('en-IN')}</p>
+              <p className="text-[11px] text-slate-400 mt-1">{data?.ecommerce?.count || 0} orders · commission ₹{(data?.ecommerce?.commission || 0).toLocaleString('en-IN')}</p>
+            </CardContent>
+          </Card>
+        </div>
+
         {/* Operational Snapshot — Cash · Op Exp · GST Input · Account Balance */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6" data-testid="ceo-snapshot-grid">
           {/* Cash on Hand */}

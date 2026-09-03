@@ -192,8 +192,8 @@ export const aiAPI = {
 
 // Terms & Conditions API
 export const termsAPI = {
-  getAll: () => api.get('/terms'),
-  getActive: (language = 'en') => api.get('/terms/active', { params: { language } }),
+  getAll: (category) => api.get('/terms', { params: category ? { category } : {} }),
+  getActive: (language = 'en', category = 'quotation') => api.get('/terms/active', { params: { language, category } }),
   getById: (id) => api.get(`/terms/${id}`),
   create: (data) => api.post('/terms', data),
   update: (id, data) => api.put(`/terms/${id}`, data),
@@ -476,6 +476,54 @@ export const vendorsAPI = {
 export const employeeScoresAPI = {
   list: (params = {}) => api.get('/employee-scores', { params }),
   create: (data) => api.post('/employee-scores', data)
+};
+
+// Labour & Subcontractor / Internal Teams (Iter 46 Change 1)
+export const partnersAPI = {
+  list: (params = {}) => api.get('/partners', { params }),
+  create: (data) => api.post('/partners', data),
+  get: (id) => api.get(`/partners/${id}`),
+  update: (id, data) => api.put(`/partners/${id}`, data),
+  addRateCard: (id, data) => api.post(`/partners/${id}/rate-card`, data),
+  remove: (id) => api.delete(`/partners/${id}`),
+  projectScope: (projectId) => api.get(`/partners/project-scope/${projectId}`),
+  assignmentsByProject: (projectId) => api.get(`/partners/assignments/by-project/${projectId}`),
+  createAssignment: (partnerId, data) => api.post(`/partners/${partnerId}/assignments`, data),
+  getAssignment: (id) => api.get(`/partners/assignments/${id}`),
+  updateAssignment: (id, data) => api.put(`/partners/assignments/${id}`, data),
+  releaseRetention: (id) => api.post(`/partners/assignments/${id}/release-retention`),
+  recordPayment: (partnerId, data) => api.post(`/partners/${partnerId}/payments`, data),
+  listPayments: (partnerId, params = {}) => api.get(`/partners/${partnerId}/payments`, { params }),
+  scorecard: (partnerId) => api.get(`/partners/${partnerId}/scorecard`)
+};
+
+// Ecommerce marketplaces (Iter 46 Change 2)
+export const ecommerceAPI = {
+  platforms: {
+    list: () => api.get('/ecommerce/platforms'),
+    create: (data) => api.post('/ecommerce/platforms', data),
+    update: (id, data) => api.put(`/ecommerce/platforms/${id}`, data),
+    remove: (id) => api.delete(`/ecommerce/platforms/${id}`)
+  },
+  listings: {
+    list: (params = {}) => api.get('/ecommerce/listings', { params }),
+    create: (data) => api.post('/ecommerce/listings', data),
+    update: (id, data) => api.put(`/ecommerce/listings/${id}`, data),
+    bulkStatus: (data) => api.post('/ecommerce/listings/bulk-status', data),
+    remove: (id) => api.delete(`/ecommerce/listings/${id}`)
+  },
+  orders: {
+    list: (params = {}) => api.get('/ecommerce/orders', { params }),
+    create: (data) => api.post('/ecommerce/orders', data),
+    update: (id, data) => api.put(`/ecommerce/orders/${id}`, data),
+    importPreview: (platformId, file) => {
+      const fd = new FormData();
+      fd.append('file', file);
+      return api.post(`/ecommerce/orders/import-preview?platform_id=${platformId}`, fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+    },
+    importCommit: (data) => api.post('/ecommerce/orders/import-commit', data)
+  },
+  reconciliation: (params = {}) => api.get('/ecommerce/reconciliation', { params })
 };
 
 export default api;

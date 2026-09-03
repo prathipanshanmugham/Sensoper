@@ -233,12 +233,14 @@ class TermsConditionsCreate(BaseModel):
     title: str
     content: str  # HTML content
     language: str = "en"
+    category: str = "quotation"  # quotation | invoice | amc
 
 class TermsConditionsUpdate(BaseModel):
     title: Optional[str] = None
     content: Optional[str] = None
     is_active: Optional[bool] = None
     language: Optional[str] = None
+    category: Optional[str] = None
 
 class InventoryItemCreate(BaseModel):
     name: str
@@ -626,7 +628,9 @@ DEFAULT_PERMISSIONS = {
         "module_settings": {"view": True, "create": True, "edit": True, "delete": True, "export": True},
         "module_assets": {"view": True, "create": True, "edit": True, "delete": True, "export": True},
         "module_amc": {"view": True, "create": True, "edit": True, "delete": True, "export": True},
-        "module_locations": {"view": True, "create": True, "edit": True, "delete": True, "export": True}
+        "module_locations": {"view": True, "create": True, "edit": True, "delete": True, "export": True},
+        "module_partners": {"view": True, "create": True, "edit": True, "delete": True, "export": True},
+        "module_ecommerce": {"view": True, "create": True, "edit": True, "delete": True, "export": True}
     },
     "manager": {
         "can_create_project": True, "can_edit_project": True, "can_delete_project": False,
@@ -656,7 +660,9 @@ DEFAULT_PERMISSIONS = {
         "module_settings": {"view": True, "create": False, "edit": False, "delete": False, "export": False},
         "module_assets": {"view": True, "create": True, "edit": True, "delete": False, "export": True},
         "module_amc": {"view": True, "create": True, "edit": True, "delete": False, "export": True},
-        "module_locations": {"view": True, "create": False, "edit": False, "delete": False, "export": False}
+        "module_locations": {"view": True, "create": False, "edit": False, "delete": False, "export": False},
+        "module_partners": {"view": True, "create": True, "edit": True, "delete": False, "export": True},
+        "module_ecommerce": {"view": True, "create": True, "edit": True, "delete": False, "export": True}
     },
     "staff": {
         "can_create_project": True, "can_edit_project": True, "can_delete_project": False,
@@ -686,7 +692,9 @@ DEFAULT_PERMISSIONS = {
         "module_settings": {"view": False, "create": False, "edit": False, "delete": False, "export": False},
         "module_assets": {"view": True, "create": False, "edit": False, "delete": False, "export": False},
         "module_amc": {"view": True, "create": False, "edit": False, "delete": False, "export": False},
-        "module_locations": {"view": True, "create": False, "edit": False, "delete": False, "export": False}
+        "module_locations": {"view": True, "create": False, "edit": False, "delete": False, "export": False},
+        "module_partners": {"view": True, "create": False, "edit": False, "delete": False, "export": False},
+        "module_ecommerce": {"view": True, "create": False, "edit": False, "delete": False, "export": False}
     }
 }
 
@@ -1220,10 +1228,13 @@ async def upload_company_logo(request: Request, file: UploadFile = File(...)):
 # ================== TERMS & CONDITIONS ==================
 
 @api_router.get("/terms")
-async def get_all_terms(request: Request):
+async def get_all_terms(request: Request, category: Optional[str] = None):
     await get_current_user(request)
     
-    terms = await db.terms_conditions.find().sort("version", -1).to_list(100)
+    query: Dict[str, Any] = {}
+    if category:
+        query["category"] = category
+    terms = await db.terms_conditions.find(query).sort("version", -1).to_list(100)
     return [
         {
             "id": str(t["_id"]),
@@ -1232,6 +1243,7 @@ async def get_all_terms(request: Request):
             "version": t["version"],
             "is_active": t.get("is_active", False),
             "language": t.get("language", "en"),
+            "category": t.get("category", "quotation"),
             "created_by": t.get("created_by"),
             "created_by_name": t.get("created_by_name"),
             "created_at": t["created_at"],
@@ -1241,9 +1253,9 @@ async def get_all_terms(request: Request):
     ]
 
 @api_router.get("/terms/active")
-async def get_active_terms(language: str = "en"):
+async def get_active_terms(language: str = "en", category: str = "quotation"):
     """Get the active terms & conditions for PDF generation"""
-    terms = await db.terms_conditions.find_one({"is_active": True, "language": language})
+    terms = await db.terms_conditions.find_one({"is_active": True, "language": language, "category": category})
     if not terms:
         # Return default terms if none set
         return {
@@ -1259,13 +1271,17 @@ async def get_active_terms(language: str = "en"):
 <li>Inverter warranty as per manufacturer terms.</li>
 <li>All prices are subject to change without prior notice.</li>
 </ol>""",
-            "version": 0
+            "version": 0,
+            "category": category,
+            "language": language
         }
     return {
         "id": str(terms["_id"]),
         "title": terms["title"],
         "content": terms["content"],
-        "version": terms["version"]
+        "version": terms["version"],
+        "category": terms.get("category", "quotation"),
+        "language": terms.get("language", "en")
     }
 
 @api_router.get("/terms/{terms_id}")
@@ -1284,16 +1300,17 @@ async def get_terms_by_id(terms_id: str, request: Request):
         "title": terms["title"],
         "content": terms["content"],
         "version": terms["version"],
-        "language": terms.get("language", "en")
+        "language": terms.get("language", "en"),
+        "category": terms.get("category", "quotation")
     }
 
 @api_router.post("/terms")
 async def create_terms(terms_data: TermsConditionsCreate, request: Request):
     current_user = await require_role("admin", "manager")(request)
     
-    # Get the next version number
+    # Get the next version number (scoped per language + category)
     latest = await db.terms_conditions.find_one(
-        {"language": terms_data.language}, 
+        {"language": terms_data.language, "category": terms_data.category},
         sort=[("version", -1)]
     )
     next_version = (latest["version"] + 1) if latest else 1
@@ -1304,6 +1321,7 @@ async def create_terms(terms_data: TermsConditionsCreate, request: Request):
         "version": next_version,
         "is_active": False,
         "language": terms_data.language,
+        "category": terms_data.category,
         "created_by": current_user["id"],
         "created_by_name": current_user["name"],
         "created_at": datetime.now(timezone.utc).isoformat(),
@@ -1339,13 +1357,16 @@ async def update_terms(terms_id: str, updates: TermsConditionsUpdate, request: R
         update_data["content"] = updates.content
     if updates.language is not None:
         update_data["language"] = updates.language
+    if updates.category is not None:
+        update_data["category"] = updates.category
     
     # Handle activation
     if updates.is_active is True:
-        # Deactivate all other terms for this language
+        # Deactivate all other terms for this language + category
         lang = updates.language or terms.get("language", "en")
+        cat = updates.category or terms.get("category", "quotation")
         await db.terms_conditions.update_many(
-            {"language": lang, "_id": {"$ne": ObjectId(terms_id)}},
+            {"language": lang, "category": cat, "_id": {"$ne": ObjectId(terms_id)}},
             {"$set": {"is_active": False}}
         )
         update_data["is_active"] = True
@@ -2378,6 +2399,20 @@ _vendors_router = _create_vendors_router(
     db=db, get_current_user=get_current_user, require_role=require_role, create_audit_log=create_audit_log,
 )
 api_router.include_router(_vendors_router)
+
+# ═══════════ LABOUR & SUBCONTRACTOR / INTERNAL TEAMS (Iter 46 Change 1) ═══════════
+from partners import create_router as _create_partners_router  # noqa: E402
+_partners_router = _create_partners_router(
+    db=db, get_current_user=get_current_user, require_role=require_role, create_audit_log=create_audit_log,
+)
+api_router.include_router(_partners_router)
+
+# ═══════════ ECOMMERCE MARKETPLACES (Iter 46 Change 2) ═══════════
+from ecommerce import create_router as _create_ecommerce_router  # noqa: E402
+_ecommerce_router = _create_ecommerce_router(
+    db=db, get_current_user=get_current_user, require_role=require_role, create_audit_log=create_audit_log,
+)
+api_router.include_router(_ecommerce_router)
 
 
 # ═══════════ SUBSIDY TRACKING (Iter 39 Change 2c) ═══════════
@@ -4188,6 +4223,11 @@ async def get_ceo_dashboard(request: Request, location_id: Optional[str] = None)
     sales_docs = await db.sales.find({"status": {"$ne": "cancelled"}}).to_list(10000)
     direct_sales_revenue = sum(s.get("grand_total", 0) for s in sales_docs)
     direct_sales_margin = sum(sum(l.get("margin_amount", 0) for l in (s.get("lines") or [])) for s in sales_docs)
+    # Iter 46 Change 2: ecommerce revenue is tracked separately — never blended into the
+    # headline total_revenue number so it stays independently identifiable on the dashboard.
+    ecommerce_docs = await db.ecommerce_orders.find({"order_status": {"$nin": ["cancelled", "returned"]}}).to_list(10000)
+    ecommerce_revenue = sum(o.get("order_total", 0) for o in ecommerce_docs)
+    ecommerce_commission = sum(o.get("commission_total", 0) for o in ecommerce_docs)
     project_revenue = total_revenue
     total_revenue = project_revenue + direct_sales_revenue
     total_margin = sum(p.get("cost_estimation", {}).get("margin_total", 0) for p in all_projects if p.get("status") in ["completed", "approved"])
@@ -4294,6 +4334,12 @@ async def get_ceo_dashboard(request: Request, location_id: Optional[str] = None)
             "revenue": direct_sales_revenue,
             "margin": direct_sales_margin,
             "count": len(sales_docs),
+        },
+        "ecommerce": {
+            "revenue": round(ecommerce_revenue, 2),
+            "commission": round(ecommerce_commission, 2),
+            "net_revenue": round(ecommerce_revenue - ecommerce_commission, 2),
+            "count": len(ecommerce_docs),
         },
         "project_revenue": project_revenue,
     }
@@ -5083,6 +5129,107 @@ async def get_report(report_type: str, request: Request, date_from: str = None, 
             "total_staff": len(rows), "scored_staff": scored_count,
             "avg_projects_handled": round(sum(r["projects_handled"] for r in rows) / len(rows), 1) if rows else 0,
         }, "rows": rows, "chart_data": chart_data}
+
+    elif report_type == "partner_performance":
+        partner_docs = await db.partners.find({"active": {"$ne": False}}).to_list(2000)
+        assignments_all = await db.partner_assignments.find({}).to_list(5000)
+        payments_all = await db.partner_payments.find({}).to_list(5000)
+        allowed_project_ids = None
+        if loc_filter:
+            proj_ids_cursor = await db.projects.find(loc_filter, {"_id": 1}).to_list(20000)
+            allowed_project_ids = {str(p["_id"]) for p in proj_ids_cursor}
+        rows = []
+        for partner in partner_docs:
+            pid = str(partner["_id"])
+            p_assignments = [a for a in assignments_all if a.get("partner_id") == pid]
+            if allowed_project_ids is not None:
+                p_assignments = [a for a in p_assignments if a.get("project_id") in allowed_project_ids]
+            if date_from:
+                p_assignments = [a for a in p_assignments if (a.get("assigned_date") or "") >= date_from]
+            if date_to:
+                p_assignments = [a for a in p_assignments if (a.get("assigned_date") or "") <= date_to]
+            if not p_assignments:
+                continue
+            p_payments = [pm for pm in payments_all if pm.get("partner_id") == pid]
+            completed_with_dates = [a for a in p_assignments if a.get("actual_completion") and a.get("expected_completion")]
+            on_time = [a for a in completed_with_dates if a["actual_completion"] <= a["expected_completion"]]
+            rated = [a.get("quality_rating") for a in p_assignments if a.get("quality_rating")]
+            gross = sum(a.get("gross_amount", 0) or 0 for a in p_assignments)
+            paid = sum(pm.get("amount", 0) or 0 for pm in p_payments)
+            retention_held = sum(a.get("retention_held", 0) or 0 for a in p_assignments)
+            retention_released = sum(a.get("retention_held", 0) or 0 for a in p_assignments if a.get("retention_released"))
+            rows.append({
+                "partner": partner.get("name"), "type": partner.get("partner_type"),
+                "specialities": ", ".join(partner.get("specialities") or []),
+                "districts": ", ".join(partner.get("service_districts") or []),
+                "total_assignments": len(p_assignments),
+                "on_time_rate": round(len(on_time) / len(completed_with_dates) * 100, 1) if completed_with_dates else None,
+                "avg_rating": round(sum(rated) / len(rated), 2) if rated else None,
+                "total_paid": round(paid, 2), "outstanding_balance": round(gross - paid - retention_held, 2),
+                "retention_held": round(retention_held, 2), "retention_released": round(retention_released, 2),
+                "lifetime_business": round(gross, 2),
+            })
+        rows.sort(key=lambda r: r["lifetime_business"], reverse=True)
+        on_time_vals = [r["on_time_rate"] for r in rows if r["on_time_rate"] is not None]
+        return {"title": "Partner Performance Report", "summary": {
+            "total_partners": len(rows),
+            "avg_on_time_rate": round(sum(on_time_vals) / len(on_time_vals), 1) if on_time_vals else 0,
+            "total_outstanding": round(sum(r["outstanding_balance"] for r in rows), 2),
+            "total_retention_held": round(sum(r["retention_held"] for r in rows), 2),
+        }, "rows": rows, "chart_data": [{"name": r["partner"][:15], "value": r["lifetime_business"]} for r in rows[:8]]}
+
+    elif report_type == "ecommerce":
+        q: Dict[str, Any] = {}
+        if date_from or date_to:
+            q["order_date"] = {}
+            if date_from: q["order_date"]["$gte"] = date_from
+            if date_to: q["order_date"]["$lte"] = date_to
+        orders = await db.ecommerce_orders.find(q).to_list(10000)
+        platforms = {str(p["_id"]): p["name"] for p in await db.ecommerce_platforms.find({}).to_list(200)}
+        items = {str(i["_id"]): i for i in await db.inventory_items.find({}).to_list(5000)}
+        by_platform: Dict[str, Any] = defaultdict(lambda: {"revenue": 0.0, "units": 0.0, "commission": 0.0, "orders": 0})
+        by_item: Dict[str, Any] = defaultdict(lambda: {"revenue": 0.0, "units": 0.0, "commission": 0.0, "cost": 0.0, "returns": 0, "orders": 0})
+        returns_total = 0
+        for o in orders:
+            pname = platforms.get(o.get("platform_id"), "—")
+            by_platform[pname]["revenue"] += o.get("order_total", 0) or 0
+            by_platform[pname]["commission"] += o.get("commission_total", 0) or 0
+            by_platform[pname]["orders"] += 1
+            is_return = o.get("order_status") in ("returned", "refunded")
+            if is_return: returns_total += 1
+            for l in o.get("lines", []):
+                item = items.get(l.get("inventory_item_id"), {})
+                key = item.get("name", l.get("inventory_item_id", "Unknown"))
+                by_platform[pname]["units"] += l.get("quantity", 0) or 0
+                by_item[key]["revenue"] += (l.get("quantity", 0) or 0) * (l.get("sold_price", 0) or 0)
+                by_item[key]["units"] += l.get("quantity", 0) or 0
+                by_item[key]["commission"] += l.get("commission_amount", 0) or 0
+                by_item[key]["cost"] += (l.get("quantity", 0) or 0) * (item.get("unit_price", 0) or 0)
+                by_item[key]["orders"] += 1
+                if is_return: by_item[key]["returns"] += 1
+        platform_rows = [{"platform": k, **{kk: round(vv, 2) for kk, vv in v.items()}} for k, v in by_platform.items()]
+        item_rows = []
+        for k, v in by_item.items():
+            net_margin = v["revenue"] - v["commission"] - v["cost"]
+            net_margin_pct = (net_margin / v["revenue"] * 100) if v["revenue"] else 0
+            return_rate = (v["returns"] / v["orders"] * 100) if v["orders"] else 0
+            item_rows.append({"item": k, "revenue": round(v["revenue"], 2), "units": v["units"],
+                               "commission": round(v["commission"], 2), "net_margin": round(net_margin, 2),
+                               "net_margin_pct": round(net_margin_pct, 1), "return_rate_pct": round(return_rate, 1)})
+        item_rows.sort(key=lambda r: r["net_margin"], reverse=True)
+        listings = await db.ecommerce_listings.find({}).to_list(5000)
+        listing_status = Counter(l.get("status") for l in listings)
+        total_revenue = sum(r["revenue"] for r in platform_rows)
+        total_commission = sum(r["commission"] for r in platform_rows)
+        return {"title": "Ecommerce Report", "summary": {
+            "total_revenue": round(total_revenue, 2), "total_commission": round(total_commission, 2),
+            "net_margin": round(total_revenue - total_commission, 2),
+            "total_orders": len(orders), "return_rate_pct": round(returns_total / len(orders) * 100, 1) if orders else 0,
+            "listings_live": listing_status.get("live", 0), "listings_draft": listing_status.get("draft", 0),
+            "listings_paused": listing_status.get("paused", 0), "listings_delisted": listing_status.get("delisted", 0),
+        }, "rows": item_rows, "platform_rows": platform_rows,
+           "best_skus": item_rows[:5], "worst_skus": sorted(item_rows, key=lambda r: r["net_margin"])[:5],
+           "chart_data": [{"name": r["platform"][:15], "value": r["revenue"]} for r in platform_rows]}
 
     raise HTTPException(status_code=404, detail=f"Unknown report type: {report_type}")
 
@@ -6753,7 +6900,7 @@ class AccountEntryUpdate(BaseModel):
     campaign_name: Optional[str] = None
     target_district: Optional[str] = None
 
-ACCOUNT_TYPES = {"cash_on_hand", "account_balance", "operational_expense", "marketing_expense", "gst_input", "gst_paid"}
+ACCOUNT_TYPES = {"cash_on_hand", "account_balance", "operational_expense", "marketing_expense", "gst_input", "gst_paid", "partner_payment"}
 
 @api_router.get("/accounts")
 async def list_accounts(request: Request, entry_type: Optional[str] = None, date_from: Optional[str] = None, date_to: Optional[str] = None):

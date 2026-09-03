@@ -10,7 +10,7 @@ const FORMAT_STORAGE_KEY = 'sensoper_invoice_format_pref';
 /** GST Tax Invoice — separate legal document from the sales quotation PDF (Iter 44 Batch A).
  * Offers List (per line item) and Combined (rolled up per GST rate slab) formats — both
  * legally complete, last choice remembered per-browser (Iter 45). */
-export default function ProjectInvoiceCard({ projectId, companyProfile }) {
+export default function ProjectInvoiceCard({ projectId, companyProfile, terms }) {
   const [invoice, setInvoice] = useState(null);
   const [showPreview, setShowPreview] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -29,7 +29,7 @@ export default function ProjectInvoiceCard({ projectId, companyProfile }) {
     finally { setLoading(false); }
   };
 
-  const handleDownload = () => { if (invoice) generateGstInvoicePDF(invoice, companyProfile, format); };
+  const handleDownload = async () => { if (invoice) await generateGstInvoicePDF(invoice, companyProfile, format, terms); };
 
   return (
     <>

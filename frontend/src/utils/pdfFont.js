@@ -77,3 +77,70 @@ export async function loadUnicodeFont(doc) {
     return 'helvetica';
   }
 }
+
+// ═══════════ Tamil support (Iter 46 Change 3) ═══════════
+// Roboto has no Tamil glyphs — a `language === 'ta'` Terms & Conditions
+// template rendered with it shows blank boxes. Noto Sans Tamil is loaded
+// on-demand, only when a terms template actually needs it.
+const TAMIL_FONT_URLS = {
+  regular: 'https://cdn.jsdelivr.net/gh/openmaptiles/fonts@master/noto-sans/NotoSansTamil-Regular.ttf',
+  bold: 'https://cdn.jsdelivr.net/gh/openmaptiles/fonts@master/noto-sans/NotoSansTamil-Bold.ttf'
+};
+export const PDF_TAMIL_FONT = 'NotoTamil';
+
+let cachedTamilFonts = null;
+let tamilInflight = null;
+
+async function fetchAllTamilFonts() {
+  if (cachedTamilFonts) return cachedTamilFonts;
+  if (tamilInflight) return tamilInflight;
+  tamilInflight = (async () => {
+    const [regular, bold] = await Promise.all([
+      fetchAsBase64(TAMIL_FONT_URLS.regular),
+      fetchAsBase64(TAMIL_FONT_URLS.bold)
+    ]);
+    cachedTamilFonts = { regular, bold };
+    return cachedTamilFonts;
+  })();
+  try {
+    return await tamilInflight;
+  } finally {
+    tamilInflight = null;
+  }
+}
+
+/** Detect Tamil-script characters (U+0B80–U+0BFF) in a string. */
+export function isTamilText(str) {
+  return /[\u0B80-\u0BFF]/.test(str || '');
+}
+
+/** Register Noto Sans Tamil on the given doc. Returns the font name, or null on failure. */
+export async function loadTamilFont(doc) {
+  try {
+    const fonts = await fetchAllTamilFonts();
+    doc.addFileToVFS('NotoSansTamil-Regular.ttf', fonts.regular);
+    doc.addFont('NotoSansTamil-Regular.ttf', PDF_TAMIL_FONT, 'normal');
+    doc.addFileToVFS('NotoSansTamil-Bold.ttf', fonts.bold);
+    doc.addFont('NotoSansTamil-Bold.ttf', PDF_TAMIL_FONT, 'bold');
+    return PDF_TAMIL_FONT;
+  } catch (e) {
+    console.warn('Tamil font load failed, falling back:', e?.message || e);
+    return null;
+  }
+}
+
+/**
+ * Pick the right font to render a Terms & Conditions block: switches to
+ * Noto Sans Tamil when the template's language is 'ta' (or its content
+ * contains Tamil glyphs), otherwise keeps the document's existing font.
+ * @param {jsPDF} doc
+ * @param {{language?: string, content?: string}} terms
+ * @param {string} fallbackFont
+ */
+export async function loadTermsFont(doc, terms, fallbackFont) {
+  if (terms && (terms.language === 'ta' || isTamilText(terms.content))) {
+    const tamil = await loadTamilFont(doc);
+    if (tamil) return tamil;
+  }
+  return fallbackFont;
+}

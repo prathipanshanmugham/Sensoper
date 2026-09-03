@@ -14,6 +14,8 @@
  */
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { parseTermsHtml } from './termsParser';
+import { loadTermsFont } from './pdfFont';
 
 const CURRENCY = (v) => `INR ${(v || 0).toLocaleString('en-IN')}`;
 
@@ -233,8 +235,9 @@ function defaultInclusions(sysType, kwp) {
  * @param {object} companyProfile
  * @param {object} config
  * @param {Array}  addonGroups
+ * @param {object} terms - same quotation-category T&C template used by the Detailed Quotation
  */
-export async function generateKitQuotationPDF(project, companyProfile, config, addonGroups) {
+export async function generateKitQuotationPDF(project, companyProfile, config, addonGroups, terms) {
   const pres = buildKitPresentation(project, config, addonGroups);
   const doc = new jsPDF();
   const pageW = doc.internal.pageSize.getWidth();
@@ -345,15 +348,16 @@ export async function generateKitQuotationPDF(project, companyProfile, config, a
   if (y > 260) { doc.addPage(); y = 20; }
   doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setTextColor(50, 50, 50);
   doc.text('Terms & Conditions:', m, y); y += 5;
-  doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(70, 70, 70);
-  const terms = [
-    '• Quotation valid for 30 days from issue date.',
-    '• Payment schedule: 40% advance / 50% on delivery / 10% on commissioning.',
-    '• Warranty: Panels 12yr product + 25yr performance, Inverter 5yr, Structure 5yr, Workmanship 1yr.',
-    '• Subject to site conditions and DISCOM approvals as applicable.',
-    '• All disputes subject to local jurisdiction.',
-  ];
-  terms.forEach(t => { doc.text(t, m, y); y += 4; });
+  const termsFont = await loadTermsFont(doc, terms, 'helvetica');
+  doc.setFont(termsFont, 'normal'); doc.setFontSize(8); doc.setTextColor(70, 70, 70);
+  const termsLines = terms?.content ? parseTermsHtml(terms.content) : ['No terms configured yet — set one under Terms & Conditions.'];
+  termsLines.forEach((t, i) => {
+    const wrapped = doc.splitTextToSize(`${i + 1}. ${t}`, pageW - 2 * m);
+    wrapped.forEach(w => { doc.text(w, m, y); y += 4; });
+  });
+  y += 4;
+  doc.setFont('helvetica', 'italic'); doc.setFontSize(7); doc.setTextColor(130, 130, 130);
+  doc.text(`Terms used: ${terms?.title || 'Standard Terms'} (v${terms?.version ?? 0})`, m, y);
 
   // Save
   const filename = `KitQuotation_${(project.customer?.name || 'Customer').replace(/\s+/g, '_')}_${project.id?.slice(-6) || 'DRAFT'}.pdf`;

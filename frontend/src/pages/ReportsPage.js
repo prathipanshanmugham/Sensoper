@@ -10,7 +10,7 @@ import { Badge } from '../components/ui/badge';
 import {
   Loader2, FileSpreadsheet, FileText, IndianRupee, TrendingUp, Briefcase,
   Package, Users, Receipt, Star, AlertTriangle, Truck, ClipboardList, Megaphone, PackageCheck,
-  Wrench, ShieldCheck, Wallet, Activity, UserCheck, MapPin
+  Wrench, ShieldCheck, Wallet, Activity, UserCheck, MapPin, HardHat, ShoppingBag
 } from 'lucide-react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -41,7 +41,9 @@ const REPORTS = [
   { id: 'expenses', label: 'Expenses', icon: Wallet, desc: 'Operational, marketing spend and GST input/paid' },
   { id: 'operational_expense', label: 'Operational Expense', icon: Wallet, desc: 'Operational spend only, monthly trend' },
   { id: 'reading_analysis', label: 'Reading Analysis', icon: Activity, desc: 'Generation trend vs estimate' },
-  { id: 'employee_performance', label: 'Employee Performance', icon: UserCheck, desc: 'Auto activity + manual scores' }
+  { id: 'employee_performance', label: 'Employee Performance', icon: UserCheck, desc: 'Auto activity + manual scores' },
+  { id: 'partner_performance', label: 'Partner Performance', icon: HardHat, desc: 'On-time rate, ratings, payments, retention by partner' },
+  { id: 'ecommerce', label: 'Ecommerce', icon: ShoppingBag, desc: 'Revenue, margin after commission, returns by platform/SKU' }
 ];
 
 function SummaryCard({ label, value }) {
@@ -56,6 +58,7 @@ function SummaryCard({ label, value }) {
 const formatHeader = (key) => key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
 
 const formatSummaryValue = (key, v) => {
+  if (v !== null && typeof v === 'object') return JSON.stringify(v);
   if (typeof v !== 'number') return v;
   const k = key.toLowerCase();
   if (k.includes('pct') || k.includes('percent') || k.includes('rate')) return `${v}%`;

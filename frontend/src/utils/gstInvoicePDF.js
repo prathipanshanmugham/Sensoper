@@ -11,10 +11,12 @@
  */
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { parseTermsHtml } from './termsParser';
+import { loadTermsFont } from './pdfFont';
 
 const CURRENCY = (v) => `Rs. ${(v || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}`;
 
-export function generateGstInvoicePDF(invoice, companyProfile, format = 'list') {
+export async function generateGstInvoicePDF(invoice, companyProfile, format = 'list', terms) {
   const doc = new jsPDF();
   const pageW = doc.internal.pageSize.getWidth();
   const m = 14;
@@ -129,14 +131,30 @@ export function generateGstInvoicePDF(invoice, companyProfile, format = 'list') 
   doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(80, 80, 80);
   const decl = doc.splitTextToSize(`Declaration: ${invoice.declaration}`, pageW - 2 * m);
   decl.forEach(l => { doc.text(l, m, y); y += 4; });
-  y += 10;
+  y += 6;
 
-  if (y > 260) { doc.addPage(); y = 20; }
+  // ============ Terms & Conditions ============
+  if (y > 235) { doc.addPage(); y = 20; }
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setTextColor(50, 50, 50);
+  doc.text('Terms & Conditions:', m, y); y += 5;
+  const termsFont = await loadTermsFont(doc, terms, 'helvetica');
+  doc.setFont(termsFont, 'normal'); doc.setFontSize(7.5); doc.setTextColor(70, 70, 70);
+  const termsLines = terms?.content ? parseTermsHtml(terms.content) : ['No terms configured yet — set one under Terms & Conditions.'];
+  termsLines.forEach((t, i) => {
+    const wrapped = doc.splitTextToSize(`${i + 1}. ${t}`, pageW - 2 * m);
+    wrapped.forEach(w => { doc.text(w, m, y); y += 4; });
+  });
+  y += 4;
+
+  if (y > 265) { doc.addPage(); y = 20; }
   doc.setFont('helvetica', 'bold'); doc.setFontSize(9);
   doc.text(`For ${invoice.company?.name || ''}`, pageW - m, y, { align: 'right' }); y += 16;
   doc.setFont('helvetica', 'normal'); doc.setFontSize(9);
   doc.text(invoice.company?.authorized_signatory || 'Authorized Signatory', pageW - m, y, { align: 'right' }); y += 4.5;
-  if (invoice.company?.designation) { doc.text(invoice.company.designation, pageW - m, y, { align: 'right' }); }
+  if (invoice.company?.designation) { doc.text(invoice.company.designation, pageW - m, y, { align: 'right' }); y += 4.5; }
+
+  doc.setFont('helvetica', 'italic'); doc.setFontSize(7); doc.setTextColor(130, 130, 130);
+  doc.text(`Terms used: ${terms?.title || 'Standard Terms'} (v${terms?.version ?? 0})`, m, doc.internal.pageSize.getHeight() - 10);
 
   doc.save(`TaxInvoice_${invoice.invoice_number}${format === 'combined' ? '_Combined' : ''}.pdf`);
 }

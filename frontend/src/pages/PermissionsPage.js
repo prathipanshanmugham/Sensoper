@@ -4,7 +4,7 @@ import { Button } from '../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card';
 import { Switch } from '../components/ui/switch';
 import { Label } from '../components/ui/label';
-import { Loader2, Shield, Save, Crown, Briefcase, HardHat, ChevronDown, ChevronUp, LayoutDashboard, TrendingUp, Wallet, Activity, Package, Truck, CreditCard, Undo2, ClipboardList, BarChart3, AlertTriangle, ClipboardCheck, Users, Settings, FolderInput } from 'lucide-react';
+import { Loader2, Shield, Save, Crown, Briefcase, HardHat, ChevronDown, ChevronUp, LayoutDashboard, TrendingUp, Wallet, Activity, Package, Truck, CreditCard, Undo2, ClipboardList, BarChart3, AlertTriangle, ClipboardCheck, Users, Settings, FolderInput, ShoppingBag } from 'lucide-react';
 
 const PERMISSION_GROUPS = [
   { label: 'Projects', permissions: [
@@ -50,7 +50,9 @@ const MODULES = [
   { key: 'module_approvals', label: 'Approvals', icon: ClipboardCheck },
   { key: 'module_users', label: 'User Management', icon: Users },
   { key: 'module_permissions', label: 'Permissions', icon: Shield },
-  { key: 'module_settings', label: 'Settings', icon: Settings }
+  { key: 'module_settings', label: 'Settings', icon: Settings },
+  { key: 'module_partners', label: 'Partners', icon: HardHat },
+  { key: 'module_ecommerce', label: 'Ecommerce', icon: ShoppingBag }
 ];
 const MODULE_ACTIONS = ['view', 'create', 'edit', 'delete', 'export'];
 
