@@ -516,6 +516,7 @@ export const ecommerceAPI = {
     list: (params = {}) => api.get('/ecommerce/orders', { params }),
     create: (data) => api.post('/ecommerce/orders', data),
     update: (id, data) => api.put(`/ecommerce/orders/${id}`, data),
+    remove: (id) => api.delete(`/ecommerce/orders/${id}`),
     importPreview: (platformId, file) => {
       const fd = new FormData();
       fd.append('file', file);

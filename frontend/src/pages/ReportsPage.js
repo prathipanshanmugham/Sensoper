@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { reportsAPI, marketingAPI, reconciliationAPI } from '../utils/api';
+import { reportsAPI, marketingAPI, reconciliationAPI, ecommerceAPI } from '../utils/api';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
@@ -20,6 +20,7 @@ import { loadUnicodeFont } from '../utils/pdfFont';
 import { useLocationScope, LocationScopeSelect } from '../components/LocationScope';
 
 const PIE_COLORS = ['#10b981', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#84cc16'];
+const PARTNER_SPECIALITIES = ['on-grid', 'off-grid', 'hybrid', 'pump', 'electrical', 'civil'];
 
 const REPORTS = [
   { id: 'sales_revenue', label: 'Sales & Revenue', icon: IndianRupee, desc: 'Revenue, quotes, conversion, lead sources' },
@@ -62,7 +63,10 @@ const formatSummaryValue = (key, v) => {
   if (typeof v !== 'number') return v;
   const k = key.toLowerCase();
   if (k.includes('pct') || k.includes('percent') || k.includes('rate')) return `${v}%`;
-  if (k.includes('kwh') || k.includes('count') || k.includes('staff') || k.includes('entries') || k.includes('logs') || k.includes('sites')) return v.toLocaleString('en-IN');
+  const isCountLike = ['count', 'staff', 'entries', 'logs', 'sites', 'orders', 'listings', 'partners', 'assignments', 'kwh', 'districts', 'units'].some(w => k.includes(w));
+  if (isCountLike) return v.toLocaleString('en-IN');
+  const isMoneyLike = ['revenue', 'commission', 'margin', 'paid', 'balance', 'retention', 'outstanding', 'cost', 'amount', 'business', 'payout', 'expense', 'value'].some(w => k.includes(w));
+  if (isMoneyLike) return `₹${v.toLocaleString('en-IN')}`;
   return v > 999 ? `₹${v.toLocaleString('en-IN')}` : v;
 };
 
@@ -73,11 +77,12 @@ export default function ReportsPage() {
   const [activeTab, setActiveTab] = useState('');
   const [reportData, setReportData] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [filters, setFilters] = useState({ date_from: '', date_to: '', system_type: 'all', status: 'all', movement_type: 'all' });
+  const [filters, setFilters] = useState({ date_from: '', date_to: '', system_type: 'all', status: 'all', movement_type: 'all', district: '', speciality: 'all', platform_id: 'all', category: '' });
   const [cacData, setCacData] = useState(null);
   const [cacLoading, setCacLoading] = useState(false);
   const [excessMaterialData, setExcessMaterialData] = useState(null);
   const [excessMaterialLoading, setExcessMaterialLoading] = useState(false);
+  const [ecommercePlatforms, setEcommercePlatforms] = useState([]);
 
   const fetchExcessMaterial = useCallback(async () => {
     setExcessMaterialLoading(true);
@@ -104,7 +109,10 @@ export default function ReportsPage() {
   useEffect(() => {
     if (activeReport === 'marketing') fetchCac();
     if (activeReport === 'excess_material') fetchExcessMaterial();
-  }, [activeReport, fetchCac, fetchExcessMaterial]);
+    if (activeReport === 'ecommerce' && ecommercePlatforms.length === 0) {
+      ecommerceAPI.platforms.list().then(r => setEcommercePlatforms(r.data)).catch(console.error);
+    }
+  }, [activeReport, fetchCac, fetchExcessMaterial, ecommercePlatforms.length]);
 
   const fetchReport = useCallback(async (type, tab, overrideFilters) => {
     setLoading(true);
@@ -117,6 +125,14 @@ export default function ReportsPage() {
       if (f.system_type !== 'all') params.system_type = f.system_type;
       if (f.status !== 'all') params.status = f.status;
       if (f.movement_type !== 'all' && type === 'inventory_material' && tab === 'movement') params.movement_type = f.movement_type;
+      if (type === 'partner_performance') {
+        if (f.district) params.district = f.district;
+        if (f.speciality !== 'all') params.speciality = f.speciality;
+      }
+      if (type === 'ecommerce') {
+        if (f.platform_id !== 'all') params.platform_id = f.platform_id;
+        if (f.category) params.category = f.category;
+      }
       if (tab) params.tab = tab;
       if (locScope.locationId) params.location_id = locScope.locationId;
       const res = await reportsAPI.get(type, params);
@@ -218,6 +234,36 @@ export default function ReportsPage() {
                 </div>
               </div>
             )}
+            {activeReport === 'partner_performance' && (
+              <div className="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-3" data-testid="partner-performance-filter-row">
+                <div className="space-y-1">
+                  <Label className="text-xs">District</Label>
+                  <Input placeholder="e.g. Chennai" value={filters.district} onChange={(e) => setFilters(p => ({...p, district: e.target.value}))} onBlur={(e) => fetchReport(activeReport, activeTab, { district: e.target.value })} className="h-9" data-testid="filter-district" />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Speciality</Label>
+                  <Select value={filters.speciality} onValueChange={(v) => { setFilters(p => ({...p, speciality: v})); fetchReport(activeReport, activeTab, { speciality: v }); }}>
+                    <SelectTrigger className="h-9" data-testid="filter-speciality"><SelectValue /></SelectTrigger>
+                    <SelectContent><SelectItem value="all">All</SelectItem>{PARTNER_SPECIALITIES.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent>
+                  </Select>
+                </div>
+              </div>
+            )}
+            {activeReport === 'ecommerce' && (
+              <div className="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-3" data-testid="ecommerce-filter-row">
+                <div className="space-y-1">
+                  <Label className="text-xs">Platform</Label>
+                  <Select value={filters.platform_id} onValueChange={(v) => { setFilters(p => ({...p, platform_id: v})); fetchReport(activeReport, activeTab, { platform_id: v }); }}>
+                    <SelectTrigger className="h-9" data-testid="filter-platform"><SelectValue /></SelectTrigger>
+                    <SelectContent><SelectItem value="all">All Platforms</SelectItem>{ecommercePlatforms.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Category</Label>
+                  <Input placeholder="e.g. panels" value={filters.category} onChange={(e) => setFilters(p => ({...p, category: e.target.value}))} onBlur={(e) => fetchReport(activeReport, activeTab, { category: e.target.value })} className="h-9" data-testid="filter-category" />
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -281,7 +327,7 @@ export default function ReportsPage() {
                       const maxVal = Math.max(...reportData.chart_data.map(d => d.value));
                       const pct = maxVal > 0 ? (item.value / maxVal) * 100 : 0;
                       return (
-                        <div key={item.name} className="flex items-center gap-3">
+                        <div key={`${item.name}-${i}`} className="flex items-center gap-3">
                           <div className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: PIE_COLORS[i % PIE_COLORS.length] }} />
                           <span className="text-xs text-slate-600 w-32 truncate">{item.name}</span>
                           <div className="flex-1 h-2.5 bg-slate-100 rounded-full overflow-hidden"><div className="h-full rounded-full" style={{width: `${pct}%`, backgroundColor: PIE_COLORS[i % PIE_COLORS.length]}} /></div>
@@ -290,6 +336,29 @@ export default function ReportsPage() {
                       );
                     })}
                   </div>
+                </div>
+              )}
+              {/* Ecommerce: platform breakdown + monthly revenue trend (Iter 46 Change 2) */}
+              {activeReport === 'ecommerce' && reportData.platform_rows?.length > 0 && (
+                <div className="mb-4 p-4 bg-white rounded-lg border border-slate-200" data-testid="ecommerce-platform-breakdown">
+                  <p className="text-xs font-medium uppercase tracking-wider text-slate-400 mb-3">Revenue by Platform</p>
+                  <table className="w-full text-sm">
+                    <thead><tr className="text-left text-slate-500 border-b"><th className="py-1.5">Platform</th><th>Revenue</th><th>Units</th><th>Commission</th><th>Orders</th></tr></thead>
+                    <tbody>{reportData.platform_rows.map(r => (
+                      <tr key={r.platform} className="border-b last:border-0"><td className="py-1.5">{r.platform}</td><td>₹{r.revenue.toLocaleString('en-IN')}</td><td>{r.units}</td><td>₹{r.commission.toLocaleString('en-IN')}</td><td>{r.orders}</td></tr>
+                    ))}</tbody>
+                  </table>
+                </div>
+              )}
+              {activeReport === 'ecommerce' && reportData.monthly_rows?.length > 0 && (
+                <div className="mb-4 p-4 bg-white rounded-lg border border-slate-200" data-testid="ecommerce-monthly-trend">
+                  <p className="text-xs font-medium uppercase tracking-wider text-slate-400 mb-3">Revenue by Month</p>
+                  <table className="w-full text-sm">
+                    <thead><tr className="text-left text-slate-500 border-b"><th className="py-1.5">Month</th><th>Revenue</th><th>Units</th><th>Orders</th></tr></thead>
+                    <tbody>{reportData.monthly_rows.map(r => (
+                      <tr key={r.month} className="border-b last:border-0"><td className="py-1.5">{r.month}</td><td>₹{r.revenue.toLocaleString('en-IN')}</td><td>{r.units}</td><td>{r.orders}</td></tr>
+                    ))}</tbody>
+                  </table>
                 </div>
               )}
               {/* CAC / Marketing dashboard (Iter 39 Change 3b) */}

@@ -4626,7 +4626,7 @@ async def _get_filtered_projects(query_base, date_from, date_to, system_type, st
     return await db.projects.find(query).to_list(5000)
 
 @api_router.get("/reports/{report_type}")
-async def get_report(report_type: str, request: Request, date_from: str = None, date_to: str = None, system_type: str = None, status: str = None, project_id: str = None, tab: str = None, movement_type: str = None, location_id: str = None):
+async def get_report(report_type: str, request: Request, date_from: str = None, date_to: str = None, system_type: str = None, status: str = None, project_id: str = None, tab: str = None, movement_type: str = None, location_id: str = None, district: str = None, speciality: str = None, platform_id: str = None, category: str = None):
     user = await get_current_user(request)
     if user["role"] not in ["admin", "manager"]:
         raise HTTPException(status_code=403, detail="Reports are admin/manager only")
@@ -5132,6 +5132,8 @@ async def get_report(report_type: str, request: Request, date_from: str = None, 
 
     elif report_type == "partner_performance":
         partner_docs = await db.partners.find({"active": {"$ne": False}}).to_list(2000)
+        if district: partner_docs = [p for p in partner_docs if district in (p.get("service_districts") or [])]
+        if speciality: partner_docs = [p for p in partner_docs if speciality in (p.get("specialities") or [])]
         assignments_all = await db.partner_assignments.find({}).to_list(5000)
         payments_all = await db.partner_payments.find({}).to_list(5000)
         allowed_project_ids = None
@@ -5184,6 +5186,7 @@ async def get_report(report_type: str, request: Request, date_from: str = None, 
             q["order_date"] = {}
             if date_from: q["order_date"]["$gte"] = date_from
             if date_to: q["order_date"]["$lte"] = date_to
+        if platform_id: q["platform_id"] = platform_id
         orders = await db.ecommerce_orders.find(q).to_list(10000)
         platforms = {str(p["_id"]): p["name"] for p in await db.ecommerce_platforms.find({}).to_list(200)}
         items = {str(i["_id"]): i for i in await db.inventory_items.find({}).to_list(5000)}
@@ -5192,12 +5195,16 @@ async def get_report(report_type: str, request: Request, date_from: str = None, 
         returns_total = 0
         for o in orders:
             pname = platforms.get(o.get("platform_id"), "—")
+            lines = o.get("lines", [])
+            if category:
+                lines = [l for l in lines if items.get(l.get("inventory_item_id"), {}).get("category") == category]
+                if not lines: continue
             by_platform[pname]["revenue"] += o.get("order_total", 0) or 0
             by_platform[pname]["commission"] += o.get("commission_total", 0) or 0
             by_platform[pname]["orders"] += 1
             is_return = o.get("order_status") in ("returned", "refunded")
             if is_return: returns_total += 1
-            for l in o.get("lines", []):
+            for l in lines:
                 item = items.get(l.get("inventory_item_id"), {})
                 key = item.get("name", l.get("inventory_item_id", "Unknown"))
                 by_platform[pname]["units"] += l.get("quantity", 0) or 0
@@ -5207,6 +5214,17 @@ async def get_report(report_type: str, request: Request, date_from: str = None, 
                 by_item[key]["cost"] += (l.get("quantity", 0) or 0) * (item.get("unit_price", 0) or 0)
                 by_item[key]["orders"] += 1
                 if is_return: by_item[key]["returns"] += 1
+        by_month: Dict[str, Any] = defaultdict(lambda: {"revenue": 0.0, "units": 0.0, "orders": 0})
+        for o in orders:
+            month = (o.get("order_date") or "")[:7] or "unknown"
+            lines = o.get("lines", [])
+            if category:
+                lines = [l for l in lines if items.get(l.get("inventory_item_id"), {}).get("category") == category]
+                if not lines: continue
+            by_month[month]["revenue"] += o.get("order_total", 0) or 0
+            by_month[month]["units"] += sum(l.get("quantity", 0) or 0 for l in lines)
+            by_month[month]["orders"] += 1
+        monthly_rows = [{"month": k, **{kk: round(vv, 2) for kk, vv in v.items()}} for k, v in sorted(by_month.items())]
         platform_rows = [{"platform": k, **{kk: round(vv, 2) for kk, vv in v.items()}} for k, v in by_platform.items()]
         item_rows = []
         for k, v in by_item.items():
@@ -5221,13 +5239,14 @@ async def get_report(report_type: str, request: Request, date_from: str = None, 
         listing_status = Counter(l.get("status") for l in listings)
         total_revenue = sum(r["revenue"] for r in platform_rows)
         total_commission = sum(r["commission"] for r in platform_rows)
+        total_cogs = sum(v["cost"] for v in by_item.values())
         return {"title": "Ecommerce Report", "summary": {
             "total_revenue": round(total_revenue, 2), "total_commission": round(total_commission, 2),
-            "net_margin": round(total_revenue - total_commission, 2),
+            "net_margin": round(total_revenue - total_commission - total_cogs, 2),
             "total_orders": len(orders), "return_rate_pct": round(returns_total / len(orders) * 100, 1) if orders else 0,
             "listings_live": listing_status.get("live", 0), "listings_draft": listing_status.get("draft", 0),
             "listings_paused": listing_status.get("paused", 0), "listings_delisted": listing_status.get("delisted", 0),
-        }, "rows": item_rows, "platform_rows": platform_rows,
+        }, "rows": item_rows, "platform_rows": platform_rows, "monthly_rows": monthly_rows,
            "best_skus": item_rows[:5], "worst_skus": sorted(item_rows, key=lambda r: r["net_margin"])[:5],
            "chart_data": [{"name": r["platform"][:15], "value": r["revenue"]} for r in platform_rows]}
 

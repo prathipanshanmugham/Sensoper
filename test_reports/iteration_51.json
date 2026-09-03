@@ -1,0 +1,49 @@
+{
+  "summary": "Iteration 51 focused pass on the NEW gap items: Partner Performance district/speciality filters, Ecommerce report platform/category filters + Revenue-by-Platform & Revenue-by-Month tables, ecommerce summary flatness regression, Orders tab order-status/payment-status dropdowns, inventory_movements.reference_id linkage, and the 'Terms used: <title> (vN)' footer on all 3 PDF types. Backend: created /app/backend/tests/test_iter51_new_gaps.py (21 tests, 21 pass) and re-ran the existing suites (test_iter46_partners_ecommerce, test_iter46_terms_categories, test_iter47_api, test_iter48_api) => 99/99 pass. Frontend: verified Reports page filters + both new breakdown tables render real numbers with no crash (CRITICAL bug from prior run is FIXED), Ecommerce Orders tab dropdowns issue PUT 200 and persist across reload, and downloaded + text-parsed all 4 PDFs (Detailed Quotation, Kit Quotation, GST Invoice Combined, GST Invoice List) confirming the 'Terms used' line and NO 'TEST_' marker. Light smoke on Partners page, ProjectPartnerCard, CEO dashboard ecommerce section, Terms page — no regressions. Only minor issues remain (see below); nothing blocking.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /api/reports/ecommerce", "issue": "summary.net_margin = total_revenue - total_commission and IGNORES COGS, while the per-item rows compute net_margin = revenue - commission - cost. The headline 'Net Margin' card therefore overstates margin and contradicts the table below it. Align the definitions (or rename the card to 'Revenue after Commission')."},
+      {"endpoint": "PUT /api/ecommerce/orders/{id}", "issue": "settlement_date is only stored because the frontend sends it; the backend does not auto-stamp settlement_date when payment_status transitions to 'settled' (an API-only client can set settled with no date). Also `update = {k:v for ... if v is not None}` silently drops explicit nulls, so a field can never be cleared (e.g. reverting settlement_date)."},
+      {"endpoint": "DELETE /api/ecommerce/orders/{id}", "issue": "Endpoint does not exist (only platforms and listings have DELETE). An erroneously recorded order can never be removed — only status-changed to cancelled — and test data cannot be cleaned up, which is why the Orders tab now shows 14 leftover TEST_* orders."},
+      {"endpoint": "GET /api/ecommerce/platforms vs /api/ecommerce/orders", "issue": "Still open from iteration_50: soft-deleted (active=false) platforms are hidden in the Platforms tab but their orders remain listed with the platform name resolved, so the Ecommerce report platform breakdown shows 14 platforms while only 2 are visible in the UI."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "ReportsPage — Visual Breakdown chart", "issue": "React console error 'Encountered two children with the same key' on the Ecommerce report. chart_data rows are keyed by item.name, and the backend truncates names to 15 chars (r.platform[:15]), so platforms sharing a 15-char prefix (e.g. several 'TEST_Iter51_Pla...') collide and bars can be omitted. Use the index (or full name) as the React key.", "selector": "[data-testid=\"report-chart\"]", "priority": "LOW"},
+      {"component": "ReportsPage — formatSummaryValue", "issue": "Currency heuristic is value-based, not key-based: amounts <= 999 render with no ₹ symbol (Ecommerce report showed 'TOTAL COMMISSION 200'), and any count-like metric > 999 whose key does not contain count/staff/entries/logs/sites would be prefixed with ₹ (e.g. total_orders = 1200 would render '₹1,200'). Drive the format off the metric key instead.", "selector": "[data-testid=\"report-summary\"]", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Reports page filter bar", "issues": ["Date From / Date To still use the raw browser-native date input (mm/dd/yyyy) instead of the shadcn calendar component used elsewhere in the app — inconsistent and shows US date order for an INR/India app."]},
+      {"screen": "Ecommerce / Reports / Partners / Terms (data hygiene, not code)", "issues": ["Preview DB is heavily polluted by leftover test data from prior automated runs: 298 projects (mostly TEST_*), 14 TEST_* ecommerce orders, 2 TEST_* platforms still ACTIVE in the Platform dropdown, 9 delisted TEST listings, 5 TEST_* partners (all of them the only rows in the Partner Performance report, none with service_districts so the new District filter always returns 0 rows on real data), and two inactive 'Test Terms v1' T&C versions. Real numbers such as 'Return Rate 64.3%' are meaningless. Recommend a cleanup script for TEST_/Test prefixed docs."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter51_new_gaps.py",
+    "/app/backend/tests/test_iter46_partners_ecommerce.py",
+    "/app/test_reports/pytest/iter51_results.xml"
+  ],
+  "action_items": [
+    "Align ecommerce report summary.net_margin with the per-item definition (subtract COGS) or rename the card.",
+    "Auto-stamp settlement_date server-side when payment_status becomes 'settled' (do not rely on the client).",
+    "Add DELETE /api/ecommerce/orders/{id} (admin-only, restoring stock if the order was active) so bad orders / test data can be removed.",
+    "Fix duplicate React key in the Reports Visual Breakdown chart (key on index, not the 15-char truncated name).",
+    "Make formatSummaryValue key-driven so counts never get a ₹ prefix and sub-1000 amounts do.",
+    "Optional: purge TEST_*/Test* seed pollution (projects, partners, ecommerce platforms/listings/orders, T&C versions) so reports show meaningful data."
+  ],
+  "critical_code_review_comments": [
+    "server.py get_report() is a single ~700-line function with 22 inline report branches; the partner_performance/ecommerce branches added this session push it further. Extract each report into its own module (e.g. reports/partner_performance.py) — the file is far beyond the 700-line guidance.",
+    "reports/ecommerce iterates `orders` twice (once for by_platform/by_item, once for by_month) duplicating the identical category-filter block — extract a single filtered-lines helper to avoid the two copies drifting.",
+    "Ecommerce order status transitions are only guarded by was_active/now_inactive; there is no state machine, so an order can go delivered -> placed and a cancelled order can be re-cancelled (harmless today because restore is guarded, but worth an explicit allowed-transition map)."
+  ],
+  "updated_files": ["/app/backend/tests/test_iter51_new_gaps.py"],
+  "success_rate": {"backend": "100% (99/99 pytest, incl. 21 new iteration-51 tests)", "frontend": "100% of tested flows passed (2 low-severity console/format defects noted)"},
+  "seed_data_creation": "test_iter51_new_gaps.py creates and then deletes: 1 partner (TEST_Iter51_Partner_*) with speciality pump/civil + service_district TEST_District_51 and one assignment, 1 platform (TEST_Iter51_Plat_*), 1 listing and 1 order (TEST51-ORD-*). Orders/assignments cannot be deleted (no DELETE endpoint), so 4 TEST51-ORD-* orders remain in the DB from repeated runs. UI run also flipped one pre-existing TEST-UI-ORD-2 order to payment=settled / status=shipped.",
+  "should_call_test_agent_after_fix": false,
+  "should_main_agent_self_test": true,
+  "test_credentials": "admin@sensoper.com / Admin@123 (from /app/memory/test_credentials.md) — login works, session cookie based",
+  "context_for_next_testing_agent": "All 4 previously reported bugs are verified fixed: (1) Ecommerce report no longer white-screens and every summary key (total_revenue, total_commission, net_margin, total_orders, return_rate_pct, listings_live/draft/paused/delisted) is a scalar; (2) inventory_movements now carries reference_id == order id for both the sale (reference_type=ecommerce_order) and the restore (ecommerce_order_return) — verified directly against MongoDB in test_iter51_new_gaps.py; (3) Orders tab order-status-select-{id} / order-payment-select-{id} dropdowns work (PUT 200, persists after reload) and cancelled/returned restores stock with no double-restore; (4) the stale TEST_ invoice T&C template is gone and 'Standard Invoice Terms' (invoice), 'Standard Terms & Conditions' (quotation) and 'Standard AMC Terms' (amc) are the single active templates per category. New PDF footer confirmed by text-extracting the downloaded files (saved under /app/test_reports/pdfs/): Detailed Quotation + Kit Quotation both say 'Terms used: Standard Terms & Conditions (v1)', GST Invoice Combined and List both say 'Terms used: Standard Invoice Terms (v1)'; no TEST_ text in any. Partner Performance district/speciality and Ecommerce platform/category filters work in both API and UI. Note for UI scripts: Ecommerce page tabs are plain buttons — use data-testid=\"ecommerce-tab-orders\" (NOT role=tab / get_by_text).",
+  "rca_of_the_issue": "No new defects with a functional impact were found. The duplicate-React-key warning root-causes to reports chart_data being keyed by the backend-truncated 15-char label (server.py: {'name': r['platform'][:15]}), which collides for platforms sharing a prefix; the currency formatting oddity root-causes to formatSummaryValue deciding 'is this money?' from the numeric magnitude (v > 999) instead of the metric key."
+}

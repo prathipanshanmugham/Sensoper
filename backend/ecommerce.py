@@ -395,10 +395,28 @@ def create_router(db, get_current_user, require_role, create_audit_log):
         now_inactive = update.get("order_status") in ("returned", "cancelled", "refunded")
         if was_active and now_inactive:
             await _restore_stock(db, existing.get("lines", []), order_id)
+        if update.get("payment_status") == "settled" and not update.get("settlement_date"):
+            update["settlement_date"] = _now()[:10]
         update["updated_at"] = _now()
         await db.ecommerce_orders.update_one({"_id": oid}, {"$set": update})
         await create_audit_log(user["id"], user["name"], "update", "ecommerce_order", order_id, _clean(existing), update)
         return _clean(await db.ecommerce_orders.find_one({"_id": oid}))
+
+    @router.delete("/ecommerce/orders/{order_id}")
+    async def delete_order(order_id: str, request: Request):
+        user = await require_role("admin")(request)
+        try:
+            oid = ObjectId(order_id)
+        except Exception:
+            raise HTTPException(status_code=400, detail="Invalid order id")
+        existing = await db.ecommerce_orders.find_one({"_id": oid})
+        if not existing:
+            raise HTTPException(status_code=404, detail="Order not found")
+        if existing.get("order_status") not in ("returned", "cancelled", "refunded"):
+            await _restore_stock(db, existing.get("lines", []), order_id)
+        await db.ecommerce_orders.delete_one({"_id": oid})
+        await create_audit_log(user["id"], user["name"], "delete", "ecommerce_order", order_id, _clean(existing), None)
+        return {"message": "Order deleted and stock restored if it was still active"}
 
     # ── Reconciliation ──
     @router.get("/ecommerce/reconciliation")

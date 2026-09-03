@@ -341,6 +341,39 @@ class TestReportsAndCeo:
         for k in ("revenue", "commission", "net_revenue"):
             assert k in ec, f"missing {k} in ceo.ecommerce: {ec}"
 
+    def test_partner_performance_filters_by_speciality_and_district(self, client, state):
+        r = client.get(f"{API}/reports/partner_performance", params={"speciality": "on-grid"}, timeout=90)
+        assert r.status_code == 200, r.text[:300]
+        rows = r.json().get("rows", [])
+        assert all("on-grid" in (row.get("specialities") or "") for row in rows)
+        r2 = client.get(f"{API}/reports/partner_performance", params={"district": "NonExistentDistrictXYZ"}, timeout=90)
+        assert r2.status_code == 200
+        assert r2.json().get("rows") == []
+
+    def test_ecommerce_report_summary_is_flat(self, client):
+        """Regression: summary must be scalar-only (previous nested listing_status dict crashed the UI)."""
+        r = client.get(f"{API}/reports/ecommerce", timeout=90)
+        assert r.status_code == 200
+        summary = r.json().get("summary", {})
+        for k, v in summary.items():
+            assert not isinstance(v, (dict, list)), f"summary.{k} is non-scalar ({type(v)}) — will crash ReportsPage"
+
+    def test_ecommerce_report_has_monthly_and_platform_breakdown(self, client):
+        r = client.get(f"{API}/reports/ecommerce", timeout=90)
+        assert r.status_code == 200
+        d = r.json()
+        assert "monthly_rows" in d, "ecommerce report missing monthly breakdown"
+        assert "platform_rows" in d, "ecommerce report missing platform breakdown"
+
+    def test_ecommerce_report_platform_filter(self, client, state):
+        pid = state.get("platform_id")
+        if not pid:
+            pytest.skip("no platform_id in state")
+        r = client.get(f"{API}/reports/ecommerce", params={"platform_id": pid}, timeout=90)
+        assert r.status_code == 200
+        d = r.json()
+        assert d["summary"]["total_orders"] >= 0
+
 
 # ═══════════ Terms & Conditions categories ═══════════
 class TestTerms:

@@ -510,6 +510,10 @@ export default function ProjectDetails() {
       body: termsList.map((t, i) => [`${i + 1}. ${t}`]),
       didDrawPage: (data) => { drawHeader(data.doc); },
     });
+    y = doc.lastAutoTable.finalY + 4;
+    doc.setFontSize(7); doc.setFont(termsFont, 'italic'); doc.setTextColor(140, 140, 140);
+    doc.text(`Terms used: ${terms?.title || 'Standard Terms'} (v${terms?.version ?? 0})`, m, y);
+    doc.setFont(FONT, 'normal');
 
     // ========= SOLAR PROJECT REPORT (TNEB Auto-Fetch + Sizing) =========
     const sr = project.solar_report;

@@ -8,7 +8,7 @@ import { Badge } from '../components/ui/badge';
 import { Label } from '../components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../components/ui/dialog';
-import { Loader2, Plus, ShoppingBag, AlertTriangle, CheckCircle2, Upload } from 'lucide-react';
+import { Loader2, Plus, ShoppingBag, AlertTriangle, CheckCircle2, Upload, Trash2 } from 'lucide-react';
 
 const STATUS_COLORS = { draft: 'bg-slate-100 text-slate-600', live: 'bg-emerald-100 text-emerald-800', paused: 'bg-amber-100 text-amber-800', delisted: 'bg-red-100 text-red-800', out_of_stock: 'bg-orange-100 text-orange-800' };
 const ORDER_STATUS_COLORS = { placed: 'bg-blue-100 text-blue-800', shipped: 'bg-indigo-100 text-indigo-800', delivered: 'bg-emerald-100 text-emerald-800', returned: 'bg-orange-100 text-orange-800', cancelled: 'bg-slate-100 text-slate-600', refunded: 'bg-red-100 text-red-800' };
@@ -110,6 +110,12 @@ export default function EcommercePage() {
     } catch (err) { alert(err.response?.data?.detail || 'Failed to update payment status'); }
   };
 
+  const handleDeleteOrder = async (orderId) => {
+    if (!window.confirm('Delete this order? Stock will be restored if it was still active.')) return;
+    try { await ecommerceAPI.orders.remove(orderId); fetchAll(); }
+    catch (err) { alert(err.response?.data?.detail || 'Failed to delete order'); }
+  };
+
   return (
     <div className="p-6 max-w-7xl mx-auto" data-testid="ecommerce-page">
       <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
@@ -182,7 +188,7 @@ export default function EcommercePage() {
               </div>
               <Card className="border-slate-200"><CardContent className="p-0 overflow-x-auto">
                 <table className="w-full text-sm" data-testid="orders-table">
-                  <thead><tr className="text-left text-slate-500 border-b bg-slate-50"><th className="p-2">Order ID</th><th className="p-2">Platform</th><th className="p-2">Date</th><th className="p-2">Total</th><th className="p-2">Commission</th><th className="p-2">Net Payout</th><th className="p-2">Payment</th><th className="p-2">Status</th></tr></thead>
+                  <thead><tr className="text-left text-slate-500 border-b bg-slate-50"><th className="p-2">Order ID</th><th className="p-2">Platform</th><th className="p-2">Date</th><th className="p-2">Total</th><th className="p-2">Commission</th><th className="p-2">Net Payout</th><th className="p-2">Payment</th><th className="p-2">Status</th>{isAdmin && <th className="p-2"></th>}</tr></thead>
                   <tbody>{orders.map(o => (
                     <tr key={o.id} className="border-b last:border-0" data-testid={`order-row-${o.id}`}>
                       <td className="p-2">{o.platform_order_id}</td><td className="p-2">{o.platform_name}</td><td className="p-2">{o.order_date}</td>
@@ -208,6 +214,7 @@ export default function EcommercePage() {
                           </Select>
                         ) : <Badge className={ORDER_STATUS_COLORS[o.order_status]}>{o.order_status}</Badge>}
                       </td>
+                      {isAdmin && <td className="p-2"><Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-red-500 hover:bg-red-50" onClick={() => handleDeleteOrder(o.id)} data-testid={`delete-order-${o.id}`}><Trash2 className="h-3.5 w-3.5" /></Button></td>}
                     </tr>
                   ))}</tbody>
                 </table>
