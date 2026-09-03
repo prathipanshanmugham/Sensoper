@@ -15,6 +15,8 @@ class VendorCreate(BaseModel):
     email: Optional[str] = ""
     gstin: Optional[str] = ""
     address: Optional[str] = ""
+    district: Optional[str] = ""
+    payment_terms: Optional[str] = ""
     category: Optional[str] = ""  # panels | inverters | structure | transport | services | other
     notes: Optional[str] = ""
 
@@ -26,6 +28,8 @@ class VendorUpdate(BaseModel):
     email: Optional[str] = None
     gstin: Optional[str] = None
     address: Optional[str] = None
+    district: Optional[str] = None
+    payment_terms: Optional[str] = None
     category: Optional[str] = None
     notes: Optional[str] = None
     active: Optional[bool] = None
@@ -41,13 +45,51 @@ def create_router(db, get_current_user, require_role, create_audit_log):
     router = APIRouter()
 
     @router.get("/vendors")
-    async def list_vendors(request: Request, search: Optional[str] = None):
+    async def list_vendors(request: Request, search: Optional[str] = None,
+                            category: Optional[str] = None, status: Optional[str] = None,
+                            district: Optional[str] = None, sort: Optional[str] = None):
         await get_current_user(request)
-        q: Dict[str, Any] = {"active": {"$ne": False}}
+        q: Dict[str, Any] = {}
+        if status == "inactive":
+            q["active"] = False
+        elif status == "active" or not status:
+            q["active"] = {"$ne": False}
+        if category:
+            q["category"] = category
+        if district:
+            q["district"] = {"$regex": f"^{district}$", "$options": "i"}
         if search:
-            q["name"] = {"$regex": search, "$options": "i"}
+            q["$or"] = [
+                {"name": {"$regex": search, "$options": "i"}},
+                {"gstin": {"$regex": search, "$options": "i"}},
+            ]
         docs = await db.vendors.find(q).sort("name", 1).to_list(2000)
-        return [_clean(d) for d in docs]
+        # Attach business_value + last_order_date from purchase_orders (matched by supplier_name)
+        vendor_names = [d["name"] for d in docs]
+        po_stats: Dict[str, Dict[str, Any]] = {n: {"value": 0.0, "last": ""} for n in vendor_names}
+        if vendor_names:
+            async for po in db.purchase_orders.find({"supplier_name": {"$in": vendor_names}}):
+                key = po.get("supplier_name")
+                if key not in po_stats:
+                    po_stats[key] = {"value": 0.0, "last": ""}
+                po_stats[key]["value"] += po.get("total_amount", 0) or 0
+                d = (po.get("created_at") or "")[:10]
+                if d and d > po_stats[key]["last"]:
+                    po_stats[key]["last"] = d
+        out = []
+        for d in docs:
+            row = _clean(d)
+            stat = po_stats.get(row["name"], {"value": 0.0, "last": ""})
+            row["business_value"] = round(stat["value"], 2)
+            row["last_order_date"] = stat["last"] or None
+            out.append(row)
+        if sort == "business_desc":
+            out.sort(key=lambda r: r.get("business_value", 0) or 0, reverse=True)
+        elif sort == "recent_desc":
+            out.sort(key=lambda r: r.get("last_order_date") or "", reverse=True)
+        elif sort == "recent_asc":
+            out.sort(key=lambda r: r.get("last_order_date") or "9999-99-99")
+        return out
 
     @router.post("/vendors")
     async def create_vendor(payload: VendorCreate, request: Request):

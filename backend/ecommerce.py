@@ -277,6 +277,13 @@ def create_router(db, get_current_user, require_role, create_audit_log):
         item = await db.inventory_items.find_one({"_id": ObjectId(payload.inventory_item_id)})
         if not item:
             raise HTTPException(status_code=400, detail="Inventory item not found")
+        # Iter 47 — every listing must carry its OWN commission rate before it can go live.
+        # Platform's rate is reference-only, never auto-copied.
+        if payload.status == "live" and payload.platform_commission_pct is None:
+            raise HTTPException(
+                status_code=400,
+                detail="A commission % must be set on this listing before it can go live — platform's rate is a reference only.",
+            )
         doc = payload.dict()
         now = _now()
         doc["created_at"] = now; doc["updated_at"] = now; doc["last_synced_at"] = None
@@ -295,6 +302,14 @@ def create_router(db, get_current_user, require_role, create_audit_log):
         if not existing:
             raise HTTPException(status_code=404, detail="Listing not found")
         update = {k: v for k, v in payload.dict(exclude_unset=True).items() if v is not None}
+        # Guard: moving a listing to 'live' requires its own commission
+        target_status = update.get("status", existing.get("status"))
+        effective_commission = update.get("platform_commission_pct", existing.get("platform_commission_pct"))
+        if target_status == "live" and effective_commission is None:
+            raise HTTPException(
+                status_code=400,
+                detail="A commission % must be set on this listing before it can go live — platform's rate is a reference only.",
+            )
         update["updated_at"] = _now()
         await db.ecommerce_listings.update_one({"_id": oid}, {"$set": update})
         await create_audit_log(user["id"], user["name"], "update", "ecommerce_listing", listing_id, _clean(existing), update)
@@ -304,6 +319,18 @@ def create_router(db, get_current_user, require_role, create_audit_log):
     async def bulk_update_status(payload: BulkStatusUpdate, request: Request):
         user = await require_role("admin", "manager")(request)
         oids = [ObjectId(i) for i in payload.listing_ids if ObjectId.is_valid(i)]
+        # Iter 47: same rule as single-listing update — a listing must carry its own commission
+        # before going live. Bulk moves that would flip a null-commission listing to 'live' are rejected.
+        if payload.status == "live":
+            offenders = await db.ecommerce_listings.find(
+                {"_id": {"$in": oids}, "platform_commission_pct": None}
+            ).to_list(500)
+            if offenders:
+                skus = [o.get("platform_sku") or str(o["_id"]) for o in offenders]
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"These listings have no commission % set and cannot go live: {', '.join(skus)}. Set each listing's commission first.",
+                )
         res = await db.ecommerce_listings.update_many({"_id": {"$in": oids}}, {"$set": {"status": payload.status, "updated_at": _now()}})
         await create_audit_log(user["id"], user["name"], "update", "ecommerce_listing_bulk", ",".join(payload.listing_ids), None, {"status": payload.status})
         return {"updated": res.modified_count}

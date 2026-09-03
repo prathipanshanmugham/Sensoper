@@ -485,6 +485,7 @@ export const partnersAPI = {
   get: (id) => api.get(`/partners/${id}`),
   update: (id, data) => api.put(`/partners/${id}`, data),
   addRateCard: (id, data) => api.post(`/partners/${id}/rate-card`, data),
+  editRateCard: (id, data) => api.put(`/partners/${id}/rate-card`, data),
   remove: (id) => api.delete(`/partners/${id}`),
   projectScope: (projectId) => api.get(`/partners/project-scope/${projectId}`),
   assignmentsByProject: (projectId) => api.get(`/partners/assignments/by-project/${projectId}`),
@@ -494,7 +495,13 @@ export const partnersAPI = {
   releaseRetention: (id) => api.post(`/partners/assignments/${id}/release-retention`),
   recordPayment: (partnerId, data) => api.post(`/partners/${partnerId}/payments`, data),
   listPayments: (partnerId, params = {}) => api.get(`/partners/${partnerId}/payments`, { params }),
-  scorecard: (partnerId) => api.get(`/partners/${partnerId}/scorecard`)
+  scorecard: (partnerId) => api.get(`/partners/${partnerId}/scorecard`),
+  tags: {
+    list: () => api.get('/partners/tags/all'),
+    create: (tag) => api.post('/partners/tags', { tag }),
+    rename: (id, tag) => api.put(`/partners/tags/${id}`, { tag }),
+    remove: (id) => api.delete(`/partners/tags/${id}`)
+  }
 };
 
 // Ecommerce marketplaces (Iter 46 Change 2)
@@ -525,6 +532,30 @@ export const ecommerceAPI = {
     importCommit: (data) => api.post('/ecommerce/orders/import-commit', data)
   },
   reconciliation: (params = {}) => api.get('/ecommerce/reconciliation', { params })
+};
+
+// Customer Support (Iter 47) — AMC support tickets
+export const supportAPI = {
+  slaConfig: {
+    get: () => api.get('/support/sla-config'),
+    update: (data) => api.put('/support/sla-config', data)
+  },
+  tickets: {
+    list: (params = {}) => api.get('/support/tickets', { params }),
+    get: (id) => api.get(`/support/tickets/${id}`),
+    create: (data) => api.post('/support/tickets', data),
+    update: (id, data) => api.put(`/support/tickets/${id}`, data),
+    transitionStatus: (id, data) => api.post(`/support/tickets/${id}/status`, data),
+    close: (id, data) => api.post(`/support/tickets/${id}/close`, data)
+  },
+  dashboard: () => api.get('/support/dashboard')
+};
+
+// Hard delete (Iter 47) — admin only
+export const hardDeleteAPI = {
+  sale: (id, data) => api.delete(`/hard-delete/sale/${id}`, { data }),
+  purchaseOrder: (id, data) => api.delete(`/hard-delete/purchase-order/${id}`, { data }),
+  delivery: (id, data) => api.delete(`/hard-delete/delivery/${id}`, { data })
 };
 
 export default api;

@@ -10,6 +10,7 @@ import { Badge } from '../components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '../components/ui/dialog';
 import { ArrowLeft, Plus, X, Loader2, Receipt, ShoppingCart, IndianRupee, Users, Package, Pencil, Trash2, AlertTriangle } from 'lucide-react';
+import HardDeleteButton from '../components/HardDeleteButton';
 
 const LEAD_SOURCES = ['google_ads', 'meta_ads', 'referral', 'organic', 'exhibitions', 'field_marketing', 'telecalling', 'website_seo', 'whatsapp', 'other'];
 
@@ -330,12 +331,13 @@ export default function DirectSalesPage() {
                       <td className="px-3 py-2"><Badge className={s.payment_status === 'paid' ? 'bg-emerald-100 text-emerald-700' : s.status === 'returned' ? 'bg-slate-100 text-slate-600' : 'bg-amber-100 text-amber-700'}>{s.status === 'returned' || s.status === 'cancelled' ? s.status : s.payment_status}</Badge></td>
                       {canManage && (
                         <td className="px-3 py-2 text-right">
-                          {s.status !== 'returned' && s.status !== 'cancelled' && (
-                            <div className="flex gap-1 justify-end">
+                          <div className="flex gap-1 justify-end">
+                            {s.status !== 'returned' && s.status !== 'cancelled' && (<>
                               <Button size="icon" variant="ghost" className="h-7 w-7 text-blue-500" onClick={() => openEditSale(s)} data-testid={`edit-sale-${s.id}`}><Pencil className="h-3.5 w-3.5" /></Button>
                               <Button size="icon" variant="ghost" className="h-7 w-7 text-rose-500" onClick={() => { setDeleteTarget(s); setActionError(''); }} data-testid={`delete-sale-${s.id}`}><Trash2 className="h-3.5 w-3.5" /></Button>
-                            </div>
-                          )}
+                            </>)}
+                            {isAdmin && <HardDeleteButton type="sale" id={s.id} label="" onDeleted={fetchAll} testid={`hard-delete-sale-${s.id}`} />}
+                          </div>
                         </td>
                       )}
                     </tr>

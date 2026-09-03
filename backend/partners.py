@@ -47,6 +47,7 @@ class PartnerCreate(BaseModel):
 
 
 class PartnerUpdate(BaseModel):
+    partner_type: Optional[str] = None
     name: Optional[str] = None
     company_name: Optional[str] = None
     contact_person: Optional[str] = None
@@ -59,10 +60,29 @@ class PartnerUpdate(BaseModel):
     service_districts: Optional[List[str]] = None
     team_size: Optional[int] = None
     status: Optional[str] = None
+    status_change_reason: Optional[str] = None   # required when inactivating a partner with active jobs
+    force_status_change: Optional[bool] = False
     documents: Optional[List[Dict[str, Any]]] = None
     retention_pct: Optional[float] = None
     non_solicit_acknowledged: Optional[bool] = None
     payment_terms: Optional[str] = None
+
+
+class SpecialityTag(BaseModel):
+    tag: str
+
+
+class RateCardEdit(BaseModel):
+    """Edit an existing rate-card row by its index. Historical rates (already used by past
+    assignments) must stay intact — the edit rewrites the entry in place, so operators use
+    this only to fix a typo on a rate that hasn't yet been used. If a rate has already
+    priced an assignment, the correct action is to append a new versioned row via
+    POST /rate-card, not edit an old one."""
+    index: int
+    activity: str
+    unit: str
+    rate: float
+    effective_from: str
 
 
 class AssignmentActivity(BaseModel):
@@ -142,14 +162,22 @@ def create_router(db, get_current_user, require_role, create_audit_log):
     # ── Partner directory ──
     @router.get("/partners")
     async def list_partners(request: Request, partner_type: Optional[str] = None, speciality: Optional[str] = None,
-                             district: Optional[str] = None, status: Optional[str] = None, search: Optional[str] = None):
+                             specialities: Optional[str] = None,
+                             district: Optional[str] = None, status: Optional[str] = None, search: Optional[str] = None,
+                             min_rating: Optional[float] = None, sort: Optional[str] = None):
         await get_current_user(request)
         q: Dict[str, Any] = {"active": {"$ne": False}}
         if partner_type: q["partner_type"] = partner_type
         if speciality: q["specialities"] = speciality
+        if specialities:
+            tags = [t.strip() for t in specialities.split(",") if t.strip()]
+            if tags:
+                q["specialities"] = {"$all": tags}   # AND across tags — "Plumbing AND Electrical"
         if district: q["service_districts"] = district
         if status: q["status"] = status
         if search: q["name"] = {"$regex": search, "$options": "i"}
+        if min_rating is not None:
+            q["rating"] = {"$gte": float(min_rating)}
         docs = await db.partners.find(q).sort("name", 1).to_list(2000)
         out = []
         for d in docs:
@@ -157,6 +185,12 @@ def create_router(db, get_current_user, require_role, create_audit_log):
             row = _clean(d)
             row.update(stats)
             out.append(row)
+        if sort == "rating_desc":
+            out.sort(key=lambda r: r.get("rating", 0) or 0, reverse=True)
+        elif sort == "rating_asc":
+            out.sort(key=lambda r: r.get("rating", 0) or 0)
+        elif sort == "business_desc":
+            out.sort(key=lambda r: r.get("lifetime_business", 0) or 0, reverse=True)
         return out
 
     @router.post("/partners")
@@ -248,6 +282,25 @@ def create_router(db, get_current_user, require_role, create_audit_log):
         if not existing:
             raise HTTPException(status_code=404, detail="Partner not found")
         update = {k: v for k, v in payload.dict(exclude_unset=True).items() if v is not None}
+        force = update.pop("force_status_change", False)
+        reason = update.pop("status_change_reason", None)
+        # Guard: inactivating/blacklisting a partner with in-progress assignments requires override + reason
+        new_status = update.get("status")
+        if new_status and new_status in ("inactive", "blacklisted") and existing.get("status") == "active":
+            active_count = await db.partner_assignments.count_documents({
+                "partner_id": partner_id, "status": {"$in": ["assigned", "in_progress"]}
+            })
+            if active_count > 0 and not force:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"This partner has {active_count} active assignment(s). Set force_status_change=true with a status_change_reason to override — the job(s) will remain but no new assignments can be created.",
+                )
+            if active_count > 0 and not reason:
+                raise HTTPException(status_code=400, detail="A reason is required when overriding an active-assignment status change")
+            if active_count > 0:
+                update["status_override_reason"] = reason
+                update["status_override_by"] = user.get("name")
+                update["status_override_at"] = _now()
         update["updated_at"] = _now()
         await db.partners.update_one({"_id": oid}, {"$set": update})
         await create_audit_log(user["id"], user["name"], "update", "partner", partner_id, _clean(existing), update)
@@ -266,6 +319,28 @@ def create_router(db, get_current_user, require_role, create_audit_log):
         # Versioned — append, never overwrite, so past assignments keep their original rate
         await db.partners.update_one({"_id": oid}, {"$push": {"rate_card": entry.dict()}, "$set": {"updated_at": _now()}})
         await create_audit_log(user["id"], user["name"], "update", "partner_rate_card", partner_id, None, entry.dict())
+        return _clean(await db.partners.find_one({"_id": oid}))
+
+    @router.put("/partners/{partner_id}/rate-card")
+    async def edit_rate_card_row(partner_id: str, payload: RateCardEdit, request: Request):
+        """Rewrite a rate-card row in place (only for typo fixes; historical assignments keep the
+        rate they were priced at when created, since assignments already stored the rate on their line)."""
+        user = await require_role("admin", "manager")(request)
+        try:
+            oid = ObjectId(partner_id)
+        except Exception:
+            raise HTTPException(status_code=400, detail="Invalid partner id")
+        existing = await db.partners.find_one({"_id": oid})
+        if not existing:
+            raise HTTPException(status_code=404, detail="Partner not found")
+        rate_card = existing.get("rate_card") or []
+        if payload.index < 0 or payload.index >= len(rate_card):
+            raise HTTPException(status_code=400, detail="Rate-card row index out of range")
+        old = rate_card[payload.index]
+        rate_card[payload.index] = {"activity": payload.activity, "unit": payload.unit,
+                                     "rate": payload.rate, "effective_from": payload.effective_from}
+        await db.partners.update_one({"_id": oid}, {"$set": {"rate_card": rate_card, "updated_at": _now()}})
+        await create_audit_log(user["id"], user["name"], "update", "partner_rate_card_edit", partner_id, old, rate_card[payload.index])
         return _clean(await db.partners.find_one({"_id": oid}))
 
     @router.delete("/partners/{partner_id}")
@@ -482,5 +557,59 @@ def create_router(db, get_current_user, require_role, create_audit_log):
             "active_jobs": sum(1 for a in assignments if a.get("status") in ("assigned", "in_progress", "payment_pending")),
             "total_value_handled": round(sum(a.get("gross_amount", 0) or 0 for a in assignments), 2),
         }
+
+    # ── Speciality tag admin (Iter 47) ──
+    # The tag list is stored in `speciality_tags`. Admin can add/rename/retire tags — the actual
+    # values on partner records aren't rewritten when a tag is retired, only the filter dropdown loses it.
+    @router.get("/partners/tags/all")
+    async def list_speciality_tags(request: Request):
+        await get_current_user(request)
+        docs = await db.speciality_tags.find({"active": {"$ne": False}}).sort("tag", 1).to_list(500)
+        return [{"id": str(d["_id"]), "tag": d["tag"]} for d in docs]
+
+    @router.post("/partners/tags")
+    async def add_speciality_tag(payload: SpecialityTag, request: Request):
+        user = await require_role("admin")(request)
+        tag = payload.tag.strip()
+        if not tag:
+            raise HTTPException(status_code=400, detail="Tag cannot be empty")
+        existing = await db.speciality_tags.find_one({"tag": {"$regex": f"^{tag}$", "$options": "i"}})
+        if existing:
+            if not existing.get("active", True):
+                await db.speciality_tags.update_one({"_id": existing["_id"]}, {"$set": {"active": True}})
+                return {"id": str(existing["_id"]), "tag": existing["tag"]}
+            raise HTTPException(status_code=400, detail="Tag already exists")
+        res = await db.speciality_tags.insert_one({"tag": tag, "active": True, "created_at": _now(),
+                                                     "created_by": user.get("name")})
+        return {"id": str(res.inserted_id), "tag": tag}
+
+    @router.put("/partners/tags/{tag_id}")
+    async def rename_speciality_tag(tag_id: str, payload: SpecialityTag, request: Request):
+        user = await require_role("admin")(request)
+        try:
+            oid = ObjectId(tag_id)
+        except Exception:
+            raise HTTPException(status_code=400, detail="Invalid tag id")
+        existing = await db.speciality_tags.find_one({"_id": oid})
+        if not existing:
+            raise HTTPException(status_code=404, detail="Tag not found")
+        new_tag = payload.tag.strip()
+        old_tag = existing["tag"]
+        await db.speciality_tags.update_one({"_id": oid}, {"$set": {"tag": new_tag}})
+        # Also rename on every partner record that carries the old tag, so filters keep working.
+        await db.partners.update_many({"specialities": old_tag}, {"$set": {"specialities.$": new_tag}})
+        await create_audit_log(user["id"], user["name"], "update", "speciality_tag", tag_id, {"tag": old_tag}, {"tag": new_tag})
+        return {"id": tag_id, "tag": new_tag}
+
+    @router.delete("/partners/tags/{tag_id}")
+    async def retire_speciality_tag(tag_id: str, request: Request):
+        user = await require_role("admin")(request)
+        try:
+            oid = ObjectId(tag_id)
+        except Exception:
+            raise HTTPException(status_code=400, detail="Invalid tag id")
+        await db.speciality_tags.update_one({"_id": oid}, {"$set": {"active": False}})
+        await create_audit_log(user["id"], user["name"], "delete", "speciality_tag", tag_id)
+        return {"message": "Tag retired"}
 
     return router

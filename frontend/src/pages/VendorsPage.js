@@ -11,12 +11,16 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { ArrowLeft, Plus, Search, Save, Loader2, Trash2, Edit, Store, Phone, Mail, Receipt, X, History } from 'lucide-react';
 
 const CATEGORIES = ['panels', 'inverters', 'batteries', 'structure', 'transport', 'services', 'other'];
-const blankForm = { name: '', contact_person: '', phone: '', email: '', gstin: '', address: '', category: 'other', notes: '' };
+const blankForm = { name: '', contact_person: '', phone: '', email: '', gstin: '', address: '', district: '', payment_terms: '', category: 'other', notes: '' };
 
 export default function VendorsPage() {
   const [vendors, setVendors] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [category, setCategory] = useState('all');
+  const [status, setStatus] = useState('active');
+  const [district, setDistrict] = useState('');
+  const [sort, setSort] = useState('name');
   const [openForm, setOpenForm] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState(blankForm);
@@ -27,10 +31,18 @@ export default function VendorsPage() {
 
   const fetchAll = useCallback(async () => {
     setLoading(true);
-    try { const r = await vendorsAPI.list(search ? { search } : {}); setVendors(r.data); }
-    catch (e) { console.error(e); }
+    try {
+      const params = {};
+      if (search) params.search = search;
+      if (category !== 'all') params.category = category;
+      if (status !== 'all') params.status = status;
+      if (district) params.district = district;
+      if (sort !== 'name') params.sort = sort;
+      const r = await vendorsAPI.list(params);
+      setVendors(r.data);
+    } catch (e) { console.error(e); }
     finally { setLoading(false); }
-  }, [search]);
+  }, [search, category, status, district, sort]);
 
   useEffect(() => {
     const t = setTimeout(() => fetchAll(), 300);
@@ -40,7 +52,7 @@ export default function VendorsPage() {
   const openCreate = () => { setEditingId(null); setForm(blankForm); setOpenForm(true); };
   const openEdit = (v) => {
     setEditingId(v.id);
-    setForm({ name: v.name || '', contact_person: v.contact_person || '', phone: v.phone || '', email: v.email || '', gstin: v.gstin || '', address: v.address || '', category: v.category || 'other', notes: v.notes || '' });
+    setForm({ name: v.name || '', contact_person: v.contact_person || '', phone: v.phone || '', email: v.email || '', gstin: v.gstin || '', address: v.address || '', district: v.district || '', payment_terms: v.payment_terms || '', category: v.category || 'other', notes: v.notes || '' });
     setOpenForm(true);
   };
 
@@ -83,9 +95,26 @@ export default function VendorsPage() {
         <Button onClick={openCreate} className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white" data-testid="new-vendor-btn"><Plus className="h-4 w-4" />New Vendor</Button>
       </div>
 
-      <div className="relative max-w-md">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-        <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search vendor name..." className="pl-9 h-10" data-testid="vendor-search-input" />
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+        <div className="relative sm:col-span-2">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+          <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search name or GSTIN..." className="pl-9 h-10" data-testid="vendor-search-input" />
+        </div>
+        <Select value={category} onValueChange={setCategory}>
+          <SelectTrigger className="h-10" data-testid="vendor-category-filter"><SelectValue placeholder="Category" /></SelectTrigger>
+          <SelectContent><SelectItem value="all">All categories</SelectItem>{CATEGORIES.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
+        </Select>
+        <Select value={status} onValueChange={setStatus}>
+          <SelectTrigger className="h-10" data-testid="vendor-status-filter"><SelectValue /></SelectTrigger>
+          <SelectContent><SelectItem value="active">Active</SelectItem><SelectItem value="inactive">Inactive</SelectItem><SelectItem value="all">All</SelectItem></SelectContent>
+        </Select>
+        <Select value={sort} onValueChange={setSort}>
+          <SelectTrigger className="h-10" data-testid="vendor-sort"><SelectValue /></SelectTrigger>
+          <SelectContent><SelectItem value="name">Sort: Name</SelectItem><SelectItem value="business_desc">Sort: Business value ↓</SelectItem><SelectItem value="recent_desc">Sort: Most recent order</SelectItem><SelectItem value="recent_asc">Sort: Oldest last order</SelectItem></SelectContent>
+        </Select>
+        <div className="sm:col-span-5">
+          <Input value={district} onChange={e => setDistrict(e.target.value)} placeholder="Filter by district (exact match)" className="h-9" data-testid="vendor-district-filter" />
+        </div>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3" data-testid="vendors-grid">
@@ -111,6 +140,11 @@ export default function VendorsPage() {
                 {v.phone && <p className="flex items-center gap-1"><Phone className="h-3 w-3" />{v.phone}</p>}
                 {v.email && <p className="flex items-center gap-1"><Mail className="h-3 w-3" />{v.email}</p>}
                 {v.gstin && <p className="flex items-center gap-1"><Receipt className="h-3 w-3" />{v.gstin}</p>}
+                {v.district && <p>{v.district}</p>}
+              </div>
+              <div className="flex items-center justify-between text-xs pt-1 border-t border-slate-100">
+                <span className="text-emerald-700 font-medium">₹{(v.business_value || 0).toLocaleString('en-IN')}</span>
+                <span className="text-slate-400">{v.last_order_date ? `Last: ${v.last_order_date}` : 'No orders'}</span>
               </div>
               <Button variant="outline" size="sm" className="h-8 text-xs w-full gap-1.5" onClick={() => openHistory(v)} data-testid={`vendor-po-history-${v.id}`}>
                 <History className="h-3.5 w-3.5" />PO History
@@ -143,6 +177,10 @@ export default function VendorsPage() {
               <div className="space-y-1"><Label className="text-xs">GSTIN</Label><Input value={form.gstin} onChange={(e) => setForm(p => ({...p, gstin: e.target.value}))} className="h-9" data-testid="vendor-gstin-input" /></div>
             </div>
             <div className="space-y-1"><Label className="text-xs">Address</Label><Input value={form.address} onChange={(e) => setForm(p => ({...p, address: e.target.value}))} className="h-9" /></div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1"><Label className="text-xs">District</Label><Input value={form.district} onChange={(e) => setForm(p => ({...p, district: e.target.value}))} className="h-9" data-testid="vendor-district-input" /></div>
+              <div className="space-y-1"><Label className="text-xs">Payment Terms</Label><Input value={form.payment_terms} onChange={(e) => setForm(p => ({...p, payment_terms: e.target.value}))} placeholder="Net 30, PDC 60, etc." className="h-9" data-testid="vendor-payment-terms-input" /></div>
+            </div>
             <div className="space-y-1"><Label className="text-xs">Notes</Label><Input value={form.notes} onChange={(e) => setForm(p => ({...p, notes: e.target.value}))} className="h-9" /></div>
           </div>
           <DialogFooter>

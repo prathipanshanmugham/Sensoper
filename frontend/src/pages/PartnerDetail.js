@@ -10,10 +10,20 @@ import { Label } from '../components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../components/ui/dialog';
 import { Textarea } from '../components/ui/textarea';
-import { Loader2, ArrowLeft, Star, Plus, ShieldCheck, Clock, Wallet } from 'lucide-react';
+import { Loader2, ArrowLeft, Star, Plus, ShieldCheck, Clock, Wallet, Pencil } from 'lucide-react';
 
 const STATUS_COLORS = { active: 'bg-emerald-100 text-emerald-800', inactive: 'bg-slate-100 text-slate-600', blacklisted: 'bg-red-100 text-red-800' };
 const ASSIGN_STATUS_COLORS = { assigned: 'bg-blue-100 text-blue-800', in_progress: 'bg-amber-100 text-amber-800', completed: 'bg-emerald-100 text-emerald-800', payment_pending: 'bg-orange-100 text-orange-800', closed: 'bg-slate-100 text-slate-600' };
+
+function StarDisplay({ v = 0 }) {
+  const val = Number(v) || 0;
+  return (
+    <span className="flex items-center gap-0.5" title={val.toFixed(2)}>
+      {[1,2,3,4,5].map(i => <Star key={i} className={`h-4 w-4 ${i <= Math.round(val) ? 'fill-amber-400 text-amber-400' : 'text-slate-300'}`} />)}
+      <span className="text-xs text-slate-500 ml-1">{val.toFixed(1)}</span>
+    </span>
+  );
+}
 
 export default function PartnerDetail() {
   const { id } = useParams();
@@ -35,6 +45,14 @@ export default function PartnerDetail() {
   const [qualityForm, setQualityForm] = useState({ status: '', actual_completion: '', quality_rating: '', quality_notes: '', delay_reason: '' });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  // Edit-partner (Iter 47) — full field edit + rate-card row edit
+  const [showEdit, setShowEdit] = useState(false);
+  const [editForm, setEditForm] = useState({});
+  const [availableTags, setAvailableTags] = useState([]);
+  const [rateEditIndex, setRateEditIndex] = useState(null);
+  const [rateEditForm, setRateEditForm] = useState({ activity: '', unit: '', rate: '', effective_from: '' });
+  const [statusOverrideReason, setStatusOverrideReason] = useState('');
+  const [needsStatusOverride, setNeedsStatusOverride] = useState(false);
 
   const fetchPartner = useCallback(async () => {
     try { const r = await partnersAPI.get(id); setPartner(r.data); } catch (e) { console.error(e); } finally { setLoading(false); }
@@ -110,6 +128,50 @@ export default function PartnerDetail() {
     catch (err) { alert(err.response?.data?.detail || 'Failed to release retention'); }
   };
 
+  // Edit-partner (Iter 47)
+  const openEdit = async () => {
+    setError(''); setStatusOverrideReason(''); setNeedsStatusOverride(false);
+    setEditForm({
+      name: partner.name || '', company_name: partner.company_name || '', contact_person: partner.contact_person || '',
+      phone: partner.phone || '', email: partner.email || '', gstin: partner.gstin || '', pan: partner.pan || '',
+      address: partner.address || '', service_districts: (partner.service_districts || []).join(', '),
+      team_size: partner.team_size || 0, retention_pct: partner.retention_pct || 0,
+      status: partner.status || 'active', payment_terms: partner.payment_terms || '',
+      specialities: [...(partner.specialities || [])],
+    });
+    try { const r = await partnersAPI.tags.list(); setAvailableTags(r.data || []); } catch { /* noop */ }
+    setShowEdit(true);
+  };
+  const toggleEditTag = (t) => setEditForm(p => ({ ...p, specialities: p.specialities.includes(t) ? p.specialities.filter(x => x !== t) : [...p.specialities, t] }));
+
+  const submitEdit = async (force = false) => {
+    setSaving(true); setError('');
+    try {
+      const payload = {
+        ...editForm,
+        service_districts: editForm.service_districts ? editForm.service_districts.split(',').map(s => s.trim()).filter(Boolean) : [],
+        team_size: parseInt(editForm.team_size) || 0, retention_pct: parseFloat(editForm.retention_pct) || 0,
+      };
+      if (force) { payload.force_status_change = true; payload.status_change_reason = statusOverrideReason; }
+      await partnersAPI.update(id, payload);
+      setShowEdit(false); setNeedsStatusOverride(false); fetchPartner();
+    } catch (e) {
+      const detail = e.response?.data?.detail || 'Failed to update';
+      if (detail.includes('active assignment')) {
+        setNeedsStatusOverride(true);
+        setError('This partner has active job(s). Enter an override reason below and press "Override & Save" — the jobs will keep running but no new assignments can be created.');
+      } else setError(detail);
+    } finally { setSaving(false); }
+  };
+
+  const startRateEdit = (idx, r) => { setRateEditIndex(idx); setRateEditForm({ activity: r.activity, unit: r.unit || '', rate: r.rate, effective_from: r.effective_from }); };
+  const saveRateEdit = async () => {
+    try {
+      await partnersAPI.editRateCard(id, { index: rateEditIndex, ...rateEditForm, rate: parseFloat(rateEditForm.rate) });
+      setRateEditIndex(null); fetchPartner();
+    } catch (e) { alert(e.response?.data?.detail || 'Failed'); }
+  };
+
   if (loading) return <div className="flex justify-center py-24"><Loader2 className="h-8 w-8 animate-spin text-emerald-600" /></div>;
   if (!partner) return <div className="p-6">Partner not found.</div>;
 
@@ -122,11 +184,14 @@ export default function PartnerDetail() {
           <div className="flex items-center gap-2 flex-wrap">
             <h1 className="text-2xl font-bold font-['Outfit'] text-slate-900" data-testid="partner-name">{partner.name}</h1>
             <Badge className={STATUS_COLORS[partner.status]}>{partner.status}</Badge>
-            <span className="flex items-center gap-1 text-amber-600 text-sm"><Star className="h-4 w-4 fill-amber-400 text-amber-400" />{partner.rating || '—'}</span>
+            <StarDisplay v={partner.rating || 0} />
           </div>
           <p className="text-sm text-slate-500">{partner.partner_type === 'internal_team' ? 'Internal Team' : (partner.company_name || 'External Subcontractor')} • {(partner.specialities || []).join(', ')}</p>
         </div>
-        {canManage && <Button onClick={openAssign} className="bg-emerald-600 hover:bg-emerald-700 text-white gap-1.5" data-testid="new-assignment-btn"><Plus className="h-4 w-4" />New Assignment</Button>}
+        <div className="flex gap-2">
+          {canManage && <Button variant="outline" onClick={openEdit} className="gap-1.5" data-testid="edit-partner-btn"><Pencil className="h-4 w-4" />Edit</Button>}
+          {canManage && <Button onClick={openAssign} className="bg-emerald-600 hover:bg-emerald-700 text-white gap-1.5" data-testid="new-assignment-btn"><Plus className="h-4 w-4" />New Assignment</Button>}
+        </div>
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
@@ -184,9 +249,25 @@ export default function PartnerDetail() {
           <CardHeader className="py-3 flex-row items-center justify-between"><CardTitle className="text-sm font-['Outfit']">Rate Card (versioned)</CardTitle>{canManage && <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={() => setShowRate(true)} data-testid="add-rate-card-btn"><Plus className="h-3 w-3" />Add Rate</Button>}</CardHeader>
           <CardContent>
             <table className="w-full text-sm">
-              <thead><tr className="text-left text-slate-500 border-b"><th className="py-2">Activity</th><th>Unit</th><th>Rate</th><th>Effective From</th></tr></thead>
-              <tbody>{(partner.rate_card || []).map((r, i) => <tr key={i} className="border-b last:border-0"><td className="py-2">{r.activity}</td><td>{r.unit}</td><td>₹{r.rate}</td><td>{r.effective_from}</td></tr>)}</tbody>
+              <thead><tr className="text-left text-slate-500 border-b"><th className="py-2">Activity</th><th>Unit</th><th>Rate</th><th>Effective From</th>{canManage && <th></th>}</tr></thead>
+              <tbody>{(partner.rate_card || []).map((r, i) => (
+                rateEditIndex === i ? (
+                  <tr key={i} className="border-b last:border-0 bg-amber-50" data-testid={`rate-edit-row-${i}`}>
+                    <td className="py-2"><Input className="h-8" value={rateEditForm.activity} onChange={e => setRateEditForm(p => ({ ...p, activity: e.target.value }))} /></td>
+                    <td><Input className="h-8" value={rateEditForm.unit} onChange={e => setRateEditForm(p => ({ ...p, unit: e.target.value }))} /></td>
+                    <td><Input type="number" className="h-8 w-24" value={rateEditForm.rate} onChange={e => setRateEditForm(p => ({ ...p, rate: e.target.value }))} /></td>
+                    <td><Input type="date" className="h-8" value={rateEditForm.effective_from} onChange={e => setRateEditForm(p => ({ ...p, effective_from: e.target.value }))} /></td>
+                    <td className="flex gap-1"><Button size="sm" className="h-7 text-xs bg-emerald-600 text-white" onClick={saveRateEdit} data-testid={`save-rate-edit-${i}`}>Save</Button><Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setRateEditIndex(null)}>Cancel</Button></td>
+                  </tr>
+                ) : (
+                  <tr key={i} className="border-b last:border-0" data-testid={`rate-row-${i}`}>
+                    <td className="py-2">{r.activity}</td><td>{r.unit}</td><td>₹{r.rate}</td><td>{r.effective_from}</td>
+                    {canManage && <td><Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => startRateEdit(i, r)} data-testid={`edit-rate-${i}`}><Pencil className="h-3 w-3 text-slate-500" /></Button></td>}
+                  </tr>
+                )
+              ))}</tbody>
             </table>
+            <p className="text-[10px] text-slate-400 mt-2">Note: to change a rate that has already priced an assignment, add a new versioned row (past assignments keep the rate they were priced at).</p>
           </CardContent>
         </Card>
       )}
@@ -304,6 +385,58 @@ export default function PartnerDetail() {
             <div className="space-y-1"><Label>Delay Reason (if any)</Label><Input value={qualityForm.delay_reason} onChange={e => setQualityForm(p => ({ ...p, delay_reason: e.target.value }))} /></div>
           </div>
           <DialogFooter><Button variant="outline" onClick={() => setShowQuality(null)}>Cancel</Button><Button onClick={submitQuality} disabled={saving} className="bg-emerald-600 hover:bg-emerald-700 text-white" data-testid="quality-submit-btn">{saving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Save'}</Button></DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Partner dialog (Iter 47) */}
+      <Dialog open={showEdit} onOpenChange={setShowEdit}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto" data-testid="edit-partner-dialog">
+          <DialogHeader><DialogTitle>Edit Partner</DialogTitle></DialogHeader>
+          <div className="space-y-3 py-2">
+            {error && <div className="p-2 text-sm text-red-700 bg-red-50 border border-red-200 rounded" data-testid="edit-partner-error">{error}</div>}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1"><Label>Name</Label><Input value={editForm.name || ''} onChange={e => setEditForm(p => ({ ...p, name: e.target.value }))} data-testid="edit-name" /></div>
+              <div className="space-y-1"><Label>Company Name</Label><Input value={editForm.company_name || ''} onChange={e => setEditForm(p => ({ ...p, company_name: e.target.value }))} /></div>
+              <div className="space-y-1"><Label>Contact Person</Label><Input value={editForm.contact_person || ''} onChange={e => setEditForm(p => ({ ...p, contact_person: e.target.value }))} /></div>
+              <div className="space-y-1"><Label>Phone</Label><Input value={editForm.phone || ''} onChange={e => setEditForm(p => ({ ...p, phone: e.target.value }))} data-testid="edit-phone" /></div>
+              <div className="space-y-1"><Label>Email</Label><Input value={editForm.email || ''} onChange={e => setEditForm(p => ({ ...p, email: e.target.value }))} /></div>
+              <div className="space-y-1"><Label>GSTIN</Label><Input value={editForm.gstin || ''} onChange={e => setEditForm(p => ({ ...p, gstin: e.target.value }))} /></div>
+              <div className="space-y-1"><Label>PAN</Label><Input value={editForm.pan || ''} onChange={e => setEditForm(p => ({ ...p, pan: e.target.value }))} /></div>
+              <div className="space-y-1"><Label>Team Size</Label><Input type="number" value={editForm.team_size || 0} onChange={e => setEditForm(p => ({ ...p, team_size: e.target.value }))} /></div>
+              <div className="space-y-1"><Label>Retention %</Label><Input type="number" value={editForm.retention_pct || 0} onChange={e => setEditForm(p => ({ ...p, retention_pct: e.target.value }))} /></div>
+              <div className="space-y-1"><Label>Status</Label>
+                <Select value={editForm.status} onValueChange={v => setEditForm(p => ({ ...p, status: v }))}>
+                  <SelectTrigger data-testid="edit-status"><SelectValue /></SelectTrigger>
+                  <SelectContent><SelectItem value="active">Active</SelectItem><SelectItem value="inactive">Inactive</SelectItem><SelectItem value="blacklisted">Blacklisted</SelectItem></SelectContent>
+                </Select>
+              </div>
+              <div className="col-span-2 space-y-1"><Label>Service Districts (comma separated)</Label><Input value={editForm.service_districts || ''} onChange={e => setEditForm(p => ({ ...p, service_districts: e.target.value }))} /></div>
+              <div className="col-span-2 space-y-1"><Label>Address</Label><Input value={editForm.address || ''} onChange={e => setEditForm(p => ({ ...p, address: e.target.value }))} /></div>
+              <div className="col-span-2 space-y-1"><Label>Payment Terms</Label><Textarea rows={2} value={editForm.payment_terms || ''} onChange={e => setEditForm(p => ({ ...p, payment_terms: e.target.value }))} /></div>
+            </div>
+            <div className="space-y-1"><Label>Specialities (tags)</Label>
+              <div className="flex flex-wrap gap-2">
+                {availableTags.length === 0 && <span className="text-xs text-slate-400 italic">No tags yet</span>}
+                {availableTags.map(t => (
+                  <button key={t.id} type="button" onClick={() => toggleEditTag(t.tag)} className={`px-2.5 py-1 text-xs rounded-full border ${(editForm.specialities || []).includes(t.tag) ? 'bg-emerald-100 border-emerald-300 text-emerald-800' : 'bg-white border-slate-200 text-slate-600'}`}>{t.tag}</button>
+                ))}
+              </div>
+            </div>
+            {needsStatusOverride && (
+              <div className="space-y-1 p-3 border border-amber-200 bg-amber-50 rounded">
+                <Label className="text-xs">Override reason (required to inactivate a partner with active jobs)</Label>
+                <Input value={statusOverrideReason} onChange={e => setStatusOverrideReason(e.target.value)} placeholder="e.g. Contract terminated, but job continues under interim" data-testid="status-override-reason" />
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setShowEdit(false); setNeedsStatusOverride(false); }}>Cancel</Button>
+            {needsStatusOverride ? (
+              <Button className="bg-orange-600 text-white" disabled={saving || !statusOverrideReason} onClick={() => submitEdit(true)} data-testid="force-save-partner-btn">Override &amp; Save</Button>
+            ) : (
+              <Button className="bg-emerald-600 text-white" disabled={saving} onClick={() => submitEdit(false)} data-testid="save-partner-edit-btn">{saving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Save'}</Button>
+            )}
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

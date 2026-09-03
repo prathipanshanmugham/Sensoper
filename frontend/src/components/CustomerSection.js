@@ -118,8 +118,8 @@ export default function CustomerSection() {
                     <th className="px-4 py-2.5 text-left text-xs font-semibold text-slate-600">Status</th>
                   </tr></thead>
                   <tbody>
-                    {customers.map(c => (
-                      <tr key={c.customer_name} className="border-b border-slate-100 hover:bg-slate-50" data-testid={`customer-row-${c.customer_name}`}>
+                    {customers.map((c, i) => (
+                      <tr key={`${c.customer_name}-${c.customer_phone || ''}-${i}`} className="border-b border-slate-100 hover:bg-slate-50" data-testid={`customer-row-${c.customer_name}`}>
                         <td className="px-4 py-2.5 font-medium text-slate-900">{c.customer_name}</td>
                         <td className="px-4 py-2.5 text-slate-500 text-xs">{c.customer_phone || '-'}</td>
                         <td className="px-4 py-2.5 text-right">{c.invoices}</td>

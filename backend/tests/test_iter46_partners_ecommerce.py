@@ -237,6 +237,7 @@ class TestEcommerce:
         r = client.post(f"{API}/ecommerce/listings", json={
             "platform_id": state["platform_id"], "inventory_item_id": state["item_id"],
             "platform_sku": f"TEST-SKU-{uuid.uuid4().hex[:5]}", "listed_price": 1000, "status": "live",
+            "platform_commission_pct": 10,   # Iter 47: every live listing must carry its own rate
         }, timeout=60)
         assert r.status_code in (200, 201), r.text[:400]
         d = r.json()

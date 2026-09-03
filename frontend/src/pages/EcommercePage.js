@@ -8,7 +8,7 @@ import { Badge } from '../components/ui/badge';
 import { Label } from '../components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../components/ui/dialog';
-import { Loader2, Plus, ShoppingBag, AlertTriangle, CheckCircle2, Upload, Trash2 } from 'lucide-react';
+import { Loader2, Plus, ShoppingBag, AlertTriangle, CheckCircle2, Upload, Trash2, Pencil } from 'lucide-react';
 
 const STATUS_COLORS = { draft: 'bg-slate-100 text-slate-600', live: 'bg-emerald-100 text-emerald-800', paused: 'bg-amber-100 text-amber-800', delisted: 'bg-red-100 text-red-800', out_of_stock: 'bg-orange-100 text-orange-800' };
 const ORDER_STATUS_COLORS = { placed: 'bg-blue-100 text-blue-800', shipped: 'bg-indigo-100 text-indigo-800', delivered: 'bg-emerald-100 text-emerald-800', returned: 'bg-orange-100 text-orange-800', cancelled: 'bg-slate-100 text-slate-600', refunded: 'bg-red-100 text-red-800' };
@@ -24,6 +24,7 @@ export default function EcommercePage() {
   const [recon, setRecon] = useState(null);
   const [loading, setLoading] = useState(true);
   const [showPlatform, setShowPlatform] = useState(false);
+  const [editingPlatformId, setEditingPlatformId] = useState(null);
   const [platformForm, setPlatformForm] = useState({ name: '', platform_type: 'marketplace', seller_id: '', store_url: '', commission_pct: '' });
   const [showListing, setShowListing] = useState(false);
   const [listingForm, setListingForm] = useState({ platform_id: '', inventory_item_id: '', platform_sku: '', listed_price: '', platform_commission_pct: '', status: 'draft' });
@@ -49,8 +50,19 @@ export default function EcommercePage() {
 
   const submitPlatform = async () => {
     setSaving(true); setError('');
-    try { await ecommerceAPI.platforms.create({ ...platformForm, commission_pct: parseFloat(platformForm.commission_pct) || 0 }); setShowPlatform(false); setPlatformForm({ name: '', platform_type: 'marketplace', seller_id: '', store_url: '', commission_pct: '' }); fetchAll(); }
-    catch (err) { setError(err.response?.data?.detail || 'Failed'); } finally { setSaving(false); }
+    try {
+      const payload = { ...platformForm, commission_pct: parseFloat(platformForm.commission_pct) || 0 };
+      if (editingPlatformId) await ecommerceAPI.platforms.update(editingPlatformId, payload);
+      else await ecommerceAPI.platforms.create(payload);
+      setShowPlatform(false); setEditingPlatformId(null);
+      setPlatformForm({ name: '', platform_type: 'marketplace', seller_id: '', store_url: '', commission_pct: '' });
+      fetchAll();
+    } catch (err) { setError(err.response?.data?.detail || 'Failed'); } finally { setSaving(false); }
+  };
+  const openEditPlatform = (p) => {
+    setEditingPlatformId(p.id);
+    setPlatformForm({ name: p.name || '', platform_type: p.platform_type || 'marketplace', seller_id: p.seller_id || '', store_url: p.store_url || '', commission_pct: p.commission_pct ?? '' });
+    setShowPlatform(true);
   };
 
   const submitListing = async () => {
@@ -140,10 +152,15 @@ export default function EcommercePage() {
                 {platforms.map(p => (
                   <Card key={p.id} className="border-slate-200" data-testid={`platform-card-${p.id}`}>
                     <CardContent className="p-4">
-                      <h3 className="font-semibold text-slate-900">{p.name}</h3>
-                      <p className="text-xs text-slate-500 capitalize">{p.platform_type}</p>
-                      <p className="text-sm mt-2">Commission: <span className="font-medium">{p.commission_pct}%</span></p>
-                      {p.store_url && <p className="text-xs text-blue-600 truncate">{p.store_url}</p>}
+                      <div className="flex items-start justify-between">
+                        <div>
+                          <h3 className="font-semibold text-slate-900">{p.name}</h3>
+                          <p className="text-xs text-slate-500 capitalize">{p.platform_type}</p>
+                        </div>
+                        {canManage && <Button size="icon" variant="ghost" onClick={() => openEditPlatform(p)} className="h-7 w-7" data-testid={`edit-platform-${p.id}`}><Pencil className="h-3.5 w-3.5 text-slate-500" /></Button>}
+                      </div>
+                      <p className="text-xs text-slate-400 mt-2">Reference commission: <span className="font-medium">{p.commission_pct}%</span> <span className="italic">(each listing carries its own rate)</span></p>
+                      {p.store_url && <p className="text-xs text-blue-600 truncate mt-1">{p.store_url}</p>}
                     </CardContent>
                   </Card>
                 ))}
@@ -248,7 +265,7 @@ export default function EcommercePage() {
 
       <Dialog open={showPlatform} onOpenChange={setShowPlatform}>
         <DialogContent>
-          <DialogHeader><DialogTitle>Add Platform</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>{editingPlatformId ? 'Edit Platform' : 'Add Platform'}</DialogTitle></DialogHeader>
           <div className="space-y-3 py-2">
             {error && <div className="p-2 text-sm text-red-600 bg-red-50 border border-red-200 rounded">{error}</div>}
             <div className="space-y-1"><Label>Name</Label><Input value={platformForm.name} onChange={e => setPlatformForm(p => ({ ...p, name: e.target.value }))} placeholder="Amazon, Flipkart, Custom Website..." data-testid="platform-name-input" /></div>
@@ -260,7 +277,7 @@ export default function EcommercePage() {
             </div>
             <div className="space-y-1"><Label>Seller ID</Label><Input value={platformForm.seller_id} onChange={e => setPlatformForm(p => ({ ...p, seller_id: e.target.value }))} /></div>
             <div className="space-y-1"><Label>Store URL</Label><Input value={platformForm.store_url} onChange={e => setPlatformForm(p => ({ ...p, store_url: e.target.value }))} /></div>
-            <div className="space-y-1"><Label>Commission %</Label><Input type="number" value={platformForm.commission_pct} onChange={e => setPlatformForm(p => ({ ...p, commission_pct: e.target.value }))} data-testid="platform-commission-input" /></div>
+            <div className="space-y-1"><Label>Reference Commission %</Label><Input type="number" value={platformForm.commission_pct} onChange={e => setPlatformForm(p => ({ ...p, commission_pct: e.target.value }))} placeholder="Reference only — each listing carries its own rate" data-testid="platform-commission-input" /></div>
           </div>
           <DialogFooter><Button variant="outline" onClick={() => setShowPlatform(false)}>Cancel</Button><Button onClick={submitPlatform} disabled={saving} className="bg-emerald-600 hover:bg-emerald-700 text-white" data-testid="platform-submit-btn">{saving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Add'}</Button></DialogFooter>
         </DialogContent>
@@ -285,7 +302,7 @@ export default function EcommercePage() {
             </div>
             <div className="space-y-1"><Label>Platform SKU</Label><Input value={listingForm.platform_sku} onChange={e => setListingForm(p => ({ ...p, platform_sku: e.target.value }))} data-testid="listing-sku-input" /></div>
             <div className="space-y-1"><Label>Listed Price ₹</Label><Input type="number" value={listingForm.listed_price} onChange={e => setListingForm(p => ({ ...p, listed_price: e.target.value }))} data-testid="listing-price-input" /></div>
-            <div className="space-y-1"><Label>Commission Override % (optional)</Label><Input type="number" value={listingForm.platform_commission_pct} onChange={e => setListingForm(p => ({ ...p, platform_commission_pct: e.target.value }))} /></div>
+            <div className="space-y-1"><Label>Listing Commission % <span className="text-red-500">*</span></Label><Input type="number" value={listingForm.platform_commission_pct} onChange={e => setListingForm(p => ({ ...p, platform_commission_pct: e.target.value }))} placeholder="Required before status can be 'live'" data-testid="listing-commission-input" /></div>
           </div>
           <DialogFooter><Button variant="outline" onClick={() => setShowListing(false)}>Cancel</Button><Button onClick={submitListing} disabled={saving} className="bg-emerald-600 hover:bg-emerald-700 text-white" data-testid="listing-submit-btn">{saving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Create'}</Button></DialogFooter>
         </DialogContent>

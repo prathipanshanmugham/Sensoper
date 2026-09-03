@@ -2414,6 +2414,13 @@ _ecommerce_router = _create_ecommerce_router(
 )
 api_router.include_router(_ecommerce_router)
 
+# ═══════════ CUSTOMER SUPPORT TICKETS (Iter 47 Change 3) ═══════════
+from support import create_router as _create_support_router  # noqa: E402
+_support_router = _create_support_router(
+    db=db, get_current_user=get_current_user, require_role=require_role, create_audit_log=create_audit_log,
+)
+api_router.include_router(_support_router)
+
 
 # ═══════════ SUBSIDY TRACKING (Iter 39 Change 2c) ═══════════
 
@@ -5250,6 +5257,93 @@ async def get_report(report_type: str, request: Request, date_from: str = None, 
            "best_skus": item_rows[:5], "worst_skus": sorted(item_rows, key=lambda r: r["net_margin"])[:5],
            "chart_data": [{"name": r["platform"][:15], "value": r["revenue"]} for r in platform_rows]}
 
+    elif report_type == "customer_support":
+        # Support tickets — SLA breach %, top recurring categories, technician-level performance, CSAT trend.
+        from support import _get_sla_config, _breach_flags, _hours_between   # noqa: E402
+        q: Dict[str, Any] = {}
+        if date_from or date_to:
+            q["created_at"] = {}
+            if date_from: q["created_at"]["$gte"] = date_from
+            if date_to: q["created_at"]["$lte"] = date_to + "T23:59:59"
+        if district:
+            q["district"] = district
+        tickets = await db.support_tickets.find(q).to_list(20000)
+        sla = await _get_sla_config(db)
+        total = len(tickets)
+        response_breaches = 0
+        resolution_breaches = 0
+        by_category: Dict[str, int] = defaultdict(int)
+        by_priority: Dict[str, int] = defaultdict(int)
+        by_district: Dict[str, int] = defaultdict(int)
+        response_hours: List[float] = []
+        resolution_hours: List[float] = []
+        csat_values: List[int] = []
+        monthly: Dict[str, Dict[str, Any]] = defaultdict(lambda: {"count": 0, "resolution_avg": 0.0, "csat_sum": 0.0, "csat_n": 0})
+        tech_perf: Dict[str, Dict[str, Any]] = defaultdict(lambda: {"resolved": 0, "csat_sum": 0.0, "csat_n": 0, "resolution_hours": []})
+        rows = []
+        for t in tickets:
+            row = {k: v for k, v in t.items() if k != "_id"}
+            row["id"] = str(t["_id"])
+            flags = _breach_flags(row, sla)
+            row.update(flags)
+            if flags["breached_response_sla"]: response_breaches += 1
+            if flags["breached_resolution_sla"]: resolution_breaches += 1
+            by_category[row.get("category", "other")] += 1
+            by_priority[row.get("priority", "medium")] += 1
+            by_district[row.get("district") or "Unknown"] += 1
+            if row.get("first_response_at"):
+                response_hours.append(_hours_between(row["created_at"], row["first_response_at"]))
+            if row.get("resolved_at"):
+                resolution_hours.append(_hours_between(row["created_at"], row["resolved_at"]))
+            if row.get("customer_satisfaction_rating"):
+                csat_values.append(int(row["customer_satisfaction_rating"]))
+            month = (row.get("created_at") or "")[:7]
+            if month:
+                monthly[month]["count"] += 1
+                if row.get("customer_satisfaction_rating"):
+                    monthly[month]["csat_sum"] += int(row["customer_satisfaction_rating"])
+                    monthly[month]["csat_n"] += 1
+            tech = row.get("assigned_to_name")
+            if tech and row.get("status") in ("resolved", "closed"):
+                tech_perf[tech]["resolved"] += 1
+                if row.get("customer_satisfaction_rating"):
+                    tech_perf[tech]["csat_sum"] += int(row["customer_satisfaction_rating"])
+                    tech_perf[tech]["csat_n"] += 1
+                if row.get("resolved_at") and row.get("created_at"):
+                    tech_perf[tech]["resolution_hours"].append(_hours_between(row["created_at"], row["resolved_at"]))
+            rows.append({
+                "ticket_number": row.get("ticket_number"), "customer": row.get("customer_name"),
+                "category": row.get("category"), "priority": row.get("priority"),
+                "district": row.get("district"), "status": row.get("status"),
+                "assigned_to": row.get("assigned_to_name"),
+                "created_at": (row.get("created_at") or "")[:10],
+                "resolved_at": (row.get("resolved_at") or "")[:10] if row.get("resolved_at") else "",
+                "sla_bucket": flags["sla_bucket"], "csat": row.get("customer_satisfaction_rating") or "—",
+            })
+        tech_rows = []
+        for name, s in tech_perf.items():
+            avg_csat = round(s["csat_sum"] / s["csat_n"], 2) if s["csat_n"] else 0
+            avg_res = round(sum(s["resolution_hours"]) / len(s["resolution_hours"]), 1) if s["resolution_hours"] else 0
+            tech_rows.append({"technician": name, "resolved": s["resolved"], "avg_csat": avg_csat, "avg_resolution_hours": avg_res})
+        tech_rows.sort(key=lambda r: r["resolved"], reverse=True)
+        monthly_rows = []
+        for m in sorted(monthly.keys()):
+            v = monthly[m]
+            monthly_rows.append({"month": m, "count": v["count"],
+                                  "avg_csat": round(v["csat_sum"] / v["csat_n"], 2) if v["csat_n"] else 0})
+        top_recurring = sorted(by_category.items(), key=lambda kv: kv[1], reverse=True)[:5]
+        return {"title": "Customer Support Report", "summary": {
+            "total_tickets": total,
+            "response_breach_pct": round(response_breaches / total * 100, 1) if total else 0,
+            "resolution_breach_pct": round(resolution_breaches / total * 100, 1) if total else 0,
+            "avg_response_hours": round(sum(response_hours) / len(response_hours), 1) if response_hours else 0,
+            "avg_resolution_hours": round(sum(resolution_hours) / len(resolution_hours), 1) if resolution_hours else 0,
+            "avg_csat": round(sum(csat_values) / len(csat_values), 2) if csat_values else 0,
+        }, "rows": rows, "by_category": dict(by_category), "by_priority": dict(by_priority),
+           "by_district": dict(by_district), "monthly_rows": monthly_rows,
+           "technician_rows": tech_rows, "top_recurring": [{"category": c, "count": n} for c, n in top_recurring],
+           "chart_data": [{"name": c, "value": n} for c, n in top_recurring]}
+
     raise HTTPException(status_code=404, detail=f"Unknown report type: {report_type}")
 
 # ================== ALERT ENGINE & RISK SCORING ==================
@@ -6608,6 +6702,136 @@ async def complete_return(return_id: str, request: Request):
     await get_current_user(request)
     await db.brand_returns.update_one({"_id": ObjectId(return_id)}, {"$set": {"status": "completed", "completed_at": datetime.now(timezone.utc).isoformat()}})
     return {"message": "Return completed"}
+
+# ================== HARD DELETE — Direct Sale / Purchase Inbound / Delivery Outbound (Iter 47) ==================
+# Admin-only permanent deletion, distinct from cancellation/reversal. Reverses all side effects,
+# blocks on dependent records, requires a written reason, and preserves the full record snapshot
+# in the audit trail. Never lets stock go negative.
+
+class HardDeletePayload(BaseModel):
+    reason: str
+    gst_warning_acknowledged: Optional[bool] = False
+
+
+async def _is_gst_reported(sale: Dict[str, Any]) -> bool:
+    """Warn (never block) when a confirmed direct sale has been reported in a GST filing period."""
+    if not sale.get("invoice_number") or sale.get("status") not in ("completed", None, "confirmed"):
+        return False
+    # Naive heuristic: GST filing usually happens the month after the invoice month, so if the
+    # invoice is older than 30 days it's very likely already filed.
+    try:
+        d = datetime.fromisoformat((sale.get("created_at") or "")[:10])
+        return (datetime.now(timezone.utc).replace(tzinfo=None) - d).days > 30
+    except Exception:
+        return False
+
+
+@api_router.delete("/hard-delete/sale/{sale_id}")
+async def hard_delete_sale(sale_id: str, payload: HardDeletePayload, request: Request):
+    """Admin-only permanent deletion of a direct sale. Restores stock, removes any customer-credit
+    entry it created, blocks if a warranty claim or return is linked. Full snapshot in audit log."""
+    user = await require_role("admin")(request)
+    if not payload.reason or len(payload.reason.strip()) < 3:
+        raise HTTPException(status_code=400, detail="A reason is required for hard deletion")
+    sale = await db.sales.find_one({"_id": ObjectId(sale_id)})
+    if not sale:
+        raise HTTPException(status_code=404, detail="Sale not found")
+    # Dependents
+    linked_return = await db.brand_returns.find_one({"sale_id": sale_id})
+    linked_warranty = await db.warranty_claims.find_one({"sale_id": sale_id}) if "warranty_claims" in await db.list_collection_names() else None
+    if linked_return or linked_warranty:
+        raise HTTPException(status_code=400,
+                             detail="Cannot hard-delete: this sale has a linked return or warranty claim. Delete the dependent first.")
+    # GST warning
+    if not payload.gst_warning_acknowledged and await _is_gst_reported(sale):
+        raise HTTPException(status_code=409,
+                             detail="This sale is old enough to have been reported in a GST filing period. Set gst_warning_acknowledged=true to proceed.")
+    # Reverse stock (only if still active)
+    if sale.get("status") not in ("cancelled", "returned"):
+        for line in sale.get("lines", []):
+            item_id = line.get("inventory_item_id")
+            if not item_id:
+                continue
+            qty = float(line.get("quantity") or 0)
+            await db.inventory_items.update_one({"_id": ObjectId(item_id)}, {"$inc": {"quantity": qty}})
+            await db.inventory_movements.insert_one({
+                "inventory_item_id": item_id, "movement_type": "hard_delete_restore", "quantity": qty,
+                "reference_type": "sale_hard_delete", "reference_id": sale_id,
+                "note": f"Hard-delete restore (reason: {payload.reason})",
+                "created_by": user["id"], "created_at": datetime.now(timezone.utc).isoformat(),
+            })
+    # Remove customer credit tied to this sale
+    await db.customer_credits.delete_many({"reference_type": "sale", "reference_id": sale_id})
+    # Full snapshot in audit log, then delete
+    snapshot = {k: v for k, v in sale.items() if k != "_id"}
+    snapshot["_id"] = str(sale["_id"])
+    await create_audit_log(user["id"], user["name"], "hard_delete", "sale", sale_id,
+                            {"reason": payload.reason, "snapshot": snapshot}, None)
+    await db.sales.delete_one({"_id": ObjectId(sale_id)})
+    return {"status": "deleted", "message": "Sale hard-deleted; stock restored; snapshot preserved in audit log"}
+
+
+@api_router.delete("/hard-delete/purchase-order/{po_id}")
+async def hard_delete_po(po_id: str, payload: HardDeletePayload, request: Request):
+    """Admin-only permanent deletion of a purchase inbound. Subtracts exactly what it added to
+    stock, blocked if that stock has since been consumed elsewhere (negative-stock guard)."""
+    user = await require_role("admin")(request)
+    if not payload.reason or len(payload.reason.strip()) < 3:
+        raise HTTPException(status_code=400, detail="A reason is required for hard deletion")
+    po = await db.purchase_orders.find_one({"_id": ObjectId(po_id)})
+    if not po:
+        raise HTTPException(status_code=404, detail="Purchase order not found")
+    # Only reverse stock if it was ever received
+    received = po.get("received_items") or []
+    if received:
+        blocked = []
+        for r in received:
+            inv_item = await db.inventory_items.find_one({"_id": ObjectId(r["inventory_item_id"])})
+            if inv_item and inv_item.get("quantity", 0) < r.get("qty_received", 0):
+                blocked.append(f"{r.get('name')} — only {inv_item.get('quantity', 0)} left, {r.get('qty_received', 0)} was received")
+        if blocked:
+            raise HTTPException(status_code=400,
+                                 detail="Cannot hard-delete — stock has already moved: " + "; ".join(blocked))
+        for r in received:
+            await db.inventory_items.update_one({"_id": ObjectId(r["inventory_item_id"])}, {"$inc": {"quantity": -r.get("qty_received", 0)}})
+            await db.inventory_movements.insert_one({
+                "inventory_item_id": r["inventory_item_id"], "movement_type": "hard_delete_reverse",
+                "quantity": -r.get("qty_received", 0), "reference_type": "purchase_order_hard_delete",
+                "reference_id": po_id, "note": f"Hard-delete reverse (reason: {payload.reason})",
+                "created_by": user["id"], "created_at": datetime.now(timezone.utc).isoformat(),
+            })
+    snapshot = {k: v for k, v in po.items() if k != "_id"}
+    snapshot["_id"] = str(po["_id"])
+    await create_audit_log(user["id"], user["name"], "hard_delete", "purchase_order", po_id,
+                            {"reason": payload.reason, "snapshot": snapshot}, None)
+    await db.purchase_orders.delete_one({"_id": ObjectId(po_id)})
+    return {"status": "deleted", "message": "Purchase order hard-deleted; stock reverted; snapshot preserved in audit log"}
+
+
+@api_router.delete("/hard-delete/delivery/{delivery_id}")
+async def hard_delete_delivery(delivery_id: str, payload: HardDeletePayload, request: Request):
+    """Admin-only permanent deletion of a delivery outbound. Blocked if the delivery is linked to
+    an already-submitted project material reconciliation."""
+    user = await require_role("admin")(request)
+    if not payload.reason or len(payload.reason.strip()) < 3:
+        raise HTTPException(status_code=400, detail="A reason is required for hard deletion")
+    d = await db.deliveries.find_one({"_id": ObjectId(delivery_id)})
+    if not d:
+        raise HTTPException(status_code=404, detail="Delivery not found")
+    # Dependent: material reconciliation submitted for the linked project
+    if d.get("project_id"):
+        recon = await db.material_reconciliation.find_one({"project_id": d["project_id"], "status": {"$in": ["submitted", "approved"]}})
+        if recon:
+            raise HTTPException(status_code=400,
+                                 detail="Cannot hard-delete — this delivery's project has an already-submitted material reconciliation. Resolve or delete the reconciliation first.")
+    # Note: current codebase doesn't decrement stock at dispatch, so no stock action needed here.
+    snapshot = {k: v for k, v in d.items() if k != "_id"}
+    snapshot["_id"] = str(d["_id"])
+    await create_audit_log(user["id"], user["name"], "hard_delete", "delivery", delivery_id,
+                            {"reason": payload.reason, "snapshot": snapshot}, None)
+    await db.deliveries.delete_one({"_id": ObjectId(delivery_id)})
+    return {"status": "deleted", "message": "Delivery hard-deleted; snapshot preserved in audit log"}
+
 
 # ================== WEEKLY AUDITS ==================
 

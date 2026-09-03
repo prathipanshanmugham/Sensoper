@@ -9,12 +9,14 @@ import { Badge } from '../components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '../components/ui/dialog';
 import { Loader2, Plus, Truck, CheckCircle2, ClipboardCheck, Package, X, Save, Trash2, Pencil, Undo2, AlertTriangle } from 'lucide-react';
+import HardDeleteButton from '../components/HardDeleteButton';
 
 const STATUS_COLORS = { pending: 'bg-amber-100 text-amber-700', approved: 'bg-blue-100 text-blue-700', arrived: 'bg-violet-100 text-violet-700', qc_done: 'bg-teal-100 text-teal-700', completed: 'bg-emerald-100 text-emerald-700' };
 const STATUS_LABELS = { pending: 'Pending Approval', approved: 'Approved', arrived: 'Material Arrived', qc_done: 'QC Passed', completed: 'Completed' };
 
 export default function PurchaseInboundPage() {
   const { user } = useAuth();
+  const isAdmin = user?.role === 'admin';
   const [orders, setOrders] = useState([]);
   const [inventoryItems, setInventoryItems] = useState([]);
   const [pendingApprovals, setPendingApprovals] = useState([]);
@@ -271,6 +273,7 @@ export default function PurchaseInboundPage() {
                         <Button size="sm" variant="outline" className="h-7 text-xs gap-1 text-rose-600 border-rose-200" onClick={() => { setReverseTarget(po); setActionError(''); }} data-testid={`reverse-inbound-${po.id}`}><Undo2 className="h-3 w-3" />Reverse</Button>
                       </>
                     )}
+                    {isAdmin && <HardDeleteButton type="purchase_order" id={po.id} label="Hard Delete" onDeleted={fetch} testid={`hard-delete-po-${po.id}`} />}
                   </div>
                 </div>
               </CardContent>

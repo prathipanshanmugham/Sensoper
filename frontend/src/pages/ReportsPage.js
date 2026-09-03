@@ -44,7 +44,8 @@ const REPORTS = [
   { id: 'reading_analysis', label: 'Reading Analysis', icon: Activity, desc: 'Generation trend vs estimate' },
   { id: 'employee_performance', label: 'Employee Performance', icon: UserCheck, desc: 'Auto activity + manual scores' },
   { id: 'partner_performance', label: 'Partner Performance', icon: HardHat, desc: 'On-time rate, ratings, payments, retention by partner' },
-  { id: 'ecommerce', label: 'Ecommerce', icon: ShoppingBag, desc: 'Revenue, margin after commission, returns by platform/SKU' }
+  { id: 'ecommerce', label: 'Ecommerce', icon: ShoppingBag, desc: 'Revenue, margin after commission, returns by platform/SKU' },
+  { id: 'customer_support', label: 'Customer Support', icon: Star, desc: 'SLA breach %, resolution time, CSAT, top recurring issues' }
 ];
 
 function SummaryCard({ label, value }) {
@@ -339,6 +340,36 @@ export default function ReportsPage() {
                 </div>
               )}
               {/* Ecommerce: platform breakdown + monthly revenue trend (Iter 46 Change 2) */}
+              {activeReport === 'customer_support' && reportData.technician_rows?.length > 0 && (
+                <div className="mb-4 p-4 bg-white rounded-lg border border-slate-200" data-testid="support-technician-rows">
+                  <p className="text-xs font-medium uppercase tracking-wider text-slate-400 mb-3">Technician-level Resolution Performance</p>
+                  <table className="w-full text-sm">
+                    <thead><tr className="text-left text-slate-500 border-b"><th className="py-1.5">Technician</th><th>Resolved</th><th>Avg CSAT</th><th>Avg Resolution (hrs)</th></tr></thead>
+                    <tbody>{reportData.technician_rows.map(r => (
+                      <tr key={r.technician} className="border-b last:border-0"><td className="py-1.5">{r.technician}</td><td>{r.resolved}</td><td>{r.avg_csat || '—'}</td><td>{r.avg_resolution_hours || '—'}</td></tr>
+                    ))}</tbody>
+                  </table>
+                </div>
+              )}
+              {activeReport === 'customer_support' && reportData.monthly_rows?.length > 0 && (
+                <div className="mb-4 p-4 bg-white rounded-lg border border-slate-200" data-testid="support-monthly-rows">
+                  <p className="text-xs font-medium uppercase tracking-wider text-slate-400 mb-3">Volume &amp; CSAT by Month</p>
+                  <table className="w-full text-sm">
+                    <thead><tr className="text-left text-slate-500 border-b"><th className="py-1.5">Month</th><th>Ticket Count</th><th>Avg CSAT</th></tr></thead>
+                    <tbody>{reportData.monthly_rows.map(r => (
+                      <tr key={r.month} className="border-b last:border-0"><td className="py-1.5">{r.month}</td><td>{r.count}</td><td>{r.avg_csat || '—'}</td></tr>
+                    ))}</tbody>
+                  </table>
+                </div>
+              )}
+              {activeReport === 'customer_support' && reportData.top_recurring?.length > 0 && (
+                <div className="mb-4 p-4 bg-white rounded-lg border border-slate-200" data-testid="support-top-recurring">
+                  <p className="text-xs font-medium uppercase tracking-wider text-slate-400 mb-3">Top Recurring Issue Categories</p>
+                  <div className="flex flex-wrap gap-2">{reportData.top_recurring.map(r => (
+                    <span key={r.category} className="px-3 py-1.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs">{r.category.replace(/_/g, ' ')} · {r.count}</span>
+                  ))}</div>
+                </div>
+              )}
               {activeReport === 'ecommerce' && reportData.platform_rows?.length > 0 && (
                 <div className="mb-4 p-4 bg-white rounded-lg border border-slate-200" data-testid="ecommerce-platform-breakdown">
                   <p className="text-xs font-medium uppercase tracking-wider text-slate-400 mb-3">Revenue by Platform</p>

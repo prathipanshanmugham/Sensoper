@@ -1,0 +1,58 @@
+{
+  "summary": "Iteration 47 revision E2E test (backend + frontend). Backend: re-ran the 4 existing iter46/47/51 suites (86 passed, 1 skipped) and added a new 36-case edge-case suite (/app/backend/tests/test_iter47_edge_cases.py) covering support ticket lifecycle + invalid status transitions + CSAT bounds + SLA config persistence + dashboard, /api/reports/customer_support shape, ecommerce commission-before-live guard (create/update/bulk), vendor filters/sort/business_value, partner tag CRUD + AND tag filter + min_rating + rate-card in-place edit + status-change guard/override, and hard-delete validation incl. a full create→hard-delete→verify-removal roundtrip. Combined result: 121 passed / 1 failed / 1 skipped (99%). Frontend: verified login, Partners (Manage Tags dialog add/list, tag AND combo filter, rating filter options '4 stars & above', sort Rating/Business), Partner detail (Edit dialog save, rate-card edit-in-place 500->777 persisted, active-assignment guard -> inline error + override reason + Override & Save -> status inactive), Vendors (category/status/district/search/sort filters, business value line, district + payment terms in New Vendor form), AMC Customer Support tab (4 KPI cards, ticket create TKT-00057, detail dialog, assign TechA, transition in_progress, Close+Rate CSAT 5 -> status closed and avg CSAT moved 4.60->4.64, SLA Config dialog with 8 priority inputs saved and persisted via API), Reports -> Customer Support renders, Ecommerce (6 edit-platform pencils, 'Edit Platform' dialog with 'Reference Commission %', listing dialog with required 'Listing Commission %'), Hard Delete on Direct Sales / Purchase Inbound / Delivery Outbound (reason textarea, empty-reason inline error 'A reason is required', successful delete + list refresh), CEO Dashboard support snapshot (4 KPI cards) + Export PDF click with no console error.",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "POST /api/ecommerce/listings/bulk-status", "issue": "Bypasses the iteration-47 'every live listing must carry its own commission_pct' rule. A draft listing with platform_commission_pct=null can be flipped to status='live' via bulk-status (verified: listing went live with null commission). POST /listings and PUT /listings/{id} correctly return 400.", "priority": "HIGH"}
+    ],
+    "minor": [
+      {"endpoint": "PUT /api/support/tickets/{id}", "issue": "first_response_at is stamped on ANY first update (e.g. editing only the description or category), not just on a real first response/assignment. This silently improves the response-SLA compliance numbers used by the CEO snapshot and the customer_support report."},
+      {"endpoint": "GET /api/reports/customer_support", "issue": "Response is correct (summary.response_breach_pct / avg_csat, technician_rows, top_recurring present) but technician_rows is never rendered by the UI - see frontend issue."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "ReportsPage (Customer Support report)", "issue": "Backend returns technician_rows (technician, resolved, avg_csat, avg_resolution_hours) but the report body never renders a technician-performance table (only CSAT / breach / top-recurring appear). Requirement (3) asked for technician performance in this report.", "selector": "[data-testid='report-btn-customer_support']", "priority": "MEDIUM"},
+      {"component": "DirectSalesPage HardDeleteButton", "issue": "Hard Delete button is hidden for sales with status 'returned' or 'cancelled' (all rows on the page were cancelled, so 0 buttons rendered). Purchase Inbound and Delivery Outbound DO show Hard Delete for cancelled records, so behaviour is inconsistent - admins cannot purge cancelled/returned sales, which is the most likely hard-delete case.", "selector": "[data-testid^='hard-delete-sale-']", "priority": "MEDIUM"},
+      {"component": "HardDeleteButton (sale)", "issue": "GST warning acknowledgement checkbox (data-testid='gst-ack-checkbox') never appeared for the sale tested (invoice <30 days old, so _is_gst_reported=false). Not verified end-to-end - needs an older invoice to confirm the GST warning path works.", "selector": "[data-testid='gst-ack-checkbox']", "priority": "LOW"},
+      {"component": "PartnerDetail edit dialog", "issue": "Save button testid is 'save-partner-edit-btn', not 'save-partner-btn' as stated in the test request (works, but spec/testid mismatch for future scripts).", "selector": "[data-testid='save-partner-edit-btn']", "priority": "LOW"},
+      {"component": "VendorsPage New Vendor form", "issue": "Payment Terms input has no data-testid (District has 'vendor-district-input'). Add e.g. data-testid='vendor-payment-terms-input'.", "selector": "New Vendor > Payment Terms", "priority": "LOW"}
+    ],
+    "integration_issues": [
+      {"flow": "Accounts / CEO data render", "issue": "React console error 'Encountered two children with the same key, TEST_Payment_Customer' repeated ~5x - list keyed by customer name instead of a unique id; can duplicate/omit rows.", "affected_selectors": ["customer credit/payment lists"]}
+    ],
+    "design_issues": [
+      {"screen": "Partner detail > Edit Partner (status guard)", "issues": ["Inline error surfaces the raw developer-facing API wording: 'Set force_status_change=true with a status_change_reason to override' - should be user-facing copy."]},
+      {"screen": "AMC > Customer Support", "issues": ["Avg Resolution (hrs) shows 0 for tickets resolved within the same minute - consider showing minutes or '<1h' instead of 0."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter47_edge_cases.py",
+    "/app/backend/tests/test_iter47_revamp.py",
+    "/app/backend/tests/test_iter46_partners_ecommerce.py",
+    "/app/backend/tests/test_iter51_new_gaps.py",
+    "/app/test_reports/pytest/iter47_results.xml"
+  ],
+  "action_items": [
+    "Apply the commission-before-live guard inside POST /api/ecommerce/listings/bulk-status (reject or skip listings whose platform_commission_pct is null when target status is 'live').",
+    "Render technician_rows (technician performance) in the Customer Support report on ReportsPage.",
+    "Show Hard Delete for cancelled/returned direct sales (or document why sales differ from PO/delivery).",
+    "Only stamp support ticket first_response_at on assignment / status move away from 'open', not on every first update.",
+    "Replace the raw API status-guard message with user-facing copy in the Edit Partner dialog.",
+    "Fix the duplicate React key warning (key by id, not customer name).",
+    "Add data-testid to the New Vendor Payment Terms input."
+  ],
+  "critical_code_review_comments": [
+    "ecommerce.py bulk_update_status() does a blind update_many with no per-listing validation - it is the single hole in the otherwise-correct commission-before-live rule.",
+    "support.py update_ticket(): 'if not existing.get(\"first_response_at\"): update[\"first_response_at\"] = now' runs regardless of what field changed - SLA metric integrity bug.",
+    "server.py is 7773 lines; the new report_type branches and hard-delete endpoints should move into modules (reports.py / hard_delete.py) per the <700-line guideline.",
+    "_is_gst_reported() uses a naive >30-days heuristic - acceptable as a warning but should read the actual GST filing period from company settings."
+  ],
+  "updated_files": ["/app/backend/tests/test_iter47_edge_cases.py"],
+  "success_rate": {"backend": "99% (121/122 pytest, 1 skipped)", "frontend": "92% (all flows pass; technician table missing in support report, sale hard-delete hidden for cancelled rows)"},
+  "seed_data_creation": "Support tickets TEST_EdgeCust TKT-000xx + QA_UI_Customer TKT-00057 (closed, CSAT 5); vendor TEST_EdgeVendor (deactivated); listings TEST_EDGE_SKU2/3/4 (delisted/removed); partner TEST_UI_Guard + assignment (deleted); tags TEST_Plumbing2/TEST_Electrical/QA_Painting (retired); sale TEST_UI_HD_Sale (hard-deleted as part of the test). SLA config was temporarily changed and restored to defaults (critical response 2h).",
+  "should_call_test_agent_after_fix": true,
+  "should_main_agent_self_test": false,
+  "test_credentials": "admin@sensoper.com / Admin@123 (cookie-session auth; /api/auth/login returns the user object, NOT a bearer token - tests must reuse the session cookie)",
+  "context_for_next_testing_agent": "Real routes differ from the request: Direct Sales = /dashboard/sales, Delivery Outbound = /dashboard/delivery-outbound (not /direct-sales, /deliveries). Login sets a session cookie; there is no access_token in the login response. Tag filter pills use data-testid='tag-filter-<lowercased-name>'. Partner edit save = 'save-partner-edit-btn'. Rate-card edit icons only exist on the 'Rate Card' tab (data-testid='partner-tab-Rate Card'). Report selection uses data-testid='report-btn-<report_type>' (there is no report-type-select). All new backend suites must be run with REACT_APP_BACKEND_URL exported (several existing iter46/47 test files crash at import without it). Not tested: GST-warning acknowledgement path on hard delete (needs an invoice >30 days old), dependent-record block paths for PO/delivery hard delete, actual PDF file contents of the CEO export.",
+  "rca_of_the_issue": "ecommerce.py bulk_update_status() performs db.ecommerce_listings.update_many({_id:{$in:...}},{$set:{status}}) with no validation, whereas create_listing() and update_listing() both raise 400 when status=='live' and platform_commission_pct is None. Repro: POST /api/ecommerce/listings (status='draft', no platform_commission_pct) -> POST /api/ecommerce/listings/bulk-status {listing_ids:[id], status:'live'} -> GET /api/ecommerce/listings shows status='live', platform_commission_pct=null. Fix: load the affected listings first and reject (or skip with a per-id error report) any without their own commission when the target status is 'live'."
+}

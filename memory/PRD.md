@@ -91,5 +91,28 @@ Closed the remaining gaps from the full original Iter 46 spec ("Definition of do
 - Data hygiene: deleted all leftover `TEST_*`/`Test *` seed rows across `partners`, `partner_assignments`, `partner_payments`, `ecommerce_platforms`, `ecommerce_listings`, `ecommerce_orders`, `terms_conditions`, and 7 orphaned `inventory_movements` (null `reference_id` from the pre-fix era) — restoring stock first for any test orders that were still "active". Reports now reflect only real data.
 - New tests added to `backend/tests/test_iter51_new_gaps.py` (21 tests) covering the new filters, summary-flatness regression, and the reference_id/movement fixes.
 
+## Iteration 47 — DONE (2026-09-03, 86/86 pytest pass; testing_agent E2E pass with 7 fixes applied post-report)
+Multi-module revision pass on Iter 46 features + brand-new Customer Support module:
+1. **Labour & Subcontractor Management**:
+   - Full partner edit (`PUT /api/partners/{id}`) — every field editable; status-change guard blocks moving `active → inactive/blacklisted` when live assignments exist unless `force_status_change=true` with a `status_change_reason` (kept in the audit trail).
+   - **Speciality tags** now admin-managed (new `speciality_tags` collection + `GET/POST/PUT/DELETE /api/partners/tags/*`); the tag list itself is editable — rename cascades to every partner record. Directory filter accepts a comma-separated `specialities` list with AND semantics ("Plumbing AND Electrical").
+   - Rate-card row edit-in-place (`PUT /api/partners/{id}/rate-card` — for typo fixes) alongside the existing append endpoint (versioned adds for real rate changes). Historical assignments already store the rate on the assignment line, so past pricing is preserved either way.
+   - Partner directory shows the rating as a 5-star display (half-star supported) with the exact numeric on hover; filter by `min_rating` and sort by rating/business/name.
+2. **Vendors tab**: added filters (`category`, `status`, `district`) + search across name AND GSTIN + sort options (`business_desc`, `recent_desc`, `recent_asc`). Backend now attaches computed `business_value` and `last_order_date` per vendor by matching `purchase_orders.supplier_name`. New `district` + `payment_terms` fields on the vendor form.
+3. **AMC Customer Support module** (new): `backend/support.py` + `frontend/src/pages/SupportTicketsTab.js` wired as a 3rd tab in `/dashboard/amc`.
+   - New `support_tickets` collection with ticket_number (`TKT-00001`), SLA tracking (response + resolution), 7-state status workflow with enforced transitions, timeline audit per ticket, CSAT capture on close (fed into technician performance).
+   - Admin SLA config endpoint (`/api/support/sla-config`) — per-priority response/resolution hour targets. Breach and SLA bucket (`on_track / at_risk / breached`) computed per ticket.
+   - Dashboard summary (`/api/support/dashboard`) — open, overdue, avg resolution, avg CSAT, top recurring categories, monthly volume.
+   - New `report_type = customer_support` on `/api/reports/*` — summary (response/resolution breach %, avg CSAT), rows, monthly, technician-level performance, top recurring categories. UI renders technician table + monthly + top-recurring pills.
+4. **Ecommerce**:
+   - `PUT /api/ecommerce/platforms/{id}` fully editable; commission_pct on the platform is reference-only (labelled as such in the UI), never auto-copies to a listing.
+   - Every listing must carry its own `platform_commission_pct` before its status can be `live` — enforced on POST, PUT, AND `bulk-status` (previously the bulk endpoint bypassed the rule, flagged by testing_agent and fixed). `_effective_commission_pct` favours the listing rate; past order commission stays immutable.
+5. **Hard delete** (admin-only, distinct from cancel/reversal):
+   - `DELETE /api/hard-delete/sale/{id}`, `.../purchase-order/{id}`, `.../delivery/{id}` — requires a written reason (min 3 chars), reverses stock/customer_credit before removing, blocks on dependent records (returns, submitted material reconciliations, consumed inbound stock), warns (409) on GST-filed sales that need explicit acknowledgement, stores a full snapshot of the deleted record in the audit log.
+   - UI: shared `HardDeleteButton` component wired into DirectSalesPage / PurchaseInboundPage / DeliveryOutboundPage (visible for admins on all row states including cancelled — first testing_agent iteration had it hidden for cancelled sales, fixed).
+6. **CEO dashboard** picks up the Customer Support snapshot (Open / Overdue / Avg Resolution / Avg CSAT) and the PDF export includes support metrics + technician performance + top recurring categories + partner performance on the single page.
+7. **Post-testing_agent fixes** (iteration_52.json): commission-before-live guard applied to `bulk-status`; `support.first_response_at` now only auto-stamps on real assignment (was stamping on any first edit); ReportsPage renders `technician_rows` + `monthly_rows` + `top_recurring`; sale hard-delete visible for all statuses; user-facing copy on the status-guard error; duplicate React key on customer credits table fixed; `vendor-payment-terms-input` testid added.
+- New regression suite `backend/tests/test_iter47_revamp.py` (17 tests): rate-card versioning + in-place edit, tag CRUD + AND filter, vendor filter/sort, SLA breach + status workflow + CSAT bounds, customer_support report shape, live-listing commission guard, hard-delete validation.
+
 ## Credentials
 See `/app/memory/test_credentials.md`. Admin: admin@sensoper.com / Admin@123

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { dashboardAPI, healthAPI } from '../utils/api';
+import { dashboardAPI, healthAPI, supportAPI, reportsAPI } from '../utils/api';
 import HealthScoreCard from '../components/HealthScoreCard';
 import { useLocationScope, LocationScopeSelect } from '../components/LocationScope';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
@@ -49,14 +49,17 @@ export default function CeoDashboard() {
   const [loading, setLoading] = useState(true);
   const [sparkline, setSparkline] = useState([]);
 
+  const [supportSnapshot, setSupportSnapshot] = useState(null);
   const fetchData = useCallback(async () => {
     try {
-      const [dashRes, histRes] = await Promise.all([
+      const [dashRes, histRes, supRes] = await Promise.all([
         dashboardAPI.getCeo(locScope.locationId ? { location_id: locScope.locationId } : {}),
-        healthAPI.getHistory(6).catch(() => ({ data: [] }))
+        healthAPI.getHistory(6).catch(() => ({ data: [] })),
+        supportAPI.dashboard().catch(() => ({ data: null }))
       ]);
       setData(dashRes.data);
       setSparkline((histRes.data || []).map(s => ({ month: s.month, score: s.score })));
+      setSupportSnapshot(supRes.data);
     } catch (err) {
       console.error('Failed to load CEO dashboard:', err);
     } finally {
@@ -74,6 +77,12 @@ export default function CeoDashboard() {
 
   const handleExportPdf = async () => {
     if (!data) return;
+    // Pull the extra data we want on the single-page CEO PDF: support tickets summary,
+    // CSAT + technician perf, and partner performance. All optional — never block the PDF.
+    let support = null, partner = null;
+    try { support = (await supportAPI.dashboard()).data; } catch { /* ignore */ }
+    try { partner = (await reportsAPI.get('partner_performance', {})).data; } catch { /* ignore */ }
+
     const doc = new jsPDF();
     const FONT = await loadUnicodeFont(doc);
     doc.setFontSize(18); doc.setTextColor(16, 185, 129);
@@ -94,12 +103,40 @@ export default function CeoDashboard() {
       ['Total Outstanding (Credit)', `Rs ${(data.kpis.total_outstanding || 0).toLocaleString('en-IN')}`],
       ['Overdue Amount', `Rs ${(data.kpis.overdue_amount || 0).toLocaleString('en-IN')}`],
     ];
-    autoTable(doc, { startY: 42, head: [['KPI', 'Value']], body: kpiRows, theme: 'striped', styles: { font: FONT }, headStyles: { font: FONT, fillColor: [16, 185, 129], textColor: 255 }, bodyStyles: { font: FONT } });
-    let y = doc.lastAutoTable.finalY + 10;
+    if (data.ecommerce) {
+      kpiRows.push(['Ecommerce Revenue', `Rs ${(data.ecommerce.revenue || 0).toLocaleString('en-IN')}`]);
+      kpiRows.push(['Ecommerce Net Revenue', `Rs ${(data.ecommerce.net_revenue || 0).toLocaleString('en-IN')}`]);
+    }
+    if (support) {
+      kpiRows.push(['Support: Open Tickets', support.open_tickets]);
+      kpiRows.push(['Support: Overdue by SLA', support.overdue_by_sla]);
+      kpiRows.push(['Support: Avg Resolution (hrs)', support.avg_resolution_hours]);
+      kpiRows.push(['Support: Avg CSAT', support.avg_csat ? `${support.avg_csat} / 5` : '—']);
+    }
+    autoTable(doc, { startY: 42, head: [['KPI', 'Value']], body: kpiRows, theme: 'striped', styles: { font: FONT, fontSize: 9 }, headStyles: { font: FONT, fillColor: [16, 185, 129], textColor: 255 }, bodyStyles: { font: FONT } });
+    let y = doc.lastAutoTable.finalY + 6;
+
     if (data.top_staff?.length) {
       doc.setFontSize(11); doc.setTextColor(30, 41, 59); doc.text('Top Performing Staff', 14, y); y += 4;
-      autoTable(doc, { startY: y, head: [['Staff', 'Projects', 'Revenue']], body: data.top_staff.map(s => [s.name, s.count, `Rs ${(s.revenue || 0).toLocaleString('en-IN')}`]), theme: 'striped', styles: { font: FONT }, headStyles: { font: FONT, fillColor: [59, 130, 246], textColor: 255 }, bodyStyles: { font: FONT } });
+      autoTable(doc, { startY: y, head: [['Staff', 'Projects', 'Revenue']], body: data.top_staff.map(s => [s.name, s.count, `Rs ${(s.revenue || 0).toLocaleString('en-IN')}`]), theme: 'striped', styles: { font: FONT, fontSize: 9 }, headStyles: { font: FONT, fillColor: [59, 130, 246], textColor: 255 }, bodyStyles: { font: FONT } });
+      y = doc.lastAutoTable.finalY + 6;
     }
+
+    if (partner?.rows?.length) {
+      doc.setFontSize(11); doc.text('Partner Performance (Top 5)', 14, y); y += 4;
+      autoTable(doc, { startY: y, head: [['Partner', 'On-time %', 'Avg Rating', 'Lifetime ₹']],
+        body: partner.rows.slice(0, 5).map(r => [r.partner, r.on_time_rate ?? '—', r.avg_quality_rating ?? '—', `Rs ${(r.lifetime_business || 0).toLocaleString('en-IN')}`]),
+        theme: 'striped', styles: { font: FONT, fontSize: 9 }, headStyles: { font: FONT, fillColor: [139, 92, 246], textColor: 255 }, bodyStyles: { font: FONT } });
+      y = doc.lastAutoTable.finalY + 6;
+    }
+
+    if (support?.top_recurring?.length) {
+      doc.setFontSize(11); doc.text('Top Recurring Support Categories', 14, y); y += 4;
+      autoTable(doc, { startY: y, head: [['Category', 'Count']],
+        body: support.top_recurring.map(([c, n]) => [c.replace(/_/g, ' '), n]),
+        theme: 'striped', styles: { font: FONT, fontSize: 9 }, headStyles: { font: FONT, fillColor: [244, 63, 94], textColor: 255 }, bodyStyles: { font: FONT } });
+    }
+
     doc.save(`CEO_Dashboard_${new Date().toISOString().slice(0, 10)}.pdf`);
   };
 
@@ -187,6 +224,24 @@ export default function CeoDashboard() {
             </CardContent>
           </Card>
         </div>
+
+        {/* Customer Support snapshot (Iter 47) */}
+        {supportSnapshot && (
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6" data-testid="ceo-support-snapshot">
+            <Card className="border-slate-200 cursor-pointer" onClick={() => navigate('/dashboard/amc')} data-testid="ceo-support-open">
+              <CardContent className="p-4"><p className="text-xs text-slate-500">Open Tickets</p><p className="text-xl font-bold text-slate-900">{supportSnapshot.open_tickets}</p></CardContent>
+            </Card>
+            <Card className={`border-slate-200 cursor-pointer ${supportSnapshot.overdue_by_sla ? 'border-red-200 bg-red-50/40' : ''}`} onClick={() => navigate('/dashboard/amc')} data-testid="ceo-support-overdue">
+              <CardContent className="p-4"><p className="text-xs text-slate-500">Overdue (SLA breach)</p><p className={`text-xl font-bold ${supportSnapshot.overdue_by_sla ? 'text-red-600' : 'text-slate-900'}`}>{supportSnapshot.overdue_by_sla}</p></CardContent>
+            </Card>
+            <Card className="border-slate-200" data-testid="ceo-support-avgres">
+              <CardContent className="p-4"><p className="text-xs text-slate-500">Avg Resolution</p><p className="text-xl font-bold text-slate-900">{supportSnapshot.avg_resolution_hours}h</p></CardContent>
+            </Card>
+            <Card className="border-slate-200" data-testid="ceo-support-csat">
+              <CardContent className="p-4"><p className="text-xs text-slate-500">Avg CSAT</p><p className="text-xl font-bold text-emerald-700">{supportSnapshot.avg_csat ? `${supportSnapshot.avg_csat}/5` : '—'}</p></CardContent>
+            </Card>
+          </div>
+        )}
 
         {/* Operational Snapshot — Cash · Op Exp · GST Input · Account Balance */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6" data-testid="ceo-snapshot-grid">

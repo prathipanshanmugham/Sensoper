@@ -8,12 +8,13 @@ import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Badge } from '../components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../components/ui/dialog';
-import { Loader2, RefreshCw, Plus, IndianRupee, Zap, Users, TrendingUp, CalendarClock, Sparkles, FileText, FileSpreadsheet } from 'lucide-react';
+import { Loader2, RefreshCw, Plus, IndianRupee, Zap, Users, TrendingUp, CalendarClock, Sparkles, FileText, FileSpreadsheet, Ticket } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import * as XLSX from 'xlsx';
 import { saveAs } from 'file-saver';
+import SupportTicketsTab from './SupportTicketsTab';
 
 const STATUS_STYLES = { active: 'bg-emerald-100 text-emerald-700', expiring: 'bg-amber-100 text-amber-700', expired: 'bg-rose-100 text-rose-700', renewed: 'bg-blue-100 text-blue-700', cancelled: 'bg-slate-200 text-slate-600', 'on-hold': 'bg-violet-100 text-violet-700' };
 
@@ -124,7 +125,10 @@ export default function AMCDashboard() {
         <div className="flex gap-2">
           <button onClick={() => setTab('contracts')} className={`px-3 py-1.5 text-xs rounded-full border ${tab === 'contracts' ? 'bg-emerald-100 border-emerald-300 text-emerald-800 font-medium' : 'bg-white border-slate-200 text-slate-600'}`} data-testid="amc-tab-contracts">Dashboard &amp; Contracts</button>
           <button onClick={() => setTab('revenue')} className={`px-3 py-1.5 text-xs rounded-full border ${tab === 'revenue' ? 'bg-emerald-100 border-emerald-300 text-emerald-800 font-medium' : 'bg-white border-slate-200 text-slate-600'}`} data-testid="amc-tab-revenue">Recurring Revenue Report</button>
+          <button onClick={() => setTab('support')} className={`px-3 py-1.5 text-xs rounded-full border gap-1 flex items-center ${tab === 'support' ? 'bg-emerald-100 border-emerald-300 text-emerald-800 font-medium' : 'bg-white border-slate-200 text-slate-600'}`} data-testid="amc-tab-support"><Ticket className="h-3 w-3" />Customer Support</button>
         </div>
+
+        {tab === 'support' && <SupportTicketsTab />}
 
         {tab === 'contracts' && dashboard && (
           <>
