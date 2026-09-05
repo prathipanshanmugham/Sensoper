@@ -341,6 +341,7 @@ export const auditLogsAPI = {
 export const companyAPI = {
   getAll: () => api.get('/company'),
   getActive: () => api.get('/company/active'),
+  salesStats: () => api.get('/company/sales-stats'),
   create: (data) => api.post('/company', data),
   update: (id, data) => api.put(`/company/${id}`, data),
   delete: (id) => api.delete(`/company/${id}`),

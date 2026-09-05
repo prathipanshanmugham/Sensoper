@@ -125,7 +125,7 @@ def compute(inputs: Dict[str, Any], overrides: Dict[str, Any], config: Dict[str,
     casing_mm = num(inputs.get("bore_casing_diameter_mm", 0))
     min_casing = BORE_MIN_MM.get(chosen_hp, 100)
     if casing_mm > 0 and chosen_hp > 0 and casing_mm < min_casing:
-        warnings.append(f"Bore casing {casing_mm}mm too narrow for {chosen_hp} HP submersible (needs ≥ {min_casing}mm).")
+        warnings.append(f"Bore casing {casing_mm:g} mm too narrow for {chosen_hp} HP submersible (needs ≥ {min_casing} mm).")
 
     # ── Yield vs demand check ───────────────────────────────────────────
     bore_yield_lph = num(inputs.get("bore_yield_lph", 0))

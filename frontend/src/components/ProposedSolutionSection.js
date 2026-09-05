@@ -1,240 +1,124 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { inventoryAPI, calcAPI } from '../utils/api';
 import { Label } from './ui/label';
-import { Input } from './ui/input';
-import { Button } from './ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
-import { Loader2, IndianRupee, Percent, Clock, Gauge, Zap, AlertTriangle, Calculator } from 'lucide-react';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from './ui/alert-dialog';
+import { computeQuick, projectResult } from '../utils/solarCalc';
+import { GridSolarFlow } from './calc/GridSolarFlow';
+import { PumpFlow } from './calc/PumpFlow';
 
 /**
- * Proposed Solution & Materials — Iteration 45 rewrite.
- * The old dense multi-mode engine (driver inputs, advanced toggle, flat COST_PER_KWP) is
- * gone entirely. On-Grid/Off-Grid/Hybrid is now exactly 4 things: system type, manual kW,
- * a panel + inverter picker sourced live from Inventory, and a short result. Solar Pump is
- * its own flow (head/flow/bore/string-voltage) because pump sizing genuinely needs those
- * hydraulic calculations — it calls the existing backend pump calculator.
+ * Step 4 — Proposed Solution calculator (Iteration 48 rebuild).
+ * On-grid / off-grid / hybrid: pure client-side engine (utils/solarCalc.js, mirrored by backend
+ * quick_calc.py) recomputes on every keystroke. Solar pump keeps its dedicated hydraulic path.
+ * All state lives in the parent form's `proposed_solution`, so it survives step navigation.
  */
-
 const SYSTEM_TYPES = [
-  { value: 'on-grid', label: 'On-Grid' },
-  { value: 'off-grid', label: 'Off-Grid' },
-  { value: 'hybrid', label: 'Hybrid' },
+  { value: 'on-grid', label: 'On-Grid (net metering)' },
+  { value: 'hybrid', label: 'Hybrid (grid + battery)' },
+  { value: 'off-grid', label: 'Off-Grid (battery only)' },
   { value: 'solar-pump', label: 'Solar Pump' },
 ];
-
-const num = (v) => { const n = parseFloat(v); return Number.isFinite(n) ? n : 0; };
-const inr = (v) => `₹${Math.round(v || 0).toLocaleString('en-IN')}`;
+const GRID_KEYS = ['monthly_eb_bill', 'monthly_eb_units_entered', 'tariff_per_unit_manual', 'roof_area_sqft', 'panel_item_id', 'inverter_item_id', 'battery_item_id', 'backup_hours', 'subsidy', 'overrides', 'customer_type'];
+const PUMP_KEYS = ['pump_path', 'required_flow_lpm', 'static_water_level_m', 'bore_casing_diameter_mm', 'daily_operating_hours', 'controller_max_voltage', 'string_voltage_v', '_pump_result', '_pump_warnings', 'pump_hp', 'pump_head_m', 'pump_discharge_lph', 'pump_type'];
+const BATTERY_KEYS = ['battery_item_id', 'backup_hours'];
+const RESULT_KEYS = ['system_size_kw', 'panel_count', 'battery_count', 'monthly_eb_units', 'tariff_per_unit', 'total_cost', 'net_cost', '_derived', '_quick'];
+const filled = (v) => v !== undefined && v !== null && v !== '' && !(typeof v === 'object' && Object.keys(v).length === 0);
+const active = (i) => i.active !== false;
 
 export default function ProposedSolutionSection({ value, onChange }) {
   const data = value || {};
   const [panels, setPanels] = useState([]);
   const [inverters, setInverters] = useState([]);
-  const [pumps, setPumps] = useState([]);
+  const [batteries, setBatteries] = useState([]);
   const [config, setConfig] = useState(null);
-  const [pumpLoading, setPumpLoading] = useState(false);
-  const [pumpError, setPumpError] = useState('');
-
-  useEffect(() => {
-    inventoryAPI.getItems({ category: 'solar_panels' }).then(r => setPanels((r.data || []).filter(i => i.active !== false))).catch(() => {});
-    inventoryAPI.getItems({ category: 'inverters' }).then(r => setInverters((r.data || []).filter(i => i.active !== false))).catch(() => {});
-    inventoryAPI.getItems({ category: 'pumps' }).then(r => setPumps((r.data || []).filter(i => i.active !== false))).catch(() => {});
-    calcAPI.getConfig().then(r => setConfig(r.data)).catch(() => {});
-  }, []);
-
+  const [pendingType, setPendingType] = useState(null);
   const systemType = data.system_type || 'on-grid';
   const isPump = systemType === 'solar-pump';
 
-  // ═════════════════════════ Simple flow (on-grid / off-grid / hybrid) ═════════════════════════
-  const computeSimple = useCallback((merged) => {
-    const kw = num(merged.system_size_kw);
-    if (kw <= 0 || !config) {
-      return { ...merged, total_cost: 0, net_cost: 0, panel_count: 0, _derived: null };
-    }
-    const panel = panels.find(p => p.id === merged.panel_item_id);
-    const inverter = inverters.find(i => i.id === merged.inverter_item_id);
-    const costPerKwp = (config.cost_per_kwp || {})[merged.system_type] || 55000;
+  useEffect(() => {
+    inventoryAPI.getItems({ category: 'solar_panels' }).then(r => setPanels((r.data || []).filter(active))).catch(() => {});
+    inventoryAPI.getItems({ category: 'inverters' }).then(r => setInverters((r.data || []).filter(active))).catch(() => {});
+    inventoryAPI.getItems({ category: 'batteries' }).then(r => setBatteries((r.data || []).filter(active))).catch(() => {});
+    calcAPI.getConfig().then(r => setConfig(r.data)).catch(() => {});
+  }, []);
 
-    const panelWattage = panel?.specs?.wattage || 0;
-    const panelSellPerUnit = panel ? (panel.unit_price || 0) * (1 + (panel.margin_pct ?? 15) / 100) : 0;
-    const panelCost = (panelSellPerUnit > 0 && panelWattage > 0) ? (panelSellPerUnit / panelWattage) * kw * 1000 : costPerKwp * 0.45 * kw;
-    const panelCount = panelWattage > 0 ? Math.ceil((kw * 1000) / panelWattage) : 0;
+  const recompute = useMemo(() => (merged) => {
+    const inputs = { ...merged, system_type: merged.system_type || 'on-grid', monthly_eb_units: merged.monthly_eb_units_entered, tariff_per_unit: merged.tariff_per_unit_manual };
+    const r = computeQuick(inputs, config, panels.find(p => p.id === merged.panel_item_id), inverters.find(i => i.id === merged.inverter_item_id), batteries.find(b => b.id === merged.battery_item_id));
+    return projectResult(merged, r);
+  }, [config, panels, inverters, batteries]);
 
-    const inverterSell = inverter ? (inverter.unit_price || 0) * (1 + (inverter.margin_pct ?? 15) / 100) : 0;
-    const inverterCost = inverterSell > 0 ? inverterSell : costPerKwp * 0.15 * kw;
+  const set = (patch) => { const merged = { ...data, ...patch }; onChange(isPump ? merged : recompute(merged)); };
 
-    const bosCost = costPerKwp * 0.40 * kw;
-    const totalCost = Math.round(panelCost + inverterCost + bosCost);
-    const subsidy = num(merged.subsidy);
-    const netCost = Math.max(totalCost - subsidy, 0);
+  // Re-run once inventory/config arrive so a saved project shows live numbers immediately.
+  const onChangeRef = useRef(onChange); onChangeRef.current = onChange;
+  const dataRef = useRef(data); dataRef.current = data;
+  useEffect(() => {
+    const d = dataRef.current;
+    if ((d.system_type || 'on-grid') !== 'solar-pump' && GRID_KEYS.some(k => filled(d[k]))) onChangeRef.current(recompute(d));
+  }, [recompute]);
 
-    const specificYield = config.default_specific_yield || 4.4;
-    const annualGenKwh = kw * specificYield * 365;
-    const ASSUMED_TARIFF_PER_UNIT = 8; // simple flat assumption — no bill/location input in this flow
-    const annualSavings = Math.round(annualGenKwh * ASSUMED_TARIFF_PER_UNIT);
-    const paybackYears = annualSavings > 0 ? Math.round((netCost / annualSavings) * 10) / 10 : null;
-    const roiPct = netCost > 0 ? Math.round((annualSavings / netCost) * 1000) / 10 : 0;
+  const r = data._quick;
 
-    return {
-      ...merged, total_cost: totalCost, subsidy, net_cost: netCost, panel_count: panelCount,
-      _derived: { annual_savings: annualSavings, payback_years: paybackYears, roi_pct: roiPct },
-    };
-  }, [panels, inverters, config]);
-
-  const set = (patch) => {
-    const merged = { ...data, ...patch };
-    onChange(isPump ? merged : computeSimple(merged));
+  const requestTypeChange = (next) => {
+    if (next === systemType) return;
+    const fromPump = isPump, toPump = next === 'solar-pump';
+    let discard = [];
+    if (fromPump !== toPump) discard = (fromPump ? PUMP_KEYS : GRID_KEYS).filter(k => filled(data[k]));
+    else if (next === 'on-grid') discard = BATTERY_KEYS.filter(k => filled(data[k])).concat(filled(data.overrides?.battery_count) ? ['battery count override'] : []);
+    if (discard.length) setPendingType({ next, discard }); else applyTypeChange(next);
   };
-
-  const selectedPanel = panels.find(p => p.id === data.panel_item_id);
-  const selectedInverter = inverters.find(i => i.id === data.inverter_item_id);
-
-  // ═════════════════════════ Pump flow ═════════════════════════
-  const runPumpCalc = async () => {
-    setPumpLoading(true); setPumpError('');
-    try {
-      const inputs = {
-        pump_path: data.pump_path || 'DC',
-        required_flow_lpm: num(data.required_flow_lpm),
-        daily_operating_hours: num(data.daily_operating_hours) || undefined,
-        static_water_level_m: num(data.static_water_level_m),
-        bore_casing_diameter_mm: num(data.bore_casing_diameter_mm),
-        controller_max_voltage: num(data.controller_max_voltage),
-        string_voltage_v: num(data.string_voltage_v),
-      };
-      const r = await calcAPI.solution({ system_type: 'solar-pump', inputs, overrides: {} });
-      const res = r.data.result;
-      onChange({
-        ...data,
-        system_size_kw: res.system_size_kw, pump_hp: res.pump_hp_selected, pump_type: data.pump_path,
-        pump_head_m: res.tdh_m, pump_discharge_lph: Math.round((res.flow_lpm || 0) * 60),
-        total_cost: res.total_cost, subsidy: res.subsidy, net_cost: res.net_cost,
-        _derived: { annual_savings: res.annual_saving, payback_years: res.payback_years, roi_pct: res.net_cost > 0 ? Math.round((res.annual_saving / res.net_cost) * 1000) / 10 : 0 },
-        _pump_result: res, _pump_warnings: r.data.warnings || [],
-      });
-    } catch (e) { setPumpError(e.response?.data?.detail || 'Could not calculate pump sizing'); }
-    finally { setPumpLoading(false); }
+  const applyTypeChange = (next) => {
+    const fromPump = isPump, toPump = next === 'solar-pump';
+    const cleared = {};
+    if (fromPump !== toPump) [...(fromPump ? PUMP_KEYS : GRID_KEYS), ...RESULT_KEYS].forEach(k => { cleared[k] = undefined; });
+    else if (next === 'on-grid') { BATTERY_KEYS.forEach(k => { cleared[k] = undefined; }); cleared.overrides = { ...(data.overrides || {}), battery_count: undefined }; }
+    const merged = { ...data, ...cleared, system_type: next };
+    onChange(toPump ? merged : recompute(merged));
+    setPendingType(null);
   };
-
-  const pumpResult = data._pump_result;
 
   return (
     <div className="space-y-4" data-testid="proposed-solution-section">
-      {/* 1. System type */}
-      <div className="space-y-1.5">
-        <Label className="text-xs">System Type</Label>
-        <Select value={systemType} onValueChange={(v) => set({ system_type: v, panel_item_id: '', inverter_item_id: '' })}>
-          <SelectTrigger className="h-11 bg-white" data-testid="system-type-select"><SelectValue /></SelectTrigger>
-          <SelectContent>{SYSTEM_TYPES.map(t => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}</SelectContent>
-        </Select>
-      </div>
-
-      {!isPump ? (
-        <>
-          {/* 2. System size (kW), manual */}
-          <div className="space-y-1.5">
-            <Label className="text-xs">System Size (kW)</Label>
-            <Input type="number" min="0" step="0.1" value={data.system_size_kw || ''} onChange={(e) => set({ system_size_kw: e.target.value })}
-              placeholder="e.g. 5" className="h-11" data-testid="system-size-input" />
-          </div>
-
-          {/* 3. Panel + Inverter picker from inventory */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <Label className="text-xs">Panel</Label>
-              <Select value={data.panel_item_id || ''} onValueChange={(v) => set({ panel_item_id: v })}>
-                <SelectTrigger className="h-11 bg-white" data-testid="panel-picker"><SelectValue placeholder="Select a panel..." /></SelectTrigger>
-                <SelectContent>
-                  {panels.map(p => <SelectItem key={p.id} value={p.id}>{p.name}{p.specs?.wattage ? ` — ${p.specs.wattage}W` : ''}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs">Inverter</Label>
-              <Select value={data.inverter_item_id || ''} onValueChange={(v) => set({ inverter_item_id: v })}>
-                <SelectTrigger className="h-11 bg-white" data-testid="inverter-picker"><SelectValue placeholder="Select an inverter..." /></SelectTrigger>
-                <SelectContent>
-                  {inverters.map(iv => <SelectItem key={iv.id} value={iv.id}>{iv.name}{iv.specs?.rated_kw ? ` — ${iv.specs.rated_kw}kW` : ''}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
-          {/* 4. Short result */}
-          <div className="rounded-lg border border-slate-200 bg-white p-3" data-testid="calc-result-strip">
-            {num(data.system_size_kw) <= 0 ? (
-              <p className="text-xs text-slate-400">Enter a system size to see cost, subsidy and payback.</p>
-            ) : (
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
-                <div><p className="text-[9px] uppercase tracking-wider text-slate-500 flex items-center justify-center gap-1"><IndianRupee className="h-3 w-3" />Cost</p><p className="text-sm font-bold text-slate-800" data-testid="result-total-cost">{inr(data.total_cost)}</p></div>
-                <div className="space-y-1">
-                  <Label className="text-[9px] uppercase tracking-wider text-slate-500 flex items-center justify-center gap-1"><Percent className="h-3 w-3" />Subsidy</Label>
-                  <Input type="number" min="0" value={data.subsidy ?? ''} onChange={(e) => set({ subsidy: e.target.value })} placeholder="0" className="h-7 text-center text-sm" data-testid="subsidy-input" />
-                </div>
-                <div><p className="text-[9px] uppercase tracking-wider text-emerald-600">Net Cost</p><p className="text-sm font-bold text-emerald-700" data-testid="result-net-cost">{inr(data.net_cost)}</p></div>
-                <div><p className="text-[9px] uppercase tracking-wider text-slate-500 flex items-center justify-center gap-1"><Clock className="h-3 w-3" />Payback</p><p className="text-sm font-bold text-slate-800" data-testid="result-payback">{data._derived?.payback_years ? `${data._derived.payback_years} yrs` : '—'}</p></div>
-              </div>
-            )}
-          </div>
-        </>
-      ) : (
-        <div className="space-y-4" data-testid="pump-flow-section">
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <Label className="text-xs">Pump Path</Label>
-              <Select value={data.pump_path || 'DC'} onValueChange={(v) => set({ pump_path: v })}>
-                <SelectTrigger className="h-10 bg-white" data-testid="pump-path-select"><SelectValue /></SelectTrigger>
-                <SelectContent><SelectItem value="DC">DC (MPPT)</SelectItem><SelectItem value="AC">AC (VFD)</SelectItem></SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs">Required Flow (LPM)</Label>
-              <Input type="number" min="0" value={data.required_flow_lpm || ''} onChange={(e) => set({ required_flow_lpm: e.target.value })} className="h-10" data-testid="pump-flow-input" />
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <Label className="text-xs">Head (m)</Label>
-              <Input type="number" min="0" value={data.static_water_level_m || ''} onChange={(e) => set({ static_water_level_m: e.target.value })} className="h-10" data-testid="pump-head-input" />
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs">Bore Casing Diameter (mm)</Label>
-              <Input type="number" min="0" value={data.bore_casing_diameter_mm || ''} onChange={(e) => set({ bore_casing_diameter_mm: e.target.value })} className="h-10" data-testid="pump-bore-input" />
-            </div>
-          </div>
-          {(data.pump_path || 'DC') === 'DC' && (
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label className="text-xs">Controller Max Voltage (V)</Label>
-                <Input type="number" min="0" value={data.controller_max_voltage || ''} onChange={(e) => set({ controller_max_voltage: e.target.value })} className="h-10" data-testid="pump-controller-vmax-input" />
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs">String Voltage (V)</Label>
-                <Input type="number" min="0" value={data.string_voltage_v || ''} onChange={(e) => set({ string_voltage_v: e.target.value })} className="h-10" data-testid="pump-string-voltage-input" />
-              </div>
-            </div>
-          )}
-
-          <Button type="button" onClick={runPumpCalc} disabled={pumpLoading} className="w-full gap-2 bg-sky-600 hover:bg-sky-700 text-white" data-testid="pump-calculate-btn">
-            {pumpLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Calculator className="h-4 w-4" />}Calculate Pump Sizing
-          </Button>
-          {pumpError && <p className="text-xs text-rose-600" data-testid="pump-calc-error">{pumpError}</p>}
-
-          {pumpResult && (
-            <div className="rounded-lg border border-sky-200 bg-sky-50/40 p-3 space-y-2" data-testid="pump-result-strip">
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
-                <div><p className="text-[9px] uppercase tracking-wider text-slate-500 flex items-center justify-center gap-1"><Gauge className="h-3 w-3" />Array</p><p className="text-sm font-bold text-slate-800">{pumpResult.system_size_kw} kWp</p></div>
-                <div><p className="text-[9px] uppercase tracking-wider text-slate-500 flex items-center justify-center gap-1"><Zap className="h-3 w-3" />Pump</p><p className="text-sm font-bold text-slate-800">{pumpResult.pump_hp_selected} HP</p></div>
-                <div><p className="text-[9px] uppercase tracking-wider text-slate-500 flex items-center justify-center gap-1"><IndianRupee className="h-3 w-3" />Cost</p><p className="text-sm font-bold text-slate-800">{inr(data.total_cost)}</p></div>
-                <div><p className="text-[9px] uppercase tracking-wider text-emerald-600">Net Cost</p><p className="text-sm font-bold text-emerald-700">{inr(data.net_cost)}</p></div>
-              </div>
-              <p className="text-[11px] text-slate-500 text-center">Subsidy (PM-KUSUM): {inr(data.subsidy)} · Payback: {data._derived?.payback_years ? `${data._derived.payback_years} yrs` : '—'}</p>
-              {(data._pump_warnings || []).map((w, i) => (
-                <p key={i} className="text-[11px] text-amber-700 flex items-start gap-1" data-testid={`pump-warning-${i}`}><AlertTriangle className="h-3 w-3 mt-0.5 flex-shrink-0" />{w}</p>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div className="space-y-1">
+          <Label className="text-xs text-slate-700">System type</Label>
+          <Select value={systemType} onValueChange={requestTypeChange}>
+            <SelectTrigger className="h-11 bg-white text-base" data-testid="system-type-select"><SelectValue /></SelectTrigger>
+            <SelectContent>{SYSTEM_TYPES.map(t => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}</SelectContent>
+          </Select>
+        </div>
+        {!isPump && (
+          <div className="space-y-1">
+            <Label className="text-xs text-slate-700">Customer type</Label>
+            <div className="grid grid-cols-2 rounded-md border border-slate-200 bg-white p-0.5 h-11" data-testid="customer-type-toggle">
+              {[['residential', 'Residential'], ['commercial', 'Commercial']].map(([v, l]) => (
+                <button key={v} type="button" onClick={() => set({ customer_type: v })} data-testid={`customer-type-${v}`}
+                  className={`rounded text-sm font-medium transition-colors ${(data.customer_type || 'residential') === v ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-50'}`}>{l}</button>
               ))}
             </div>
-          )}
-        </div>
-      )}
+          </div>
+        )}
+      </div>
+
+      {isPump ? <PumpFlow data={data} set={set} onChange={onChange} />
+        : <GridSolarFlow data={data} r={r} set={set} config={config} panels={panels} inverters={inverters} batteries={batteries} />}
+
+      <AlertDialog open={!!pendingType} onOpenChange={(o) => !o && setPendingType(null)}>
+        <AlertDialogContent data-testid="system-type-switch-dialog">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Switch to {SYSTEM_TYPES.find(t => t.value === pendingType?.next)?.label}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              These entries don't apply to the new system type and will be cleared: <span className="font-medium text-slate-800">{(pendingType?.discard || []).map(k => k.replace(/_/g, ' ')).join(', ')}</span>. Everything else is kept.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel data-testid="system-type-switch-cancel">Keep current</AlertDialogCancel>
+            <AlertDialogAction onClick={() => applyTypeChange(pendingType.next)} data-testid="system-type-switch-confirm">Switch &amp; clear</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

@@ -337,6 +337,10 @@ class BankDetails(BaseModel):
     branch: Optional[str] = None
     upi_id: Optional[str] = None
 
+class FinancingOption(BaseModel):
+    title: str
+    description: Optional[str] = None
+
 class CompanyProfileCreate(BaseModel):
     company_name: str
     tagline: Optional[str] = None
@@ -354,6 +358,11 @@ class CompanyProfileCreate(BaseModel):
     bank_details: Optional[BankDetails] = None
     authorized_signatory: Optional[str] = None
     designation: Optional[str] = None
+    founded_year: Optional[int] = None
+    certifications: List[str] = []
+    warranty_headline: Optional[str] = None
+    financing_options: List[FinancingOption] = []
+    sales_contact_phone: Optional[str] = None
 
 class CompanyProfileUpdate(BaseModel):
     company_name: Optional[str] = None
@@ -373,6 +382,11 @@ class CompanyProfileUpdate(BaseModel):
     authorized_signatory: Optional[str] = None
     designation: Optional[str] = None
     is_active: Optional[bool] = None
+    founded_year: Optional[int] = None
+    certifications: Optional[List[str]] = None
+    warranty_headline: Optional[str] = None
+    financing_options: Optional[List[FinancingOption]] = None
+    sales_contact_phone: Optional[str] = None
 
 # ================== FORM TABS (Dynamic Form Engine) MODELS ==================
 
@@ -1031,6 +1045,11 @@ async def get_company_profiles(request: Request):
             "bank_details": p.get("bank_details"),
             "authorized_signatory": p.get("authorized_signatory"),
             "designation": p.get("designation"),
+            "founded_year": p.get("founded_year"),
+            "certifications": p.get("certifications", []),
+            "warranty_headline": p.get("warranty_headline"),
+            "financing_options": p.get("financing_options", []),
+            "sales_contact_phone": p.get("sales_contact_phone"),
             "is_active": p.get("is_active", False),
             "created_at": p["created_at"]
         }
@@ -1040,7 +1059,7 @@ async def get_company_profiles(request: Request):
 @api_router.get("/company/active")
 async def get_active_company():
     """Get the active company profile (for PDF generation, public access)"""
-    profile = await db.company_profiles.find_one({"is_active": True})
+    profile = await db.company_profiles.find_one({"is_active": True}) or await db.company_profiles.find_one({}, sort=[("created_at", 1)])
     
     if not profile:
         # Return default profile if none exists
@@ -1081,7 +1100,12 @@ async def get_active_company():
         "location_id": profile.get("location_id"),
         "bank_details": profile.get("bank_details"),
         "authorized_signatory": profile.get("authorized_signatory"),
-        "designation": profile.get("designation")
+        "designation": profile.get("designation"),
+        "founded_year": profile.get("founded_year"),
+        "certifications": profile.get("certifications", []),
+        "warranty_headline": profile.get("warranty_headline"),
+        "financing_options": profile.get("financing_options", []),
+        "sales_contact_phone": profile.get("sales_contact_phone"),
     }
 
 @api_router.post("/company")
@@ -1163,6 +1187,11 @@ async def update_company_profile(profile_id: str, updates: CompanyProfileUpdate,
         update_data["authorized_signatory"] = updates.authorized_signatory
     if updates.designation is not None:
         update_data["designation"] = updates.designation
+    for _f in ("founded_year", "certifications", "warranty_headline", "sales_contact_phone"):
+        if getattr(updates, _f) is not None:
+            update_data[_f] = getattr(updates, _f)
+    if updates.financing_options is not None:
+        update_data["financing_options"] = [o.model_dump() for o in updates.financing_options]
     
     # Handle activation
     if updates.is_active is True:
@@ -2684,18 +2713,26 @@ async def _get_calc_config() -> Dict[str, Any]:
                 "cap": 78000,
                 "slabs": [
                     {"upto_kw": 1, "amount": 30000},
-                    {"upto_kw": 2, "amount": 48000},
+                    {"upto_kw": 2, "amount": 60000},
                     {"upto_kw": 3, "amount": 78000},
                 ],
             },
             "pm_kusum": {"benchmark_per_kw": 40000},
             "diesel_price_per_liter": 95,
             "diesel_lph_per_kw": 0.3,
+            "default_tariff_per_unit": 8,
+            "battery_benchmark_per_kwh": 20000,
             "updated_at": datetime.now(timezone.utc).isoformat(),
         }
         await db.calc_config.insert_one(default)
         return default
     return doc
+
+
+# ═══════════ QUICK SOLAR CALCULATOR + SALES STATS (Iter 48) ═══════════
+from quick_calc import create_router as _create_quick_calc_router  # noqa: E402
+api_router.include_router(_create_quick_calc_router(db=db, get_current_user=get_current_user, get_calc_config=_get_calc_config))
+
 
 
 async def _get_pincode_and_discom(pincode: Optional[str], discom_id: Optional[str]):

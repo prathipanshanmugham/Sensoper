@@ -260,6 +260,8 @@ export default function AdvancedConfigSection() {
               <NumberField label="Battery Unit Size" step={0.5} value={calc.battery_unit_kwh} onChange={(v) => setCalcField('battery_unit_kwh', v)} suffix="kWh" />
               <NumberField label="System Life" step={1} value={calc.system_life_years} onChange={(v) => setCalcField('system_life_years', v)} suffix="yrs" />
               <NumberField label="Panel Degradation" step={0.05} value={calc.panel_degradation_pct_per_year} onChange={(v) => setCalcField('panel_degradation_pct_per_year', v)} suffix="%/yr" />
+              <NumberField label="Default Tariff" step={0.5} value={calc.default_tariff_per_unit} onChange={(v) => setCalcField('default_tariff_per_unit', v)} suffix="₹/unit" />
+              <NumberField label="Battery Benchmark" step={1000} value={calc.battery_benchmark_per_kwh} onChange={(v) => setCalcField('battery_benchmark_per_kwh', v)} suffix="₹/kWh" />
             </div>
 
             <p className="text-[11px] uppercase tracking-wider text-slate-500 font-semibold pt-2 border-t">PM Surya Ghar (Residential On-Grid)</p>

@@ -88,7 +88,8 @@ export default function CompanyProfile() {
       upi_id: ''
     },
     authorized_signatory: '',
-    designation: ''
+    designation: '',
+    founded_year: '', sales_contact_phone: '', warranty_headline: '', certifications_text: '', financing_text: ''
   });
 
   const openCreateDialog = () => {
@@ -115,7 +116,8 @@ export default function CompanyProfile() {
         branch: ''
       },
       authorized_signatory: '',
-      designation: ''
+      designation: '',
+      founded_year: '', sales_contact_phone: '', warranty_headline: '', certifications_text: '', financing_text: ''
     });
     setActiveTab('basic');
     setError('');
@@ -147,7 +149,10 @@ export default function CompanyProfile() {
         upi_id: ''
       },
       authorized_signatory: profile.authorized_signatory || '',
-      designation: profile.designation || ''
+      designation: profile.designation || '',
+      founded_year: profile.founded_year || '', sales_contact_phone: profile.sales_contact_phone || '', warranty_headline: profile.warranty_headline || '',
+      certifications_text: (profile.certifications || []).join('\n'),
+      financing_text: (profile.financing_options || []).map(o => o.description ? `${o.title} | ${o.description}` : o.title).join('\n')
     });
     setActiveTab('basic');
     setError('');
@@ -164,8 +169,12 @@ export default function CompanyProfile() {
     setError('');
 
     try {
+      const { certifications_text, financing_text, ...rest } = formData;
       const payload = {
-        ...formData,
+        ...rest,
+        founded_year: formData.founded_year ? parseInt(formData.founded_year, 10) : null,
+        certifications: certifications_text.split('\n').map(t => t.trim()).filter(Boolean),
+        financing_options: financing_text.split('\n').map(t => t.trim()).filter(Boolean).map(line => { const [title, ...d] = line.split('|'); return { title: title.trim(), description: d.join('|').trim() || null }; }),
         bank_details: formData.bank_details.account_name ? formData.bank_details : null
       };
 
@@ -399,7 +408,7 @@ export default function CompanyProfile() {
           </DialogHeader>
           
           <Tabs value={activeTab} onValueChange={setActiveTab} className="mt-4">
-            <TabsList className="grid w-full grid-cols-3">
+            <TabsList className="grid w-full grid-cols-4">
               <TabsTrigger value="basic" className="gap-2">
                 <Building2 className="h-4 w-4" />
                 Basic Info
@@ -412,7 +421,22 @@ export default function CompanyProfile() {
                 <CreditCard className="h-4 w-4" />
                 Bank Details
               </TabsTrigger>
+              <TabsTrigger value="sales" className="gap-2" data-testid="company-sales-tab">
+                <Palette className="h-4 w-4" />
+                Sales Copy
+              </TabsTrigger>
             </TabsList>
+
+            <TabsContent value="sales" className="mt-4 space-y-4" data-testid="company-sales-content">
+              <p className="text-xs text-slate-500">Feeds the "Why us", financing and call-to-action blocks on quotations. Leave a field blank and its block is omitted — nothing is ever invented.</p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-2"><Label>Founded year</Label><Input type="number" value={formData.founded_year} onChange={(e) => updateField('founded_year', e.target.value)} placeholder="e.g. 2015" data-testid="founded-year-input" /></div>
+                <div className="space-y-2"><Label>Sales contact phone (CTA)</Label><Input value={formData.sales_contact_phone} onChange={(e) => updateField('sales_contact_phone', e.target.value)} placeholder="defaults to company phone" data-testid="sales-phone-input" /></div>
+              </div>
+              <div className="space-y-2"><Label>Warranty headline</Label><Input value={formData.warranty_headline} onChange={(e) => updateField('warranty_headline', e.target.value)} placeholder="25-year performance warranty on panels" data-testid="warranty-headline-input" /></div>
+              <div className="space-y-2"><Label>Certifications / empanelments <span className="text-slate-400 font-normal">— one per line, only ones actually held</span></Label><Textarea rows={3} value={formData.certifications_text} onChange={(e) => updateField('certifications_text', e.target.value)} placeholder={'MNRE empanelled vendor\nTEDA registered'} data-testid="certifications-input" /></div>
+              <div className="space-y-2"><Label>Financing / payment options <span className="text-slate-400 font-normal">— one per line as “Title | description”</span></Label><Textarea rows={3} value={formData.financing_text} onChange={(e) => updateField('financing_text', e.target.value)} placeholder={'Zero-cost EMI | 12–36 months via partner bank\nStaged payment | 30% booking, 60% on delivery, 10% after commissioning'} data-testid="financing-input" /></div>
+            </TabsContent>
 
             {error && (
               <div className="mt-4 p-3 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg">
