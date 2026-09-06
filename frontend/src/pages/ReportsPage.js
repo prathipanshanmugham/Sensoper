@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import { useAuth } from '../contexts/AuthContext';
 import { reportsAPI, marketingAPI, reconciliationAPI, ecommerceAPI } from '../utils/api';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
@@ -45,7 +46,9 @@ const REPORTS = [
   { id: 'employee_performance', label: 'Employee Performance', icon: UserCheck, desc: 'Auto activity + manual scores' },
   { id: 'partner_performance', label: 'Partner Performance', icon: HardHat, desc: 'On-time rate, ratings, payments, retention by partner' },
   { id: 'ecommerce', label: 'Ecommerce', icon: ShoppingBag, desc: 'Revenue, margin after commission, returns by platform/SKU' },
-  { id: 'customer_support', label: 'Customer Support', icon: Star, desc: 'SLA breach %, resolution time, CSAT, top recurring issues' }
+  { id: 'customer_support', label: 'Customer Support', icon: Star, desc: 'SLA breach %, resolution time, CSAT, top recurring issues' },
+  { id: 'brand_returns', label: 'Brand Returns', icon: ShoppingBag, desc: 'Returns to suppliers, value returned, resolution time, supplier return-rate ranking' },
+  { id: 'report_usage', label: 'Report Usage', icon: Activity, desc: 'Who ran which report, when, with what filters and format', adminOnly: true }
 ];
 
 function SummaryCard({ label, value }) {
@@ -78,7 +81,8 @@ export default function ReportsPage() {
   const [activeTab, setActiveTab] = useState('');
   const [reportData, setReportData] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [filters, setFilters] = useState({ date_from: '', date_to: '', system_type: 'all', status: 'all', movement_type: 'all', district: '', speciality: 'all', platform_id: 'all', category: '' });
+  const { isAdmin } = useAuth();
+  const [filters, setFilters] = useState({ date_from: '', date_to: '', system_type: 'all', status: 'all', movement_type: 'all', district: '', speciality: 'all', platform_id: 'all', category: '', supplier: '' });
   const [cacData, setCacData] = useState(null);
   const [cacLoading, setCacLoading] = useState(false);
   const [excessMaterialData, setExcessMaterialData] = useState(null);
@@ -128,6 +132,7 @@ export default function ReportsPage() {
       if (f.movement_type !== 'all' && type === 'inventory_material' && tab === 'movement') params.movement_type = f.movement_type;
       if (type === 'partner_performance') {
         if (f.district) params.district = f.district;
+        if (f.supplier) params.supplier = f.supplier;
         if (f.speciality !== 'all') params.speciality = f.speciality;
       }
       if (type === 'ecommerce') {
@@ -163,8 +168,10 @@ export default function ReportsPage() {
     return Object.keys(reportData.rows[0]).filter(k => !['has_feedback'].includes(k));
   };
 
+  const logExport = (format) => reportsAPI.logUsage({ report_type: activeReport, format, filters: { ...filters, tab: activeTab }, location_id: locScope.locationId || null }).catch(() => {});
   const exportPDF = async () => {
     if (!reportData) return;
+    logExport('pdf');
     const doc = new jsPDF({ orientation: 'landscape' });
     const FONT = await loadUnicodeFont(doc);
     doc.setFontSize(18); doc.setTextColor(16, 185, 129);
@@ -185,6 +192,7 @@ export default function ReportsPage() {
   };
 
   const exportExcel = () => {
+    logExport('excel');
     if (!reportData) return;
     const wb = XLSX.utils.book_new();
     const ws0 = XLSX.utils.aoa_to_sheet([[reportData.title], [`Location: ${locScope.locationLabel}`], [`Generated: ${new Date().toLocaleDateString('en-IN')}`]]);
@@ -235,6 +243,22 @@ export default function ReportsPage() {
                 </div>
               </div>
             )}
+            {activeReport === 'report_usage' && (
+              <div className="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-3" data-testid="report-usage-filter-row">
+                <div className="space-y-1"><Label className="text-xs">User</Label><Input placeholder="name contains…" value={filters.supplier} onChange={(e) => setFilters(p => ({...p, supplier: e.target.value}))} onBlur={(e) => fetchReport(activeReport, activeTab, { supplier: e.target.value })} className="h-9" data-testid="filter-usage-user" /></div>
+                <div className="space-y-1"><Label className="text-xs">Report type</Label>
+                  <Select value={filters.category || 'all'} onValueChange={(v) => { const val = v === 'all' ? '' : v; setFilters(p => ({...p, category: val})); fetchReport(activeReport, activeTab, { category: val }); }}>
+                    <SelectTrigger className="h-9" data-testid="filter-usage-report-type"><SelectValue /></SelectTrigger>
+                    <SelectContent><SelectItem value="all">All reports</SelectItem>{REPORTS.filter(r => r.id !== 'report_usage').map(r => <SelectItem key={r.id} value={r.id}>{r.label}</SelectItem>)}</SelectContent>
+                  </Select></div>
+              </div>
+            )}
+            {activeReport === 'brand_returns' && (
+              <div className="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-3" data-testid="brand-returns-filter-row">
+                <div className="space-y-1"><Label className="text-xs">Supplier</Label><Input placeholder="e.g. Growatt India" value={filters.supplier} onChange={(e) => setFilters(p => ({...p, supplier: e.target.value}))} onBlur={(e) => fetchReport(activeReport, activeTab, { supplier: e.target.value })} className="h-9" data-testid="filter-supplier" /></div>
+                <div className="space-y-1"><Label className="text-xs">Category</Label><Input placeholder="e.g. inverters" value={filters.category} onChange={(e) => setFilters(p => ({...p, category: e.target.value}))} onBlur={(e) => fetchReport(activeReport, activeTab, { category: e.target.value })} className="h-9" data-testid="filter-category-returns" /></div>
+              </div>
+            )}
             {activeReport === 'partner_performance' && (
               <div className="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-3" data-testid="partner-performance-filter-row">
                 <div className="space-y-1">
@@ -270,7 +294,7 @@ export default function ReportsPage() {
 
         {/* Report Cards */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-6" data-testid="report-cards">
-          {REPORTS.map(r => (
+          {REPORTS.filter(r => !r.adminOnly || isAdmin).map(r => (
             <button key={r.id} onClick={() => handleSelectReport(r.id)}
               className={`p-4 rounded-xl border text-left transition-all ${activeReport === r.id ? 'border-emerald-400 bg-emerald-50 ring-1 ring-emerald-200 shadow-sm' : 'border-slate-200 bg-white hover:border-slate-300 hover:shadow-sm'}`}
               data-testid={`report-btn-${r.id}`}>
@@ -340,6 +364,29 @@ export default function ReportsPage() {
                 </div>
               )}
               {/* Ecommerce: platform breakdown + monthly revenue trend (Iter 46 Change 2) */}
+              {activeReport === 'brand_returns' && reportData.supplier_rows?.length > 0 && (
+                <div className="mb-4 p-4 bg-white rounded-lg border border-slate-200" data-testid="brand-returns-supplier-ranking">
+                  <p className="text-xs font-medium uppercase tracking-wider text-slate-400 mb-1">Supplier ranking by return rate</p>
+                  <p className="text-[11px] text-slate-500 mb-3">Return rate = quantity returned ÷ quantity purchased from that supplier (purchase orders). Higher = more of their goods come back.</p>
+                  <table className="w-full text-sm">
+                    <thead><tr className="text-left text-slate-500 border-b"><th className="py-1.5">#</th><th>Supplier</th><th>Returns</th><th>Qty returned / purchased</th><th>Return rate</th><th>Value returned</th><th>Open / Resolved</th><th>Avg resolution</th></tr></thead>
+                    <tbody>{reportData.supplier_rows.map(r => (
+                      <tr key={r.supplier} className="border-b last:border-0" data-testid={`supplier-rank-${r.rank}`}><td className="py-1.5">{r.rank}</td><td className="font-medium">{r.supplier}</td><td>{r.returns}</td><td>{r.qty_returned} / {r.qty_purchased || '—'}</td><td className={r.return_rate_pct > 5 ? 'text-rose-600 font-semibold' : ''}>{r.return_rate_pct == null ? 'n/a (no POs)' : `${r.return_rate_pct}%`}</td><td>₹{(r.value || 0).toLocaleString('en-IN')}</td><td>{r.open} / {r.resolved}</td><td>{r.avg_resolution_hours == null ? '—' : `${r.avg_resolution_hours} h`}</td></tr>
+                    ))}</tbody>
+                  </table>
+                </div>
+              )}
+              {activeReport === 'brand_returns' && (reportData.reason_rows?.length > 0 || reportData.item_rows?.length > 0) && (
+                <div className="mb-4 grid grid-cols-1 md:grid-cols-2 gap-4" data-testid="brand-returns-breakdowns">
+                  {[['By reason', reportData.reason_rows], ['By item', reportData.item_rows], ['By month', reportData.monthly_rows]].map(([title, list]) => list?.length > 0 && (
+                    <div key={title} className="p-4 bg-white rounded-lg border border-slate-200">
+                      <p className="text-xs font-medium uppercase tracking-wider text-slate-400 mb-2">{title}</p>
+                      <table className="w-full text-sm"><thead><tr className="text-left text-slate-500 border-b"><th className="py-1">{title.replace('By ', '')}</th><th>Returns</th><th>Qty</th><th>Value</th></tr></thead>
+                        <tbody>{list.map(r => <tr key={r.name} className="border-b last:border-0"><td className="py-1">{r.name}</td><td>{r.count}</td><td>{r.qty}</td><td>₹{(r.value || 0).toLocaleString('en-IN')}</td></tr>)}</tbody></table>
+                    </div>
+                  ))}
+                </div>
+              )}
               {activeReport === 'customer_support' && reportData.technician_rows?.length > 0 && (
                 <div className="mb-4 p-4 bg-white rounded-lg border border-slate-200" data-testid="support-technician-rows">
                   <p className="text-xs font-medium uppercase tracking-wider text-slate-400 mb-3">Technician-level Resolution Performance</p>

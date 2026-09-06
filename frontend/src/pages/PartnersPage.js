@@ -44,7 +44,10 @@ export default function PartnersPage() {
   const [partners, setPartners] = useState([]);
   const [loading, setLoading] = useState(true);
   const [availableTags, setAvailableTags] = useState([]);
-  const [filters, setFilters] = useState({ partner_type: 'all', selected_tags: [], status: 'all', search: '', min_rating: 'all', sort: 'name' });
+  const [filters, setFilters] = useState({ partner_type: 'all', selected_tags: [], selected_districts: [], status: 'all', search: '', min_rating: 'all', sort: 'name' });
+  const [districtOptions, setDistrictOptions] = useState([]);
+  useEffect(() => { partnersAPI.districts().then(r => setDistrictOptions(r.data || [])).catch(() => {}); }, []);
+  const toggleDistrict = (d) => setFilters(p => ({ ...p, selected_districts: p.selected_districts.includes(d) ? p.selected_districts.filter(x => x !== d) : [...p.selected_districts, d] }));
   const [showCreate, setShowCreate] = useState(false);
   const [showTagAdmin, setShowTagAdmin] = useState(false);
   const [newTag, setNewTag] = useState('');
@@ -63,6 +66,7 @@ export default function PartnersPage() {
       const params = {};
       if (filters.partner_type !== 'all') params.partner_type = filters.partner_type;
       if (filters.selected_tags.length) params.specialities = filters.selected_tags.join(',');
+      if (filters.selected_districts.length) params.districts = filters.selected_districts.join(',');
       if (filters.status !== 'all') params.status = filters.status;
       if (filters.search) params.search = filters.search;
       if (filters.min_rating !== 'all') params.min_rating = filters.min_rating;
@@ -139,8 +143,18 @@ export default function PartnersPage() {
           </Select>
           <Select value={filters.sort} onValueChange={v => setFilters(p => ({ ...p, sort: v }))}>
             <SelectTrigger className="h-9" data-testid="partner-sort"><SelectValue /></SelectTrigger>
-            <SelectContent><SelectItem value="name">Sort: Name</SelectItem><SelectItem value="rating_desc">Sort: Rating (high → low)</SelectItem><SelectItem value="business_desc">Sort: Business value</SelectItem></SelectContent>
+            <SelectContent><SelectItem value="name">Sort: Name</SelectItem><SelectItem value="rating_desc">Sort: Rating (high → low)</SelectItem><SelectItem value="business_desc">Sort: Business value</SelectItem><SelectItem value="district_asc">Sort: Location (district)</SelectItem></SelectContent>
           </Select>
+        </div>
+        <div className="flex flex-wrap items-center gap-3" data-testid="partner-district-filter">
+          <span className="text-xs text-slate-500 mr-1">Districts (any of):</span>
+          {districtOptions.length === 0 && <span className="text-xs text-slate-400 italic">No districts on record yet.</span>}
+          {districtOptions.map(d => (
+            <label key={d} className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-full border cursor-pointer select-none ${filters.selected_districts.includes(d) ? 'bg-sky-100 border-sky-300 text-sky-800' : 'bg-white border-slate-200 text-slate-600 hover:border-sky-300'}`}>
+              <input type="checkbox" className="h-3 w-3 accent-sky-600" checked={filters.selected_districts.includes(d)} onChange={() => toggleDistrict(d)} data-testid={`district-checkbox-${d.replace(/\s+/g, '-').toLowerCase()}`} />{d}
+            </label>
+          ))}
+          {filters.selected_districts.length > 0 && <button type="button" className="text-xs text-slate-500 underline" onClick={() => setFilters(p => ({ ...p, selected_districts: [] }))} data-testid="district-filter-clear">clear</button>}
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-xs text-slate-500 mr-1">Tags (AND):</span>

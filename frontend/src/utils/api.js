@@ -60,7 +60,8 @@ export const dashboardAPI = {
 
 // Reports API
 export const reportsAPI = {
-  get: (type, params = {}) => api.get(`/reports/${type}`, { params })
+  get: (type, params = {}) => api.get(`/reports/${type}`, { params }),
+  logUsage: (data) => api.post('/reports/usage', data)
 };
 
 // Daily Updates API
@@ -334,7 +335,12 @@ export const deletionRequestsAPI = {
 
 // Audit Logs API
 export const auditLogsAPI = {
-  getAll: (params = {}) => api.get('/audit-logs', { params })
+  getAll: (params = {}) => api.get('/audit-logs', { params }),
+  archives: () => api.get('/audit-logs/archives'),
+  getArchiveConfig: () => api.get('/audit-logs/archive-config'),
+  updateArchiveConfig: (data) => api.put('/audit-logs/archive-config', data),
+  runArchive: (quarter) => api.post('/audit-logs/archives/run', null, { params: { quarter } }),
+  purgeQuarter: (quarter) => api.post(`/audit-logs/archives/${quarter}/purge`)
 };
 
 // Company Profile API
@@ -482,6 +488,7 @@ export const employeeScoresAPI = {
 // Labour & Subcontractor / Internal Teams (Iter 46 Change 1)
 export const partnersAPI = {
   list: (params = {}) => api.get('/partners', { params }),
+  districts: () => api.get('/partners/meta/districts'),
   create: (data) => api.post('/partners', data),
   get: (id) => api.get(`/partners/${id}`),
   update: (id, data) => api.put(`/partners/${id}`, data),
@@ -532,7 +539,13 @@ export const ecommerceAPI = {
     },
     importCommit: (data) => api.post('/ecommerce/orders/import-commit', data)
   },
-  reconciliation: (params = {}) => api.get('/ecommerce/reconciliation', { params })
+  reconciliation: (params = {}) => api.get('/ecommerce/reconciliation', { params }),
+  products: {
+    list: (params = {}) => api.get('/ecommerce/products', { params }),
+    create: (data) => api.post('/ecommerce/products', data),
+    upsertListing: (itemId, platformId, data) => api.put(`/ecommerce/products/${itemId}/platforms/${platformId}`, data),
+    delist: (itemId) => api.delete(`/ecommerce/products/${itemId}`)
+  }
 };
 
 // Customer Support (Iter 47) — AMC support tickets

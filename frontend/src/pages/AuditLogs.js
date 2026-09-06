@@ -1,6 +1,12 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { auditLogsAPI } from '../utils/api';
+import { useAuth } from '../contexts/AuthContext';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
+import * as XLSX from 'xlsx';
+import { saveAs } from 'file-saver';
+import LogArchivesPanel from '../components/LogArchivesPanel';
 import { Button } from '../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
@@ -47,6 +53,20 @@ const entityConfig = {
 export default function AuditLogs() {
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
+  const { isAdmin } = useAuth();
+  const exportRows = () => logs.map(l => [new Date(l.timestamp).toLocaleString('en-IN'), l.user_name || '', l.action_type || '', l.entity_type || '', l.entity_id || '', typeof l.details === 'object' ? JSON.stringify(l.details) : String(l.details ?? '')]);
+  const exportName = () => `AuditLogs_${filterEntity}_${filterAction}_${new Date().toISOString().slice(0, 10)}`;
+  const exportPDF = () => {
+    const doc = new jsPDF({ orientation: 'landscape' });
+    doc.setFontSize(14); doc.text(`Audit Logs — entity: ${filterEntity}, action: ${filterAction} (${logs.length} entries)`, 14, 14);
+    autoTable(doc, { startY: 20, head: [['Time', 'User', 'Action', 'Entity', 'Entity ID', 'Details']], body: exportRows(), styles: { fontSize: 7, cellPadding: 1.5 }, headStyles: { fillColor: [15, 23, 42] }, columnStyles: { 5: { cellWidth: 110 } } });
+    doc.save(`${exportName()}.pdf`);
+  };
+  const exportExcel = () => {
+    const ws = XLSX.utils.aoa_to_sheet([['Time', 'User', 'Action', 'Entity', 'Entity ID', 'Details'], ...exportRows()]);
+    const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'audit_logs');
+    saveAs(new Blob([XLSX.write(wb, { bookType: 'xlsx', type: 'array' })], { type: 'application/octet-stream' }), `${exportName()}.xlsx`);
+  };
   const [filterEntity, setFilterEntity] = useState('all');
   const [filterAction, setFilterAction] = useState('all');
 
@@ -97,7 +117,13 @@ export default function AuditLogs() {
               <p className="text-slate-500">Activity history and change tracking</p>
             </div>
           </div>
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" onClick={exportPDF} disabled={logs.length === 0} data-testid="logs-export-pdf-btn">Download PDF</Button>
+            <Button variant="outline" size="sm" onClick={exportExcel} disabled={logs.length === 0} data-testid="logs-export-excel-btn">Download Excel</Button>
+          </div>
         </div>
+
+        <div className="mb-6"><LogArchivesPanel isAdmin={isAdmin} /></div>
 
         {/* Filters */}
         <Card className="border-slate-200 mb-6">

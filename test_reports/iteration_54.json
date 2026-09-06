@@ -1,0 +1,36 @@
+{
+  "summary": "Iter 49/54 verification. Backend: ran 4 pytest files (test_iter49_ecommerce_v2, test_iter49_batch1, test_iter49_log_archive, test_iter51_new_gaps) = 52 passed, 1 skipped (staff role skip, expected). Every ecommerce v2 requirement passed: migration-status>=2, /ecommerce/products grid shape, upsert never duplicates (platform,item), 400 on live-without-commission, 400 on new-listing-without-price, delist all platforms, order still decrements stock, cancel/return restores once, legacy listings/orders/reconciliation/import routes intact. Regressions covered too: brand_returns report shape+filters, report_usage view+export logging + self-exclusion, log_archive purge guard/idempotency, partner district multi-filter (OR) + district sort + type-switch guardrails + audit, vendor location_asc sort. Frontend: Ecommerce page /dashboard/ecommerce has exactly two tabs (ecommerce-tab-products + ecommerce-tab-orders) with all required data-testids present (products-table, manage-platforms-btn, add-product-btn, products-search-input, products-platform-filter, orders-count, orders-revenue, orders-pending-count, orders-mismatch-count, orders-table, add-order-btn, import-orders-btn, toggle-reconciliation-btn). Old TEST47_P_* platforms + TEST-ORD-* orders migrated (visible as columns/rows) — no data loss. CEO Dashboard ceo-report-download-btn labelled 'Download CEO Report' triggers download of CEO_Report_2026-09-06.pdf (~237KB). pypdf confirms exactly 1 page and text contains Total Revenue (Rs 12,97,959), Company Health score, Sales/Profit/Cash/Ops/Team component scores, Cash on Hand, Support tickets, Project Status counts, Sales Funnel, Revenue Trend, Top Performing Staff, Customer Credit Aging, Top 5 Outstanding, Top Recurring Support Categories, and channel breakdown (project/counter/ecommerce). After download, GET /api/reports/report_usage returns a row report_type='ceo_report' format='pdf' at top. Reports page renders Brand Returns and Report Usage cards. Audit Logs page shows Download PDF + Download Excel buttons and Log Archives panel with 2026-Q1 + 2026-Q2 rows (archived, per-quarter Excel/PDF/Purge). Partners page shows Districts filter row + tag filters. Vendors page shows Sort dropdown (currently 'Sort: Name' — location option exists inside select; backend location_asc verified via pytest).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Ecommerce Products table", "issues": ["Pre-existing TEST47_P_4fd9/7eb9/ac49 platform columns show only the raw ID as header (no platform doc left in DB). Pre-existing test data, not a regression — flagged by main agent already."]},
+      {"screen": "Ecommerce Orders table", "issues": ["Many TEST-ORD-* rows show Platform '—' because their platform docs were purged; pre-existing test data."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter49_ecommerce_v2.py",
+    "/app/backend/tests/test_iter49_batch1.py",
+    "/app/backend/tests/test_iter49_log_archive.py",
+    "/app/backend/tests/test_iter51_new_gaps.py",
+    "/app/test_reports/pytest/iter54_regression.xml",
+    "/tmp/CEO_Report_2026-09-06.pdf"
+  ],
+  "action_items": [
+    "(Housekeeping, optional) Purge pre-existing TEST47_P_* platform-less listings/columns and dangling TEST-ORD-* orders so Products/Orders tables look clean for demos. Not a bug.",
+    "(Nice-to-have) Add explicit data-testids on vendor sort dropdown options (e.g. vendor-sort-option-location_asc) — only a Sort: Name label is exposed today; the sorted API endpoint is verified working via pytest so no functional issue."
+  ],
+  "critical_code_review_comments": [
+    "Ecommerce list_products correctly filters platforms to active-only and exposes per-platform listing map — verified.",
+    "CEO PDF generator (utils/ceoReportPDF.js) reliably emits a single A4 page even with the long tables (Top 5 outstanding, aging buckets, funnel, revenue trend, top staff, support cats) — overflow-page trim is working."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100% (52/52 non-skipped)", "frontend": "100% of required testids + PDF acceptance"},
+  "test_credentials": "admin@sensoper.com / Admin@123 (login-email-input / login-password-input / login-submit-btn)",
+  "seed_data_creation": "None created this run — used existing DB state.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "REACT_APP_BACKEND_URL must be exported before running pytest (older iter49 test files call .rstrip on os.environ.get and crash otherwise). Command: export REACT_APP_BACKEND_URL=https://solar-ops-management.preview.emergentagent.com && pytest backend/tests/test_iter49_*.py backend/tests/test_iter51_new_gaps.py -v. Ecommerce v2 two-tab UI + CEO one-page PDF are verified working; do not re-verify unless code changes. Playwright login flow: use page.click then page.keyboard.type (page.fill sometimes gets wiped by autofocus/re-render on this login page).",
+  "rca_of_the_issue": "N/A — no blocking issues found."
+}

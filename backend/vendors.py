@@ -89,6 +89,8 @@ def create_router(db, get_current_user, require_role, create_audit_log):
             out.sort(key=lambda r: r.get("last_order_date") or "", reverse=True)
         elif sort == "recent_asc":
             out.sort(key=lambda r: r.get("last_order_date") or "9999-99-99")
+        elif sort == "location_asc":
+            out.sort(key=lambda r: ((r.get("district") or "zzz").lower(), (r.get("name") or "").lower()))
         return out
 
     @router.post("/vendors")

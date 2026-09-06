@@ -163,7 +163,8 @@ def create_router(db, get_current_user, require_role, create_audit_log):
     @router.get("/partners")
     async def list_partners(request: Request, partner_type: Optional[str] = None, speciality: Optional[str] = None,
                              specialities: Optional[str] = None,
-                             district: Optional[str] = None, status: Optional[str] = None, search: Optional[str] = None,
+                             district: Optional[str] = None, districts: Optional[str] = None,
+                             status: Optional[str] = None, search: Optional[str] = None,
                              min_rating: Optional[float] = None, sort: Optional[str] = None):
         await get_current_user(request)
         q: Dict[str, Any] = {"active": {"$ne": False}}
@@ -174,6 +175,10 @@ def create_router(db, get_current_user, require_role, create_audit_log):
             if tags:
                 q["specialities"] = {"$all": tags}   # AND across tags — "Plumbing AND Electrical"
         if district: q["service_districts"] = district
+        if districts:
+            wanted = [d.strip() for d in districts.split(",") if d.strip()]
+            if wanted:
+                q["service_districts"] = {"$in": wanted}   # OR across districts — "Erode or Namakkal or Karur"
         if status: q["status"] = status
         if search: q["name"] = {"$regex": search, "$options": "i"}
         if min_rating is not None:
@@ -191,7 +196,15 @@ def create_router(db, get_current_user, require_role, create_audit_log):
             out.sort(key=lambda r: r.get("rating", 0) or 0)
         elif sort == "business_desc":
             out.sort(key=lambda r: r.get("lifetime_business", 0) or 0, reverse=True)
+        elif sort == "district_asc":
+            out.sort(key=lambda r: ((sorted(r.get("service_districts") or ["zzz"])[0]).lower(), (r.get("name") or "").lower()))
         return out
+
+    @router.get("/partners/meta/districts")
+    async def partner_districts(request: Request):
+        await get_current_user(request)
+        vals = await db.partners.distinct("service_districts", {"active": {"$ne": False}})
+        return sorted({v.strip() for v in vals if isinstance(v, str) and v.strip()}, key=str.lower)
 
     @router.post("/partners")
     async def create_partner(payload: PartnerCreate, request: Request):
@@ -284,6 +297,18 @@ def create_router(db, get_current_user, require_role, create_audit_log):
         update = {k: v for k, v in payload.dict(exclude_unset=True).items() if v is not None}
         force = update.pop("force_status_change", False)
         reason = update.pop("status_change_reason", None)
+        # Guard: partner_type switch. internal → external must carry GSTIN + company name (needed to pay against invoices);
+        # external → internal keeps the old GSTIN/company fields stored (hidden in UI) so a switch back loses nothing.
+        new_type = update.get("partner_type")
+        if new_type and new_type != existing.get("partner_type"):
+            if new_type == "external_subcontractor":
+                gstin = (update.get("gstin") or existing.get("gstin") or "").strip()
+                company = (update.get("company_name") or existing.get("company_name") or "").strip()
+                missing = [f for f, v in (("gstin", gstin), ("company_name", company)) if not v]
+                if missing:
+                    raise HTTPException(status_code=400, detail=f"Switching to external subcontractor requires: {', '.join(missing)}. An external partner without a GSTIN cannot be paid correctly against invoices.")
+            update["partner_type_changed_at"] = _now()
+            update["partner_type_changed_by"] = user.get("name")
         # Guard: inactivating/blacklisting a partner with in-progress assignments requires override + reason
         new_status = update.get("status")
         if new_status and new_status in ("inactive", "blacklisted") and existing.get("status") == "active":

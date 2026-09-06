@@ -2729,6 +2729,16 @@ async def _get_calc_config() -> Dict[str, Any]:
     return doc
 
 
+# ═══════════ AUDIT LOG QUARTERLY ARCHIVE & RETENTION (Iter 49 §5) ═══════════
+from log_archive import create_router as _create_log_archive_router  # noqa: E402
+_log_archive_router = _create_log_archive_router(db=db, get_current_user=get_current_user, require_role=require_role, create_audit_log=create_audit_log,
+                                                 put_object=put_object, get_object=get_object, app_name=APP_NAME)
+api_router.include_router(_log_archive_router)
+
+# ═══════════ REPORT USAGE LOG (Iter 49 §6) ═══════════
+from report_usage import create_router as _create_report_usage_router  # noqa: E402
+api_router.include_router(_create_report_usage_router(db=db, get_current_user=get_current_user))
+
 # ═══════════ QUICK SOLAR CALCULATOR + SALES STATS (Iter 48) ═══════════
 from quick_calc import create_router as _create_quick_calc_router  # noqa: E402
 api_router.include_router(_create_quick_calc_router(db=db, get_current_user=get_current_user, get_calc_config=_get_calc_config))
@@ -4670,11 +4680,21 @@ async def _get_filtered_projects(query_base, date_from, date_to, system_type, st
     return await db.projects.find(query).to_list(5000)
 
 @api_router.get("/reports/{report_type}")
-async def get_report(report_type: str, request: Request, date_from: str = None, date_to: str = None, system_type: str = None, status: str = None, project_id: str = None, tab: str = None, movement_type: str = None, location_id: str = None, district: str = None, speciality: str = None, platform_id: str = None, category: str = None):
+async def get_report(report_type: str, request: Request, date_from: str = None, date_to: str = None, system_type: str = None, status: str = None, project_id: str = None, tab: str = None, movement_type: str = None, location_id: str = None, district: str = None, speciality: str = None, platform_id: str = None, category: str = None, supplier: str = None):
     user = await get_current_user(request)
     if user["role"] not in ["admin", "manager"]:
         raise HTTPException(status_code=403, detail="Reports are admin/manager only")
     loc_filter = location_scope_filter(user, location_id)
+    from report_usage import record_usage, usage_report  # noqa: E402
+    await record_usage(db, user, report_type, "view", {"date_from": date_from, "date_to": date_to, "system_type": system_type, "status": status, "tab": tab,
+                       "movement_type": movement_type, "district": district, "speciality": speciality, "platform_id": platform_id, "category": category, "supplier": supplier}, location_id)
+    if report_type == "report_usage":
+        if user["role"] != "admin":
+            raise HTTPException(status_code=403, detail="Report usage log is admin only")
+        return await usage_report(db, date_from, date_to, supplier, category, loc_filter)   # supplier param = user filter, category = report_type filter
+    if report_type == "brand_returns":
+        from reports_brand_returns import brand_returns_report  # noqa: E402
+        return await brand_returns_report(db, date_from, date_to, supplier, category, loc_filter)
     projects = await _get_filtered_projects(loc_filter, date_from, date_to, system_type, status, None, None, project_id)
     inv_items = await db.inventory_items.find(loc_filter).to_list(1000)
     from collections import defaultdict, Counter
@@ -7132,6 +7152,17 @@ async def startup_event():
         logger.info("Object storage initialized")
     except Exception as e:
         logger.warning(f"Object storage init failed (non-critical): {e}")
+    try:
+        _log_archive_router.start_scheduler()
+    except Exception as e:
+        logger.warning(f"Log archive scheduler not started: {e}")
+    try:
+        from ecommerce import migrate_ecommerce_v2  # noqa: E402
+        _mig = await migrate_ecommerce_v2(db)
+        if not _mig.get("already_migrated"):
+            logger.info(f"Ecommerce v2 migration applied: {_mig}")
+    except Exception as e:
+        logger.warning(f"Ecommerce v2 migration failed (non-critical): {e}")
     
     # Write test credentials
     try:

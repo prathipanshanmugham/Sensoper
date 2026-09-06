@@ -15,9 +15,8 @@ import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   BarChart, Bar
 } from 'recharts';
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
-import { loadUnicodeFont } from '../utils/pdfFont';
+import { toast } from 'sonner';
+import { generateCeoReportPDF } from '../utils/ceoReportPDF';
 
 const COLORS = ['#10b981', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
 const STATUS_COLORS = { draft: '#f59e0b', submitted: '#3b82f6', approved: '#10b981', rejected: '#ef4444', completed: '#059669', deletion_requested: '#f97316' };
@@ -75,69 +74,19 @@ export default function CeoDashboard() {
     } catch { /* ignore */ }
   };
 
+  const [exporting, setExporting] = useState(false);
   const handleExportPdf = async () => {
-    if (!data) return;
-    // Pull the extra data we want on the single-page CEO PDF: support tickets summary,
-    // CSAT + technician perf, and partner performance. All optional — never block the PDF.
-    let support = null, partner = null;
-    try { support = (await supportAPI.dashboard()).data; } catch { /* ignore */ }
-    try { partner = (await reportsAPI.get('partner_performance', {})).data; } catch { /* ignore */ }
-
-    const doc = new jsPDF();
-    const FONT = await loadUnicodeFont(doc);
-    doc.setFontSize(18); doc.setTextColor(16, 185, 129);
-    doc.text('Sensoper Controls & Renewables', 14, 18);
-    doc.setFontSize(14); doc.setTextColor(30, 41, 59);
-    doc.text('CEO Dashboard Summary', 14, 28);
-    doc.setFontSize(9); doc.setTextColor(100, 116, 139);
-    doc.text(`Generated: ${new Date().toLocaleDateString('en-IN')}  ·  Location: ${locScope.locationLabel}`, 14, 34);
-    const kpiRows = [
-      ['Total Revenue', `Rs ${(data.kpis.total_revenue || 0).toLocaleString('en-IN')}`],
-      ['Total Profit', `Rs ${(data.kpis.total_profit || 0).toLocaleString('en-IN')}`],
-      ['Conversion Rate', `${data.kpis.conversion_rate}%`],
-      ['Active Projects', data.kpis.active_projects],
-      ['Completed Projects', data.kpis.completed_projects],
-      ['Pending Approvals', data.kpis.pending_approvals],
-      ['Inventory Value', `Rs ${(data.kpis.inventory_value || 0).toLocaleString('en-IN')}`],
-      ['Low Stock Alerts', data.kpis.low_stock_alerts],
-      ['Total Outstanding (Credit)', `Rs ${(data.kpis.total_outstanding || 0).toLocaleString('en-IN')}`],
-      ['Overdue Amount', `Rs ${(data.kpis.overdue_amount || 0).toLocaleString('en-IN')}`],
-    ];
-    if (data.ecommerce) {
-      kpiRows.push(['Ecommerce Revenue', `Rs ${(data.ecommerce.revenue || 0).toLocaleString('en-IN')}`]);
-      kpiRows.push(['Ecommerce Net Revenue', `Rs ${(data.ecommerce.net_revenue || 0).toLocaleString('en-IN')}`]);
-    }
-    if (support) {
-      kpiRows.push(['Support: Open Tickets', support.open_tickets]);
-      kpiRows.push(['Support: Overdue by SLA', support.overdue_by_sla]);
-      kpiRows.push(['Support: Avg Resolution (hrs)', support.avg_resolution_hours]);
-      kpiRows.push(['Support: Avg CSAT', support.avg_csat ? `${support.avg_csat} / 5` : '—']);
-    }
-    autoTable(doc, { startY: 42, head: [['KPI', 'Value']], body: kpiRows, theme: 'striped', styles: { font: FONT, fontSize: 9 }, headStyles: { font: FONT, fillColor: [16, 185, 129], textColor: 255 }, bodyStyles: { font: FONT } });
-    let y = doc.lastAutoTable.finalY + 6;
-
-    if (data.top_staff?.length) {
-      doc.setFontSize(11); doc.setTextColor(30, 41, 59); doc.text('Top Performing Staff', 14, y); y += 4;
-      autoTable(doc, { startY: y, head: [['Staff', 'Projects', 'Revenue']], body: data.top_staff.map(s => [s.name, s.count, `Rs ${(s.revenue || 0).toLocaleString('en-IN')}`]), theme: 'striped', styles: { font: FONT, fontSize: 9 }, headStyles: { font: FONT, fillColor: [59, 130, 246], textColor: 255 }, bodyStyles: { font: FONT } });
-      y = doc.lastAutoTable.finalY + 6;
-    }
-
-    if (partner?.rows?.length) {
-      doc.setFontSize(11); doc.text('Partner Performance (Top 5)', 14, y); y += 4;
-      autoTable(doc, { startY: y, head: [['Partner', 'On-time %', 'Avg Rating', 'Lifetime ₹']],
-        body: partner.rows.slice(0, 5).map(r => [r.partner, r.on_time_rate ?? '—', r.avg_quality_rating ?? '—', `Rs ${(r.lifetime_business || 0).toLocaleString('en-IN')}`]),
-        theme: 'striped', styles: { font: FONT, fontSize: 9 }, headStyles: { font: FONT, fillColor: [139, 92, 246], textColor: 255 }, bodyStyles: { font: FONT } });
-      y = doc.lastAutoTable.finalY + 6;
-    }
-
-    if (support?.top_recurring?.length) {
-      doc.setFontSize(11); doc.text('Top Recurring Support Categories', 14, y); y += 4;
-      autoTable(doc, { startY: y, head: [['Category', 'Count']],
-        body: support.top_recurring.map(([c, n]) => [c.replace(/_/g, ' '), n]),
-        theme: 'striped', styles: { font: FONT, fontSize: 9 }, headStyles: { font: FONT, fillColor: [244, 63, 94], textColor: 255 }, bodyStyles: { font: FONT } });
-    }
-
-    doc.save(`CEO_Dashboard_${new Date().toISOString().slice(0, 10)}.pdf`);
+    if (!data || exporting) return;
+    setExporting(true);
+    try {
+      // Same state the cards render from — the PDF mirrors the screen, no re-aggregation.
+      await generateCeoReportPDF({ data, support: supportSnapshot, sparkline, locationLabel: locScope.locationLabel });
+      reportsAPI.logUsage({ report_type: 'ceo_report', format: 'pdf', filters: {}, location_id: locScope.locationId || null }).catch(() => {});
+      toast.success('CEO Report downloaded');
+    } catch (err) {
+      console.error(err);
+      toast.error('Could not generate the CEO Report');
+    } finally { setExporting(false); }
   };
 
   useEffect(() => { fetchData(); }, [fetchData]);
@@ -168,7 +117,7 @@ export default function CeoDashboard() {
             <p className="text-sm text-slate-500">High-level business overview</p>
           </div>
           <div className="w-48"><LocationScopeSelect scope={locScope} testIdPrefix="ceo-location" /></div>
-          <Button variant="outline" onClick={handleExportPdf} className="gap-2" data-testid="ceo-export-pdf-btn"><Download className="h-4 w-4" />Export PDF</Button>
+          <Button onClick={handleExportPdf} disabled={exporting} className="gap-2 bg-slate-900 hover:bg-slate-800 text-white" data-testid="ceo-report-download-btn">{exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}Download CEO Report</Button>
           <Button variant="outline" onClick={() => navigate('/dashboard/expansion')} className="gap-2" data-testid="goto-expansion-btn"><MapPin className="h-4 w-4" />Expansion</Button>
           <Button variant="outline" onClick={() => navigate('/dashboard/reports')} className="gap-2" data-testid="goto-reports-btn"><BarChart3 className="h-4 w-4" />Reports</Button>
         </div>

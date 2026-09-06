@@ -110,7 +110,7 @@ export default function VendorsPage() {
         </Select>
         <Select value={sort} onValueChange={setSort}>
           <SelectTrigger className="h-10" data-testid="vendor-sort"><SelectValue /></SelectTrigger>
-          <SelectContent><SelectItem value="name">Sort: Name</SelectItem><SelectItem value="business_desc">Sort: Business value ↓</SelectItem><SelectItem value="recent_desc">Sort: Most recent order</SelectItem><SelectItem value="recent_asc">Sort: Oldest last order</SelectItem></SelectContent>
+          <SelectContent><SelectItem value="name">Sort: Name</SelectItem><SelectItem value="business_desc">Sort: Business value ↓</SelectItem><SelectItem value="recent_desc">Sort: Most recent order</SelectItem><SelectItem value="recent_asc">Sort: Oldest last order</SelectItem><SelectItem value="location_asc">Sort: Location (district)</SelectItem></SelectContent>
         </Select>
         <div className="sm:col-span-5">
           <Input value={district} onChange={e => setDistrict(e.target.value)} placeholder="Filter by district (exact match)" className="h-9" data-testid="vendor-district-filter" />

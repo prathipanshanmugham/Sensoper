@@ -201,8 +201,181 @@ def _map_csv_row(row: Dict[str, str]) -> Dict[str, Any]:
     return out
 
 
+class ListingUpsert(BaseModel):
+    listed_price: Optional[float] = None
+    platform_commission_pct: Optional[float] = None
+    status: Optional[str] = None
+    platform_sku: Optional[str] = None
+
+
+class ProductPlatformLine(BaseModel):
+    platform_id: str
+    listed_price: float
+    platform_commission_pct: Optional[float] = None
+    status: str = "draft"
+    platform_sku: Optional[str] = None
+
+
+class ProductCreate(BaseModel):
+    inventory_item_id: str
+    platforms: List[ProductPlatformLine]
+
+
+_STATUS_RANK = {"live": 5, "paused": 4, "out_of_stock": 3, "draft": 2, "delisted": 1}
+COMMISSION_REQUIRED_MSG = "A commission % must be set on this listing before it can go live — platform's rate is a reference only."
+
+
+async def migrate_ecommerce_v2(db) -> Dict[str, Any]:
+    """Iter 49: collapse listings into a Products view keyed by (platform, inventory item).
+    Idempotent — fills missing SKUs, collapses duplicate (platform, item) pairs (best status wins,
+    losers become `delisted` + `superseded_by`), records a schema marker. Nothing is deleted."""
+    meta = await db.ecommerce_meta.find_one({"key": "schema_version"})
+    if meta and meta.get("value", 0) >= 2:
+        return {"already_migrated": True, **(meta.get("stats") or {})}
+    items = {str(i["_id"]): i for i in await db.inventory_items.find({}, {"sku_code": 1, "name": 1}).to_list(10000)}
+    listings = await db.ecommerce_listings.find({}).to_list(20000)
+    now = _now()
+    sku_filled = 0
+    for l in listings:
+        if not l.get("platform_sku"):
+            item = items.get(l.get("inventory_item_id"), {})
+            sku = item.get("sku_code") or item.get("name") or str(l["_id"])
+            await db.ecommerce_listings.update_one({"_id": l["_id"]}, {"$set": {"platform_sku": sku, "updated_at": now}})
+            l["platform_sku"] = sku
+            sku_filled += 1
+    groups: Dict[tuple, List[Dict[str, Any]]] = {}
+    for l in listings:
+        groups.setdefault((l.get("platform_id"), l.get("inventory_item_id")), []).append(l)
+    superseded = 0
+    for _, group in groups.items():
+        if len(group) < 2:
+            continue
+        group.sort(key=lambda x: (_STATUS_RANK.get(x.get("status"), 0), x.get("updated_at") or ""), reverse=True)
+        winner = group[0]
+        for loser in group[1:]:
+            if loser.get("superseded_by"):
+                continue
+            await db.ecommerce_listings.update_one(
+                {"_id": loser["_id"]},
+                {"$set": {"status": "delisted", "superseded_by": str(winner["_id"]), "updated_at": now}},
+            )
+            superseded += 1
+    stats = {"listings_seen": len(listings), "sku_filled": sku_filled, "superseded": superseded, "migrated_at": now}
+    await db.ecommerce_meta.update_one({"key": "schema_version"}, {"$set": {"value": 2, "stats": stats}}, upsert=True)
+    return {"already_migrated": False, **stats}
+
+
 def create_router(db, get_current_user, require_role, create_audit_log):
     router = APIRouter()
+
+    # ── Products view (Iter 49) — one row per inventory item, platform listings inline ──
+    def _listing_cell(l: Dict[str, Any]) -> Dict[str, Any]:
+        return {
+            "id": str(l["_id"]), "listed_price": l.get("listed_price"), "platform_commission_pct": l.get("platform_commission_pct"),
+            "status": l.get("status"), "platform_sku": l.get("platform_sku"), "updated_at": l.get("updated_at"),
+        }
+
+    @router.get("/ecommerce/products")
+    async def list_products(request: Request, search: Optional[str] = None, platform_id: Optional[str] = None,
+                            status: Optional[str] = None, include_delisted: bool = True):
+        await get_current_user(request)
+        platforms = [_clean(p) for p in await db.ecommerce_platforms.find({"active": {"$ne": False}}).sort("name", 1).to_list(200)]
+        lq: Dict[str, Any] = {"superseded_by": {"$exists": False}}
+        if not include_delisted:
+            lq["status"] = {"$ne": "delisted"}
+        listings = await db.ecommerce_listings.find(lq).to_list(20000)
+        by_item: Dict[str, Dict[str, Any]] = {}
+        for l in listings:
+            by_item.setdefault(l.get("inventory_item_id"), {})[l.get("platform_id")] = _listing_cell(l)
+        if not by_item:
+            return {"platforms": platforms, "rows": []}
+        oids = [ObjectId(i) for i in by_item if ObjectId.is_valid(i)]
+        items = {str(i["_id"]): i for i in await db.inventory_items.find({"_id": {"$in": oids}}).to_list(20000)}
+        rows = []
+        for item_id, cells in by_item.items():
+            item = items.get(item_id)
+            if not item:
+                continue
+            if search and search.lower() not in f"{item.get('name', '')} {item.get('sku_code', '')}".lower():
+                continue
+            if platform_id and platform_id not in cells:
+                continue
+            if status and not any(c.get("status") == status for c in cells.values()):
+                continue
+            rows.append({
+                "inventory_item_id": item_id, "item_name": item.get("name"), "sku_code": item.get("sku_code"),
+                "category": item.get("category"), "stock_available": item.get("quantity", 0),
+                "cost_price": item.get("cost_price") or item.get("purchase_price"),
+                "listings": cells,
+            })
+        rows.sort(key=lambda r: (r["item_name"] or "").lower())
+        return {"platforms": platforms, "rows": rows}
+
+    async def _upsert_listing(user, item_id: str, platform_id: str, payload: Dict[str, Any]) -> Dict[str, Any]:
+        if not ObjectId.is_valid(item_id) or not ObjectId.is_valid(platform_id):
+            raise HTTPException(status_code=400, detail="Invalid item or platform id")
+        item = await db.inventory_items.find_one({"_id": ObjectId(item_id)})
+        if not item:
+            raise HTTPException(status_code=400, detail="Inventory item not found")
+        platform = await db.ecommerce_platforms.find_one({"_id": ObjectId(platform_id), "active": {"$ne": False}})
+        if not platform:
+            raise HTTPException(status_code=400, detail="Platform not found")
+        existing = await db.ecommerce_listings.find_one(
+            {"platform_id": platform_id, "inventory_item_id": item_id, "superseded_by": {"$exists": False}})
+        update = {k: v for k, v in payload.items() if v is not None}
+        target_status = update.get("status", (existing or {}).get("status", "draft"))
+        commission = update.get("platform_commission_pct", (existing or {}).get("platform_commission_pct"))
+        if target_status == "live" and commission is None:
+            raise HTTPException(status_code=400, detail=COMMISSION_REQUIRED_MSG)
+        now = _now()
+        if existing:
+            update["updated_at"] = now
+            await db.ecommerce_listings.update_one({"_id": existing["_id"]}, {"$set": update})
+            await create_audit_log(user["id"], user["name"], "update", "ecommerce_listing", str(existing["_id"]), _clean(existing), update)
+            return _listing_cell(await db.ecommerce_listings.find_one({"_id": existing["_id"]}))
+        if update.get("listed_price") is None:
+            raise HTTPException(status_code=400, detail="Listed price is required for a new listing")
+        doc = {
+            "platform_id": platform_id, "inventory_item_id": item_id,
+            "platform_sku": update.get("platform_sku") or item.get("sku_code") or item.get("name"),
+            "platform_listing_id": "", "listing_title": item.get("name", ""), "listing_url": "",
+            "listed_price": float(update["listed_price"]), "platform_commission_pct": commission,
+            "status": target_status, "category_on_platform": item.get("category", ""), "images": [],
+            "created_at": now, "updated_at": now, "last_synced_at": None,
+        }
+        result = await db.ecommerce_listings.insert_one(doc)
+        await create_audit_log(user["id"], user["name"], "create", "ecommerce_listing", str(result.inserted_id), None,
+                                {"sku": doc["platform_sku"], "platform": platform.get("name")})
+        return _listing_cell({**doc, "_id": result.inserted_id})
+
+    @router.post("/ecommerce/products")
+    async def create_product(payload: ProductCreate, request: Request):
+        user = await require_role("admin", "manager")(request)
+        if not payload.platforms:
+            raise HTTPException(status_code=400, detail="Pick at least one platform")
+        cells = {}
+        for line in payload.platforms:
+            cells[line.platform_id] = await _upsert_listing(user, payload.inventory_item_id, line.platform_id, line.dict(exclude={"platform_id"}))
+        return {"inventory_item_id": payload.inventory_item_id, "listings": cells}
+
+    @router.put("/ecommerce/products/{item_id}/platforms/{platform_id}")
+    async def upsert_product_listing(item_id: str, platform_id: str, payload: ListingUpsert, request: Request):
+        user = await require_role("admin", "manager")(request)
+        return await _upsert_listing(user, item_id, platform_id, payload.dict(exclude_unset=True))
+
+    @router.delete("/ecommerce/products/{item_id}")
+    async def delist_product(item_id: str, request: Request):
+        user = await require_role("admin", "manager")(request)
+        res = await db.ecommerce_listings.update_many(
+            {"inventory_item_id": item_id, "status": {"$ne": "delisted"}}, {"$set": {"status": "delisted", "updated_at": _now()}})
+        await create_audit_log(user["id"], user["name"], "delete", "ecommerce_product", item_id, None, {"delisted": res.modified_count})
+        return {"delisted": res.modified_count}
+
+    @router.get("/ecommerce/migration-status")
+    async def migration_status(request: Request):
+        await get_current_user(request)
+        meta = await db.ecommerce_meta.find_one({"key": "schema_version"}, {"_id": 0})
+        return meta or {"key": "schema_version", "value": 1}
 
     # ── Platforms ──
     @router.get("/ecommerce/platforms")

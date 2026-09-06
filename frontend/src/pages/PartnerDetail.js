@@ -132,6 +132,7 @@ export default function PartnerDetail() {
   const openEdit = async () => {
     setError(''); setStatusOverrideReason(''); setNeedsStatusOverride(false);
     setEditForm({
+      partner_type: partner.partner_type || 'external_subcontractor',
       name: partner.name || '', company_name: partner.company_name || '', contact_person: partner.contact_person || '',
       phone: partner.phone || '', email: partner.email || '', gstin: partner.gstin || '', pan: partner.pan || '',
       address: partner.address || '', service_districts: (partner.service_districts || []).join(', '),
@@ -395,12 +396,26 @@ export default function PartnerDetail() {
           <div className="space-y-3 py-2">
             {error && <div className="p-2 text-sm text-red-700 bg-red-50 border border-red-200 rounded" data-testid="edit-partner-error">{error}</div>}
             <div className="grid grid-cols-2 gap-3">
+              <div className="col-span-2 space-y-1">
+                <Label>Contractor Type</Label>
+                <Select value={editForm.partner_type || 'external_subcontractor'} onValueChange={v => setEditForm(p => ({ ...p, partner_type: v }))}>
+                  <SelectTrigger data-testid="edit-partner-type"><SelectValue /></SelectTrigger>
+                  <SelectContent><SelectItem value="external_subcontractor">External Subcontractor</SelectItem><SelectItem value="internal_team">Internal Team</SelectItem></SelectContent>
+                </Select>
+                {editForm.partner_type !== partner.partner_type && (
+                  <p className="text-xs text-amber-700" data-testid="partner-type-switch-note">
+                    {editForm.partner_type === 'external_subcontractor'
+                      ? 'Switching to external: GSTIN and Company Name are required before saving (needed to pay against invoices).'
+                      : 'Switching to internal: GSTIN / Company Name are kept on record but no longer shown or required.'}
+                  </p>
+                )}
+              </div>
               <div className="space-y-1"><Label>Name</Label><Input value={editForm.name || ''} onChange={e => setEditForm(p => ({ ...p, name: e.target.value }))} data-testid="edit-name" /></div>
-              <div className="space-y-1"><Label>Company Name</Label><Input value={editForm.company_name || ''} onChange={e => setEditForm(p => ({ ...p, company_name: e.target.value }))} /></div>
+              {editForm.partner_type !== 'internal_team' && <div className="space-y-1"><Label>Company Name{editForm.partner_type !== partner.partner_type && ' *'}</Label><Input value={editForm.company_name || ''} onChange={e => setEditForm(p => ({ ...p, company_name: e.target.value }))} data-testid="edit-company-name" /></div>}
               <div className="space-y-1"><Label>Contact Person</Label><Input value={editForm.contact_person || ''} onChange={e => setEditForm(p => ({ ...p, contact_person: e.target.value }))} /></div>
               <div className="space-y-1"><Label>Phone</Label><Input value={editForm.phone || ''} onChange={e => setEditForm(p => ({ ...p, phone: e.target.value }))} data-testid="edit-phone" /></div>
               <div className="space-y-1"><Label>Email</Label><Input value={editForm.email || ''} onChange={e => setEditForm(p => ({ ...p, email: e.target.value }))} /></div>
-              <div className="space-y-1"><Label>GSTIN</Label><Input value={editForm.gstin || ''} onChange={e => setEditForm(p => ({ ...p, gstin: e.target.value }))} /></div>
+              {editForm.partner_type !== 'internal_team' && <div className="space-y-1"><Label>GSTIN{editForm.partner_type !== partner.partner_type && ' *'}</Label><Input value={editForm.gstin || ''} onChange={e => setEditForm(p => ({ ...p, gstin: e.target.value }))} data-testid="edit-gstin" /></div>}
               <div className="space-y-1"><Label>PAN</Label><Input value={editForm.pan || ''} onChange={e => setEditForm(p => ({ ...p, pan: e.target.value }))} /></div>
               <div className="space-y-1"><Label>Team Size</Label><Input type="number" value={editForm.team_size || 0} onChange={e => setEditForm(p => ({ ...p, team_size: e.target.value }))} /></div>
               <div className="space-y-1"><Label>Retention %</Label><Input type="number" value={editForm.retention_pct || 0} onChange={e => setEditForm(p => ({ ...p, retention_pct: e.target.value }))} /></div>
