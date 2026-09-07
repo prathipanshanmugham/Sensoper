@@ -258,7 +258,7 @@ class InventoryItemCreate(BaseModel):
     hsn_code: Optional[str] = None
     reorder_level: int = 10
     image_url: Optional[str] = None
-    margin_pct: float = 0
+    margin_pct: Optional[float] = None   # None = use the Pricelist default margin
     active: bool = True
     qc_checklist: list = []
     procurement_date: Optional[str] = None
@@ -1847,7 +1847,9 @@ async def update_inventory_item(item_id: str, updates: InventoryItemUpdate, requ
         item_id, old_data, update_data
     )
     
-    return {"message": "Item updated successfully"}
+    updated = await db.inventory_items.find_one({"_id": ObjectId(item_id)})
+    updated["id"] = str(updated.pop("_id"))
+    return {"message": "Item updated successfully", **updated}
 
 @api_router.delete("/inventory/items/{item_id}")
 async def delete_inventory_item(item_id: str, request: Request):
@@ -2416,6 +2418,8 @@ api_router.include_router(_locations_router)
 # ═══════════ CATALOGUE + FUEL MODEL (Iter 44 Phase 1 — Changes 6 & 7) ═══════════
 from catalogue import attach as _attach_catalogue  # noqa: E402
 _attach_catalogue(api_router, db, get_current_user)
+from pricelist import create_router as _create_pricelist_router  # noqa: E402
+api_router.include_router(_create_pricelist_router(db, get_current_user, require_role, create_audit_log))
 
 # ═══════════ GST TAX INVOICE + PROFIT CALCULATOR (Iter 44 Batch A) ═══════════
 from invoicing import create_router as _create_invoicing_router  # noqa: E402

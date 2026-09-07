@@ -64,6 +64,18 @@ export const reportsAPI = {
   get: (type, params = {}) => api.get(`/reports/${type}`, { params })
 };
 
+// Pricelist API (Iter 51)
+export const pricelistAPI = {
+  list: (params = {}) => api.get('/pricelist', { params }),
+  update: (id, data) => api.put(`/pricelist/items/${id}`, data),
+  bulk: (data) => api.post('/pricelist/bulk', data),
+  history: (id) => api.get(`/pricelist/items/${id}/history`),
+  recentHistory: (limit = 50) => api.get('/pricelist/history', { params: { limit } }),
+  normalisePreview: () => api.get('/pricelist/normalise-categories'),
+  normaliseApply: () => api.post('/pricelist/normalise-categories'),
+  setCategory: (id, category) => api.post(`/pricelist/items/${id}/category`, { category })
+};
+
 // Daily Updates API
 export const dailyUpdatesAPI = {
   create: (data) => api.post('/daily-updates', data),

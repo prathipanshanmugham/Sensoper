@@ -43,11 +43,11 @@ def _num(v, default=0.0) -> float:
         return default
 
 
-def sell_price(item: Optional[Dict[str, Any]]) -> float:
+def sell_price(item: Optional[Dict[str, Any]], default_margin: float = DEFAULT_MARGIN_PCT) -> float:
     if not item:
         return 0.0
     margin = item.get("margin_pct")
-    margin = DEFAULT_MARGIN_PCT if margin is None else _num(margin, DEFAULT_MARGIN_PCT)
+    margin = default_margin if margin is None else _num(margin, default_margin)
     return _num(item.get("unit_price")) * (1 + margin / 100)
 
 
@@ -139,13 +139,14 @@ def compute_quick(inputs: Dict[str, Any], config: Dict[str, Any],
         battery_count = int(_num(bc_manual)) if bc_manual not in (None, "") else (battery_count_auto or 0)
 
     # ── Cost lines ───────────────────────────────────────────────────
-    panel_sell = sell_price(panel)
+    default_margin = _num((config or {}).get("default_margin_pct"), DEFAULT_MARGIN_PCT)  # same default the Pricelist uses
+    panel_sell = sell_price(panel, default_margin)
     panel_cost = panel_sell * panel_count if (panel and panel_sell > 0 and panel_count > 0) else PANEL_BENCH_SHARE * base_kwp * kw
     panel_benchmark = not (panel and panel_sell > 0 and panel_count > 0)
-    inverter_sell = sell_price(inverter)
+    inverter_sell = sell_price(inverter, default_margin)
     inverter_cost = inverter_sell if (inverter and inverter_sell > 0) else INVERTER_BENCH_SHARE * type_kwp * kw
     inverter_benchmark = not (inverter and inverter_sell > 0)
-    battery_sell = sell_price(battery)
+    battery_sell = sell_price(battery, default_margin)
     battery_cost = 0.0
     battery_benchmark = False
     if needs_battery and battery_count > 0:
