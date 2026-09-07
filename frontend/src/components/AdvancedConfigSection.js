@@ -6,7 +6,7 @@
  * Plus a one-shot PIN Backfill runner and the seed-defaults button for DISCOMs.
  */
 import { useEffect, useState, useCallback } from 'react';
-import { calcAPI, healthAPI, expansionAPI, projectsAPI } from '../utils/api';
+import { calcAPI, healthAPI, expansionAPI, projectsAPI, locationsAPI } from '../utils/api';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from './ui/card';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
@@ -92,6 +92,8 @@ export default function AdvancedConfigSection() {
   const [healthLoading, setHealthLoading] = useState(true);
   const [healthSaving, setHealthSaving] = useState(false);
   const [healthSaved, setHealthSaved] = useState(false);
+  const [orgLocations, setOrgLocations] = useState([]);
+  useEffect(() => { locationsAPI.list().then(r => setOrgLocations(r.data || [])).catch(() => {}); }, []);
 
   const loadHealth = useCallback(async () => {
     setHealthLoading(true);
@@ -313,6 +315,18 @@ export default function AdvancedConfigSection() {
               <NumberField label="Monthly Growth Target" value={health.targets?.monthly_growth_target_pct} onChange={(v) => setHealthField('targets.monthly_growth_target_pct', v)} suffix="%" />
             </div>
 
+            {orgLocations.length > 0 && (
+              <>
+                <p className="text-[11px] uppercase tracking-wider text-slate-500 font-semibold pt-2 border-t">Per-Location Monthly Revenue Targets</p>
+                <p className="text-[11px] text-slate-500">Used by the main dashboard's Monthly Target panel for users scoped to a location. Leave blank to fall back to the company-wide target above.</p>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3" data-testid="location-targets-grid">
+                  {orgLocations.map(l => (
+                    <NumberField key={l.id} label={l.name} step={10000} value={health.location_targets?.[l.id] ?? ''} onChange={(v) => setHealthField(`location_targets.${l.id}`, v === '' || v === null || Number.isNaN(v) ? null : v)} suffix="₹" />
+                  ))}
+                </div>
+              </>
+            )}
+
             <p className="text-[11px] uppercase tracking-wider text-slate-500 font-semibold pt-2 border-t">Band Thresholds</p>
             <div className="grid grid-cols-3 gap-3">
               <NumberField label="Strong ≥"    value={health.bands?.strong}    onChange={(v) => setHealthField('bands.strong', v)} />
@@ -353,6 +367,18 @@ export default function AdvancedConfigSection() {
               <NumberField label="Target Margin"              value={exp.thresholds?.target_margin_pct}         onChange={(v) => setExpField('thresholds.target_margin_pct', v)} suffix="%" />
               <NumberField label="Distance Cost per km"       value={exp.thresholds?.distance_per_km_cost}      onChange={(v) => setExpField('thresholds.distance_per_km_cost', v)} suffix="₹/km" />
             </div>
+
+            {orgLocations.length > 0 && (
+              <>
+                <p className="text-[11px] uppercase tracking-wider text-slate-500 font-semibold pt-2 border-t">Per-Location Monthly Revenue Targets</p>
+                <p className="text-[11px] text-slate-500">Used by the main dashboard's Monthly Target panel for users scoped to a location. Leave blank to fall back to the company-wide target above.</p>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3" data-testid="location-targets-grid">
+                  {orgLocations.map(l => (
+                    <NumberField key={l.id} label={l.name} step={10000} value={health.location_targets?.[l.id] ?? ''} onChange={(v) => setHealthField(`location_targets.${l.id}`, v === '' || v === null || Number.isNaN(v) ? null : v)} suffix="₹" />
+                  ))}
+                </div>
+              </>
+            )}
 
             <p className="text-[11px] uppercase tracking-wider text-slate-500 font-semibold pt-2 border-t">Band Thresholds</p>
             <div className="grid grid-cols-3 gap-3">

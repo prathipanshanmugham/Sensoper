@@ -54,14 +54,14 @@ export const usersAPI = {
 
 // Dashboard API
 export const dashboardAPI = {
+  getMonthlyTarget: (params = {}) => api.get('/dashboard/monthly-target', { params }),
   getStats: () => api.get('/dashboard/stats'),
   getCeo: (params = {}) => api.get('/dashboard/ceo', { params })
 };
 
 // Reports API
 export const reportsAPI = {
-  get: (type, params = {}) => api.get(`/reports/${type}`, { params }),
-  logUsage: (data) => api.post('/reports/usage', data)
+  get: (type, params = {}) => api.get(`/reports/${type}`, { params })
 };
 
 // Daily Updates API
@@ -441,6 +441,7 @@ export const assetsAPI = {
   logMaintenance: (id, data) => api.post(`/assets/${id}/maintenance`, data),
   compliance: (days = 90) => api.get('/assets/compliance', { params: { days } }),
   categories: () => api.get('/assets/categories'),
+  filters: () => api.get('/assets/filters'),
   report: (type, params = {}) => api.get(`/assets/reports/${type}`, { params })
 };
 

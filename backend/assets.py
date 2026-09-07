@@ -1,6 +1,7 @@
 """Assets & Tools management — company-owned equipment register, issue/return,
 maintenance, and compliance tracking (Iter 42 Change 6)."""
 from __future__ import annotations
+import re
 from datetime import datetime, timezone, timedelta
 from typing import Any, Dict, List, Optional
 from bson import ObjectId
@@ -116,12 +117,27 @@ def create_router(db, get_current_user, require_role, create_audit_log, check_mo
                            location_id: Optional[str] = None, search: Optional[str] = None):
         await get_current_user(request)
         query: Dict[str, Any] = {"active": {"$ne": False}}
-        if category: query["category"] = category
-        if status: query["status"] = status
+        # "all" / blank sentinels mean "no filter" — never matched literally against the record
+        if category and category.lower() != "all": query["category"] = category
+        if status and status.lower() != "all": query["status"] = status
         if location_id: query["location_id"] = location_id
-        if search: query["name"] = {"$regex": search, "$options": "i"}
+        if search: query["name"] = {"$regex": re.escape(search), "$options": "i"}
         docs = await db.assets.find(query).sort("created_at", -1).to_list(2000)
         return [_serialize(d) for d in docs]
+
+    @router.get("/assets/filters")
+    async def list_asset_filters(request: Request):
+        """Iter 50 §2 — single source for BOTH filter dropdowns. Canonical enums merged with every
+        distinct value actually stored on an active asset (exact strings, so what the dropdown offers
+        is exactly what the list query matches)."""
+        await get_current_user(request)
+        active = {"active": {"$ne": False}}
+        stored_cats = await db.assets.distinct("category", active)
+        stored_statuses = await db.assets.distinct("status", active)
+        return {
+            "categories": sorted(set(ASSET_CATEGORIES) | {c for c in stored_cats if c}),
+            "statuses": sorted(set(ASSET_STATUSES) | {s for s in stored_statuses if s}),
+        }
 
     @router.get("/assets/categories")
     async def list_asset_categories(request: Request):

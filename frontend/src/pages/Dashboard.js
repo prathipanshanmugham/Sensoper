@@ -5,6 +5,7 @@ import { dashboardAPI, projectsAPI } from '../utils/api';
 import { Button } from '../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
+import { MonthlyTargetPanel } from '../components/MonthlyTargetPanel';
 import { 
   FileText, Clock, CheckCircle2, AlertCircle, TrendingUp, IndianRupee,
   Package, ClipboardCheck, XCircle, Trash2
@@ -118,6 +119,8 @@ export default function Dashboard() {
       ) : (
         <>
           <h1 className="text-xl font-semibold font-['Outfit'] text-slate-900 mb-6">Welcome back, {user?.name?.split(' ')[0]}!</h1>
+
+          <MonthlyTargetPanel />
 
           {(stats?.low_stock_alerts > 0 || stats?.pending_approvals > 0) && (isAdmin || isManager) && (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">

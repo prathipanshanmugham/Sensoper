@@ -17,7 +17,8 @@ import * as XLSX from 'xlsx';
 import { saveAs } from 'file-saver';
 import { useLocationScope, LocationScopeSelect } from '../components/LocationScope';
 
-const CATEGORIES = ['vehicle', 'power_tool', 'hand_tool', 'test_equipment', 'safety', 'it', 'furniture', 'other']; // fallback until /assets/categories loads
+const CATEGORIES = ['vehicle', 'power_tool', 'hand_tool', 'test_equipment', 'safety', 'it', 'furniture', 'other']; // fallback until /assets/filters loads
+const STATUSES = ['available', 'issued', 'in_maintenance', 'under_repair', 'lost', 'scrapped', 'sold'];
 const STATUS_STYLES = {
   available: 'bg-emerald-100 text-emerald-700', issued: 'bg-blue-100 text-blue-700',
   in_maintenance: 'bg-amber-100 text-amber-700', under_repair: 'bg-orange-100 text-orange-700',
@@ -35,6 +36,7 @@ export default function AssetsPage() {
   const locScope = useLocationScope('assets_location_scope');
   const [assets, setAssets] = useState([]);
   const [categories, setCategories] = useState(CATEGORIES);
+  const [statuses, setStatuses] = useState(STATUSES);
   const [compliance, setCompliance] = useState(null);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -73,10 +75,10 @@ export default function AssetsPage() {
   }, [categoryFilter, statusFilter, search]);
   useEffect(() => { fetchAssets(); }, [fetchAssets]);
   useEffect(() => { assetsAPI.compliance(90).then(r => setCompliance(r.data)).catch(() => {}); }, []);
-  // Single source of truth for the category dropdowns — merges the canonical list with
-  // any category value actually stored on an asset, so the filter can never diverge from
-  // what's really in the list (Iter 45 assets register fix).
-  useEffect(() => { assetsAPI.categories().then(r => setCategories(r.data.categories || CATEGORIES)).catch(() => {}); }, []);
+  // Single source of truth for BOTH filter dropdowns (Iter 50 §2): canonical enums merged with every
+  // value actually stored on an asset, so the options can never diverge from what the list query matches.
+  const loadFilters = useCallback(() => assetsAPI.filters().then(r => { setCategories(r.data.categories?.length ? r.data.categories : CATEGORIES); setStatuses(r.data.statuses?.length ? r.data.statuses : STATUSES); }).catch(() => {}), []);
+  useEffect(() => { loadFilters(); }, [loadFilters]);
 
   const fetchApprovals = useCallback(async () => {
     if (!canManage) return;
@@ -116,7 +118,7 @@ export default function AssetsPage() {
       await assetsAPI.create({ ...form, purchase_cost: parseFloat(form.purchase_cost) || 0, calibration_interval_days: form.calibration_interval_days ? parseInt(form.calibration_interval_days) : null });
       setShowCreate(false);
       setForm({ name: '', category: 'power_tool', make: '', model: '', serial_number: '', purchase_date: '', purchase_cost: '', useful_life_years: 5, requires_calibration: false, calibration_interval_days: '', insurance_expiry: '', registration_expiry: '', fitness_certificate_expiry: '', pollution_certificate_expiry: '', notes: '' });
-      await fetchAssets(); await fetchReport(reportType);
+      await fetchAssets(); await fetchReport(reportType); await loadFilters();
     } catch (e) { console.error(e); } finally { setSaving(false); }
   };
 
@@ -223,8 +225,8 @@ export default function AssetsPage() {
         {/* Filters */}
         <Card className="border-slate-200"><CardContent className="p-4 grid grid-cols-1 sm:grid-cols-3 gap-3">
           <div className="relative"><Search className="absolute left-2.5 top-2.5 h-4 w-4 text-slate-400" /><Input placeholder="Search assets…" value={search} onChange={e => setSearch(e.target.value)} className="pl-8 h-9" data-testid="asset-search" /></div>
-          <Select value={categoryFilter} onValueChange={setCategoryFilter}><SelectTrigger className="h-9" data-testid="asset-category-filter"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All Categories</SelectItem>{categories.map(c => <SelectItem key={c} value={c}>{c.replace(/_/g, ' ')}</SelectItem>)}</SelectContent></Select>
-          <Select value={statusFilter} onValueChange={setStatusFilter}><SelectTrigger className="h-9" data-testid="asset-status-filter"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All Status</SelectItem>{Object.keys(STATUS_STYLES).map(s => <SelectItem key={s} value={s}>{s.replace(/_/g, ' ')}</SelectItem>)}</SelectContent></Select>
+          <Select value={categoryFilter} onValueChange={setCategoryFilter}><SelectTrigger className="h-9" data-testid="asset-category-filter"><SelectValue placeholder="All Categories" /></SelectTrigger><SelectContent data-testid="asset-category-options"><SelectItem value="all" data-testid="asset-category-option-all">All Categories</SelectItem>{categories.map(c => <SelectItem key={c} value={c} data-testid={`asset-category-option-${c}`}>{c.replace(/_/g, ' ')}</SelectItem>)}</SelectContent></Select>
+          <Select value={statusFilter} onValueChange={setStatusFilter}><SelectTrigger className="h-9" data-testid="asset-status-filter"><SelectValue placeholder="All Status" /></SelectTrigger><SelectContent data-testid="asset-status-options"><SelectItem value="all" data-testid="asset-status-option-all">All Status</SelectItem>{statuses.map(s => <SelectItem key={s} value={s} data-testid={`asset-status-option-${s}`}>{s.replace(/_/g, ' ')}</SelectItem>)}</SelectContent></Select>
         </CardContent></Card>
 
         {/* Register */}
@@ -253,7 +255,7 @@ export default function AssetsPage() {
                 </CardContent>
               </Card>
             ))}
-            {assets.length === 0 && <p className="text-sm text-slate-400 col-span-full text-center py-8">No assets found</p>}
+            {assets.length === 0 && <p className="text-sm text-slate-400 col-span-full text-center py-8" data-testid="assets-empty">No assets found</p>}
           </div>
         )}
 

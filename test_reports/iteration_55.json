@@ -1,0 +1,38 @@
+{
+  "summary": "Iter 50 e2e testing complete. Backend pytest test_iter50.py: 15 passed, 1 skipped (no staff account). Frontend: all 5 feature areas verified — Monthly Target panel with all testids and correct math + location scoping; Assets filters expose 'All Categories' + 'All Status' plus every canonical category/status; CEO Dashboard shows top-locations card in consolidated mode and hides it under a specific location; CEO PDF is 1 page and contains 'Top Performing Locations' only in consolidated mode; Reports page has no 'Report Usage' card and backend endpoints are gone; Advanced Config (Pricing Config → Defaults tab) renders location-targets-grid, saving persists to /api/dashboard/health/config location_targets. Asset UI create+archive flow works end-to-end.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "/api/dashboard/health/config", "issue": "location_targets retains stale entries after their location_id is deleted from /api/locations (orphan keys never cleaned up). Not blocking iter50."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "AdvancedConfigSection (Expansion card)", "issue": "Duplicate 'Per-Location Monthly Revenue Targets' block rendered inside Expansion Module Weights section — it also uses data-testid='location-targets-grid' and binds/writes to health.location_targets via setHealthField. Result: two elements share the same data-testid, and the same fields appear twice (once under Health Score, once under Expansion). Delete the duplicate block at /app/frontend/src/components/AdvancedConfigSection.js lines ~371-381.", "selector": "[data-testid='location-targets-grid']", "priority": "MEDIUM"},
+      {"component": "Global (Dashboard, CEO, Assets pages)", "issue": "Repeated React warning: 'Encountered two children with the same key' floods the console on many pages — indicates a .map() somewhere uses non-unique keys. Not introduced by iter50 but should be tracked.", "selector": "n/a", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter50.py",
+    "/app/test_reports/pytest/iter50_re.xml"
+  ],
+  "action_items": [
+    "Remove the duplicate Per-Location Monthly Revenue Targets grid (and duplicate data-testid='location-targets-grid') from the Expansion Module Weights section in AdvancedConfigSection.js (lines ~371-381).",
+    "(Nice-to-have) In PUT /api/dashboard/health/config, sanitize location_targets by dropping keys whose location no longer exists, and/or delete the key when a location is deleted."
+  ],
+  "critical_code_review_comments": [
+    "AdvancedConfigSection.js: block at lines 371-381 is copy-paste from the Health section, writes to health.location_targets via setHealthField inside the Expansion card — wrong section semantically, and causes a duplicate data-testid.",
+    "AdvancedConfigSection.js: NumberField inside the location-targets grid uses key={l.id}; if orgLocations ever contains two entries with the same id, it would trigger the duplicate-key warning. Consider defensive de-dup.",
+    "Widespread 'duplicate key' console warnings across pages suggest one or more list renders (likely notifications/dashboard cards) use array index or non-unique ids — hunt via React devtools."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100%", "frontend": "100% (all mandated flows pass; one non-blocking duplicate testid)"},
+  "test_credentials": "admin@sensoper.com / Admin@123",
+  "seed_data_creation": "Test asset 'TEST50 UI asset' created and archived within the run. Backend pytest creates and cleans up TEST50_* locations/assets/projects. Advanced-config save test restored the location target field (blank) at teardown.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "All iter50 spec items verified. Only outstanding UI concern is the duplicated location-targets-grid inside the Expansion card of AdvancedConfigSection. Backend endpoints tested by /app/backend/tests/test_iter50.py — run with REACT_APP_BACKEND_URL exported.",
+  "rca of the issue": "Duplicate location-targets-grid: block at lines 371-381 in /app/frontend/src/components/AdvancedConfigSection.js was pasted into the Expansion SectionCard but continues to reference health.location_targets and setHealthField. Removing that block fixes both the duplicate testid and the misplaced UI."
+}

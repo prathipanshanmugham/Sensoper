@@ -2735,10 +2735,6 @@ _log_archive_router = _create_log_archive_router(db=db, get_current_user=get_cur
                                                  put_object=put_object, get_object=get_object, app_name=APP_NAME)
 api_router.include_router(_log_archive_router)
 
-# ═══════════ REPORT USAGE LOG (Iter 49 §6) ═══════════
-from report_usage import create_router as _create_report_usage_router  # noqa: E402
-api_router.include_router(_create_report_usage_router(db=db, get_current_user=get_current_user))
-
 # ═══════════ QUICK SOLAR CALCULATOR + SALES STATS (Iter 48) ═══════════
 from quick_calc import create_router as _create_quick_calc_router  # noqa: E402
 api_router.include_router(_create_quick_calc_router(db=db, get_current_user=get_current_user, get_calc_config=_get_calc_config))
@@ -4396,10 +4392,33 @@ async def get_ceo_dashboard(request: Request, location_id: Optional[str] = None)
             "count": len(ecommerce_docs),
         },
         "project_revenue": project_revenue,
+        "consolidated": not loc_filter,
+        # Iter 50 §3 — only on the consolidated view; a single-location report has nothing to rank against
+        "top_locations": _compute_top_locations(all_projects, await db.locations.find({"active": {"$ne": False}}).to_list(500)) if not loc_filter else None,
     }
 
 
+@api_router.get("/dashboard/monthly-target")
+async def get_monthly_target(request: Request, location_id: Optional[str] = None):
+    """Iter 50 §1 — Target / Achieved / Remaining for the current month, same target as the Health
+    Score and same current-month revenue as the CEO Dashboard. Location: explicit param (admins),
+    else the user's default/only location, else company-wide."""
+    user = await get_current_user(request)
+    if not location_id and user.get("role") != "admin":
+        scope = user.get("location_ids") or []
+        location_id = user.get("default_location_id") or (scope[0] if len(scope) == 1 else None)
+    loc_filter = location_scope_filter(user, location_id)
+    projects = await db.projects.find({"deleted_at": {"$exists": False}, **loc_filter}, {"status": 1, "created_at": 1, "cost_estimation.total_cost": 1}).to_list(10000)
+    cfg = await _get_health_config()
+    result = _compute_monthly_target(projects, cfg, location_id if loc_filter else None)
+    if location_id:
+        loc = await db.locations.find_one({"_id": ObjectId(location_id)}) if ObjectId.is_valid(location_id) else None
+        result["location_name"] = loc.get("name") if loc else None
+    return result
+
+
 # ================== CEO HEALTH SCORE ==================
+from dashboard_target import compute_monthly_target as _compute_monthly_target, compute_top_locations as _compute_top_locations
 from health import compute_pillars as _compute_health_pillars, DEFAULT_HEALTH_CONFIG
 
 
@@ -4685,13 +4704,6 @@ async def get_report(report_type: str, request: Request, date_from: str = None, 
     if user["role"] not in ["admin", "manager"]:
         raise HTTPException(status_code=403, detail="Reports are admin/manager only")
     loc_filter = location_scope_filter(user, location_id)
-    from report_usage import record_usage, usage_report  # noqa: E402
-    await record_usage(db, user, report_type, "view", {"date_from": date_from, "date_to": date_to, "system_type": system_type, "status": status, "tab": tab,
-                       "movement_type": movement_type, "district": district, "speciality": speciality, "platform_id": platform_id, "category": category, "supplier": supplier}, location_id)
-    if report_type == "report_usage":
-        if user["role"] != "admin":
-            raise HTTPException(status_code=403, detail="Report usage log is admin only")
-        return await usage_report(db, date_from, date_to, supplier, category, loc_filter)   # supplier param = user filter, category = report_type filter
     if report_type == "brand_returns":
         from reports_brand_returns import brand_returns_report  # noqa: E402
         return await brand_returns_report(db, date_from, date_to, supplier, category, loc_filter)

@@ -461,6 +461,13 @@ def create_router(db, get_current_user, require_role, create_audit_log):
         now = _now()
         doc["created_at"] = now; doc["updated_at"] = now; doc["last_synced_at"] = None
         result = await db.ecommerce_listings.insert_one(doc)
+        # Iter 49 invariant: one active listing per (platform, item). Legacy callers that post a second
+        # one supersede the earlier listing (kept in history as delisted) — same rule the migration applied.
+        await db.ecommerce_listings.update_many(
+            {"platform_id": doc["platform_id"], "inventory_item_id": doc["inventory_item_id"],
+             "_id": {"$ne": result.inserted_id}, "superseded_by": {"$exists": False}},
+            {"$set": {"status": "delisted", "superseded_by": str(result.inserted_id), "updated_at": now}},
+        )
         await create_audit_log(user["id"], user["name"], "create", "ecommerce_listing", str(result.inserted_id), None, {"sku": doc["platform_sku"]})
         return _clean({**doc, "_id": result.inserted_id})
 

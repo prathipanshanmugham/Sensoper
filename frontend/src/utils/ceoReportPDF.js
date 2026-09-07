@@ -116,8 +116,17 @@ export async function generateCeoReportPDF({ data, support, sparkline = [], loca
   yL = miniTable(doc, FONT, { x: xL, y: yL, width: colW, head: ['Stage', 'Count'], fill: [59, 130, 246],
     body: [['Leads', num(sales_funnel.total_leads)], ['Quotes', num(sales_funnel.quotes_generated)], ['Approved', num(sales_funnel.approved)], ['Completed', num(sales_funnel.completed)]] });
   yL = sectionTitle(doc, FONT, xL, yL + 1, 'Revenue Trend');
+  const trendRows = (data.revenue_trend || []).slice(Array.isArray(data.top_locations) ? -4 : -6);
   yL = miniTable(doc, FONT, { x: xL, y: yL, width: colW, head: ['Month', 'Revenue'], fill: BRAND,
-    body: (data.revenue_trend || []).slice(-6).map(r => [r.month, rs(r.revenue)]).concat((data.revenue_trend || []).length ? [] : [['No revenue data yet', '']]) });
+    body: trendRows.map(r => [r.month, rs(r.revenue)]).concat(trendRows.length ? [] : [['No revenue data yet', '']]) });
+  // Consolidated export only — a single-location report has nothing to rank against
+  if (Array.isArray(data.top_locations)) {
+    yL = sectionTitle(doc, FONT, xL, yL + 1, 'Top Performing Locations');
+    yL = miniTable(doc, FONT, { x: xL, y: yL, width: colW, head: ['#', 'Location', 'Revenue', 'Margin', 'MoM'], fill: [139, 92, 246],
+      body: data.top_locations.length
+        ? data.top_locations.slice(0, 5).map(l => [l.rank, l.name, rs(l.revenue), `${rs(l.margin)} (${l.margin_pct}%)`, l.mom_pct == null ? '—' : `${l.mom_pct >= 0 ? '+' : ''}${l.mom_pct}%`])
+        : [['', 'No location-attributed projects yet', '', '', '']] });
+  }
 
   let yR = sectionTitle(doc, FONT, xR, y + 2, 'Top Performing Staff');
   yR = miniTable(doc, FONT, { x: xR, y: yR, width: colW, head: ['#', 'Staff', 'Projects', 'Revenue'], fill: [245, 158, 11],

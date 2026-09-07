@@ -81,7 +81,6 @@ export default function CeoDashboard() {
     try {
       // Same state the cards render from — the PDF mirrors the screen, no re-aggregation.
       await generateCeoReportPDF({ data, support: supportSnapshot, sparkline, locationLabel: locScope.locationLabel });
-      reportsAPI.logUsage({ report_type: 'ceo_report', format: 'pdf', filters: {}, location_id: locScope.locationId || null }).catch(() => {});
       toast.success('CEO Report downloaded');
     } catch (err) {
       console.error(err);
@@ -335,6 +334,34 @@ export default function CeoDashboard() {
             </CardContent>
           </Card>
         </div>
+
+        {/* Top Performing Locations — consolidated view only (Iter 50 §3) */}
+        {Array.isArray(data.top_locations) && (
+          <Card className="border-slate-200 mt-4" data-testid="top-locations">
+            <CardHeader className="pb-2"><CardTitle className="text-base font-['Outfit'] flex items-center gap-2"><MapPin className="h-4 w-4" />Top Performing Locations</CardTitle></CardHeader>
+            <CardContent className="p-4 pt-0">
+              {data.top_locations.length > 0 ? (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead><tr className="text-left text-xs text-slate-500 border-b"><th className="py-2 pr-3">#</th><th className="py-2 pr-3">Location</th><th className="py-2 pr-3">Revenue</th><th className="py-2 pr-3">Margin</th><th className="py-2 pr-3">This Month</th><th className="py-2 pr-3">MoM</th></tr></thead>
+                    <tbody>
+                      {data.top_locations.map(l => (
+                        <tr key={l.location_id} className="border-b last:border-0" data-testid={`top-location-row-${l.location_id}`}>
+                          <td className="py-2 pr-3"><span className={`w-6 h-6 rounded-full inline-flex items-center justify-center text-xs font-bold text-white ${l.rank === 1 ? 'bg-amber-500' : l.rank === 2 ? 'bg-slate-400' : l.rank === 3 ? 'bg-orange-300' : 'bg-slate-200 text-slate-600'}`}>{l.rank}</span></td>
+                          <td className="py-2 pr-3 font-medium text-slate-900">{l.name}<span className="block text-[11px] text-slate-400 font-normal">{l.wins} won of {l.projects}</span></td>
+                          <td className="py-2 pr-3">₹{l.revenue.toLocaleString('en-IN')}</td>
+                          <td className="py-2 pr-3">₹{l.margin.toLocaleString('en-IN')} <span className="text-[11px] text-slate-400">({l.margin_pct}%)</span></td>
+                          <td className="py-2 pr-3">₹{l.this_month.toLocaleString('en-IN')}</td>
+                          <td className="py-2 pr-3">{l.mom_pct == null ? <span className="text-slate-400">—</span> : <span className={l.mom_pct >= 0 ? 'text-emerald-600' : 'text-red-600'}>{l.mom_pct >= 0 ? '+' : ''}{l.mom_pct}%</span>}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : <p className="text-sm text-slate-400 text-center py-6">No location-attributed projects yet — assign projects to a location to rank branches.</p>}
+            </CardContent>
+          </Card>
+        )}
 
         {/* Credit Section */}
         {data.credit_data && (

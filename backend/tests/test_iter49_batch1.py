@@ -109,28 +109,3 @@ class TestBrandReturnsReport:
         s = requests.Session()
         r = s.get(f"{API}/reports/brand_returns", timeout=60)
         assert r.status_code in (401, 403)
-
-
-class TestReportUsage:
-    def test_view_is_logged_and_export_post_logged(self, client):
-        before = client.get(f"{API}/reports/report_usage", timeout=60).json()["summary"]["total_runs"]
-        client.get(f"{API}/reports/brand_returns", params={"supplier": "Growatt India"}, timeout=60)
-        r = client.post(f"{API}/reports/usage", json={"report_type": "brand_returns", "format": "excel", "filters": {"supplier": "Growatt India", "status": "all"}}, timeout=60)
-        assert r.status_code == 200
-        d = client.get(f"{API}/reports/report_usage", params={"category": "brand_returns"}, timeout=60).json()
-        assert d["summary"]["total_runs"] >= 2
-        top = d["rows"][0]
-        assert top["report_type"] == "brand_returns" and top["format"] == "excel" and "supplier=Growatt India" in top["filters"] and "status" not in top["filters"]
-        assert top["user"] == "System Admin" or top["user"]
-        after = client.get(f"{API}/reports/report_usage", timeout=60).json()["summary"]["total_runs"]
-        assert after >= before + 2
-
-    def test_usage_report_does_not_log_itself(self, client):
-        a = client.get(f"{API}/reports/report_usage", timeout=60).json()["summary"]["total_runs"]
-        client.get(f"{API}/reports/report_usage", timeout=60)
-        b = client.get(f"{API}/reports/report_usage", timeout=60).json()["summary"]["total_runs"]
-        assert a == b
-
-    def test_user_filter(self, client):
-        d = client.get(f"{API}/reports/report_usage", params={"supplier": "System Admin"}, timeout=60).json()
-        assert d["rows"] and all("system admin" in (r["user"] or "").lower() for r in d["rows"])

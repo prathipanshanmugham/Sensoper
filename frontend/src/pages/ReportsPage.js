@@ -48,7 +48,6 @@ const REPORTS = [
   { id: 'ecommerce', label: 'Ecommerce', icon: ShoppingBag, desc: 'Revenue, margin after commission, returns by platform/SKU' },
   { id: 'customer_support', label: 'Customer Support', icon: Star, desc: 'SLA breach %, resolution time, CSAT, top recurring issues' },
   { id: 'brand_returns', label: 'Brand Returns', icon: ShoppingBag, desc: 'Returns to suppliers, value returned, resolution time, supplier return-rate ranking' },
-  { id: 'report_usage', label: 'Report Usage', icon: Activity, desc: 'Who ran which report, when, with what filters and format', adminOnly: true }
 ];
 
 function SummaryCard({ label, value }) {
@@ -168,10 +167,8 @@ export default function ReportsPage() {
     return Object.keys(reportData.rows[0]).filter(k => !['has_feedback'].includes(k));
   };
 
-  const logExport = (format) => reportsAPI.logUsage({ report_type: activeReport, format, filters: { ...filters, tab: activeTab }, location_id: locScope.locationId || null }).catch(() => {});
   const exportPDF = async () => {
     if (!reportData) return;
-    logExport('pdf');
     const doc = new jsPDF({ orientation: 'landscape' });
     const FONT = await loadUnicodeFont(doc);
     doc.setFontSize(18); doc.setTextColor(16, 185, 129);
@@ -192,7 +189,6 @@ export default function ReportsPage() {
   };
 
   const exportExcel = () => {
-    logExport('excel');
     if (!reportData) return;
     const wb = XLSX.utils.book_new();
     const ws0 = XLSX.utils.aoa_to_sheet([[reportData.title], [`Location: ${locScope.locationLabel}`], [`Generated: ${new Date().toLocaleDateString('en-IN')}`]]);
@@ -241,16 +237,6 @@ export default function ReportsPage() {
                 <div className="col-span-1 sm:col-span-3 flex items-end">
                   <p className="text-[11px] text-slate-400">Fast = ≥ 5 usages in the selected window (defaults to last 30 days if no date range).</p>
                 </div>
-              </div>
-            )}
-            {activeReport === 'report_usage' && (
-              <div className="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-3" data-testid="report-usage-filter-row">
-                <div className="space-y-1"><Label className="text-xs">User</Label><Input placeholder="name contains…" value={filters.supplier} onChange={(e) => setFilters(p => ({...p, supplier: e.target.value}))} onBlur={(e) => fetchReport(activeReport, activeTab, { supplier: e.target.value })} className="h-9" data-testid="filter-usage-user" /></div>
-                <div className="space-y-1"><Label className="text-xs">Report type</Label>
-                  <Select value={filters.category || 'all'} onValueChange={(v) => { const val = v === 'all' ? '' : v; setFilters(p => ({...p, category: val})); fetchReport(activeReport, activeTab, { category: val }); }}>
-                    <SelectTrigger className="h-9" data-testid="filter-usage-report-type"><SelectValue /></SelectTrigger>
-                    <SelectContent><SelectItem value="all">All reports</SelectItem>{REPORTS.filter(r => r.id !== 'report_usage').map(r => <SelectItem key={r.id} value={r.id}>{r.label}</SelectItem>)}</SelectContent>
-                  </Select></div>
               </div>
             )}
             {activeReport === 'brand_returns' && (
