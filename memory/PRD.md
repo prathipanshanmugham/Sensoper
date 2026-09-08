@@ -155,6 +155,10 @@ Two goals: (1) Step-4 calculator rebuilt for daily usability; (2) Detailed/Kit Q
 - Removed stale `tests/test_iter44_batch_b_pricelist.py` (targeted the catalogue product collections deleted in Iter 45).
 - NOTE for user: the category normaliser has NOT been applied to live data — the banner on the Pricelist page offers "Fix categories" (24 items → solar_panels / cables_accessories).
 
+## Deployment readiness (2026-09-07) — PASS
+- deployment_agent: fixed 2 blockers — duplicated `include_router`/CORS block at end of server.py removed; CORS now reads `CORS_ORIGINS` env ("*" → `allow_origin_regex=".*"` so the requesting origin is echoed, required by cookie auth). Second run: no findings.
+- Assets: `_book_value` guards non-numeric `useful_life_years`; edit dialog casts it to a number.
+
 ## Credentials
 See `/app/memory/test_credentials.md`. Admin: admin@sensoper.com / Admin@123
 

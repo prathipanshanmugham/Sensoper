@@ -7832,26 +7832,14 @@ async def solar_merge_pdf(
 # Include the router in the main app
 app.include_router(api_router)
 
-# CORS Configuration
-frontend_url = os.environ.get("FRONTEND_URL", "http://localhost:3000")
+# CORS — origins come from CORS_ORIGINS (comma-separated). "*" is expressed as an origin regex so the
+# exact requesting origin is echoed back, which is what cookie-based (credentialed) auth requires.
+_cors_origins = [o.strip() for o in os.environ.get("CORS_ORIGINS", "*").split(",") if o.strip()]
+_cors_kwargs = {"allow_origin_regex": ".*"} if "*" in _cors_origins else {"allow_origins": _cors_origins}
 app.add_middleware(
     CORSMiddleware,
     allow_credentials=True,
-    allow_origins=[frontend_url, "http://localhost:3000", "https://solar-ops-management.preview.emergentagent.com"],
     allow_methods=["*"],
     allow_headers=["*"],
-)
-
-
-# Include the router in the main app
-app.include_router(api_router)
-
-# CORS Configuration
-frontend_url = os.environ.get("FRONTEND_URL", "http://localhost:3000")
-app.add_middleware(
-    CORSMiddleware,
-    allow_credentials=True,
-    allow_origins=[frontend_url, "http://localhost:3000", "https://solar-ops-management.preview.emergentagent.com"],
-    allow_methods=["*"],
-    allow_headers=["*"],
+    **_cors_kwargs,
 )
