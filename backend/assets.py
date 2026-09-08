@@ -1,13 +1,16 @@
 """Assets & Tools management — company-owned equipment register, issue/return,
 maintenance, and compliance tracking (Iter 42 Change 6)."""
 from __future__ import annotations
+
 import re
-from datetime import datetime, timezone, timedelta
-from typing import Any, Dict, List, Optional
+from datetime import datetime, timedelta, timezone
+from typing import Any
+
 from bson import ObjectId
-from pymongo import ReturnDocument
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
+from pymongo import ReturnDocument
+
 from locations import location_scope_filter
 
 ASSET_CATEGORIES = ["vehicle", "power_tool", "hand_tool", "test_equipment", "safety", "it", "furniture", "other"]
@@ -17,59 +20,59 @@ ASSET_STATUSES = ["available", "issued", "in_maintenance", "under_repair", "lost
 class AssetCreate(BaseModel):
     name: str
     category: str
-    make: Optional[str] = None
-    model: Optional[str] = None
-    serial_number: Optional[str] = None
-    purchase_date: Optional[str] = None
+    make: str | None = None
+    model: str | None = None
+    serial_number: str | None = None
+    purchase_date: str | None = None
     purchase_cost: float = 0
-    supplier: Optional[str] = None
-    invoice_reference: Optional[str] = None
-    warranty_expiry: Optional[str] = None
+    supplier: str | None = None
+    invoice_reference: str | None = None
+    warranty_expiry: str | None = None
     depreciation_method: str = "straight_line"
     useful_life_years: float = 5
     condition: str = "new"
-    location_id: Optional[str] = None
-    storage_location: Optional[str] = None
+    location_id: str | None = None
+    storage_location: str | None = None
     requires_calibration: bool = False
-    calibration_interval_days: Optional[int] = None
-    last_calibration_date: Optional[str] = None
-    insurance_policy_number: Optional[str] = None
-    insurance_expiry: Optional[str] = None
-    registration_number: Optional[str] = None
-    registration_expiry: Optional[str] = None
-    fitness_certificate_expiry: Optional[str] = None
-    pollution_certificate_expiry: Optional[str] = None
-    maintenance_interval_days: Optional[int] = None
-    notes: Optional[str] = None
+    calibration_interval_days: int | None = None
+    last_calibration_date: str | None = None
+    insurance_policy_number: str | None = None
+    insurance_expiry: str | None = None
+    registration_number: str | None = None
+    registration_expiry: str | None = None
+    fitness_certificate_expiry: str | None = None
+    pollution_certificate_expiry: str | None = None
+    maintenance_interval_days: int | None = None
+    notes: str | None = None
 
 
 class AssetIssue(BaseModel):
     assigned_to: str
     assigned_to_name: str
-    assigned_project_id: Optional[str] = None
-    expected_return_date: Optional[str] = None
+    assigned_project_id: str | None = None
+    expected_return_date: str | None = None
     condition_out: str = "good"
-    notes: Optional[str] = None
+    notes: str | None = None
 
 
 class AssetReturn(BaseModel):
     condition_in: str = "good"
-    notes: Optional[str] = None
+    notes: str | None = None
 
 
 class MaintenanceLog(BaseModel):
     type: str  # scheduled | breakdown | calibration
     date: str
-    performed_by: Optional[str] = None
-    vendor: Optional[str] = None
-    description: Optional[str] = None
+    performed_by: str | None = None
+    vendor: str | None = None
+    description: str | None = None
     cost: float = 0
     downtime_days: float = 0
-    next_due: Optional[str] = None
+    next_due: str | None = None
     is_calibration: bool = False
 
 
-def _book_value(asset: Dict[str, Any]) -> float:
+def _book_value(asset: dict[str, Any]) -> float:
     cost = asset.get("purchase_cost", 0) or 0
     try:
         life = float(asset.get("useful_life_years", 5) or 5)
@@ -77,7 +80,7 @@ def _book_value(asset: Dict[str, Any]) -> float:
         life = 5
     try:
         purchased = datetime.fromisoformat(asset["purchase_date"]) if asset.get("purchase_date") else None
-    except Exception:
+    except (TypeError, ValueError):
         purchased = None
     if not purchased or life <= 0:
         return round(cost, 2)
@@ -88,19 +91,19 @@ def _book_value(asset: Dict[str, Any]) -> float:
     return round(cost * remaining_fraction, 2)
 
 
-def _serialize(a: Dict[str, Any]) -> Dict[str, Any]:
+def _serialize(a: dict[str, Any]) -> dict[str, Any]:
     a = dict(a)
     a["id"] = str(a.pop("_id"))
     a["current_book_value"] = _book_value(a)
     return a
 
 
-def _next_date(last: Optional[str], interval_days: Optional[int]) -> Optional[str]:
+def _next_date(last: str | None, interval_days: int | None) -> str | None:
     if not last or not interval_days:
         return None
     try:
         return (datetime.fromisoformat(last) + timedelta(days=int(interval_days))).date().isoformat()
-    except Exception:
+    except (TypeError, ValueError):
         return None
 
 
@@ -116,10 +119,10 @@ def create_router(db, get_current_user, require_role, create_audit_log, check_mo
     router = APIRouter()
 
     @router.get("/assets")
-    async def list_assets(request: Request, category: Optional[str] = None, status: Optional[str] = None,
-                           location_id: Optional[str] = None, search: Optional[str] = None):
+    async def list_assets(request: Request, category: str | None = None, status: str | None = None,
+                           location_id: str | None = None, search: str | None = None):
         await get_current_user(request)
-        query: Dict[str, Any] = {"active": {"$ne": False}}
+        query: dict[str, Any] = {"active": {"$ne": False}}
         # "all" / blank sentinels mean "no filter" — never matched literally against the record
         if category and category.lower() != "all": query["category"] = category
         if status and status.lower() != "all": query["status"] = status
@@ -185,7 +188,7 @@ def create_router(db, get_current_user, require_role, create_audit_log, check_mo
                 if val and val <= cutoff:
                     try:
                         days_left = (datetime.fromisoformat(val).date() - datetime.now(timezone.utc).date()).days
-                    except Exception:
+                    except (TypeError, ValueError):
                         days_left = None
                     expiring.append({
                         "asset_id": str(a["_id"]), "asset_code": a.get("asset_code"), "name": a.get("name"),
@@ -208,7 +211,7 @@ def create_router(db, get_current_user, require_role, create_audit_log, check_mo
         return result
 
     @router.put("/assets/{asset_id}")
-    async def update_asset(asset_id: str, payload: Dict[str, Any], request: Request):
+    async def update_asset(asset_id: str, payload: dict[str, Any], request: Request):
         user = await require_role("admin", "manager")(request)
         payload.pop("_id", None); payload.pop("id", None)
         blocked_fields = [f for f in ("status", "assigned_to", "assigned_to_name", "assigned_project_id") if f in payload]
@@ -304,7 +307,7 @@ def create_router(db, get_current_user, require_role, create_audit_log, check_mo
         doc = payload.dict()
         doc.update({"asset_id": asset_id, "recorded_by": user["name"], "created_at": datetime.now(timezone.utc).isoformat()})
         await db.asset_maintenance.insert_one(doc)
-        update: Dict[str, Any] = {"last_maintenance_date": payload.date, "next_maintenance_date": payload.next_due}
+        update: dict[str, Any] = {"last_maintenance_date": payload.date, "next_maintenance_date": payload.next_due}
         if payload.is_calibration:
             update["last_calibration_date"] = payload.date
             update["next_calibration_date"] = _next_date(payload.date, a.get("calibration_interval_days"))
@@ -312,7 +315,7 @@ def create_router(db, get_current_user, require_role, create_audit_log, check_mo
         return {"message": "Maintenance logged"}
 
     @router.get("/assets/reports/{report_type}")
-    async def asset_report(report_type: str, request: Request, location_id: Optional[str] = None):
+    async def asset_report(report_type: str, request: Request, location_id: str | None = None):
         user = await require_role("admin", "manager")(request)
         loc_filter = location_scope_filter(user, location_id)
         all_docs = await db.assets.find(loc_filter).to_list(5000)
@@ -359,8 +362,8 @@ def create_router(db, get_current_user, require_role, create_audit_log, check_mo
                         try:
                             d1, d2 = datetime.fromisoformat(last_issue), datetime.fromisoformat(m["date"])
                             issued_days += (d2 - d1).days
-                        except Exception:
-                            pass
+                        except (TypeError, ValueError):
+                            pass  # malformed movement timestamp — skip this interval, keep counting the rest
                         last_issue = None
                 rows.append({"asset_code": a["asset_code"], "name": a["name"], "days_issued": issued_days, "status": a["status"]})
             return {"title": "Utilisation Report", "summary": {"total_assets": len(rows)}, "rows": rows}

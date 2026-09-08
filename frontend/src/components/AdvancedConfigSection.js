@@ -5,7 +5,7 @@
  *  3. Expansion Module weights + thresholds  (/api/expansion/config)
  * Plus a one-shot PIN Backfill runner and the seed-defaults button for DISCOMs.
  */
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import { calcAPI, healthAPI, expansionAPI, projectsAPI, locationsAPI } from '../utils/api';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from './ui/card';
 import { Input } from './ui/input';
@@ -93,6 +93,7 @@ export default function AdvancedConfigSection() {
   const [healthSaving, setHealthSaving] = useState(false);
   const [healthSaved, setHealthSaved] = useState(false);
   const [orgLocations, setOrgLocations] = useState([]);
+  const healthWeightSum = useMemo(() => Object.values(health?.weights || {}).reduce((a, b) => a + (parseFloat(b) || 0), 0), [health?.weights]);
   useEffect(() => { locationsAPI.list().then(r => setOrgLocations(r.data || [])).catch(() => {}); }, []);
 
   const loadHealth = useCallback(async () => {
@@ -118,6 +119,7 @@ export default function AdvancedConfigSection() {
 
   // ── Expansion config ─────────────────────────────────────────────
   const [exp, setExp] = useState(null);
+  const expWeightSum = useMemo(() => Object.values(exp?.weights || {}).reduce((a, b) => a + (parseFloat(b) || 0), 0), [exp?.weights]);
   const [expLoading, setExpLoading] = useState(true);
   const [expSaving, setExpSaving] = useState(false);
   const [expSaved, setExpSaved] = useState(false);
@@ -298,8 +300,8 @@ export default function AdvancedConfigSection() {
               <NumberField label="Team & Compliance"    value={health.weights?.team_compliance}  onChange={(v) => setHealthField('weights.team_compliance', v)} suffix="%" />
             </div>
             <p className="text-[11px] text-slate-500">
-              Current sum: <strong className={(Object.values(health.weights || {}).reduce((a, b) => a + (parseFloat(b) || 0), 0)) === 100 ? 'text-emerald-700' : 'text-amber-700'}>
-                {Object.values(health.weights || {}).reduce((a, b) => a + (parseFloat(b) || 0), 0)}%
+              Current sum: <strong className={healthWeightSum === 100 ? 'text-emerald-700' : 'text-amber-700'}>
+                {healthWeightSum}%
               </strong>
             </p>
 
@@ -354,8 +356,8 @@ export default function AdvancedConfigSection() {
               <NumberField label="Market Headroom"     value={exp.weights?.market_headroom}      onChange={(v) => setExpField('weights.market_headroom', v)} suffix="%" />
             </div>
             <p className="text-[11px] text-slate-500">
-              Current sum: <strong className={(Object.values(exp.weights || {}).reduce((a, b) => a + (parseFloat(b) || 0), 0)) === 100 ? 'text-emerald-700' : 'text-amber-700'}>
-                {Object.values(exp.weights || {}).reduce((a, b) => a + (parseFloat(b) || 0), 0)}%
+              Current sum: <strong className={expWeightSum === 100 ? 'text-emerald-700' : 'text-amber-700'}>
+                {expWeightSum}%
               </strong>
             </p>
 

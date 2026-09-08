@@ -33,7 +33,7 @@ export async function createBrandDoc(cp, apiUrl) {
   const doc = new jsPDF();
   const FONT = await loadUnicodeFont(doc);
   let logo = null;
-  try { const r = await fetch(`${apiUrl}/api/company/logo-base64`); logo = (await r.json()).logo_base64 || null; } catch { /* no logo → text fallback */ }
+  try { const r = await fetch(`${apiUrl}/api/company/logo-base64`); logo = (await r.json()).logo_base64 || null; } catch (e) { console.warn('pdfBrand: company logo unavailable, using text header', e); }
   const W = doc.internal.pageSize.getWidth(), H = doc.internal.pageSize.getHeight(), m = 15;
   const ctx = { cp: cp || {}, FONT, logo, W, H, m, contentW: W - 2 * m,
     p: hexToRgb(cp?.primary_color, [74, 222, 64]), s: hexToRgb(cp?.secondary_color, [45, 155, 240]) };
@@ -43,7 +43,7 @@ export async function createBrandDoc(cp, apiUrl) {
 export function drawHeader(doc, ctx, subtitle) {
   const { cp, FONT, logo, W, m, p } = ctx;
   doc.setFillColor(255, 255, 255); doc.rect(0, 0, W, 34, 'F');
-  if (logo) { try { doc.addImage(logo, 'PNG', m, 5, 46, 24); } catch { /* fall through to text */ } }
+  if (logo) { try { doc.addImage(logo, 'PNG', m, 5, 46, 24); } catch (e) { console.warn('pdfBrand: logo image could not be embedded', e); } }
   if (!logo) { doc.setFont(FONT, 'bold'); doc.setFontSize(15); doc.setTextColor(...INK); doc.text(cp.company_name || 'Sensoper Controls & Renewables', m, 18); }
   doc.setFont(FONT, 'normal'); doc.setFontSize(7.5); doc.setTextColor(...MUTED);
   [cp.phone, cp.email, cp.website, cp.gst_number ? `GSTIN ${cp.gst_number}` : null].filter(Boolean).forEach((t, i) => doc.text(t, W - m, 11 + i * 4.2, { align: 'right' }));
@@ -95,7 +95,7 @@ export function drawCoverPage(doc, ctx, { docTitle, refNo, date, validTill, cust
   // Brand band
   doc.setFillColor(...INK); doc.rect(0, 0, W, 8, 'F');
   doc.setFillColor(...p); doc.rect(0, 8, W * 0.38, 1.6, 'F'); doc.setFillColor(...s); doc.rect(W * 0.38, 8, W * 0.62, 1.6, 'F');
-  if (logo) { try { doc.addImage(logo, 'PNG', m, 18, 60, 30); } catch { /* text fallback below */ } }
+  if (logo) { try { doc.addImage(logo, 'PNG', m, 18, 60, 30); } catch (e) { console.warn('pdfBrand: logo image could not be embedded (cover)', e); } }
   doc.setFont(FONT, 'bold'); doc.setFontSize(logo ? 10 : 18); doc.setTextColor(...INK);
   doc.text(cp.company_name || 'Sensoper Controls & Renewables', logo ? W - m : m, logo ? 26 : 30, { align: logo ? 'right' : 'left' });
   doc.setFont(FONT, 'normal'); doc.setFontSize(8); doc.setTextColor(...MUTED);

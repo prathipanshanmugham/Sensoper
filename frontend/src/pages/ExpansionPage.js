@@ -508,7 +508,7 @@ export default function ExpansionPage() {
                 <div><Radar components={selectedDistrict.components} /></div>
                 <div className="space-y-1.5 text-xs">
                   {selectedDistrict.components.map((c, i) => (
-                    <div key={i} className="flex items-center justify-between border-b border-slate-100 pb-1">
+                    <div key={c.key || c.name || c.label || i} className="flex items-center justify-between border-b border-slate-100 pb-1">
                       <span className="text-slate-600">{c.name} <span className="text-slate-400">({c.weight}%)</span></span>
                       <span className="font-bold text-slate-800">{c.score.toFixed(1)}</span>
                     </div>

@@ -1,11 +1,12 @@
 """Iteration 40 — Material Kits (Solution Kits) + system_type solar-pump regression"""
 import os
+
 import pytest
 import requests
 
 BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "https://solar-ops-management.preview.emergentagent.com").rstrip("/")
 ADMIN_EMAIL = "admin@sensoper.com"
-ADMIN_PASSWORD = "Admin@123"
+ADMIN_PASSWORD = os.environ.get("TEST_ADMIN_PASSWORD", "Admin@123")
 
 
 @pytest.fixture(scope="module")

@@ -74,7 +74,7 @@ export default function MaterialKitsPage() {
     setShowDialog(true);
   };
 
-  const addLine = () => setForm(f => ({ ...f, lines: [...f.lines, { name: '', category: '', quantity: 1, qty_formula: '', inventory_item_id: null }] }));
+  const addLine = () => setForm(f => ({ ...f, lines: [...f.lines, { _key: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, name: '', category: '', quantity: 1, qty_formula: '', inventory_item_id: null }] }));
   const updateLine = (i, field, val) => setForm(f => {
     const lines = [...f.lines];
     lines[i] = { ...lines[i], [field]: val };
@@ -204,7 +204,7 @@ export default function MaterialKitsPage() {
                     <p className="text-[10px] uppercase tracking-wider text-slate-400 mb-1">{k.lines.length} lines</p>
                     <ul className="text-[11px] text-slate-600 space-y-0.5 max-h-32 overflow-y-auto">
                       {k.lines.map((l, i) => (
-                        <li key={i} className="flex items-start gap-1.5">
+                        <li key={`${l.inventory_item_id || l.name || 'line'}-${i}`} className="flex items-start gap-1.5">
                           <Package className="h-3 w-3 mt-0.5 text-slate-400 shrink-0" />
                           <span className="flex-1 min-w-0"><span className="truncate">{l.name}</span> <span className="text-slate-400">× {l.quantity}</span></span>
                         </li>
@@ -267,7 +267,7 @@ export default function MaterialKitsPage() {
               {form.lines.length === 0 && <p className="text-xs text-slate-400 py-4 text-center">No lines yet. Add materials to include in this kit.</p>}
               <div className="space-y-2">
                 {form.lines.map((l, i) => (
-                  <div key={i} className="border border-slate-200 rounded-lg p-2.5 space-y-2" data-testid={`kit-line-${i}`}>
+                  <div key={l._key || l.inventory_item_id || `line-${i}`} className="border border-slate-200 rounded-lg p-2.5 space-y-2" data-testid={`kit-line-${i}`}>
                     <div className="flex gap-2 items-start">
                       <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-2">
                         <div>

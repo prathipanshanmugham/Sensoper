@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { inventoryAPI, locationsAPI } from '../utils/api';
 import { useAuth, formatApiErrorDetail } from '../contexts/AuthContext';
@@ -56,6 +56,7 @@ export default function InventoryManagement() {
   const [importing, setImporting] = useState(false);
   const [previewing, setPreviewing] = useState(false);
   const [importPreview, setImportPreview] = useState(null); // preview response
+  const unmappedRequiredFields = useMemo(() => REQUIRED_IMPORT_FIELDS.filter(f => importPreview?.unmapped_required?.includes(f)), [importPreview]);
   const [columnMapOverrides, setColumnMapOverrides] = useState({});
   const [dryRun, setDryRun] = useState(false);
   const [importResult, setImportResult] = useState(null);
@@ -680,7 +681,7 @@ export default function InventoryManagement() {
             {importPreview?.status === 'needs_mapping' && (
               <div className="p-3 rounded-lg bg-amber-50 border border-amber-200 space-y-3" data-testid="column-mapping-panel">
                 <p className="text-xs font-semibold text-amber-800">We couldn't auto-match every required column. Map them below:</p>
-                {REQUIRED_IMPORT_FIELDS.filter(f => importPreview.unmapped_required?.includes(f)).map(field => (
+                {unmappedRequiredFields.map(field => (
                   <div key={field} className="flex items-center gap-2">
                     <Label className="text-xs w-28 shrink-0 capitalize">{field.replace(/_/g, ' ')}</Label>
                     <Select value={columnMapOverrides[field] || ''} onValueChange={(v) => setColumnMapOverrides(p => ({ ...p, [field]: v }))}>
@@ -691,7 +692,7 @@ export default function InventoryManagement() {
                     </Select>
                   </div>
                 ))}
-                <Button size="sm" onClick={handleConfirmMapping} disabled={previewing || REQUIRED_IMPORT_FIELDS.filter(f => importPreview.unmapped_required?.includes(f)).some(f => !columnMapOverrides[f])} className="bg-amber-600 hover:bg-amber-700 text-white" data-testid="confirm-mapping-btn">
+                <Button size="sm" onClick={handleConfirmMapping} disabled={previewing || unmappedRequiredFields.some(f => !columnMapOverrides[f])} className="bg-amber-600 hover:bg-amber-700 text-white" data-testid="confirm-mapping-btn">
                   Apply Mapping &amp; Re-check
                 </Button>
               </div>
@@ -740,7 +741,7 @@ export default function InventoryManagement() {
                     <div className="max-h-32 overflow-y-auto">
                       <p className="text-xs font-medium text-amber-700 mb-1">{importResult.errors.length} row(s) skipped:</p>
                       <ul className="text-[11px] text-amber-700 space-y-0.5">
-                        {importResult.errors.slice(0, 8).map((er, i) => <li key={i}>Row {er.row}: {er.error}</li>)}
+                        {importResult.errors.slice(0, 8).map((er) => <li key={`${er.row}-${er.error}`}>Row {er.row}: {er.error}</li>)}
                         {importResult.errors.length > 8 && <li>… and {importResult.errors.length - 8} more</li>}
                       </ul>
                     </div>

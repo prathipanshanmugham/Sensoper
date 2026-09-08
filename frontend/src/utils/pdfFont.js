@@ -71,7 +71,6 @@ export async function loadUnicodeFont(doc) {
   } catch (e) {
     // Network failed (offline, blocked CDN). Use built-in helvetica so the
     // PDF still generates — currency just falls back to plain digits.
-    // eslint-disable-next-line no-console
     console.warn('Unicode font load failed, falling back to helvetica:', e?.message || e);
     doc.setFont('helvetica', 'normal');
     return 'helvetica';

@@ -311,7 +311,7 @@ export default function ReadingsPage() {
               <div className="border-t border-slate-100 pt-2 space-y-1 max-h-32 overflow-y-auto" data-testid="generation-log-list">
                 <p className="text-[10px] uppercase text-slate-400">Logged so far</p>
                 {genFor.generation_logs.map((l, i) => (
-                  <div key={i} className="flex justify-between text-xs text-slate-600"><span>{l.date}</span><span>{l.kwh} kWh</span></div>
+                  <div key={`${l.date}-${i}`} className="flex justify-between text-xs text-slate-600"><span>{l.date}</span><span>{l.kwh} kWh</span></div>
                 ))}
               </div>
             )}

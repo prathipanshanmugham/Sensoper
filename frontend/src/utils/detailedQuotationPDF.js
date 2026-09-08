@@ -134,22 +134,22 @@ export async function generateDetailedQuotationPDF({ project, companyProfile, te
     let upiQR = null;
     if (bank.upi_id) {
       const upi = `upi://pay?pa=${bank.upi_id}&pn=${encodeURIComponent(cp.company_name || 'Sensoper')}&am=${due || n.totalQuoted}&cu=INR&tn=${encodeURIComponent(`Quote ${refNo} - ${(cust.name || '').slice(0, 20)}`)}`;
-      try { upiQR = await QRCode.toDataURL(upi, { width: 220, margin: 1, errorCorrectionLevel: 'M' }); } catch { /* skip QR */ }
+      try { upiQR = await QRCode.toDataURL(upi, { width: 220, margin: 1, errorCorrectionLevel: 'M' }); } catch (e) { console.warn('quotationPDF: UPI QR generation failed', e); }
     }
     const bankRows = [['Account name', bank.account_name], ['Account no.', bank.account_number], ['IFSC', bank.ifsc_code], ['Bank', [bank.bank_name, bank.branch].filter(Boolean).join(', ')], ['UPI ID', bank.upi_id]].filter(r => r[1]);
     if (paid > 0) bankRows.push(['Received so far', `${inr(paid)} · balance ${inr(due)}`]);
     const tableW = upiQR ? contentW * 0.6 : contentW;
     autoTable(doc, { startY: y, margin: { left: m, right: W - m - tableW }, theme: 'plain', styles: { font: FONT, fontSize: 9, cellPadding: 1.8, textColor: INK }, columnStyles: { 0: { fontStyle: 'bold', cellWidth: 40, textColor: MUTED } }, body: bankRows });
-    if (upiQR) { const qx = W - m - 38; doc.setDrawColor(...LINE); doc.roundedRect(qx - 3, y - 3, 44, 50, 2, 2, 'S'); try { doc.addImage(upiQR, 'PNG', qx, y, 38, 38); } catch { /* skip */ } doc.setFont(FONT, 'bold'); doc.setFontSize(7); doc.setTextColor(...INK); doc.text('Scan to pay via UPI', qx + 19, y + 43, { align: 'center' }); }
+    if (upiQR) { const qx = W - m - 38; doc.setDrawColor(...LINE); doc.roundedRect(qx - 3, y - 3, 44, 50, 2, 2, 'S'); try { doc.addImage(upiQR, 'PNG', qx, y, 38, 38); } catch (e) { console.warn('quotationPDF: UPI QR could not be embedded', e); } doc.setFont(FONT, 'bold'); doc.setFontSize(7); doc.setTextColor(...INK); doc.text('Scan to pay via UPI', qx + 19, y + 43, { align: 'center' }); }
     y = Math.max(doc.lastAutoTable.finalY, y + 50) + 8;
   }
 
   // ── 6. Site documentation QR ─────────────────────────────────────
   if (project.drive_folder_link) {
-    let qr = null; try { qr = await QRCode.toDataURL(project.drive_folder_link, { width: 150, margin: 1 }); } catch { /* skip */ }
+    let qr = null; try { qr = await QRCode.toDataURL(project.drive_folder_link, { width: 150, margin: 1 }); } catch (e) { console.warn('quotationPDF: drive-link QR generation failed', e); }
     y = ensureSpace(doc, ctx, y, 40);
     y = sectionTitle(doc, ctx, y, 'Site photos & documents');
-    if (qr) { try { doc.addImage(qr, 'PNG', m, y, 26, 26); } catch { /* skip */ } }
+    if (qr) { try { doc.addImage(qr, 'PNG', m, y, 26, 26); } catch (e) { console.warn('quotationPDF: drive-link QR could not be embedded', e); } }
     doc.setFont(FONT, 'normal'); doc.setFontSize(8.5); doc.setTextColor(...INK);
     doc.text(doc.splitTextToSize(`${project.drive_folder_name ? `Folder: ${project.drive_folder_name}. ` : ''}Scan to open all site images and documents.`, contentW - 32), m + 30, y + 6);
     doc.setFontSize(7); doc.setTextColor(...MUTED); doc.text(doc.splitTextToSize(project.drive_folder_link, contentW - 32), m + 30, y + 16);

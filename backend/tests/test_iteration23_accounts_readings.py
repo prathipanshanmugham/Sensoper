@@ -2,9 +2,11 @@
 Tests align with the review_request contract.
 """
 import os
+from datetime import datetime, timedelta
+
 import pytest
 import requests
-from datetime import datetime, timedelta
+
 TEST_ADMIN_PASSWORD = os.environ.get("TEST_ADMIN_PASSWORD") or "Admin@123"
 
 
@@ -32,7 +34,7 @@ def admin_client():
 def staff_client(admin_client):
     """Create a staff user if not existing and return an authenticated session."""
     email = "TEST_staff_it23@example.com"
-    password = "StaffPass@123"
+    password = os.environ.get("TEST_STAFF_PASSWORD", "StaffPass@123")
     # Try register (idempotent)
     requests.post(f"{BASE_URL}/api/auth/register", json={
         "email": email, "password": password, "name": "Test Staff 23", "role": "staff"

@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { reportsAPI, marketingAPI, reconciliationAPI, ecommerceAPI } from '../utils/api';
@@ -81,6 +81,7 @@ export default function ReportsPage() {
   const [reportData, setReportData] = useState(null);
   const [loading, setLoading] = useState(false);
   const { isAdmin } = useAuth();
+  const visibleReports = useMemo(() => REPORTS.filter(r => !r.adminOnly || isAdmin), [isAdmin]);
   const [filters, setFilters] = useState({ date_from: '', date_to: '', system_type: 'all', status: 'all', movement_type: 'all', district: '', speciality: 'all', platform_id: 'all', category: '', supplier: '' });
   const [cacData, setCacData] = useState(null);
   const [cacLoading, setCacLoading] = useState(false);
@@ -280,7 +281,7 @@ export default function ReportsPage() {
 
         {/* Report Cards */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-6" data-testid="report-cards">
-          {REPORTS.filter(r => !r.adminOnly || isAdmin).map(r => (
+          {visibleReports.map(r => (
             <button key={r.id} onClick={() => handleSelectReport(r.id)}
               className={`p-4 rounded-xl border text-left transition-all ${activeReport === r.id ? 'border-emerald-400 bg-emerald-50 ring-1 ring-emerald-200 shadow-sm' : 'border-slate-200 bg-white hover:border-slate-300 hover:shadow-sm'}`}
               data-testid={`report-btn-${r.id}`}>
@@ -567,7 +568,7 @@ export default function ReportsPage() {
                               <thead className="bg-slate-50 border-b border-slate-100 text-[10px] uppercase text-slate-500"><tr><th className="text-left px-2 py-2">Project</th><th className="text-right px-2 py-2">Value at Site</th></tr></thead>
                               <tbody className="divide-y divide-slate-100">
                                 {excessMaterialData.unreturned_by_project.slice(0, 10).map((p, i) => (
-                                  <tr key={i}><td className="px-2 py-1.5 font-medium text-slate-800 truncate max-w-[160px]">{p.project_name}</td><td className="px-2 py-1.5 text-right">₹{p.value_at_site.toLocaleString('en-IN')}</td></tr>
+                                  <tr key={p.project_id || `${p.project_name}-${i}`}><td className="px-2 py-1.5 font-medium text-slate-800 truncate max-w-[160px]">{p.project_name}</td><td className="px-2 py-1.5 text-right">₹{p.value_at_site.toLocaleString('en-IN')}</td></tr>
                                 ))}
                               </tbody>
                             </table>

@@ -11,11 +11,12 @@ active asset, and the frontend sources both the create-form and filter
 dropdowns from this single endpoint.
 """
 import os
+
 import requests
 
 BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "https://solar-ops-management.preview.emergentagent.com")
 ADMIN_EMAIL = "admin@sensoper.com"
-ADMIN_PASSWORD = "Admin@123"
+ADMIN_PASSWORD = os.environ.get("TEST_ADMIN_PASSWORD", "Admin@123")
 
 
 def _admin_session():

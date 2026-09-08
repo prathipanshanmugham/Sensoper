@@ -250,10 +250,11 @@ export default function SiteVisitForm() {
   // Iter 41 Change 1 — Auto-prefill EB tariff + service type from the proposed-solution
   // section (which resolves DISCOM/tariff-category from PIN code). We only fill when
   // the user hasn't already typed something; mark _prefilled so the UI can badge it.
+  const psTariffRaw = formData.custom_fields?.proposed_solution?.tariff_per_unit;
+  const psCategoryRaw = formData.custom_fields?.proposed_solution?.tariff_category;
   useEffect(() => {
-    const ps = formData.custom_fields?.proposed_solution || {};
-    const psTariff = parseFloat(ps.tariff_per_unit) || 0;
-    const psCategory = ps.tariff_category || '';
+    const psTariff = parseFloat(psTariffRaw) || 0;
+    const psCategory = psCategoryRaw || '';
     if (!psTariff && !psCategory) return;
     setFormData(prev => {
       const el = prev.electrical || {};
@@ -278,8 +279,7 @@ export default function SiteVisitForm() {
       patch._prefilled = pref;
       return { ...prev, electrical: patch };
     });
-  }, [formData.custom_fields?.proposed_solution?.tariff_per_unit,
-      formData.custom_fields?.proposed_solution?.tariff_category]);
+  }, [psTariffRaw, psCategoryRaw]);
 
   const applyKit = (kit) => {
     if (!kit) return;
@@ -315,7 +315,7 @@ export default function SiteVisitForm() {
           setShowResumeBanner(true);
         }
       }
-    } catch { /* ignore */ }
+    } catch (e) { console.warn('SiteVisitForm: could not restore draft', e); }
   }, [editId]);
 
   const resumeDraft = () => {
@@ -330,7 +330,7 @@ export default function SiteVisitForm() {
     } catch { setShowResumeBanner(false); }
   };
   const discardDraft = () => {
-    try { localStorage.removeItem('site_visit_draft'); } catch { /* ignore */ }
+    try { localStorage.removeItem('site_visit_draft'); } catch (e) { console.warn('SiteVisitForm: could not clear draft', e); }
     setShowResumeBanner(false);
   };
   // Persist current form to localStorage every 3s while editing

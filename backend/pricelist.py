@@ -3,9 +3,11 @@ truth for cost/margin/GST). Adds: category-aware grouped list driven by `invento
 (nothing hidden — stray/legacy categories surface as "uncategorised"), inline + bulk price updates
 with an audit trail in `price_history`, per-item history, and a one-shot category normaliser."""
 from __future__ import annotations
+
 import re
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any
+
 from bson import ObjectId
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
@@ -15,15 +17,15 @@ PRICE_FIELDS = ("unit_price", "margin_pct", "gst_percentage", "hsn_code", "activ
 
 
 class PriceUpdate(BaseModel):
-    unit_price: Optional[float] = None
-    margin_pct: Optional[float] = None
-    gst_percentage: Optional[float] = None
-    hsn_code: Optional[str] = None
-    active: Optional[bool] = None
+    unit_price: float | None = None
+    margin_pct: float | None = None
+    gst_percentage: float | None = None
+    hsn_code: str | None = None
+    active: bool | None = None
 
 
 class BulkAdjust(BaseModel):
-    item_ids: List[str]
+    item_ids: list[str]
     action: str  # set_margin | adjust_margin_pts | adjust_price_pct | set_gst
     value: float
 
@@ -57,7 +59,7 @@ ALIASES = {  # hand-picked synonyms → canonical slug (keys are _norm_key'd)
 }
 
 
-def compute_row(item: Dict[str, Any], default_margin: float, cat_labels: Dict[str, str]) -> Dict[str, Any]:
+def compute_row(item: dict[str, Any], default_margin: float, cat_labels: dict[str, str]) -> dict[str, Any]:
     raw_margin = item.get("margin_pct")
     margin_is_default = raw_margin is None
     margin = default_margin if margin_is_default else float(raw_margin)
@@ -86,7 +88,7 @@ def create_router(db, get_current_user, require_role, create_audit_log):
         except (TypeError, ValueError):
             return 15.0
 
-    async def _cat_labels() -> Dict[str, str]:
+    async def _cat_labels() -> dict[str, str]:
         cats = await db.inventory_categories.find({}).to_list(200)
         return {c["slug"]: c["name"] for c in cats}
 
@@ -95,17 +97,17 @@ def create_router(db, get_current_user, require_role, create_audit_log):
         return float(doc.get("gst_pct", 18))
 
     @router.get("/pricelist")
-    async def list_pricelist(request: Request, search: Optional[str] = None, category: Optional[str] = None, status: str = "active"):
+    async def list_pricelist(request: Request, search: str | None = None, category: str | None = None, status: str = "active"):
         await get_current_user(request)
         labels, default_margin = await _cat_labels(), await _default_margin()
-        q: Dict[str, Any] = {}
+        q: dict[str, Any] = {}
         if status == "active":
             q["active"] = {"$ne": False}
         elif status == "archived":
             q["active"] = False
         items = await db.inventory_items.find(q).sort("name", 1).to_list(20000)
         rows = [compute_row(i, default_margin, labels) for i in items]
-        counts: Dict[str, int] = {}
+        counts: dict[str, int] = {}
         for r in rows:
             counts[r["category"]] = counts.get(r["category"], 0) + 1
         if category and category != "all":
@@ -120,7 +122,7 @@ def create_router(db, get_current_user, require_role, create_audit_log):
         return {"categories": categories, "default_margin_pct": default_margin, "gst_pct": await _gst_default(),
                 "total": sum(counts.values()), "items": rows}
 
-    async def _apply(user, item: Dict[str, Any], changes: Dict[str, Any], source: str) -> Dict[str, Any]:
+    async def _apply(user, item: dict[str, Any], changes: dict[str, Any], source: str) -> dict[str, Any]:
         changes = {k: v for k, v in changes.items() if k in PRICE_FIELDS and v is not None}
         if "unit_price" in changes and changes["unit_price"] < 0:
             raise HTTPException(status_code=400, detail="Cost price cannot be negative")
@@ -188,7 +190,7 @@ def create_router(db, get_current_user, require_role, create_audit_log):
         docs = await db.price_history.find({"cat": "pricelist"}).sort("at", -1).to_list(max(1, min(limit, 500)))
         return [{**{k: v for k, v in d.items() if k != "_id"}, "id": str(d["_id"])} for d in docs]
 
-    async def _normalise_plan() -> List[Dict[str, Any]]:
+    async def _normalise_plan() -> list[dict[str, Any]]:
         cats = await db.inventory_categories.find({}).to_list(200)
         slugs = {c["slug"] for c in cats}
         by_key = {_norm_key(c["slug"]): c["slug"] for c in cats}
@@ -224,7 +226,7 @@ def create_router(db, get_current_user, require_role, create_audit_log):
         return {"moved": moved, "plan": plan}
 
     @router.post("/pricelist/items/{item_id}/category")
-    async def set_item_category(item_id: str, payload: Dict[str, Any], request: Request):
+    async def set_item_category(item_id: str, payload: dict[str, Any], request: Request):
         user = await require_role("admin", "manager")(request)
         slug = payload.get("category")
         if not await db.inventory_categories.find_one({"slug": slug}):

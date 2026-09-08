@@ -7,23 +7,24 @@ Both reuse the CEO Dashboard / Health Score definitions so every screen agrees:
                (identical to `monthly_revenue[month_key]` in /dashboard/ceo and health.py)
 """
 from __future__ import annotations
+
 import calendar
 from collections import defaultdict
-from datetime import datetime, timezone, timedelta
-from typing import Any, Dict, List, Optional
+from datetime import datetime, timedelta, timezone
+from typing import Any
 
 WON = ("approved", "completed")
 
 
-def _project_revenue(p: Dict[str, Any]) -> float:
+def _project_revenue(p: dict[str, Any]) -> float:
     return p.get("cost_estimation", {}).get("total_cost", 0) or 0
 
 
-def _project_margin(p: Dict[str, Any]) -> float:
+def _project_margin(p: dict[str, Any]) -> float:
     return p.get("cost_estimation", {}).get("margin_total", 0) or 0
 
 
-def resolve_target(health_cfg: Dict[str, Any], location_id: Optional[str]) -> Dict[str, Any]:
+def resolve_target(health_cfg: dict[str, Any], location_id: str | None) -> dict[str, Any]:
     company = float((health_cfg.get("targets") or {}).get("monthly_revenue_target") or 0)
     loc_targets = health_cfg.get("location_targets") or {}
     if location_id and loc_targets.get(location_id) not in (None, "", 0):
@@ -31,8 +32,8 @@ def resolve_target(health_cfg: Dict[str, Any], location_id: Optional[str]) -> Di
     return {"target": company, "source": "company"}
 
 
-def compute_monthly_target(projects: List[Dict[str, Any]], health_cfg: Dict[str, Any], location_id: Optional[str],
-                           now: Optional[datetime] = None) -> Dict[str, Any]:
+def compute_monthly_target(projects: list[dict[str, Any]], health_cfg: dict[str, Any], location_id: str | None,
+                           now: datetime | None = None) -> dict[str, Any]:
     now = now or datetime.now(timezone.utc)
     month_key = now.strftime("%Y-%m")
     prev_key = (now.replace(day=1) - timedelta(days=1)).strftime("%Y-%m")
@@ -78,8 +79,8 @@ def compute_monthly_target(projects: List[Dict[str, Any]], health_cfg: Dict[str,
     }
 
 
-def compute_top_locations(projects: List[Dict[str, Any]], locations: List[Dict[str, Any]],
-                          now: Optional[datetime] = None, limit: int = 5) -> List[Dict[str, Any]]:
+def compute_top_locations(projects: list[dict[str, Any]], locations: list[dict[str, Any]],
+                          now: datetime | None = None, limit: int = 5) -> list[dict[str, Any]]:
     """Ranked by all-time won revenue (same basis as the headline Total Revenue KPI) with
     month-over-month movement on current-month won revenue. Legacy projects without a
     location_id are excluded — they cannot be attributed to a branch."""
@@ -87,7 +88,7 @@ def compute_top_locations(projects: List[Dict[str, Any]], locations: List[Dict[s
     month_key = now.strftime("%Y-%m")
     prev_key = (now.replace(day=1) - timedelta(days=1)).strftime("%Y-%m")
     names = {str(l["_id"]): l.get("name") for l in locations}
-    agg: Dict[str, Dict[str, float]] = defaultdict(lambda: {"revenue": 0.0, "margin": 0.0, "projects": 0, "wins": 0, "this_month": 0.0, "last_month": 0.0})
+    agg: dict[str, dict[str, float]] = defaultdict(lambda: {"revenue": 0.0, "margin": 0.0, "projects": 0, "wins": 0, "this_month": 0.0, "last_month": 0.0})
     for p in projects:
         lid = p.get("location_id")
         if not lid or lid not in names:

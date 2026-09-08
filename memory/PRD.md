@@ -159,6 +159,11 @@ Two goals: (1) Step-4 calculator rebuilt for daily usability; (2) Detailed/Kit Q
 - deployment_agent: fixed 2 blockers — duplicated `include_router`/CORS block at end of server.py removed; CORS now reads `CORS_ORIGINS` env ("*" → `allow_origin_regex=".*"` so the requesting origin is echoed, required by cookie auth). Second run: no findings.
 - Assets: `_book_value` guards non-numeric `useful_life_years`; edit dialog casts it to a number.
 
+## Code-review remediation (2026-09-08)
+Applied: stable React keys (MaterialKits lines get a `_key`, import errors, expansion components, excess-material rows, generation logs); empty catch blocks now `console.warn` with context (pdfBrand, detailedQuotationPDF, SiteVisitForm draft); `useMemo` for weight sums (AdvancedConfig), visible reports (Reports), unmapped import fields (Inventory); the one genuine `exhaustive-deps` warning in SiteVisitForm fixed; flagged test credentials now read `TEST_ADMIN_PASSWORD` / `TEST_STAFF_PASSWORD` env with documented fallback; ruff clean on pricelist/dashboard_target/assets (narrowed blind excepts). ESLint (no-undef + react-hooks) over all 89 frontend files: 0 problems.
+Verified false positives (no change): calculators circular import (base.py imports nothing from the package — `import calculators.*` succeeds); TermsConditions XSS (already `DOMPurify.sanitize`); ProjectDetails:761 "secret" is the project's inverter-login password shown masked to the user; vendors.py:116 `is not None` is correct; localStorage holds UI prefs only (PDF format, location filter).
+Deferred (large refactors, out of scope for a review pass): splitting amc/assets `create_router`, hybrid/offgrid `compute`, ProjectDetails/CompanyProfile/AdvancedConfigSection/DashboardLayout components.
+
 ## Credentials
 See `/app/memory/test_credentials.md`. Admin: admin@sensoper.com / Admin@123
 
