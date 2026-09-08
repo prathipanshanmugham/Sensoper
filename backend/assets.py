@@ -71,7 +71,10 @@ class MaintenanceLog(BaseModel):
 
 def _book_value(asset: Dict[str, Any]) -> float:
     cost = asset.get("purchase_cost", 0) or 0
-    life = asset.get("useful_life_years", 5) or 5
+    try:
+        life = float(asset.get("useful_life_years", 5) or 5)
+    except (TypeError, ValueError):
+        life = 5
     try:
         purchased = datetime.fromisoformat(asset["purchase_date"]) if asset.get("purchase_date") else None
     except Exception:

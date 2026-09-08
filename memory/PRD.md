@@ -148,6 +148,13 @@ Two goals: (1) Step-4 calculator rebuilt for daily usability; (2) Detailed/Kit Q
 - Also: legacy `POST /ecommerce/listings` now supersedes an existing active (platform,item) listing instead of creating a duplicate (keeps the Iter 49 one-listing-per-platform invariant).
 - Legacy pytest status: 81 stale failures in iteration5–24 / iter44 suites (report types renamed long ago, etc.) — pre-existing, unrelated; all iter45–51 suites pass.
 
+## Iteration 51 — Pricelist restructure — DONE (2026-09-07; pytest test_iter51_pricelist.py 14 pass; testing_agent iteration_56 full pass)
+- Reported bug "adding margin not working": `PUT /inventory/items` returned only `{message}` so the old page merged nothing back and the input reset to the stale value (DB was updated, UI didn't show it). Also `InventoryItemCreate.margin_pct` defaulted to 0 (now `None` = use Pricelist default) and the page only loaded 7 hardcoded categories, hiding 23/41 items with stray category names ("panel", "Panels", "consumable"…).
+- New `backend/pricelist.py` (`/api/pricelist`, `/api/pricelist/items/{id}` PUT, `/api/pricelist/bulk`, `/api/pricelist/items/{id}/history`, `/api/pricelist/history`, `/api/pricelist/normalise-categories` GET/POST, `/api/pricelist/items/{id}/category`). Still backed by `inventory_items` (single source of truth); every edit → `price_history` + audit log. Default margin & GST from `pricing_config` (`/catalogue/config`); quick_calc uses the same default.
+- New UI (`pages/PricelistPage.js` + `components/pricelist/*`): category sidebar with counts (from `inventory_categories`, plus "Uncategorised"), grouped table, inline Cost / Margin / GST / HSN cells (Enter saves, Esc reverts, saved tick, error text), Selling & Incl-GST recompute, bulk adjust (set margin / ±margin pts / ±cost % / set GST), per-item + global price history, archive/restore, admin "Fix categories" banner (normaliser preview/apply) and per-row move-to-category. PDF (`utils/priceListPDF.js`) rebuilt: unicode ₹, grouped per category, prepared-for, valid-until, GST on/off, internal cost/margin copy, page numbers.
+- Removed stale `tests/test_iter44_batch_b_pricelist.py` (targeted the catalogue product collections deleted in Iter 45).
+- NOTE for user: the category normaliser has NOT been applied to live data — the banner on the Pricelist page offers "Fix categories" (24 items → solar_panels / cables_accessories).
+
 ## Credentials
 See `/app/memory/test_credentials.md`. Admin: admin@sensoper.com / Admin@123
 

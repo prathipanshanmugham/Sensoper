@@ -171,7 +171,7 @@ function GroupRows({ group, selected, toggleOne, save, toggleArchive, setHistory
             <p className="text-[11px] text-slate-400">{r.supplier || 'no supplier'} · stock {r.quantity}{!r.active && <Badge variant="outline" className="ml-1 text-[10px]">Archived</Badge>}</p>
             {group.slug === 'uncategorised' && (
               <select defaultValue="" onChange={e => e.target.value && moveToCategory(r, e.target.value)} className="mt-1 h-6 text-[11px] rounded border border-amber-300 bg-amber-50 px-1" data-testid={`pricelist-move-${r.id}`}>
-                <option value="">Move "{r.raw_category || 'blank'}" to…</option>{stdCategories.map(c => <option key={c.slug} value={c.slug}>{c.name}</option>)}
+                <option value="">{`Move "${r.raw_category || 'blank'}" to…`}</option>{stdCategories.map(c => <option key={c.slug} value={c.slug}>{c.name}</option>)}
               </select>
             )}
           </td>

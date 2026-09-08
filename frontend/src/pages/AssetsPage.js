@@ -98,7 +98,7 @@ export default function AssetsPage() {
   const openEdit = (a) => { setShowEdit(a); setEditForm({ name: a.name, make: a.make || '', model: a.model || '', serial_number: a.serial_number || '', purchase_cost: a.purchase_cost || '', useful_life_years: a.useful_life_years || 5, insurance_expiry: a.insurance_expiry || '', registration_expiry: a.registration_expiry || '', fitness_certificate_expiry: a.fitness_certificate_expiry || '', pollution_certificate_expiry: a.pollution_certificate_expiry || '', notes: a.notes || '' }); setActionError(''); };
   const saveEdit = async () => {
     setSaving(true); setActionError('');
-    try { await assetsAPI.update(showEdit.id, { ...editForm, purchase_cost: parseFloat(editForm.purchase_cost) || 0 }); setShowEdit(null); await fetchAssets(); await fetchReport(reportType); }
+    try { await assetsAPI.update(showEdit.id, { ...editForm, purchase_cost: parseFloat(editForm.purchase_cost) || 0, useful_life_years: parseFloat(editForm.useful_life_years) || 5 }); setShowEdit(null); await fetchAssets(); await fetchReport(reportType); }
     catch (e) { setActionError(e.response?.data?.detail || 'Could not save changes'); } finally { setSaving(false); }
   };
 
