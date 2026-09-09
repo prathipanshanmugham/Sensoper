@@ -63,15 +63,19 @@ export function buildKitPresentation(project, config = {}, addonGroups = []) {
       systemSubtotal += withMargin;
       systemInclusions.push(`${it.quantity || 1} × ${it.name}${it.specifications ? ` — ${it.specifications}` : ''}`);
     } else {
-      const g = groupMap[it.addon_group] || { items: [], subtotal: 0 };
+      const g = groupMap[it.addon_group] || { items: [], subtotal: 0, gst: 0 };
       g.items.push(`${it.quantity || 1} × ${it.name}${it.specifications ? ` — ${it.specifications}` : ''}`);
       g.subtotal += withMargin;
+      g.gst += withMargin * ((it.gst_percentage ?? 18) / 100);
       groupMap[it.addon_group] = g;
     }
   });
 
   // Manual costs go into the system
   (project.manual_costs || []).forEach(c => { systemSubtotal += c.amount || 0; });
+  // Iter 51: the calculator's base system (panels + inverter + battery + BOS) IS the kit — it was missing before
+  const baseSystemCost = parseFloat(project.cost_estimation?.system_cost ?? project.custom_fields?.proposed_solution?.total_cost) || 0;
+  systemSubtotal += baseSystemCost;
 
   // Round kit price to admin-configurable step
   const systemPrice = roundKitPrice(systemSubtotal, step, mode);
@@ -88,6 +92,7 @@ export function buildKitPresentation(project, config = {}, addonGroups = []) {
       name: groupName,
       description: meta.description || '',
       price: roundKitPrice(g.subtotal, step, mode),
+      gst: g.gst,
       inclusions: g.items,
       show_on_pdf: meta.show_on_pdf !== false,           // default true
       optional_priced_separately: !!meta.optional_priced_separately,
@@ -102,8 +107,10 @@ export function buildKitPresentation(project, config = {}, addonGroups = []) {
     .reduce((s, g) => s + g.price, 0);
 
   const subtotal = systemPrice + addonsTotal;
-  const gst = Math.round(subtotal * (gstPct / 100));
-  const subsidy = project.subsidy_tracking?.eligible_amount || parseFloat(project.custom_fields?.proposed_solution?.subsidy) || 0;
+  // GST is computed independently: composite rate on the system, each add-on group at its own items' rates
+  const addonsGst = addonGroupLines.filter(g => !g.optional_priced_separately).reduce((s, g) => s + (g.gst || 0), 0);
+  const gst = Math.round(systemPrice * (gstPct / 100) + addonsGst);
+  const subsidy = project.cost_estimation?.subsidy ?? (project.subsidy_tracking?.eligible_amount || parseFloat(project.custom_fields?.proposed_solution?.subsidy) || 0);
   const netPayable = subtotal + gst - subsidy;
 
   return {

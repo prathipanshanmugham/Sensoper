@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { projectsAPI, inventoryAPI, formTabsAPI, termsAPI, materialKitsAPI } from '../utils/api';
+import { projectsAPI, inventoryAPI, formTabsAPI, termsAPI, materialKitsAPI, calcAPI } from '../utils/api';
 import { formatApiErrorDetail } from '../contexts/AuthContext';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
@@ -98,6 +98,8 @@ export default function SiteVisitForm() {
   const [suggestedKit, setSuggestedKit] = useState(null);
   const [appliedKitId, setAppliedKitId] = useState(null);
   const [kitDismissed, setKitDismissed] = useState(false);
+  const [systemGstPct, setSystemGstPct] = useState(null);
+  useEffect(() => { calcAPI.getConfig().then(r => setSystemGstPct(parseFloat(r.data?.gst_pct) || 13.8)).catch(() => setSystemGstPct(13.8)); }, []);
   const [showReview, setShowReview] = useState(false);
   const [showResumeBanner, setShowResumeBanner] = useState(false);
 
@@ -539,12 +541,20 @@ export default function SiteVisitForm() {
   const getItemsByCategory = (cat) => inventoryItems.filter(i => i.category === cat && i.quantity > 0);
   const getCategoryLabel = (slug) => categories.find(c => c.slug === slug)?.name || slug;
 
+  // Grand total = base system (calculator, + composite GST) + add-ons/manual (own GST & margin) − subsidy.
+  // Iter 51 fix: previously only the add-ons were summed — the base system cost was missing entirely.
   const calculateTotal = () => {
+    const ps = formData.custom_fields?.proposed_solution || {};
+    const systemCost = parseFloat(ps.total_cost) || 0;
+    const systemGst = systemCost * ((systemGstPct ?? 13.8) / 100);
+    const subsidy = systemCost > 0 ? Math.min(parseFloat(ps.subsidy) || 0, systemCost + systemGst) : 0;
     const itemsTotal = formData.selected_items.reduce((sum, i) => sum + i.unit_price * i.quantity, 0);
     const manualTotal = formData.manual_costs.reduce((sum, c) => sum + (parseFloat(c.amount) || 0), 0);
-    const gstTotal = formData.selected_items.reduce((sum, i) => sum + i.unit_price * i.quantity * (i.gst_percentage / 100), 0);
+    const addonsGst = formData.selected_items.reduce((sum, i) => sum + i.unit_price * i.quantity * (i.gst_percentage / 100), 0);
     const marginTotal = formData.selected_items.reduce((sum, i) => sum + i.unit_price * i.quantity * ((i.margin_percentage || 0) / 100), 0);
-    return { itemsTotal, manualTotal, gstTotal, marginTotal, total: itemsTotal + manualTotal + gstTotal + marginTotal };
+    const gstTotal = systemGst + addonsGst;
+    const grossTotal = systemCost + systemGst + itemsTotal + manualTotal + marginTotal + addonsGst;
+    return { systemCost, systemGst, subsidy, itemsTotal, manualTotal, addonsGst, gstTotal, marginTotal, grossTotal, total: grossTotal - subsidy };
   };
 
   const getTotalSteps = () => allTabs.length || 5;
@@ -1322,11 +1332,14 @@ export default function SiteVisitForm() {
                   <CardContent className="p-4">
                     <h3 className="font-semibold text-slate-900 mb-2">Cost Summary</h3>
                     <div className="space-y-1 text-sm">
-                      <div className="flex justify-between"><span className="text-slate-600">Items</span><span className="font-medium">₹{totals.itemsTotal.toLocaleString('en-IN')}</span></div>
+                      <div className="flex justify-between"><span className="text-slate-600">Base system{formData.custom_fields?.proposed_solution?.system_size_kw ? ` (${formData.custom_fields.proposed_solution.system_size_kw} kW)` : ''}</span><span className="font-medium" data-testid="cost-summary-system">₹{totals.systemCost.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span></div>
+                      {totals.systemCost === 0 && <p className="text-[11px] text-amber-700" data-testid="cost-summary-no-system">No base system yet — complete the calculator above so the quote includes panels, inverter, structure &amp; BOS.</p>}
+                      <div className="flex justify-between"><span className="text-slate-600">Add-ons &amp; extras</span><span className="font-medium">₹{totals.itemsTotal.toLocaleString('en-IN')}</span></div>
                       <div className="flex justify-between"><span className="text-slate-600">Manual</span><span className="font-medium">₹{totals.manualTotal.toLocaleString('en-IN')}</span></div>
                       <div className="flex justify-between"><span className="text-slate-600">GST</span><span className="font-medium">₹{totals.gstTotal.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span></div>
                       {canSetMargin && totals.marginTotal > 0 && <div className="flex justify-between text-amber-700"><span>Margin</span><span className="font-medium">₹{totals.marginTotal.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span></div>}
-                      <div className="flex justify-between pt-2 border-t border-emerald-300"><span className="font-bold">Estimated Total</span><span className="font-bold text-emerald-700">₹{totals.total.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span></div>
+                      {totals.subsidy > 0 && <div className="flex justify-between text-emerald-700"><span>Subsidy</span><span className="font-medium" data-testid="cost-summary-subsidy">− ₹{totals.subsidy.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span></div>}
+                      <div className="flex justify-between pt-2 border-t border-emerald-300"><span className="font-bold">Estimated Total</span><span className="font-bold text-emerald-700" data-testid="cost-summary-total">₹{totals.total.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span></div>
                     </div>
                   </CardContent>
                 </Card>

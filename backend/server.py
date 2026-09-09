@@ -744,8 +744,22 @@ async def check_module_permission(user: dict, module: str, action: str) -> bool:
     return False
 
 
-def calculate_cost_estimation(selected_items: list, manual_costs: list) -> dict:
-    """Calculate cost estimation from selected inventory items and manual costs with per-item margins"""
+def _system_from_custom_fields(custom_fields: Optional[dict]) -> dict:
+    """Base system (panels + inverter + battery + BOS) as computed by the step-4 calculator."""
+    ps = ((custom_fields or {}).get("proposed_solution") or {})
+    def _f(v):
+        try:
+            return float(v or 0)
+        except (TypeError, ValueError):
+            return 0.0
+    return {"system_cost": _f(ps.get("total_cost")), "subsidy": _f(ps.get("subsidy")), "system_size_kw": _f(ps.get("system_size_kw")), "lines": (ps.get("_quick") or {}).get("lines")}
+
+
+def calculate_cost_estimation(selected_items: list, manual_costs: list, custom_fields: Optional[dict] = None,
+                              system_gst_pct: float = 13.8) -> dict:
+    """Grand total = base system (calculator, + composite GST) + add-ons/manual (each with its own GST & margin) − subsidy.
+    Iter 51 fix: the base system cost was silently missing — only add-ons were summed."""
+    system = _system_from_custom_fields(custom_fields)
     items_breakdown = []
     total_items_cost = 0
     total_gst = 0
@@ -773,19 +787,42 @@ def calculate_cost_estimation(selected_items: list, manual_costs: list) -> dict:
         })
 
     manual_total = sum(c["amount"] for c in manual_costs)
-    subtotal = total_items_cost + manual_total
-    total_cost = subtotal + total_margin + total_gst
+    addons_total = total_items_cost + manual_total + total_margin + total_gst
+    system_cost = system["system_cost"]
+    system_gst = system_cost * (system_gst_pct / 100)
+    subsidy = min(system["subsidy"], system_cost + system_gst) if system_cost > 0 else 0.0
+    subtotal = system_cost + total_items_cost + manual_total            # ex-GST, ex-margin
+    total_cost = system_cost + system_gst + addons_total - subsidy      # what the customer pays
 
     return {
         "items_breakdown": items_breakdown,
         "manual_costs": [{"description": c["description"], "amount": round(c["amount"], 2)} for c in manual_costs],
+        "system_cost": round(system_cost, 2),
+        "system_gst_pct": system_gst_pct,
+        "system_gst": round(system_gst, 2),
+        "system_size_kw": system["system_size_kw"],
+        "system_lines": system["lines"],
+        "system_total": round(system_cost + system_gst, 2),
         "items_subtotal": round(total_items_cost, 2),
         "manual_subtotal": round(manual_total, 2),
+        "addons_total": round(addons_total, 2),
         "subtotal": round(subtotal, 2),
         "total_margin": round(total_margin, 2),
-        "total_gst": round(total_gst, 2),
-        "total_cost": round(total_cost, 2)
+        "total_gst": round(total_gst + system_gst, 2),
+        "addons_gst": round(total_gst, 2),
+        "subsidy": round(subsidy, 2),
+        "gross_total": round(system_cost + system_gst + addons_total, 2),
+        "total_cost": round(total_cost, 2),
     }
+
+
+async def build_cost_estimation(selected_items: list, manual_costs: list, custom_fields: Optional[dict]) -> dict:
+    cfg = await db.pricing_config.find_one({"key": "defaults"}) or {}
+    try:
+        gst = float(cfg.get("gst_pct", 13.8))
+    except (TypeError, ValueError):
+        gst = 13.8
+    return calculate_cost_estimation(selected_items, manual_costs, custom_fields, gst)
 
 # ================== AUTH ENDPOINTS ==================
 
@@ -1582,7 +1619,7 @@ async def update_project_margin(project_id: str, request: Request):
             selected_items[idx]["margin_percentage"] = float(pct)
     
     manual_costs = project.get("manual_costs", [])
-    new_estimation = calculate_cost_estimation(selected_items, manual_costs)
+    new_estimation = await build_cost_estimation(selected_items, manual_costs, project.get("custom_fields"))
     
     await db.projects.update_one(
         {"_id": ObjectId(project_id)},
@@ -3327,7 +3364,7 @@ async def create_project(project: ProjectCreate, request: Request):
     }
     
     # Calculate cost estimation from selected items
-    project_doc["cost_estimation"] = calculate_cost_estimation(selected_items_data, manual_costs_data)
+    project_doc["cost_estimation"] = await build_cost_estimation(selected_items_data, manual_costs_data, project_doc.get("custom_fields"))
     
     result = await db.projects.insert_one(project_doc)
     
@@ -3685,10 +3722,10 @@ async def update_project(project_id: str, updates: ProjectUpdate, request: Reque
             update_data["status"] = "submitted"
     
     # Recalculate cost if items changed
-    if "selected_items" in update_data or "manual_costs" in update_data:
+    if "selected_items" in update_data or "manual_costs" in update_data or "custom_fields" in update_data:
         sel_items = update_data.get("selected_items", project.get("selected_items", []))
         man_costs = update_data.get("manual_costs", project.get("manual_costs", []))
-        update_data["cost_estimation"] = calculate_cost_estimation(sel_items, man_costs)
+        update_data["cost_estimation"] = await build_cost_estimation(sel_items, man_costs, update_data.get("custom_fields", project.get("custom_fields")))
     
     await db.projects.update_one(
         {"_id": ObjectId(project_id)},
@@ -4400,6 +4437,39 @@ async def get_ceo_dashboard(request: Request, location_id: Optional[str] = None)
         # Iter 50 §3 — only on the consolidated view; a single-location report has nothing to rank against
         "top_locations": _compute_top_locations(all_projects, await db.locations.find({"active": {"$ne": False}}).to_list(500)) if not loc_filter else None,
     }
+
+
+@api_router.get("/projects-cost-audit")
+async def projects_cost_audit(request: Request, recompute: bool = False):
+    """Iter 51 — which existing projects were built with the old add-ons-only total (base system missing)?
+    Read-only by default; `recompute=true` (admin) rebuilds cost_estimation with the corrected maths."""
+    user = await require_role("admin", "manager")(request)
+    docs = await db.projects.find({"deleted_at": {"$exists": False}}, {"customer.name": 1, "status": 1, "cost_estimation": 1, "custom_fields.proposed_solution": 1, "selected_items": 1, "manual_costs": 1, "created_at": 1}).to_list(20000)
+    affected, ok, no_system = [], 0, 0
+    for p in docs:
+        ce = p.get("cost_estimation") or {}
+        sys_cost = _system_from_custom_fields(p.get("custom_fields"))["system_cost"]
+        if sys_cost <= 0:
+            no_system += 1
+            continue
+        if ce.get("system_cost") is None:   # stored total predates the fix → understated by the base system
+            affected.append({"id": str(p["_id"]), "customer": (p.get("customer") or {}).get("name"), "status": p.get("status"), "created_at": p.get("created_at"),
+                             "stored_total": ce.get("total_cost", 0), "missing_system_cost": round(sys_cost, 2)})
+        else:
+            ok += 1
+    fixed = 0
+    if recompute and affected:
+        if user["role"] != "admin":
+            raise HTTPException(status_code=403, detail="Recompute is admin only")
+        for a in affected:
+            p = await db.projects.find_one({"_id": ObjectId(a["id"])})
+            new_ce = await build_cost_estimation(p.get("selected_items", []), p.get("manual_costs", []), p.get("custom_fields"))
+            await db.projects.update_one({"_id": p["_id"]}, {"$set": {"cost_estimation": new_ce, "updated_at": datetime.now(timezone.utc).isoformat()}})
+            await create_audit_log(user["id"], user["name"], "cost_recomputed", "project", a["id"], {"total_cost": a["stored_total"]}, {"total_cost": new_ce["total_cost"]})
+            fixed += 1
+    return {"total_projects": len(docs), "with_base_system": len(affected) + ok, "already_correct": ok, "affected": len(affected),
+            "no_calculator_result": no_system, "understated_by_total": round(sum(a["missing_system_cost"] for a in affected), 2),
+            "recomputed": fixed, "affected_projects": affected[:200]}
 
 
 @api_router.get("/dashboard/monthly-target")
@@ -5803,7 +5873,7 @@ async def execute_approval_action(approval: dict) -> str:
                         idx = mu.get("index")
                         if idx is not None and 0 <= idx < len(items):
                             items[idx]["margin_percentage"] = float(mu.get("margin_percentage", 0))
-                    new_est = calculate_cost_estimation(items, project.get("manual_costs", []))
+                    new_est = await build_cost_estimation(items, project.get("manual_costs", []), project.get("custom_fields"))
                     await db.projects.update_one(
                         {"_id": ObjectId(entity_id)},
                         {"$set": {"selected_items": items, "cost_estimation": new_est, "updated_at": datetime.now(timezone.utc).isoformat()}}

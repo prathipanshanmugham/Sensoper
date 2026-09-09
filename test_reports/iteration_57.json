@@ -1,0 +1,45 @@
+{
+  "summary": "Iter 51 grand-total regression re-tested. Backend + DB + PDFs (Detailed, Kit, GST Invoice list & combined) all correctly show system_cost 180000, gross 224300 and grand total 146300 for the fixture project. Pytest test_iter51_grand_total.py: 7/7 pass. HOWEVER a CRITICAL frontend regression exists in the edit form: when opening an existing project on the 'Proposed Solution & Materials' step, ProposedSolutionSection re-runs its recompute on mount (because `subsidy` is in GRID_KEYS), which calls solarCalc.projectResult() and overwrites the persisted `total_cost` (180000) and `net_cost` back to 0 in local form state. Consequence: Cost Summary card renders `cost-summary-system` = ₹0 with the amber 'No base system yet…' hint, no `cost-summary-subsidy` line, and `cost-summary-total` = ₹19,460 (add-ons-only) instead of the required ₹1,46,300. If the user saves after any edit, the corrected DB value will be blown away. Detail page still shows correct total (reads persisted cost_estimation), so the storefront and PDFs are safe until someone edits the project.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "DELETE /api/projects/{id}/hard", "issue": "Route does not exist (returns 404). The pytest cleanup expects it. Real hard-delete route is `/api/projects/{id}/force`. Non-blocking (fixture teardown ignores)."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "SiteVisitForm → ProposedSolutionSection (edit mode)", "issue": "On mount for an existing project, useEffect at ProposedSolutionSection.js L57-60 re-runs recompute→projectResult which sets total_cost=0 and net_cost=0 in local state (because panel_item_id/inverter_item_id/... are not stored on the project). Cost Summary then shows Base system ₹0, no Subsidy line, Estimated Total ₹19,460 (add-ons only). Saving the form would persist the zeroed values.", "selector": "[data-testid='cost-summary-system'], [data-testid='cost-summary-subsidy'], [data-testid='cost-summary-total']", "priority": "CRITICAL"},
+      {"component": "Cost Summary card", "issue": "`cost-summary-subsidy` element is not rendered at all when the local total_cost has been clobbered to 0 (rendered only when totals.subsidy > 0, which depends on systemCost > 0). Because ProposedSolutionSection overwrote total_cost to 0, the Subsidy row disappears from the summary during edits.", "selector": "[data-testid='cost-summary-subsidy']", "priority": "HIGH"}
+    ],
+    "integration_issues": [
+      {"flow": "Edit existing project → Materials step", "issue": "Frontend live totals do not agree with backend cost_estimation.total_cost that was correctly computed on POST (146300). Save-after-edit will corrupt the DB.", "affected_selectors": ["[data-testid='cost-summary-system']", "[data-testid='cost-summary-total']"]}
+    ],
+    "design_issues": [
+      {"screen": "Detailed Quotation PDF, page 1", "issues": ["Request expected a three-box hero (you pay / you save / payback), but the rendered header shows only three boxes: YOU PAY / SYSTEM SIZE / PANELS. 'you save' and 'payback' figures are absent from the first page. YOU PAY value is correct (₹1,46,300)."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter51_grand_total.py",
+    "/app/test_reports/pytest/iter51_grand_total_retest.xml"
+  ],
+  "action_items": [
+    "Fix ProposedSolutionSection so the mount-time recompute does NOT overwrite a project's persisted total_cost/net_cost when the calculator inputs (panel_item_id / inverter_item_id / monthly_eb_bill / tariff_per_unit_manual / …) are absent. Options: (a) skip recompute when RESULT_KEYS already have non-zero values and no GRID_KEYS other than `subsidy` are filled; (b) drop `subsidy` from GRID_KEYS so a lone subsidy value does not trigger recompute; or (c) merge instead of replace — keep the stored total_cost/net_cost when the recomputed r.total_cost is 0.",
+    "Also ensure the calculator's onChange never emits total_cost=0 while `system_size_kw` is > 0 and no panel/inverter is selected — that state should be treated as 'insufficient inputs; keep prior value'.",
+    "Add a data-testid='cost-summary-subsidy' row that is rendered whenever formData.custom_fields.proposed_solution.subsidy > 0, independent of the possibly-clobbered local systemCost value — the summary should always be truthful to what will be persisted.",
+    "Detailed Quotation PDF: either implement the promised 'You save / Payback' hero boxes, or update the spec so the header describes the actual SYSTEM SIZE / PANELS trio.",
+    "Optional: rename the cleanup route in the pytest fixture from `/projects/{id}/hard` to `/projects/{id}/force` so cleanup actually runs (currently silently 404s)."
+  ],
+  "critical_code_review_comments": [
+    "SiteVisitForm.js L546-558 (calculateTotal) is correct — it reads from custom_fields.proposed_solution.total_cost and adds system_cost + system_gst + add-ons - subsidy. The regression is caused upstream in ProposedSolutionSection.js L57-60 which clobbers the state before calculateTotal ever sees it.",
+    "ProposedSolutionSection GRID_KEYS includes `subsidy`, which means simply persisting a subsidy value is enough to trigger a full recompute that will zero-out total_cost when no panel_item_id/inverter_item_id are stored. This is likely the root cause of 'affected: 9' projects seen in /api/projects-cost-audit — anyone who ever opened & saved an older project would have re-persisted zeros.",
+    "solarCalc.projectResult() unconditionally sets total_cost: r.total_cost and net_cost: r.net_cost. When r.total_cost = 0 (no inputs), stored values are silently lost. Consider projecting these fields only when r.total_cost > 0."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100%", "frontend": "40%"},
+  "test_credentials": "admin@sensoper.com / Admin@123 (from /app/memory/test_credentials.md)",
+  "seed_data_creation": "Created and cleaned up two temporary projects: TEST51UI_5ebc8 (main fixture) and TEST51REG_ (regression: add-ons-only). Both deleted via /api/projects/{id}/force.",
+  "retest_needed": true,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Pytest test_iter51_grand_total.py is green. PDF flows work end-to-end because they read the persisted cost_estimation from the server, which is correct. The one failing surface is the *edit* view — Cost Summary card shows add-ons-only total. To reproduce: create a project via API with custom_fields.proposed_solution={total_cost:180000, subsidy:78000, system_size_kw:3}, open /dashboard/projects/{id}/edit and advance to 'Proposed Solution & Materials' — you'll see cost-summary-system='₹0' + amber banner + cost-summary-total='₹19,460'. Root cause is ProposedSolutionSection recompute clobber (see critical_code_review_comments).",
+  "rca of the issue": "1) On mount of the Materials step, ProposedSolutionSection reads value={custom_fields.proposed_solution} = {system_size_kw:3,total_cost:180000,subsidy:78000,net_cost:102000}. 2) Its useEffect [recompute] fires because `subsidy` is in GRID_KEYS and is filled. 3) recompute → computeQuick with no panel_item_id/inverter_item_id/tariff_per_unit_manual → returns r.total_cost = 0. 4) projectResult spreads r on top of data, overwriting total_cost from 180000 → 0 (and net_cost 102000 → 0). 5) onChange bubbles this back into SiteVisitForm.formData.custom_fields.proposed_solution. 6) calculateTotal() now sees systemCost=0 → subsidy is gated to 0 → grand total = add-ons only = ₹19,460. 7) UI renders the amber 'No base system yet' hint and hides the subsidy row (rendered only if totals.subsidy > 0). Mitigation: guard projectResult / the mount useEffect so a zero recompute cannot overwrite an existing non-zero stored total_cost."
+}

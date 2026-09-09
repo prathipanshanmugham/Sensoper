@@ -94,9 +94,20 @@ def _cost_breakdown(cost_estimation: Dict[str, Any]) -> Dict[str, Any]:
         agg["gst_amount"] += float(it.get("gst_amount", 0) or 0)
         agg["count"] += 1
     other_direct_costs = sum(float(c.get("amount", 0) or 0) for c in manual)
-    total_margin = float(cost_estimation.get("total_margin", 0) or 0)
+    # Iter 51: base system (calculator) — sell price is known; its cost basis is the sell price with the
+    # pricelist default margin stripped (calculator sells at unit_price × (1 + margin)).
+    system_sell = float(cost_estimation.get("system_cost", 0) or 0)
+    system_margin_pct = float(cost_estimation.get("system_margin_pct", 15) or 15)
+    system_base = round(system_sell / (1 + system_margin_pct / 100), 2) if system_sell else 0.0
+    if system_sell:
+        material_cost += system_base
+        by_category["solar_system"] = {"base_cost": system_base, "margin_amount": round(system_sell - system_base, 2),
+                                       "gst_amount": float(cost_estimation.get("system_gst", 0) or 0), "count": 1, "estimated_cost_basis": True}
+    total_margin = float(cost_estimation.get("total_margin", 0) or 0) + (system_sell - system_base)
     total_gst = float(cost_estimation.get("total_gst", 0) or 0)
-    total_cost_incl_gst = float(cost_estimation.get("total_cost", 0) or 0)
+    subsidy = float(cost_estimation.get("subsidy", 0) or 0)
+    # gross_total = everything incl. GST before subsidy (subsidy is paid by the government, still revenue to us)
+    total_cost_incl_gst = float(cost_estimation.get("gross_total", cost_estimation.get("total_cost", 0)) or 0)
     revenue = total_cost_incl_gst - total_gst   # taxable value + margin, excl. GST pass-through
     total_base_cost = material_cost + labour_cost + other_direct_costs
     gross_profit = revenue - total_base_cost
@@ -185,7 +196,7 @@ def create_router(db, get_current_user, create_audit_log):
         if not project:
             raise HTTPException(status_code=404, detail="Project not found")
         ce = project.get("cost_estimation") or {}
-        if not ce.get("items_breakdown") and not ce.get("manual_costs"):
+        if not ce.get("items_breakdown") and not ce.get("manual_costs") and not ce.get("system_cost"):
             raise HTTPException(status_code=400, detail="This project has no confirmed cost data to invoice")
 
         profile = await db.company_profiles.find_one({"is_active": True})
@@ -211,6 +222,18 @@ def create_router(db, get_current_user, create_audit_log):
                 {"name": {"$in": [re.compile(f"^{re.escape(n)}$", re.IGNORECASE) for n in set(names_needing_lookup)]}}
             ).to_list(500)
             hsn_by_name = {d["name"].lower(): d.get("hsn_code", "") for d in name_docs}
+        # Iter 51: the base solar system (calculator) is the first invoice line — composite GST rate (HSN 8541 solar power system)
+        system_cost = float(ce.get("system_cost", 0) or 0)
+        if system_cost > 0:
+            sys_gst = float(ce.get("system_gst", 0) or 0)
+            kw = ce.get("system_size_kw") or (project.get("custom_fields", {}).get("proposed_solution", {}) or {}).get("system_size_kw")
+            line_items.append({
+                "description": f"{kw} kWp Solar Power System (panels, inverter, structure, BOS, installation)" if kw else "Solar Power System (panels, inverter, structure, BOS, installation)",
+                "hsn_sac": "8541", "quantity": 1, "unit_price": round(system_cost, 2), "taxable_value": round(system_cost, 2),
+                "gst_pct": ce.get("system_gst_pct", 13.8), "gst_amount": round(sys_gst, 2),
+                "cgst": round(sys_gst / 2, 2) if not inter_state else 0, "sgst": round(sys_gst / 2, 2) if not inter_state else 0,
+                "igst": round(sys_gst, 2) if inter_state else 0,
+            })
         for it in ce.get("items_breakdown", []):
             gst_amt = float(it.get("gst_amount", 0) or 0)
             hsn = hsn_by_id.get(it.get("inventory_item_id")) or hsn_by_name.get((it.get("name") or "").lower(), "")
@@ -237,7 +260,8 @@ def create_router(db, get_current_user, create_audit_log):
         total_cgst = round(sum(li["cgst"] for li in line_items), 2)
         total_sgst = round(sum(li["sgst"] for li in line_items), 2)
         total_igst = round(sum(li["igst"] for li in line_items), 2)
-        grand_total = round(total_taxable + total_cgst + total_sgst + total_igst, 2)
+        subsidy = float(ce.get("subsidy", 0) or 0)
+        grand_total = round(total_taxable + total_cgst + total_sgst + total_igst - subsidy, 2)
 
         invoice_number = await _next_invoice_number()
         now = datetime.now(timezone.utc)

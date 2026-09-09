@@ -17,9 +17,12 @@ export function deriveSalesNumbers(project) {
   const ps = project.custom_fields?.proposed_solution || {};
   const q = ps._quick || {}, d = ps._derived || {}, ce = project.cost_estimation || {};
   const kw = parseFloat(ps.system_size_kw || project.solar_system?.system_size_kw) || 0;
-  const totalQuoted = ce.total_cost || ps.total_cost || 0;
-  const subsidy = project.subsidy_tracking?.eligible_amount || parseFloat(ps.subsidy) || 0;
-  const netPay = Math.max(totalQuoted - subsidy, 0);
+  // Iter 51: cost_estimation.total_cost is the grand total (base system + add-ons, incl. GST, net of subsidy).
+  // gross_total is the same figure before subsidy. Legacy projects (no gross_total) fall back to the old maths.
+  const hasV2 = ce.gross_total != null;
+  const subsidy = hasV2 ? (ce.subsidy || 0) : (project.subsidy_tracking?.eligible_amount || parseFloat(ps.subsidy) || 0);
+  const totalQuoted = hasV2 ? ce.gross_total : (ce.total_cost || ps.total_cost || 0);
+  const netPay = hasV2 ? ce.total_cost : Math.max(totalQuoted - subsidy, 0);
   const monthlySaving = q.monthly_saving ?? d.monthly_savings ?? (d.annual_savings ? d.annual_savings / 12 : 0);
   const annualSaving = q.annual_saving ?? d.annual_savings ?? monthlySaving * 12;
   const payback = annualSaving > 0 ? (netPay > 0 ? round1(netPay / annualSaving) : 0) : null;
@@ -109,7 +112,8 @@ export async function generateDetailedQuotationPDF({ project, companyProfile, te
   autoTable(doc, {
     startY: y, margin: { left: m, right: m, top: 44 }, theme: 'grid',
     head: [['Item', 'Category', 'Qty', 'Unit price', 'GST', 'Amount']],
-    body: [...items.map(it => [it.name, categoryLabels[it.category] || it.category || '', String(it.quantity ?? 1), inr(it.unit_price), `${it.gst_percentage ?? 18}%`, inr(it.amount || (it.unit_price || 0) * (it.quantity || 1))]),
+    body: [...(ce.system_cost > 0 ? [[{ content: `${ce.system_size_kw ? `${ce.system_size_kw} kWp ` : ''}Solar Power System — panels, inverter, structure, BOS & installation`, styles: { fontStyle: 'bold' } }, 'System', '1', inr(ce.system_cost), `${ce.system_gst_pct ?? 13.8}%`, inr(ce.system_cost)]] : []),
+           ...items.map(it => [it.name, categoryLabels[it.category] || it.category || '', String(it.quantity ?? 1), inr(it.unit_price), `${it.gst_percentage ?? 18}%`, inr(it.amount || (it.unit_price || 0) * (it.quantity || 1))]),
            ...manualCosts.map(c => [{ content: c.description || 'Additional', styles: { fontStyle: 'italic' } }, '', '', '', '', inr(c.amount)])],
     headStyles: { font: FONT, fillColor: INK, textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 8.5 },
     styles: { font: FONT, fontSize: 8.5, cellPadding: 2.6, textColor: INK, lineColor: LINE, lineWidth: 0.3 },
