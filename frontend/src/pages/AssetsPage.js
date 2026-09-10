@@ -16,6 +16,7 @@ import autoTable from 'jspdf-autotable';
 import * as XLSX from 'xlsx';
 import { saveAs } from 'file-saver';
 import { useLocationScope, LocationScopeSelect } from '../components/LocationScope';
+import { AssetDocuments } from '../components/AssetDocuments';
 
 const CATEGORIES = ['vehicle', 'power_tool', 'hand_tool', 'test_equipment', 'safety', 'it', 'furniture', 'other']; // fallback until /assets/filters loads
 const STATUSES = ['available', 'issued', 'in_maintenance', 'under_repair', 'lost', 'scrapped', 'sold'];
@@ -391,6 +392,7 @@ export default function AssetsPage() {
                 {(showDetail.maintenance || []).length === 0 && <p className="text-xs text-slate-400">No maintenance logged</p>}
                 {(showDetail.maintenance || []).map((m, i) => <p key={i} className="text-xs text-slate-600">{m.date?.slice(0, 10)} — {m.type}: {m.description} (₹{m.cost || 0})</p>)}
               </div>
+              <AssetDocuments assetId={showDetail.id} canManage={isAdmin || isManager} />
             </div>
           )}
         </DialogContent>

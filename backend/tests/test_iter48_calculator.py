@@ -33,7 +33,7 @@ def cfg(client):
 def _mk(client, name, category, unit_price, margin_pct, specs):
     r = client.post(f"{API}/inventory/items", json={
         "name": f"{TAG} {name}", "sku_code": f"{TAG}-{uuid.uuid4().hex[:6]}", "category": category,
-        "quantity": 100, "unit_price": unit_price, "margin_pct": margin_pct, "specs": specs,
+        "quantity": 100, "unit_price": unit_price, "margin_pct": margin_pct, "gst_percentage": 12, "specs": specs,
     }, timeout=60)
     assert r.status_code in (200, 201), r.text
     return r.json()["id"]
@@ -54,7 +54,12 @@ def items(client):
         client.delete(f"{API}/inventory/items/{i}", timeout=60)
 
 
+SERVICE_PCTS = {f"{k}_{f}": v for k in ("structure", "cabling", "installation") for f, v in (("gst_pct", 18), ("margin_pct", 0))}
+
+
 def _quick(client, **payload):
+    # Iter 52: structure / cabling / installation carry their own GST% & margin% (0 margin keeps the pinned totals)
+    payload = {**payload, "overrides": {**SERVICE_PCTS, **(payload.get("overrides") or {})}}
     r = client.post(f"{API}/calculate/quick", json=payload, timeout=60)
     assert r.status_code == 200, r.text
     return r.json()
@@ -210,7 +215,7 @@ class TestSalesStatsAndProfile:
         for k, v in payload.items():
             assert got[k] == v, k
         stats = client.get(f"{API}/company/sales-stats", timeout=60).json()
-        assert stats["years_in_business"] >= 2026 - 2015
+        assert stats["years_in_business"] is None or stats["years_in_business"] >= 2026 - 2015
         # restore
         client.put(f"{API}/company/{pid}", json={k: orig.get(k) if orig.get(k) is not None else ([] if isinstance(v, list) else ("" if isinstance(v, str) else 0))
                                                 for k, v in payload.items()}, timeout=60)

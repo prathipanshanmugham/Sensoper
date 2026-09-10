@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { projectsAPI, inventoryAPI, formTabsAPI, termsAPI, materialKitsAPI, calcAPI } from '../utils/api';
+import { projectsAPI, inventoryAPI, formTabsAPI, termsAPI, materialKitsAPI, catalogueAPI } from '../utils/api';
+import { pct, roundCash } from '../utils/solarCalc';
 import { formatApiErrorDetail } from '../contexts/AuthContext';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
@@ -98,8 +99,8 @@ export default function SiteVisitForm() {
   const [suggestedKit, setSuggestedKit] = useState(null);
   const [appliedKitId, setAppliedKitId] = useState(null);
   const [kitDismissed, setKitDismissed] = useState(false);
-  const [systemGstPct, setSystemGstPct] = useState(null);
-  useEffect(() => { calcAPI.getConfig().then(r => setSystemGstPct(parseFloat(r.data?.gst_pct) || 13.8)).catch(() => setSystemGstPct(13.8)); }, []);
+  const [pricingCfg, setPricingCfg] = useState({ rounding_step: 1, rounding_mode: 'nearest' });
+  useEffect(() => { catalogueAPI.getConfig().then(r => setPricingCfg(r.data || {})).catch(() => {}); }, []);
   const [showReview, setShowReview] = useState(false);
   const [showResumeBanner, setShowResumeBanner] = useState(false);
 
@@ -164,8 +165,8 @@ export default function SiteVisitForm() {
         },
         selected_items: (p.selected_items || []).map(si => ({
           inventory_item_id: si.inventory_item_id, name: si.name, category: si.category,
-          unit_price: si.unit_price, gst_percentage: si.gst_percentage || 18, quantity: si.quantity || 1,
-          margin_percentage: si.margin_percentage || 0
+          unit_price: si.unit_price, gst_percentage: si.gst_percentage ?? null, quantity: si.quantity || 1,
+          margin_percentage: si.margin_percentage ?? null
         })),
         manual_costs: p.manual_costs || [],
         drive_folder_name: p.drive_folder_name || '',
@@ -291,15 +292,15 @@ export default function SiteVisitForm() {
       if (inv) {
         return {
           inventory_item_id: inv.id, name: inv.name, category: inv.category,
-          unit_price: inv.unit_price, gst_percentage: inv.gst_percentage || 18,
-          quantity: parseInt(line.quantity) || 1, margin_percentage: 0
+          unit_price: inv.unit_price, gst_percentage: inv.gst_percentage ?? null,
+          quantity: parseInt(line.quantity) || 1, margin_percentage: inv.margin_pct ?? null
         };
       }
       // Free-text line — no inventory ref
       return {
         inventory_item_id: null, name: line.name, category: line.category || 'kit_line',
-        unit_price: 0, gst_percentage: 18,
-        quantity: parseInt(line.quantity) || 1, margin_percentage: 0
+        unit_price: 0, gst_percentage: null,
+        quantity: parseInt(line.quantity) || 1, margin_percentage: null
       };
     });
     setFormData(prev => ({ ...prev, selected_items: newItems }));
@@ -502,7 +503,7 @@ export default function SiteVisitForm() {
       ...prev,
       selected_items: [...prev.selected_items, {
         inventory_item_id: invItem.id, name: invItem.name, category: invItem.category,
-        unit_price: invItem.unit_price, gst_percentage: invItem.gst_percentage, quantity: 1, margin_percentage: 0
+        unit_price: invItem.unit_price, gst_percentage: invItem.gst_percentage ?? null, quantity: 1, margin_percentage: invItem.margin_pct ?? null
       }]
     }));
   };
@@ -515,7 +516,7 @@ export default function SiteVisitForm() {
     });
   };
   const removeSelectedItem = (index) => setFormData(prev => ({ ...prev, selected_items: prev.selected_items.filter((_, i) => i !== index) }));
-  const addManualCost = () => setFormData(prev => ({ ...prev, manual_costs: [...prev.manual_costs, { description: '', amount: 0 }] }));
+  const addManualCost = (description = '') => setFormData(prev => ({ ...prev, manual_costs: [...prev.manual_costs, { description, amount: 0, gst_pct: '', margin_pct: '' }] }));
   const updateManualCost = (index, field, value) => {
     setFormData(prev => {
       const costs = [...prev.manual_costs];
@@ -545,16 +546,36 @@ export default function SiteVisitForm() {
   // Iter 51 fix: previously only the add-ons were summed — the base system cost was missing entirely.
   const calculateTotal = () => {
     const ps = formData.custom_fields?.proposed_solution || {};
+    const quick = ps._quick || {};
     const systemCost = parseFloat(ps.total_cost) || 0;
-    const systemGst = systemCost * ((systemGstPct ?? 13.8) / 100);
+    const systemGst = parseFloat(quick.total_gst) || 0;
+    const issues = [...(quick.pricing_issues || [])];
+    if (systemCost > 0 && quick.total_gst === undefined) issues.push('Base system: per-line GST not available — re-run the Solar Calculator.');
     const subsidy = systemCost > 0 ? Math.min(parseFloat(ps.subsidy) || 0, systemCost + systemGst) : 0;
     const itemsTotal = formData.selected_items.reduce((sum, i) => sum + i.unit_price * i.quantity, 0);
     const manualTotal = formData.manual_costs.reduce((sum, c) => sum + (parseFloat(c.amount) || 0), 0);
-    const addonsGst = formData.selected_items.reduce((sum, i) => sum + i.unit_price * i.quantity * (i.gst_percentage / 100), 0);
-    const marginTotal = formData.selected_items.reduce((sum, i) => sum + i.unit_price * i.quantity * ((i.margin_percentage || 0) / 100), 0);
-    const gstTotal = systemGst + addonsGst;
-    const grossTotal = systemCost + systemGst + itemsTotal + manualTotal + marginTotal + addonsGst;
-    return { systemCost, systemGst, subsidy, itemsTotal, manualTotal, addonsGst, gstTotal, marginTotal, grossTotal, total: grossTotal - subsidy };
+    const addonsGst = formData.selected_items.reduce((sum, i) => sum + i.unit_price * i.quantity * ((pct(i.gst_percentage) || 0) / 100), 0);
+    const marginTotal = formData.selected_items.reduce((sum, i) => sum + i.unit_price * i.quantity * ((pct(i.margin_percentage) || 0) / 100), 0);
+    formData.selected_items.forEach(i => {
+      if (pct(i.gst_percentage) === null) issues.push(`Add-on '${i.name}': GST% missing.`);
+      if (pct(i.margin_percentage) === null) issues.push(`Add-on '${i.name}': margin% missing.`);
+    });
+    let manualMargin = 0, manualGst = 0;
+    formData.manual_costs.forEach(c => {
+      const amt = parseFloat(c.amount) || 0;
+      const m = amt * ((pct(c.margin_pct) || 0) / 100);
+      manualMargin += m;
+      manualGst += (amt + m) * ((pct(c.gst_pct) || 0) / 100);
+      if (c.description) {
+        if (pct(c.gst_pct) === null) issues.push(`Line '${c.description}': GST% missing.`);
+        if (pct(c.margin_pct) === null) issues.push(`Line '${c.description}': margin% missing.`);
+      }
+    });
+    const gstTotal = systemGst + addonsGst + manualGst;
+    const grossTotal = systemCost + systemGst + itemsTotal + manualTotal + marginTotal + manualMargin + addonsGst + manualGst;
+    const exact = grossTotal - subsidy;
+    const total = roundCash(exact, pricingCfg);
+    return { systemCost, systemGst, subsidy, itemsTotal, manualTotal, addonsGst, gstTotal, marginTotal: marginTotal + manualMargin, grossTotal, exact, roundingAdj: total - exact, total, issues };
   };
 
   const getTotalSteps = () => allTabs.length || 5;
@@ -643,11 +664,11 @@ export default function SiteVisitForm() {
         },
         selected_items: formData.selected_items.map(si => ({
           inventory_item_id: si.inventory_item_id, name: si.name, category: si.category,
-          unit_price: si.unit_price, gst_percentage: si.gst_percentage, quantity: parseInt(si.quantity) || 1,
-          margin_percentage: parseFloat(si.margin_percentage) || 0
+          unit_price: si.unit_price, gst_percentage: pct(si.gst_percentage), quantity: parseInt(si.quantity) || 1,
+          margin_percentage: pct(si.margin_percentage)
         })),
         manual_costs: formData.manual_costs.filter(c => c.description && c.amount > 0).map(c => ({
-          description: c.description, amount: parseFloat(c.amount) || 0
+          description: c.description, amount: parseFloat(c.amount) || 0, gst_pct: pct(c.gst_pct), margin_pct: pct(c.margin_pct)
         })),
         drive_folder_name: formData.drive_folder_name || null,
         drive_folder_link: formData.drive_folder_link || null,
@@ -1299,15 +1320,18 @@ export default function SiteVisitForm() {
                             <span className="text-sm font-medium text-slate-900 w-24 text-right">₹{(item.unit_price * item.quantity).toLocaleString('en-IN')}</span>
                             <Button variant="ghost" size="icon" className="h-8 w-8 text-red-500 shrink-0" onClick={() => removeSelectedItem(idx)}><Trash2 className="h-3.5 w-3.5" /></Button>
                           </div>
-                          {canSetMargin && (
-                            <div className="flex items-center gap-2 mt-2 pt-2 border-t border-slate-200">
+                          <div className="flex items-center gap-2 mt-2 pt-2 border-t border-slate-200 flex-wrap">
+                            {canSetMargin && (<>
                               <Percent className="h-3.5 w-3.5 text-amber-600" />
                               <span className="text-xs text-amber-700 font-medium">Margin</span>
-                              <Input type="number" min="0" max="100" step="0.5" value={item.margin_percentage} onChange={(e) => updateSelectedItem(idx, 'margin_percentage', parseFloat(e.target.value) || 0)} className="w-20 h-7 text-xs text-center" data-testid={`item-margin-${idx}`} />
+                              <Input type="number" min="0" max="100" step="0.5" value={item.margin_percentage ?? ''} placeholder="req." onChange={(e) => updateSelectedItem(idx, 'margin_percentage', e.target.value)} className={`w-20 h-7 text-xs text-center ${pct(item.margin_percentage) === null ? 'border-amber-400 bg-amber-50/60' : ''}`} data-testid={`item-margin-${idx}`} />
                               <span className="text-xs text-slate-500">%</span>
-                              {item.margin_percentage > 0 && <span className="text-xs text-amber-600 ml-auto">+₹{(item.unit_price * item.quantity * item.margin_percentage / 100).toLocaleString('en-IN')}</span>}
-                            </div>
-                          )}
+                            </>)}
+                            <span className="text-xs text-slate-600 font-medium ml-2">GST</span>
+                            <Input type="number" min="0" max="100" step="0.5" value={item.gst_percentage ?? ''} placeholder="req." onChange={(e) => updateSelectedItem(idx, 'gst_percentage', e.target.value)} className={`w-20 h-7 text-xs text-center ${pct(item.gst_percentage) === null ? 'border-amber-400 bg-amber-50/60' : ''}`} data-testid={`item-gst-${idx}`} />
+                            <span className="text-xs text-slate-500">%</span>
+                            {pct(item.margin_percentage) > 0 && <span className="text-xs text-amber-600 ml-auto">+₹{(item.unit_price * item.quantity * pct(item.margin_percentage) / 100).toLocaleString('en-IN')}</span>}
+                          </div>
                         </div>
                       ))}
                     </div>
@@ -1316,14 +1340,16 @@ export default function SiteVisitForm() {
 
                 <div>
                   <div className="flex items-center justify-between mb-2">
-                    <h3 className="font-semibold text-slate-900">Manual Costs</h3>
-                    <Button type="button" variant="outline" size="sm" onClick={addManualCost} className="h-9" data-testid="add-manual-cost-btn"><Plus className="h-3.5 w-3.5 mr-1" />Add</Button>
+                    <h3 className="font-semibold text-slate-900">Other Priced Lines <span className="text-xs text-slate-400 font-normal">— each needs its own GST% & margin%</span></h3>
+                    <Button type="button" variant="outline" size="sm" onClick={() => addManualCost()} className="h-9" data-testid="add-manual-cost-btn"><Plus className="h-3.5 w-3.5 mr-1" />Add</Button>
                   </div>
                   {formData.manual_costs.map((cost, idx) => (
-                    <div key={`manual-${idx}`} className="flex gap-2 mb-2" data-testid={`manual-cost-${idx}`}>
-                      <Input value={cost.description} onChange={(e) => updateManualCost(idx, 'description', e.target.value)} placeholder="e.g., Labor" className="flex-1 h-10" />
-                      <Input type="number" min="0" value={cost.amount} onChange={(e) => updateManualCost(idx, 'amount', parseFloat(e.target.value) || 0)} placeholder="Amount" className="w-28 h-10" />
-                      <Button variant="ghost" size="icon" className="text-red-500 shrink-0 h-10 w-10" onClick={() => removeManualCost(idx)}><Trash2 className="h-4 w-4" /></Button>
+                    <div key={`manual-${idx}`} className="flex gap-2 mb-2 flex-wrap sm:flex-nowrap" data-testid={`manual-cost-${idx}`}>
+                      <Input value={cost.description} onChange={(e) => updateManualCost(idx, 'description', e.target.value)} placeholder="e.g., Civil work" className="flex-1 min-w-[140px] h-10" data-testid={`manual-cost-${idx}-desc`} />
+                      <Input type="number" min="0" value={cost.amount} onChange={(e) => updateManualCost(idx, 'amount', parseFloat(e.target.value) || 0)} placeholder="Amount ₹" className="w-28 h-10" data-testid={`manual-cost-${idx}-amount`} />
+                      <Input type="number" min="0" step="0.5" value={cost.margin_pct ?? ''} onChange={(e) => updateManualCost(idx, 'margin_pct', e.target.value)} placeholder="Margin %" className={`w-24 h-10 ${pct(cost.margin_pct) === null ? 'border-amber-400 bg-amber-50/60' : ''}`} data-testid={`manual-cost-${idx}-margin`} />
+                      <Input type="number" min="0" step="0.5" value={cost.gst_pct ?? ''} onChange={(e) => updateManualCost(idx, 'gst_pct', e.target.value)} placeholder="GST %" className={`w-24 h-10 ${pct(cost.gst_pct) === null ? 'border-amber-400 bg-amber-50/60' : ''}`} data-testid={`manual-cost-${idx}-gst`} />
+                      <Button variant="ghost" size="icon" className="text-red-500 shrink-0 h-10 w-10" onClick={() => removeManualCost(idx)} data-testid={`manual-cost-${idx}-remove`}><Trash2 className="h-4 w-4" /></Button>
                     </div>
                   ))}
                 </div>
@@ -1335,11 +1361,19 @@ export default function SiteVisitForm() {
                       <div className="flex justify-between"><span className="text-slate-600">Base system{formData.custom_fields?.proposed_solution?.system_size_kw ? ` (${formData.custom_fields.proposed_solution.system_size_kw} kW)` : ''}</span><span className="font-medium" data-testid="cost-summary-system">₹{totals.systemCost.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span></div>
                       {totals.systemCost === 0 && <p className="text-[11px] text-amber-700" data-testid="cost-summary-no-system">No base system yet — complete the calculator above so the quote includes panels, inverter, structure &amp; BOS.</p>}
                       <div className="flex justify-between"><span className="text-slate-600">Add-ons &amp; extras</span><span className="font-medium">₹{totals.itemsTotal.toLocaleString('en-IN')}</span></div>
-                      <div className="flex justify-between"><span className="text-slate-600">Manual</span><span className="font-medium">₹{totals.manualTotal.toLocaleString('en-IN')}</span></div>
+                      <div className="flex justify-between"><span className="text-slate-600">Other lines</span><span className="font-medium">₹{totals.manualTotal.toLocaleString('en-IN')}</span></div>
                       <div className="flex justify-between"><span className="text-slate-600">GST</span><span className="font-medium">₹{totals.gstTotal.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span></div>
                       {canSetMargin && totals.marginTotal > 0 && <div className="flex justify-between text-amber-700"><span>Margin</span><span className="font-medium">₹{totals.marginTotal.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span></div>}
                       {totals.subsidy > 0 && <div className="flex justify-between text-emerald-700"><span>Subsidy</span><span className="font-medium" data-testid="cost-summary-subsidy">− ₹{totals.subsidy.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span></div>}
+                      {Math.abs(totals.roundingAdj) >= 0.005 && <div className="flex justify-between text-slate-500 text-xs"><span>Round off (nearest ₹{pricingCfg.rounding_step || 1}, {pricingCfg.rounding_mode || 'nearest'})</span><span data-testid="cost-summary-rounding">{totals.roundingAdj > 0 ? '+' : '−'} ₹{Math.abs(totals.roundingAdj).toLocaleString('en-IN', { maximumFractionDigits: 2 })}</span></div>}
                       <div className="flex justify-between pt-2 border-t border-emerald-300"><span className="font-bold">Estimated Total</span><span className="font-bold text-emerald-700" data-testid="cost-summary-total">₹{totals.total.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span></div>
+                      {totals.issues.length > 0 && (
+                        <div className="mt-2 rounded-md bg-amber-50 border border-amber-200 p-2" data-testid="cost-summary-pricing-issues">
+                          <p className="text-[11px] font-semibold text-amber-800">Pricing incomplete — {totals.issues.length} line{totals.issues.length === 1 ? '' : 's'} missing GST% / margin%. Fix before sending this quote.</p>
+                          {totals.issues.slice(0, 6).map((m, i) => <p key={i} className="text-[11px] text-amber-800">• {m}</p>)}
+                          {totals.issues.length > 6 && <p className="text-[11px] text-amber-700">…and {totals.issues.length - 6} more</p>}
+                        </div>
+                      )}
                     </div>
                   </CardContent>
                 </Card>

@@ -9,7 +9,7 @@ import { loadUnicodeFont } from './pdfFont';
 const inr = (v) => `₹${(v || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const hexToRgb = (hex) => { const h = (hex || '#10b981').replace('#', ''); return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)]; };
 
-export async function generatePriceListPDF({ groups, company, gstPct, options = {} }) {
+export async function generatePriceListPDF({ groups, company, options = {} }) {
   const doc = new jsPDF();
   const FONT = await loadUnicodeFont(doc);
   const pageW = doc.internal.pageSize.getWidth();
@@ -31,7 +31,7 @@ export async function generatePriceListPDF({ groups, company, gstPct, options = 
   doc.setFont(FONT, 'normal'); doc.setFontSize(8.5); doc.setTextColor(100, 116, 139);
   doc.text(`Issued: ${new Date().toLocaleDateString('en-IN')}`, pageW - m, 39.5, { align: 'right' });
   if (options.validUntil) doc.text(`Valid until: ${new Date(options.validUntil).toLocaleDateString('en-IN')}`, pageW - m, 44, { align: 'right' });
-  doc.text(showGst ? `GST applied per item (default ${gstPct}%)` : 'All prices exclusive of GST', pageW - m, 48.5, { align: 'right' });
+  doc.text(showGst ? 'GST applied per item at its own rate' : 'All prices exclusive of GST', pageW - m, 48.5, { align: 'right' });
   if (options.preparedFor) { doc.setTextColor(30, 41, 59); doc.setFontSize(10); doc.text(`Prepared for: ${options.preparedFor}`, m, 36); }
 
   let y = 54;
@@ -49,9 +49,9 @@ export async function generatePriceListPDF({ groups, company, gstPct, options = 
       head: [head],
       body: g.items.map((it, i) => [
         i + 1, it.name, `${it.sku_code || '—'}${it.hsn_code ? `\nHSN ${it.hsn_code}` : ''}`,
-        ...(showCost ? [inr(it.unit_price), `${it.margin_pct}%`] : []),
-        inr(it.selling_price),
-        ...(showGst ? [`${it.gst_pct}% · ${inr(it.gst_amount)}`, inr(it.price_incl_gst)] : []),
+        ...(showCost ? [inr(it.unit_price), it.margin_pct == null ? 'MISSING' : `${it.margin_pct}%`] : []),
+        it.selling_price == null ? 'MARGIN MISSING' : inr(it.selling_price),
+        ...(showGst ? [it.gst_pct == null ? 'GST MISSING' : `${it.gst_pct}% · ${inr(it.gst_amount)}`, it.price_incl_gst == null ? '—' : inr(it.price_incl_gst)] : []),
       ]),
       didDrawPage: (d) => { if (d.pageNumber > 1 && d.cursor.y < 40) header(); },
     });

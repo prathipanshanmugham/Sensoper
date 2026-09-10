@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { Check, Loader2, RotateCcw } from 'lucide-react';
 
 /** Inline numeric/text price cell — Enter/blur saves, Esc reverts, shows saving/saved states. */
-export function PriceCell({ value, onSave, testId, suffix, prefix, width = 'w-24', type = 'number', muted = false, disabled = false, placeholder }) {
+export function PriceCell({ value, onSave, testId, suffix, prefix, width = 'w-24', type = 'number', muted = false, missing = false, disabled = false, placeholder }) {
   const [draft, setDraft] = useState(value ?? '');
   const [state, setState] = useState('idle');
   const [error, setError] = useState('');
@@ -26,7 +26,7 @@ export function PriceCell({ value, onSave, testId, suffix, prefix, width = 'w-24
           type={type} value={draft} disabled={disabled || state === 'saving'} placeholder={placeholder}
           onChange={e => setDraft(e.target.value)} onBlur={commit}
           onKeyDown={e => { if (e.key === 'Enter') e.target.blur(); if (e.key === 'Escape') { setDraft(value ?? ''); e.target.blur(); } }}
-          className={`h-8 w-full rounded-md border px-2 text-sm text-right tabular-nums focus:outline-none focus:ring-2 focus:ring-emerald-500 ${dirty ? 'border-amber-400 bg-amber-50' : 'border-slate-200 bg-white'} ${muted ? 'text-slate-400 italic' : 'text-slate-900'} disabled:opacity-60`}
+          className={`h-8 w-full rounded-md border px-2 text-sm text-right tabular-nums focus:outline-none focus:ring-2 focus:ring-emerald-500 ${dirty ? 'border-amber-400 bg-amber-50' : missing ? 'border-amber-400 bg-amber-50/60 ring-1 ring-amber-300' : 'border-slate-200 bg-white'} ${muted ? 'text-slate-400 italic' : 'text-slate-900'} disabled:opacity-60`}
           data-testid={testId}
         />
         {suffix && <span className="text-xs text-slate-400">{suffix}</span>}

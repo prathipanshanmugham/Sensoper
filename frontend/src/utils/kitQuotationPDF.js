@@ -24,6 +24,15 @@ import { deriveSalesNumbers } from './detailedQuotationPDF';
  * @param {number} step - e.g., 500, 1000, 5000
  * @param {'nearest'|'up'|'down'} mode
  */
+/** Iter 52: single cash-rounding rule for totals (step 1/10/100 × nearest/up/down). */
+export function roundCash(value, config = {}) {
+  const step = Number(config.rounding_step) || 1;
+  const mode = config.rounding_mode || 'nearest';
+  if (mode === 'up') return Math.ceil(value / step) * step;
+  if (mode === 'down') return Math.floor(value / step) * step;
+  return Math.round(value / step) * step;
+}
+
 export function roundKitPrice(val, step = 500, mode = 'nearest') {
   if (!val || step <= 0) return Math.round(val || 0);
   if (mode === 'up') return Math.ceil(val / step) * step;
@@ -35,7 +44,7 @@ export function roundKitPrice(val, step = 500, mode = 'nearest') {
  * Build the presentation shape for a Kit Quotation.
  *
  * @param {object} project - project doc from /api/projects/{id}
- * @param {object} config  - { kit_rounding_step, kit_rounding_mode, gst_pct }
+ * @param {object} config  - { rounding_step, rounding_mode } (Iter 52: no blanket GST%)
  * @param {Array}  addonGroups - from /api/catalogue/addon-groups
  * @returns {{ systemLine, addonGroupLines, totals, meta }}
  */
@@ -44,41 +53,49 @@ export function buildKitPresentation(project, config = {}, addonGroups = []) {
     || project.custom_fields?.proposed_solution?.system_size_kw
     || 0;
   const sysType = project.solar_system?.system_type || 'on-grid';
-  const step = config.kit_rounding_step || 500;
-  const mode = config.kit_rounding_mode || 'nearest';
-  const gstPct = config.gst_pct || 13.8;
+  // Iter 52: no blanket GST% and no kit rounding — every line carries its own GST%, one cash-rounding rule on the total
+  const step = config.rounding_step || 1;
+  const mode = config.rounding_mode || 'nearest';
+  const pricingIssues = [...(project.cost_estimation?.pricing_issues || [])];
 
-  // Kit base price = sum of ONLY genuine core-system items (kit-applied) — cost + margin
-  // Add-ons are collected in a separate bucket.
   const items = project.selected_items || [];
   const groupMap = {};                                 // group_name → { items, subtotal, price }
   let systemSubtotal = 0;                              // core items (no addon_group)
+  let systemGst = 0;
   const systemInclusions = [];
 
   items.forEach(it => {
     const line = (it.unit_price || 0) * (it.quantity || 1);
     const withMargin = line * (1 + (it.margin_percentage || 0) / 100);
+    const gst = line * ((it.gst_percentage || 0) / 100);
     if (!it.addon_group) {
-      // core kit
       systemSubtotal += withMargin;
+      systemGst += gst;
       systemInclusions.push(`${it.quantity || 1} × ${it.name}${it.specifications ? ` — ${it.specifications}` : ''}`);
     } else {
       const g = groupMap[it.addon_group] || { items: [], subtotal: 0, gst: 0 };
       g.items.push(`${it.quantity || 1} × ${it.name}${it.specifications ? ` — ${it.specifications}` : ''}`);
       g.subtotal += withMargin;
-      g.gst += withMargin * ((it.gst_percentage ?? 18) / 100);
+      g.gst += gst;
       groupMap[it.addon_group] = g;
     }
   });
 
-  // Manual costs go into the system
-  (project.manual_costs || []).forEach(c => { systemSubtotal += c.amount || 0; });
-  // Iter 51: the calculator's base system (panels + inverter + battery + BOS) IS the kit — it was missing before
+  // Other priced lines (each with own margin & GST) go into the system
+  (project.manual_costs || []).forEach(c => {
+    const amt = c.amount || 0;
+    const m = amt * ((c.margin_pct || 0) / 100);
+    systemSubtotal += amt + m;
+    systemGst += (amt + m) * ((c.gst_pct || 0) / 100);
+  });
+  // Iter 51: the calculator's base system (panels + inverter + battery + structure/cabling/installation) IS the kit
   const baseSystemCost = parseFloat(project.cost_estimation?.system_cost ?? project.custom_fields?.proposed_solution?.total_cost) || 0;
+  const baseSystemGst = parseFloat(project.cost_estimation?.system_gst ?? project.custom_fields?.proposed_solution?._quick?.total_gst) || 0;
   systemSubtotal += baseSystemCost;
+  systemGst += baseSystemGst;
+  if (baseSystemCost > 0 && baseSystemGst === 0) pricingIssues.push('Base system GST missing — re-run the Solar Calculator.');
 
-  // Round kit price to admin-configurable step
-  const systemPrice = roundKitPrice(systemSubtotal, step, mode);
+  const systemPrice = Math.round(systemSubtotal);
 
   const systemLine = {
     name: `${kwp} kWp ${sysTypeLabel(sysType)} Solar Power Plant`,
@@ -91,7 +108,7 @@ export function buildKitPresentation(project, config = {}, addonGroups = []) {
     return {
       name: groupName,
       description: meta.description || '',
-      price: roundKitPrice(g.subtotal, step, mode),
+      price: Math.round(g.subtotal),
       gst: g.gst,
       inclusions: g.items,
       show_on_pdf: meta.show_on_pdf !== false,           // default true
@@ -107,17 +124,19 @@ export function buildKitPresentation(project, config = {}, addonGroups = []) {
     .reduce((s, g) => s + g.price, 0);
 
   const subtotal = systemPrice + addonsTotal;
-  // GST is computed independently: composite rate on the system, each add-on group at its own items' rates
+  // GST = sum of every line's own GST (system lines + add-on lines) — no composite rate
   const addonsGst = addonGroupLines.filter(g => !g.optional_priced_separately).reduce((s, g) => s + (g.gst || 0), 0);
-  const gst = Math.round(systemPrice * (gstPct / 100) + addonsGst);
+  const gst = Math.round(systemGst + addonsGst);
+  const gstPct = subtotal > 0 ? Math.round(gst / subtotal * 1000) / 10 : 0;   // effective rate, display only
   const subsidy = project.cost_estimation?.subsidy ?? (project.subsidy_tracking?.eligible_amount || parseFloat(project.custom_fields?.proposed_solution?.subsidy) || 0);
-  const netPayable = subtotal + gst - subsidy;
+  const netExact = subtotal + gst - subsidy;
+  const netPayable = roundCash(netExact, { rounding_step: step, rounding_mode: mode });
 
   return {
     systemLine,
     addonGroupLines,
-    totals: { subtotal, gst, gstPct, subsidy, netPayable, optionalTotal, addonsTotal, systemPrice },
-    meta: { kwp, sysType, step, mode },
+    totals: { subtotal, gst, gstPct, subsidy, netPayable, netExact, roundOff: netPayable - netExact, optionalTotal, addonsTotal, systemPrice },
+    meta: { kwp, sysType, step, mode, pricingIssues },
   };
 }
 
@@ -134,27 +153,33 @@ function sysTypeLabel(s) {
 export function buildKitSalesBreakdown(project, config = {}, addonGroups = []) {
   const items = project.selected_items || [];
   const manualCosts = project.manual_costs || [];
-  const step = config.kit_rounding_step || 500;
-  const mode = config.kit_rounding_mode || 'nearest';
-  const gstPct = config.gst_pct || 13.8;
+  const step = config.rounding_step || 1;
+  const mode = config.rounding_mode || 'nearest';
 
   const coreLines = [];
+  let linesGst = 0;
   const groupMap = {};
   let coreSubtotal = 0, coreWithMargin = 0;
 
   items.forEach(it => {
     const qty = it.quantity || 1;
     const rawLine = (it.unit_price || 0) * qty;
-    const marginPct = it.margin_percentage || 0;
-    const lineWithMargin = rawLine * (1 + marginPct / 100);
+    const marginPct = it.margin_percentage ?? null;
+    const gstPctLine = it.gst_percentage ?? null;
+    const lineWithMargin = rawLine * (1 + (marginPct || 0) / 100);
+    const lineGst = rawLine * ((gstPctLine || 0) / 100);
+    linesGst += lineGst;
     const entry = {
       name: it.name, qty,
       unit_price: it.unit_price || 0,
       line_cost: rawLine,
       margin_pct: marginPct,
+      gst_pct: gstPctLine,
+      gst_amount: lineGst,
       line_with_margin: lineWithMargin,
       specifications: it.specifications || '',
       addon_group: it.addon_group || null,
+      missing: marginPct === null || gstPctLine === null,
     };
     if (!it.addon_group) {
       coreLines.push(entry);
@@ -170,22 +195,45 @@ export function buildKitSalesBreakdown(project, config = {}, addonGroups = []) {
   });
 
   manualCosts.forEach(c => {
+    const amt = c.amount || 0;
+    const m = amt * ((c.margin_pct || 0) / 100);
+    const g = (amt + m) * ((c.gst_pct || 0) / 100);
+    linesGst += g;
     coreLines.push({
-      name: c.description || 'Manual cost', qty: 1,
-      unit_price: c.amount || 0, line_cost: c.amount || 0,
-      margin_pct: 0, line_with_margin: c.amount || 0,
+      name: c.description || 'Other line', qty: 1,
+      unit_price: amt, line_cost: amt,
+      margin_pct: c.margin_pct ?? null, gst_pct: c.gst_pct ?? null, gst_amount: g,
+      line_with_margin: amt + m,
       specifications: c.notes || '', is_manual: true,
+      missing: c.margin_pct == null || c.gst_pct == null,
     });
-    coreSubtotal += c.amount || 0;
-    coreWithMargin += c.amount || 0;
+    coreSubtotal += amt;
+    coreWithMargin += amt + m;
   });
 
-  const coreRounded = roundKitPrice(coreWithMargin, step, mode);
+  // Base system from the calculator — one row per priced line (panels / inverter / battery / structure / cabling / installation)
+  const ce = project.cost_estimation || {};
+  const sysLines = ce.system_lines || project.custom_fields?.proposed_solution?._quick?.lines || {};
+  const SYS_LABELS = { panels: 'Solar panels', inverter: 'Inverter', battery: 'Battery', structure: 'Mounting structure', cabling: 'Cabling & electrical', installation: 'Installation & commissioning' };
+  const systemLines = Object.entries(SYS_LABELS).filter(([k]) => sysLines[k] && sysLines[k].amount > 0).map(([k, label]) => {
+    const l = sysLines[k];
+    const withMargin = l.amount || 0;
+    const marginPct = l.margin_pct ?? null;
+    const cost = l.cost != null ? l.cost : (marginPct != null ? withMargin / (1 + marginPct / 100) : withMargin);
+    return { key: k, name: label, qty: k === 'panels' && project.custom_fields?.proposed_solution?.panel_count ? project.custom_fields.proposed_solution.panel_count : 1,
+      unit_price: l.unit_price ?? cost, line_cost: cost, margin_pct: marginPct, gst_pct: l.gst_pct ?? null, gst_amount: l.gst_amount || 0,
+      line_with_margin: withMargin, benchmark: !!l.benchmark, missing: !l.benchmark && (marginPct === null || l.gst_pct == null) };
+  });
+  const systemCost = systemLines.reduce((s, l) => s + l.line_cost, 0);
+  const systemWithMargin = parseFloat(ce.system_cost ?? project.custom_fields?.proposed_solution?.total_cost) || systemLines.reduce((s, l) => s + l.line_with_margin, 0);
+  const systemGst = parseFloat(ce.system_gst ?? project.custom_fields?.proposed_solution?._quick?.total_gst) || 0;
+
+  const coreRounded = coreWithMargin;
   const groups = Object.values(groupMap).map(g => {
     const meta = addonGroups.find(ag => ag.name === g.name) || {};
-    const rounded = roundKitPrice(g.withMargin, step, mode);
+    const rounded = g.withMargin;
     return {
-      ...g, rounded, roundingDelta: rounded - g.withMargin,
+      ...g, rounded, roundingDelta: 0,
       show_on_pdf: meta.show_on_pdf !== false,
       optional_priced_separately: !!meta.optional_priced_separately,
       description: meta.description || '',
@@ -196,24 +244,30 @@ export function buildKitSalesBreakdown(project, config = {}, addonGroups = []) {
   const groupsWithMargin = groups.reduce((s, g) => s + g.withMargin, 0);
   const groupsRounded = groups.filter(g => !g.optional_priced_separately).reduce((s, g) => s + g.rounded, 0);
 
-  const rawCost = coreSubtotal + groupsRawCost;
-  const rawWithMargin = coreWithMargin + groupsWithMargin;
-  const roundedTotal = coreRounded + groupsRounded;
-  const roundingImpact = roundedTotal - rawWithMargin;
-  const gst = Math.round(roundedTotal * (gstPct / 100));
-  const subsidy = project.subsidy_tracking?.eligible_amount || parseFloat(project.custom_fields?.proposed_solution?.subsidy) || 0;
-  const netPayable = roundedTotal + gst - subsidy;
-  const netMarginRupees = rawWithMargin - rawCost + roundingImpact;
+  const rawCost = systemCost + coreSubtotal + groupsRawCost;
+  const rawWithMargin = systemWithMargin + coreWithMargin + groupsWithMargin;
+  const roundedTotal = systemWithMargin + coreRounded + groupsRounded;
+  const gst = Math.round(systemGst + linesGst);
+  const gstPct = roundedTotal > 0 ? Math.round(gst / roundedTotal * 1000) / 10 : 0;
+  const subsidy = ce.subsidy ?? (project.subsidy_tracking?.eligible_amount || parseFloat(project.custom_fields?.proposed_solution?.subsidy) || 0);
+  const netExact = roundedTotal + gst - subsidy;
+  const netPayable = roundCash(netExact, { rounding_step: step, rounding_mode: mode });
+  const roundingImpact = netPayable - netExact;
+  const netMarginRupees = rawWithMargin - rawCost;
   const netMarginPct = rawCost > 0 ? (netMarginRupees / rawCost * 100) : 0;
+  const missingLines = [...systemLines, ...coreLines, ...groups.flatMap(g => g.lines)].filter(l => l.missing).map(l => l.name);
 
   return {
-    core: { lines: coreLines, subtotal: coreSubtotal, withMargin: coreWithMargin, rounded: coreRounded, roundingDelta: coreRounded - coreWithMargin },
+    system: { lines: systemLines, cost: systemCost, withMargin: systemWithMargin, gst: systemGst },
+    core: { lines: coreLines, subtotal: coreSubtotal, withMargin: coreWithMargin, rounded: coreRounded, roundingDelta: 0 },
     groups,
     totals: {
-      rawCost, rawWithMargin, roundedTotal, gst, subsidy, netPayable,
+      rawCost, rawWithMargin, roundedTotal, gst, subsidy, netExact, netPayable,
       roundingImpact, netMarginRupees, netMarginPct, gstPct,
     },
     config: { step, mode, gstPct },
+    pricingIssues: ce.pricing_issues || [],
+    missingLines,
   };
 }
 
@@ -268,7 +322,7 @@ export async function generateKitQuotationPDF(project, companyProfile, config, a
          { label: 'Payback', value: payback == null ? '—' : payback === 0 ? 'Day one' : `${payback} yrs`, sub: payback == null ? '' : payback === 0 ? 'fully covered by subsidy' : `then ${Math.max(25 - Math.ceil(payback), 0)} more years of near-free power` }]
       : [{ label: 'You pay', value: inr(netPay), sub: pres.totals.subsidy > 0 ? `after ${inr(pres.totals.subsidy)} subsidy` : 'incl. GST' },
          { label: 'System', value: `${pres.meta.kwp} kW`, sub: sysTypeLabel(pres.meta.sysType) },
-         { label: 'GST included', value: inr(pres.totals.gst), sub: `@ ${pres.totals.gstPct}%` }],
+         { label: 'GST included', value: inr(pres.totals.gst), sub: 'per line, as applicable' }],
     strip: [lifetime > 0 && { value: inrCompact(lifetime), label: '25-year savings' }, n.annualGen > 0 && { value: `${Math.round(n.annualGen).toLocaleString('en-IN')} units`, label: 'generated every year' }, cp.warranty_headline && { value: cp.warranty_headline.split(' ').slice(0, 2).join(' '), label: cp.warranty_headline.split(' ').slice(2).join(' ') }].filter(Boolean),
     preparedBy: project.created_by_name ? `${project.created_by_name}, Solar Consultant` : null,
   });
@@ -309,7 +363,8 @@ export async function generateKitQuotationPDF(project, companyProfile, config, a
   y = ensureSpace(doc, ctx, y, 50, 'Kit Quotation');
   const rows = [['System', inr(pres.totals.systemPrice)]];
   if (pres.totals.addonsTotal > 0) rows.push(['Add-ons', inr(pres.totals.addonsTotal)]);
-  rows.push([`GST @ ${pres.totals.gstPct}%`, inr(pres.totals.gst)]);
+  rows.push(['GST (as applicable per line)', inr(pres.totals.gst)]);
+  if (Math.abs(pres.totals.roundOff || 0) >= 0.5) rows.push(['Round off', `${pres.totals.roundOff > 0 ? '+' : '−'} ${inr(Math.abs(pres.totals.roundOff))}`]);
   if (pres.totals.subsidy > 0) rows.push(['Less subsidy (PM Surya Ghar / KUSUM)', `− ${inr(pres.totals.subsidy)}`]);
   rows.push([{ content: 'YOU PAY', styles: { fontStyle: 'bold', fillColor: p, textColor: INK, fontSize: 11 } }, { content: inr(netPay), styles: { fontStyle: 'bold', fillColor: p, textColor: INK, fontSize: 11, halign: 'right' } }]);
   autoTable(doc, { startY: y, margin: { left: W / 2, right: m }, theme: 'plain', styles: { font: FONT, fontSize: 9.5, cellPadding: 2.4, textColor: INK }, columnStyles: { 0: { cellWidth: 'auto' }, 1: { cellWidth: 45, halign: 'right' } }, body: rows });

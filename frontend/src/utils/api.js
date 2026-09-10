@@ -454,7 +454,25 @@ export const assetsAPI = {
   compliance: (days = 90) => api.get('/assets/compliance', { params: { days } }),
   categories: () => api.get('/assets/categories'),
   filters: () => api.get('/assets/filters'),
-  report: (type, params = {}) => api.get(`/assets/reports/${type}`, { params })
+  report: (type, params = {}) => api.get(`/assets/reports/${type}`, { params }),
+  documents: (id) => api.get(`/assets/${id}/documents`),
+  uploadDocument: (id, file, docType = 'other', notes = '', onProgress) => {
+    const fd = new FormData(); fd.append('file', file); fd.append('doc_type', docType); fd.append('notes', notes);
+    return api.post(`/assets/${id}/documents`, fd, { headers: { 'Content-Type': 'multipart/form-data' }, onUploadProgress: onProgress });
+  },
+  deleteDocument: (id, docId) => api.delete(`/assets/${id}/documents/${docId}`)
+};
+
+// Internal Teams (Iter 52)
+export const teamsAPI = {
+  list: (params = {}) => api.get('/internal-teams', { params }),
+  get: (id) => api.get(`/internal-teams/${id}`),
+  create: (data) => api.post('/internal-teams', data),
+  update: (id, data) => api.put(`/internal-teams/${id}`, data),
+  remove: (id) => api.delete(`/internal-teams/${id}`),
+  performance: () => api.get('/internal-teams/performance'),
+  projectTeams: (projectId) => api.get(`/projects/${projectId}/teams`),
+  setProjectTeams: (projectId, teamIds, notes = '') => api.put(`/projects/${projectId}/teams`, { team_ids: teamIds, notes })
 };
 
 // AMC Contracts (Iter 42 Change 5)
@@ -507,7 +525,7 @@ export const partnersAPI = {
   update: (id, data) => api.put(`/partners/${id}`, data),
   addRateCard: (id, data) => api.post(`/partners/${id}/rate-card`, data),
   editRateCard: (id, data) => api.put(`/partners/${id}/rate-card`, data),
-  remove: (id) => api.delete(`/partners/${id}`),
+  remove: (id, reason) => api.delete(`/partners/${id}`, { data: { reason } }),
   projectScope: (projectId) => api.get(`/partners/project-scope/${projectId}`),
   assignmentsByProject: (projectId) => api.get(`/partners/assignments/by-project/${projectId}`),
   createAssignment: (partnerId, data) => api.post(`/partners/${partnerId}/assignments`, data),

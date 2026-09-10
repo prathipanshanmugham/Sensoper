@@ -67,7 +67,7 @@ def _serialize(c: Dict[str, Any]) -> Dict[str, Any]:
     return c
 
 
-def create_router(db, get_current_user, require_role, create_audit_log):
+def create_router(db, get_current_user, require_role, create_audit_log, check_module_permission=None):
     router = APIRouter()
 
     @router.get("/amc/contracts")
@@ -209,6 +209,8 @@ def create_router(db, get_current_user, require_role, create_audit_log):
     @router.post("/amc/contracts/{contract_id}/visits")
     async def schedule_visit(contract_id: str, payload: Dict[str, Any], request: Request):
         user = await get_current_user(request)
+        if user["role"] != "admin" and check_module_permission and not await check_module_permission(user, "module_amc", "create"):
+            raise HTTPException(status_code=403, detail="Permission denied: module_amc.create")
         c = await db.amc_contracts.find_one({"_id": ObjectId(contract_id)})
         if not c:
             raise HTTPException(status_code=404, detail="Contract not found")

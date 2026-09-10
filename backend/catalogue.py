@@ -48,6 +48,8 @@ class ServiceRate(BaseModel):
     system_type_scope: str = "any"                    # any | on-grid | off-grid | hybrid | solar-pump
     unit: str = "per_kw"                              # per_kw | per_unit | per_km | flat
     rate: float
+    margin_pct: Optional[float] = None                # Iter 52: own margin — no global default
+    gst_pct: Optional[float] = None                   # Iter 52: own GST% — no global default
     description: str = ""
     active: bool = True
     effective_from: Optional[str] = None
@@ -109,10 +111,9 @@ def _clean_doc(d: dict) -> dict:
 
 def _pricing_config_defaults() -> dict:
     return {
-        "gst_pct": 13.8,
-        "default_margin_pct": 15.0,
-        "kit_rounding_step": 500,          # Change 4: kit price rounds to nearest ₹500 (admin-configurable)
-        "kit_rounding_mode": "nearest",     # nearest | up | down
+        # Iter 52: NO blanket GST% / margin% — every priced line carries its own. One cash-rounding rule for totals.
+        "rounding_step": 1,                 # 1 | 10 | 100
+        "rounding_mode": "nearest",         # nearest | up | down
         "specific_yield_kwh_per_kwp_day": 4.5,
         "peak_sun_hours_availability": 0.95,
         "pump_oversizing_factor": 1.30,
@@ -291,16 +292,31 @@ async def price_history(cat: str, pid: str, request: Request):
 async def get_config(request: Request):
     await _current_user(request)
     doc = await _db.pricing_config.find_one({"key": "defaults"}) or {}
-    return {**_pricing_config_defaults(), **{k: v for k, v in doc.items() if k not in ("_id", "key")}}
+    return {**_pricing_config_defaults(), **{k: v for k, v in doc.items() if k not in ("_id", "key", *RETIRED_CONFIG_KEYS)}}
+
+
+RETIRED_CONFIG_KEYS = ("gst_pct", "default_margin_pct", "kit_rounding_step", "kit_rounding_mode")
 
 
 @router.put("/config")
 async def update_config(payload: dict, request: Request):
     await _require_admin(request)
     payload["updated_at"] = datetime.now(timezone.utc).isoformat()
-    await _db.pricing_config.update_one({"key": "defaults"}, {"$set": payload}, upsert=True)
+    for k in RETIRED_CONFIG_KEYS:
+        if k in payload:
+            raise HTTPException(400, f"'{k}' was retired in Iteration 52 — GST% and margin% are set per priced line, not globally.")
+    if "rounding_step" in payload:
+        try:
+            payload["rounding_step"] = int(float(payload["rounding_step"]))
+        except (TypeError, ValueError):
+            raise HTTPException(400, "rounding_step must be 1, 10 or 100")
+        if payload["rounding_step"] not in (1, 10, 100):
+            raise HTTPException(400, "rounding_step must be 1, 10 or 100")
+    if "rounding_mode" in payload and payload["rounding_mode"] not in ("nearest", "up", "down"):
+        raise HTTPException(400, "rounding_mode must be nearest, up or down")
+    await _db.pricing_config.update_one({"key": "defaults"}, {"$set": payload, "$unset": {k: "" for k in RETIRED_CONFIG_KEYS}}, upsert=True)
     doc = await _db.pricing_config.find_one({"key": "defaults"}) or {}
-    return {**_pricing_config_defaults(), **{k: v for k, v in doc.items() if k not in ("_id", "key")}}
+    return {**_pricing_config_defaults(), **{k: v for k, v in doc.items() if k not in ("_id", "key", *RETIRED_CONFIG_KEYS)}}
 
 
 # ---------------------------------------------------------------------------

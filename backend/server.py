@@ -163,13 +163,15 @@ class SelectedItem(BaseModel):
     name: str
     category: str
     unit_price: float
-    gst_percentage: float = 18.0
+    gst_percentage: Optional[float] = None   # Iter 52: no blanket default — must be set per item
     quantity: int = 1
-    margin_percentage: float = 0
+    margin_percentage: Optional[float] = None
 
 class ManualCost(BaseModel):
     description: str
     amount: float
+    gst_pct: Optional[float] = None
+    margin_pct: Optional[float] = None
 
 class ProjectCreate(BaseModel):
     customer: CustomerDetails
@@ -254,11 +256,11 @@ class InventoryItemCreate(BaseModel):
     quantity: int
     unit_price: float
     supplier: Optional[str] = None
-    gst_percentage: float = 18.0
+    gst_percentage: Optional[float] = None   # Iter 52: no blanket default — must be set per item
     hsn_code: Optional[str] = None
     reorder_level: int = 10
     image_url: Optional[str] = None
-    margin_pct: Optional[float] = None   # None = use the Pricelist default margin
+    margin_pct: Optional[float] = None   # Iter 52: None = missing (flagged), never defaulted
     active: bool = True
     qc_checklist: list = []
     procurement_date: Optional[str] = None
@@ -644,7 +646,8 @@ DEFAULT_PERMISSIONS = {
         "module_amc": {"view": True, "create": True, "edit": True, "delete": True, "export": True},
         "module_locations": {"view": True, "create": True, "edit": True, "delete": True, "export": True},
         "module_partners": {"view": True, "create": True, "edit": True, "delete": True, "export": True},
-        "module_ecommerce": {"view": True, "create": True, "edit": True, "delete": True, "export": True}
+        "module_ecommerce": {"view": True, "create": True, "edit": True, "delete": True, "export": True},
+        "module_teams": {"view": True, "create": True, "edit": True, "delete": True, "export": True}
     },
     "manager": {
         "can_create_project": True, "can_edit_project": True, "can_delete_project": False,
@@ -676,7 +679,8 @@ DEFAULT_PERMISSIONS = {
         "module_amc": {"view": True, "create": True, "edit": True, "delete": False, "export": True},
         "module_locations": {"view": True, "create": False, "edit": False, "delete": False, "export": False},
         "module_partners": {"view": True, "create": True, "edit": True, "delete": False, "export": True},
-        "module_ecommerce": {"view": True, "create": True, "edit": True, "delete": False, "export": True}
+        "module_ecommerce": {"view": True, "create": True, "edit": True, "delete": False, "export": True},
+        "module_teams": {"view": True, "create": True, "edit": True, "delete": False, "export": True}
     },
     "staff": {
         "can_create_project": True, "can_edit_project": True, "can_delete_project": False,
@@ -708,7 +712,8 @@ DEFAULT_PERMISSIONS = {
         "module_amc": {"view": True, "create": False, "edit": False, "delete": False, "export": False},
         "module_locations": {"view": True, "create": False, "edit": False, "delete": False, "export": False},
         "module_partners": {"view": True, "create": False, "edit": False, "delete": False, "export": False},
-        "module_ecommerce": {"view": True, "create": False, "edit": False, "delete": False, "export": False}
+        "module_ecommerce": {"view": True, "create": False, "edit": False, "delete": False, "export": False},
+        "module_teams": {"view": True, "create": False, "edit": False, "delete": False, "export": False}
     }
 }
 
@@ -735,6 +740,16 @@ async def require_permission(request: Request, permission: str) -> dict:
         raise HTTPException(status_code=403, detail=f"Permission denied: {permission}")
     return user
 
+async def require_module(request: Request, module: str, action: str) -> dict:
+    """Iter 52 permissions audit: gate a write endpoint on the dynamic module matrix (admins always pass)."""
+    user = await get_current_user(request)
+    if user["role"] == "admin":
+        return user
+    if not await check_module_permission(user, module, action):
+        raise HTTPException(status_code=403, detail=f"Permission denied: {module}.{action}")
+    return user
+
+
 async def check_module_permission(user: dict, module: str, action: str) -> bool:
     """Read permission for a module.action from the dynamic role_permissions matrix."""
     perms = await get_permissions(user["role"])
@@ -745,21 +760,35 @@ async def check_module_permission(user: dict, module: str, action: str) -> bool:
 
 
 def _system_from_custom_fields(custom_fields: Optional[dict]) -> dict:
-    """Base system (panels + inverter + battery + BOS) as computed by the step-4 calculator."""
+    """Base system (panels + inverter + battery + structure/cabling/installation) as computed by the step-4 calculator."""
     ps = ((custom_fields or {}).get("proposed_solution") or {})
     def _f(v):
         try:
             return float(v or 0)
         except (TypeError, ValueError):
             return 0.0
-    return {"system_cost": _f(ps.get("total_cost")), "subsidy": _f(ps.get("subsidy")), "system_size_kw": _f(ps.get("system_size_kw")), "lines": (ps.get("_quick") or {}).get("lines")}
+    quick = ps.get("_quick") or {}
+    return {"system_cost": _f(ps.get("total_cost")), "subsidy": _f(ps.get("subsidy")), "system_size_kw": _f(ps.get("system_size_kw")),
+            "lines": quick.get("lines"), "system_gst": quick.get("total_gst"), "pricing_issues": list(quick.get("pricing_issues") or [])}
+
+
+def _pct_or_none(v):
+    if v is None or v == "":
+        return None
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return None
 
 
 def calculate_cost_estimation(selected_items: list, manual_costs: list, custom_fields: Optional[dict] = None,
-                              system_gst_pct: float = 13.8) -> dict:
-    """Grand total = base system (calculator, + composite GST) + add-ons/manual (each with its own GST & margin) − subsidy.
-    Iter 51 fix: the base system cost was silently missing — only add-ons were summed."""
+                              rounding: Optional[dict] = None) -> dict:
+    """Grand total = base system (calculator, per-line GST) + add-ons/manual (each with its own GST & margin) − subsidy.
+    Iter 52: NO blanket GST/margin defaults — every priced line carries its own; anything missing is listed in
+    `pricing_issues`. One cash-rounding rule (step 1/10/100 × nearest/up/down) is applied to the grand total only."""
+    from quick_calc import round_cash
     system = _system_from_custom_fields(custom_fields)
+    pricing_issues = list(system["pricing_issues"])
     items_breakdown = []
     total_items_cost = 0
     total_gst = 0
@@ -767,9 +796,14 @@ def calculate_cost_estimation(selected_items: list, manual_costs: list, custom_f
 
     for item in selected_items:
         item_cost = item["unit_price"] * item["quantity"]
-        item_margin_pct = item.get("margin_percentage", 0)
-        item_margin = item_cost * (item_margin_pct / 100)
-        item_gst = item_cost * (item["gst_percentage"] / 100)
+        gst_pct = _pct_or_none(item.get("gst_percentage"))
+        margin_pct = _pct_or_none(item.get("margin_percentage"))
+        if gst_pct is None:
+            pricing_issues.append(f"Add-on '{item['name']}': GST% missing.")
+        if margin_pct is None:
+            pricing_issues.append(f"Add-on '{item['name']}': margin% missing.")
+        item_margin = item_cost * ((margin_pct or 0) / 100)
+        item_gst = item_cost * ((gst_pct or 0) / 100)
         total_items_cost += item_cost
         total_gst += item_gst
         total_margin += item_margin
@@ -779,26 +813,45 @@ def calculate_cost_estimation(selected_items: list, manual_costs: list, custom_f
             "inventory_item_id": item.get("inventory_item_id"),
             "unit_price": item["unit_price"],
             "quantity": item["quantity"],
-            "gst_percentage": item["gst_percentage"],
-            "margin_percentage": item_margin_pct,
+            "gst_percentage": gst_pct,
+            "margin_percentage": margin_pct,
             "amount": round(item_cost, 2),
             "gst_amount": round(item_gst, 2),
             "margin_amount": round(item_margin, 2)
         })
 
-    manual_total = sum(c["amount"] for c in manual_costs)
+    manual_rows = []
+    manual_total = 0.0
+    for c in manual_costs:
+        amt = float(c.get("amount") or 0)
+        gst_pct = _pct_or_none(c.get("gst_pct"))
+        margin_pct = _pct_or_none(c.get("margin_pct"))
+        if gst_pct is None:
+            pricing_issues.append(f"Line '{c.get('description')}': GST% missing.")
+        if margin_pct is None:
+            pricing_issues.append(f"Line '{c.get('description')}': margin% missing.")
+        m_amt = amt * ((margin_pct or 0) / 100)
+        g_amt = (amt + m_amt) * ((gst_pct or 0) / 100)
+        manual_total += amt
+        total_margin += m_amt
+        total_gst += g_amt
+        manual_rows.append({"description": c.get("description"), "amount": round(amt, 2), "gst_pct": gst_pct, "margin_pct": margin_pct,
+                            "margin_amount": round(m_amt, 2), "gst_amount": round(g_amt, 2), "line_total": round(amt + m_amt + g_amt, 2)})
+
     addons_total = total_items_cost + manual_total + total_margin + total_gst
     system_cost = system["system_cost"]
-    system_gst = system_cost * (system_gst_pct / 100)
+    if system_cost > 0 and system["system_gst"] is None:
+        pricing_issues.append("Base system: per-line GST not available — re-run the Solar Calculator so panels, inverter, structure, cabling and installation carry their own GST%.")
+    system_gst = float(system["system_gst"] or 0)
     subsidy = min(system["subsidy"], system_cost + system_gst) if system_cost > 0 else 0.0
     subtotal = system_cost + total_items_cost + manual_total            # ex-GST, ex-margin
-    total_cost = system_cost + system_gst + addons_total - subsidy      # what the customer pays
+    total_exact = system_cost + system_gst + addons_total - subsidy     # what the customer pays, before cash rounding
+    total_cost = round_cash(total_exact, rounding or {})
 
     return {
         "items_breakdown": items_breakdown,
-        "manual_costs": [{"description": c["description"], "amount": round(c["amount"], 2)} for c in manual_costs],
+        "manual_costs": manual_rows,
         "system_cost": round(system_cost, 2),
-        "system_gst_pct": system_gst_pct,
         "system_gst": round(system_gst, 2),
         "system_size_kw": system["system_size_kw"],
         "system_lines": system["lines"],
@@ -812,23 +865,34 @@ def calculate_cost_estimation(selected_items: list, manual_costs: list, custom_f
         "addons_gst": round(total_gst, 2),
         "subsidy": round(subsidy, 2),
         "gross_total": round(system_cost + system_gst + addons_total, 2),
+        "total_exact": round(total_exact, 2),
+        "rounding": {"step": (rounding or {}).get("rounding_step", 1), "mode": (rounding or {}).get("rounding_mode", "nearest"),
+                     "adjustment": round(total_cost - total_exact, 2)},
         "total_cost": round(total_cost, 2),
+        "pricing_issues": pricing_issues,
     }
 
 
 async def build_cost_estimation(selected_items: list, manual_costs: list, custom_fields: Optional[dict]) -> dict:
     cfg = await db.pricing_config.find_one({"key": "defaults"}) or {}
-    try:
-        gst = float(cfg.get("gst_pct", 13.8))
-    except (TypeError, ValueError):
-        gst = 13.8
-    return calculate_cost_estimation(selected_items, manual_costs, custom_fields, gst)
+    return calculate_cost_estimation(selected_items, manual_costs, custom_fields,
+                                     {"rounding_step": cfg.get("rounding_step", 1), "rounding_mode": cfg.get("rounding_mode", "nearest")})
 
 # ================== AUTH ENDPOINTS ==================
 
 @api_router.post("/auth/register")
-async def register(user_data: UserCreate, response: Response):
+async def register(user_data: UserCreate, response: Response, request: Request):
+    """Iter 52 permissions audit: self-registration is only open for the very first (bootstrap) account,
+    which is always an admin. Afterwards only an authenticated admin can create users and choose their role."""
     email = user_data.email.lower()
+    if await db.users.count_documents({}, limit=1):
+        caller = await get_current_user(request)
+        if caller["role"] != "admin":
+            raise HTTPException(status_code=403, detail="Only an admin can create user accounts")
+    else:
+        user_data.role = "admin"
+    if user_data.role not in DEFAULT_PERMISSIONS:
+        raise HTTPException(status_code=400, detail=f"Unknown role '{user_data.role}'")
     existing = await db.users.find_one({"email": email})
     if existing:
         raise HTTPException(status_code=400, detail="Email already registered")
@@ -845,12 +909,13 @@ async def register(user_data: UserCreate, response: Response):
     
     result = await db.users.insert_one(user_doc)
     user_id = str(result.inserted_id)
-    
-    access_token = create_access_token(user_id, email, user_data.role)
-    refresh_token = create_refresh_token(user_id)
-    
-    response.set_cookie(key="access_token", value=access_token, httponly=True, secure=False, samesite="lax", max_age=3600, path="/")
-    response.set_cookie(key="refresh_token", value=refresh_token, httponly=True, secure=False, samesite="lax", max_age=604800, path="/")
+
+    if not request.cookies.get("access_token") and not request.headers.get("Authorization"):
+        # bootstrap account: sign the new admin in. Admin-created users must log in themselves.
+        access_token = create_access_token(user_id, email, user_data.role)
+        refresh_token = create_refresh_token(user_id)
+        response.set_cookie(key="access_token", value=access_token, httponly=True, secure=False, samesite="lax", max_age=3600, path="/")
+        response.set_cookie(key="refresh_token", value=refresh_token, httponly=True, secure=False, samesite="lax", max_age=604800, path="/")
     
     return {
         "id": user_id,
@@ -1676,11 +1741,11 @@ async def get_inventory_items(
             "quantity": item["quantity"],
             "unit_price": item["unit_price"],
             "supplier": item.get("supplier"),
-            "gst_percentage": item.get("gst_percentage", 18.0),
+            "gst_percentage": item.get("gst_percentage"),
             "hsn_code": item.get("hsn_code"),
             "reorder_level": item.get("reorder_level", 10),
             "image_url": item.get("image_url"),
-            "margin_pct": item.get("margin_pct", 0),
+            "margin_pct": item.get("margin_pct"),
             "active": item.get("active", True),
             "qc_checklist": item.get("qc_checklist", []),
             "procurement_date": item.get("procurement_date"),
@@ -1727,11 +1792,11 @@ async def get_inventory_item(item_id: str, request: Request):
         "quantity": item["quantity"],
         "unit_price": item["unit_price"],
         "supplier": item.get("supplier"),
-        "gst_percentage": item.get("gst_percentage", 18.0),
+        "gst_percentage": item.get("gst_percentage"),
         "hsn_code": item.get("hsn_code"),
         "reorder_level": item.get("reorder_level", 10),
         "image_url": item.get("image_url"),
-        "margin_pct": item.get("margin_pct", 0),
+        "margin_pct": item.get("margin_pct"),
         "active": item.get("active", True),
         "qc_checklist": item.get("qc_checklist", []),
         "procurement_date": item.get("procurement_date"),
@@ -2432,7 +2497,7 @@ api_router.include_router(_reconciliation_router)
 from assets import create_router as _create_assets_router
 _assets_router = _create_assets_router(
     db=db, get_current_user=get_current_user, require_role=require_role,
-    create_audit_log=create_audit_log, check_module_permission=check_module_permission,
+    create_audit_log=create_audit_log, check_module_permission=check_module_permission, put_object=put_object,
 )
 api_router.include_router(_assets_router)
 
@@ -2440,7 +2505,7 @@ api_router.include_router(_assets_router)
 from amc import create_router as _create_amc_router
 _amc_router = _create_amc_router(
     db=db, get_current_user=get_current_user, require_role=require_role,
-    create_audit_log=create_audit_log,
+    create_audit_log=create_audit_log, check_module_permission=check_module_permission,
 )
 api_router.include_router(_amc_router)
 
@@ -2476,6 +2541,10 @@ _partners_router = _create_partners_router(
     db=db, get_current_user=get_current_user, require_role=require_role, create_audit_log=create_audit_log,
 )
 api_router.include_router(_partners_router)
+
+# ═══════════ INTERNAL TEAMS (Iter 52 Task 5) ═══════════
+from internal_teams import create_router as _create_teams_router  # noqa: E402
+api_router.include_router(_create_teams_router(db=db, get_current_user=get_current_user, require_role=require_role, create_audit_log=create_audit_log))
 
 # ═══════════ ECOMMERCE MARKETPLACES (Iter 46 Change 2) ═══════════
 from ecommerce import create_router as _create_ecommerce_router  # noqa: E402
@@ -6272,7 +6341,7 @@ async def get_project_report(project_id: str, request: Request):
 
 @api_router.post("/credits")
 async def create_credit(credit: CustomerCreditCreate, request: Request):
-    user = await get_current_user(request)
+    user = await require_module(request, "module_credits", "create")
     doc = {
         "customer_name": credit.customer_name, "customer_phone": credit.customer_phone,
         "invoice_ref": credit.invoice_ref, "total_amount": credit.total_amount,
@@ -6327,7 +6396,7 @@ async def get_credit_payments(credit_id: str, request: Request):
 
 @api_router.delete("/credits/{credit_id}")
 async def delete_credit(credit_id: str, request: Request):
-    await get_current_user(request)
+    await require_module(request, "module_credits", "delete")
     await db.customer_credits.delete_one({"_id": ObjectId(credit_id)})
     return {"message": "Credit deleted"}
 
@@ -6341,7 +6410,7 @@ async def _next_doc_sequence(key: str) -> int:
 
 @api_router.post("/purchase-orders")
 async def create_po(po: PurchaseOrderCreate, request: Request):
-    user = await get_current_user(request)
+    user = await require_module(request, "module_purchase_inbound", "create")
     total = sum(i.get("qty",0) * i.get("unit_price",0) for i in po.items)
     location_id = po.location_id or user.get("default_location_id")
     loc_code = None
@@ -6377,7 +6446,7 @@ async def list_pos(request: Request, status: str = None, location_id: str = None
 async def delete_po(po_id: str, request: Request):
     """Iter 43 Change 2 — a PO can be deleted freely while still 'pending' (nothing physical
     happened yet); once approved/arrived/received it must go through the existing reverse-inbound flow."""
-    user = await get_current_user(request)
+    user = await require_module(request, "module_purchase_inbound", "delete")
     po = await db.purchase_orders.find_one({"_id": ObjectId(po_id)})
     if not po:
         raise HTTPException(status_code=404, detail="Purchase order not found")
@@ -6711,7 +6780,7 @@ async def reject_action_request(req_id: str, request: Request):
 
 @api_router.post("/deliveries")
 async def create_delivery(delivery: DeliveryOutboundCreate, request: Request):
-    user = await get_current_user(request)
+    user = await require_module(request, "module_delivery_outbound", "create")
     doc = {
         "project_id": delivery.project_id, "customer_name": delivery.customer_name,
         "customer_address": delivery.customer_address, "customer_contact": delivery.customer_contact,
@@ -6980,7 +7049,7 @@ async def hard_delete_delivery(delivery_id: str, payload: HardDeletePayload, req
 
 @api_router.post("/audits")
 async def create_audit(audit: AuditCreate, request: Request):
-    user = await get_current_user(request)
+    user = await require_module(request, "module_audits", "create")
     doc = {
         "title": audit.title, "project_id": audit.project_id,
         "auditor_name": audit.auditor_name, "deadline": audit.deadline,
@@ -7004,7 +7073,7 @@ async def list_audits(request: Request, status: str = None):
 @api_router.put("/audits/{audit_id}")
 async def update_audit(audit_id: str, request: Request):
     body = await request.json()
-    await get_current_user(request)
+    await require_module(request, "module_audits", "edit")
     update = {}
     if "checklist" in body: update["checklist"] = body["checklist"]
     if "issues" in body: update["issues"] = body["issues"]
@@ -7017,7 +7086,7 @@ async def update_audit(audit_id: str, request: Request):
 @api_router.put("/audits/{audit_id}/issue")
 async def add_audit_issue(audit_id: str, request: Request):
     body = await request.json()
-    await get_current_user(request)
+    await require_module(request, "module_audits", "edit")
     issue = {"description": body.get("description",""), "severity": body.get("severity","medium"), "owner_name": body.get("owner_name",""), "fix_deadline": body.get("fix_deadline",""), "status": "open", "created_at": datetime.now(timezone.utc).isoformat()}
     await db.audits.update_one({"_id": ObjectId(audit_id)}, {"$push": {"issues": issue}})
     return {"message": "Issue added"}
@@ -7232,6 +7301,9 @@ async def startup_event():
         await db.form_tabs.update_one({"_id": tab["_id"]}, {"$set": {"order": idx + 1}})
     logger.info("System form tabs seeded")
     
+    # Iter 52: retire blanket GST/margin + kit rounding → single cash-rounding rule (idempotent)
+    await db.pricing_config.update_one({"key": "defaults"}, {"$unset": {"gst_pct": "", "default_margin_pct": "", "kit_rounding_step": "", "kit_rounding_mode": ""},
+                                                             "$setOnInsert": {"rounding_step": 1, "rounding_mode": "nearest"}}, upsert=True)
     # Init object storage
     try:
         init_storage()

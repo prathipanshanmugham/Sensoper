@@ -92,15 +92,27 @@ export function GridSolarFlow({ data, r, set, config, panels, inverters, batteri
         <CostLine label={`Panels${r?.panel_count ? ` · ${r.panel_count} × ${r.panel_wattage_w || '?'} W` : ''}`} line={r?.lines?.panels} testid="line-panels" />
         <CostLine label="Inverter" line={r?.lines?.inverter} testid="line-inverter" />
         {needsBattery && <CostLine label={`Battery${r?.battery_count ? ` · ${r.battery_count} nos` : ''}`} line={r?.lines?.battery} testid="line-battery" />}
-        <div className="flex items-center justify-between gap-3 px-3 py-2">
-          <div className="flex-1">
-            <OverridableNumber label="Structure, cabling & installation" unit="₹" autoValue={r?.lines?.bos?.auto ?? 0} value={ov.bos_cost} onChange={(v) => setOv('bos_cost', v)} step={1000} testid="bos" />
-          </div>
-        </div>
+        {['structure', 'cabling', 'installation'].map(key => (
+          <ServiceLine key={key} keyName={key} line={r?.lines?.[key]} ov={ov} setOv={setOv} warnFor={warnFor} />
+        ))}
         <div className="flex items-center justify-between px-3 py-2.5 bg-slate-50">
-          <span className="font-semibold text-slate-800">Total system price</span>
+          <span className="font-semibold text-slate-800">Total system price <span className="text-slate-400 font-normal text-xs">before GST</span></span>
           <span className="font-bold text-slate-900 text-base" data-testid="result-total-cost">{inr(r?.total_cost)}</span>
         </div>
+        <div className="flex items-center justify-between px-3 py-2 text-xs text-slate-600">
+          <span>GST (per line)</span>
+          <span className="tabular-nums" data-testid="result-total-gst">{inr(r?.total_gst)}</span>
+        </div>
+        <div className="flex items-center justify-between px-3 py-2 text-sm">
+          <span className="font-medium text-slate-800">System incl. GST</span>
+          <span className="font-semibold text-slate-900 tabular-nums" data-testid="result-total-incl-gst">{inr(r?.total_incl_gst)}</span>
+        </div>
+        {(r?.pricing_issues || []).length > 0 && (
+          <div className="px-3 py-2 bg-amber-50 border-t border-amber-200" data-testid="pricing-issues">
+            <p className="text-[11px] font-semibold text-amber-800 mb-0.5">Pricing incomplete — {r.pricing_issues.length} line{r.pricing_issues.length === 1 ? '' : 's'} missing GST% / margin%</p>
+            {r.pricing_issues.map((m, i) => <p key={i} className="text-[11px] text-amber-800">• {m}</p>)}
+          </div>
+        )}
         <div className="flex items-center justify-between gap-3 px-3 py-2">
           <div className="flex-1 space-y-1">
             <Label className="text-xs text-slate-700">Subsidy <span className="text-slate-400">(₹, enter sanctioned amount)</span></Label>
@@ -117,10 +129,34 @@ export function GridSolarFlow({ data, r, set, config, panels, inverters, batteri
 }
 
 function CostLine({ label, line, testid }) {
+  const missing = line && !line.benchmark && (line.gst_pct === null || line.margin_pct === null);
   return (
     <div className="flex items-center justify-between gap-3 px-3 py-2" data-testid={testid}>
-      <span className="text-slate-700">{label}{line?.benchmark && <span className="ml-2 rounded bg-slate-100 text-slate-500 px-1.5 py-0.5 text-[10px] uppercase tracking-wider" data-testid={`${testid}-benchmark`}>benchmark</span>}</span>
+      <span className="text-slate-700">{label}{line?.benchmark && <span className="ml-2 rounded bg-slate-100 text-slate-500 px-1.5 py-0.5 text-[10px] uppercase tracking-wider" data-testid={`${testid}-benchmark`}>benchmark</span>}
+        {line && !line.benchmark && !missing && <span className="ml-2 text-[10px] text-slate-400">margin {line.margin_pct}% · GST {line.gst_pct}%</span>}
+        {missing && <span className="ml-2 rounded bg-amber-100 text-amber-800 px-1.5 py-0.5 text-[10px] uppercase tracking-wider" data-testid={`${testid}-missing`}>{line.margin_pct === null ? 'margin' : ''}{line.margin_pct === null && line.gst_pct === null ? ' + ' : ''}{line.gst_pct === null ? 'GST' : ''} missing</span>}
+      </span>
       <span className="font-medium text-slate-900 whitespace-nowrap">{inr(line?.amount)}</span>
+    </div>
+  );
+}
+
+const SERVICE_LABELS = { structure: 'Mounting structure', cabling: 'Cabling & electrical', installation: 'Installation & commissioning' };
+
+function ServiceLine({ keyName, line, ov, setOv, warnFor }) {
+  const label = SERVICE_LABELS[keyName];
+  const missing = line && (line.gst_missing || line.margin_missing);
+  return (
+    <div className="px-3 py-2 space-y-1.5" data-testid={`line-${keyName}`}>
+      <div className="flex items-center justify-between gap-3">
+        <span className="text-slate-700 text-sm">{label}{missing && <span className="ml-2 rounded bg-amber-100 text-amber-800 px-1.5 py-0.5 text-[10px] uppercase tracking-wider" data-testid={`line-${keyName}-missing`}>needs GST% / margin%</span>}</span>
+        <span className="font-medium text-slate-900 whitespace-nowrap" data-testid={`line-${keyName}-amount`}>{inr(line?.amount)}</span>
+      </div>
+      <div className="grid grid-cols-3 gap-2">
+        <OverridableNumber label="Cost" unit="₹" autoValue={line?.auto ?? 0} value={ov[`${keyName}_cost`]} onChange={(v) => setOv(`${keyName}_cost`, v)} step={500} testid={`${keyName}-cost`} />
+        <NumberField label="Margin" unit="%" value={ov[`${keyName}_margin_pct`] ?? ''} onChange={(v) => setOv(`${keyName}_margin_pct`, v)} step={0.5} placeholder="required" testid={`${keyName}-margin`} warnings={warnFor(`${keyName}_margin_pct`)} />
+        <NumberField label="GST" unit="%" value={ov[`${keyName}_gst_pct`] ?? ''} onChange={(v) => setOv(`${keyName}_gst_pct`, v)} step={0.5} placeholder="required" testid={`${keyName}-gst`} warnings={warnFor(`${keyName}_gst_pct`)} />
+      </div>
     </div>
   );
 }

@@ -7,7 +7,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from bson import ObjectId
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 from pydantic import BaseModel
 from pymongo import ReturnDocument
 
@@ -115,7 +115,7 @@ async def _next_sequence(db, key: str) -> int:
     return doc["seq"]
 
 
-def create_router(db, get_current_user, require_role, create_audit_log, check_module_permission):
+def create_router(db, get_current_user, require_role, create_audit_log, check_module_permission, put_object=None):
     router = APIRouter()
 
     @router.get("/assets")
@@ -313,6 +313,64 @@ def create_router(db, get_current_user, require_role, create_audit_log, check_mo
             update["next_calibration_date"] = _next_date(payload.date, a.get("calibration_interval_days"))
         await db.assets.update_one({"_id": ObjectId(asset_id)}, {"$set": update})
         return {"message": "Maintenance logged"}
+
+    # ── Iter 52: documents / reports attached to an asset (Emergent object storage) ──
+    ALLOWED_DOC_TYPES = {"application/pdf", "image/png", "image/jpeg", "image/webp", "text/csv", "text/plain",
+                         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "application/vnd.ms-excel",
+                         "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "application/msword"}
+    MAX_DOC_BYTES = 25 * 1024 * 1024
+
+    def _doc_out(d: dict[str, Any]) -> dict[str, Any]:
+        return {"id": d["doc_id"], "filename": d["filename"], "content_type": d["content_type"], "size": d["size"],
+                "doc_type": d.get("doc_type", "other"), "notes": d.get("notes", ""), "storage_path": d["storage_path"],
+                "url": f"/api/files/{d['storage_path']}", "uploaded_by": d.get("uploaded_by_name"), "uploaded_at": d["uploaded_at"]}
+
+    @router.get("/assets/{asset_id}/documents")
+    async def list_asset_documents(asset_id: str, request: Request):
+        await get_current_user(request)
+        a = await db.assets.find_one({"_id": ObjectId(asset_id)}, {"documents": 1})
+        if not a:
+            raise HTTPException(status_code=404, detail="Asset not found")
+        return [_doc_out(d) for d in a.get("documents", [])]
+
+    @router.post("/assets/{asset_id}/documents")
+    async def upload_asset_document(asset_id: str, request: Request, file: UploadFile = File(...),
+                                    doc_type: str = Form("other"), notes: str = Form("")):
+        user = await require_role("admin", "manager")(request)
+        a = await db.assets.find_one({"_id": ObjectId(asset_id)}, {"_id": 1})
+        if not a:
+            raise HTTPException(status_code=404, detail="Asset not found")
+        ctype = file.content_type or "application/octet-stream"
+        if ctype not in ALLOWED_DOC_TYPES:
+            raise HTTPException(status_code=400, detail="Only PDF, image, CSV, Excel or Word files are allowed")
+        contents = await file.read()
+        if not contents:
+            raise HTTPException(status_code=400, detail="Empty file")
+        if len(contents) > MAX_DOC_BYTES:
+            raise HTTPException(status_code=400, detail="File size must be under 25MB")
+        safe_name = re.sub(r"[^A-Za-z0-9._-]+", "_", file.filename or "document")
+        doc_id = str(ObjectId())
+        path = f"sensoper-solar/assets/{asset_id}/{doc_id}_{safe_name}"
+        try:
+            put_object(path, contents, ctype)
+        except Exception as e:  # noqa: BLE001 — storage errors surface as a clean 502
+            raise HTTPException(status_code=502, detail=f"Storage upload failed: {e}")
+        doc = {"doc_id": doc_id, "filename": file.filename or safe_name, "content_type": ctype, "size": len(contents),
+               "doc_type": doc_type or "other", "notes": notes or "", "storage_path": path,
+               "uploaded_by": user["id"], "uploaded_by_name": user["name"], "uploaded_at": datetime.now(timezone.utc).isoformat()}
+        await db.assets.update_one({"_id": ObjectId(asset_id)}, {"$push": {"documents": doc}})
+        await create_audit_log(user["id"], user["name"], "asset_document_uploaded", "asset", asset_id, new_data={"filename": doc["filename"], "doc_type": doc["doc_type"]})
+        return _doc_out(doc)
+
+    @router.delete("/assets/{asset_id}/documents/{doc_id}")
+    async def delete_asset_document(asset_id: str, doc_id: str, request: Request):
+        user = await require_role("admin", "manager")(request)
+        a = await db.assets.find_one({"_id": ObjectId(asset_id), "documents.doc_id": doc_id}, {"documents.$": 1})
+        if not a:
+            raise HTTPException(status_code=404, detail="Document not found")
+        await db.assets.update_one({"_id": ObjectId(asset_id)}, {"$pull": {"documents": {"doc_id": doc_id}}})
+        await create_audit_log(user["id"], user["name"], "asset_document_deleted", "asset", asset_id, old_data=a["documents"][0])
+        return {"message": "Document removed"}
 
     @router.get("/assets/reports/{report_type}")
     async def asset_report(report_type: str, request: Request, location_id: str | None = None):

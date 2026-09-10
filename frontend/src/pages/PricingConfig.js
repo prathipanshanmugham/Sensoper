@@ -22,8 +22,10 @@ const CAT_META = {
     { key: 'system_type_scope', label: 'System Scope', type: 'select', opts: ['any', 'on-grid', 'off-grid', 'hybrid', 'solar-pump'] },
     { key: 'unit', label: 'Unit', type: 'select', opts: ['per_kw', 'per_unit', 'per_km', 'flat'] },
     { key: 'rate', label: 'Rate ₹', type: 'number', required: true },
+    { key: 'margin_pct', label: 'Margin %', type: 'number', required: true, hint: 'Own margin for this service line — no global default' },
+    { key: 'gst_pct', label: 'GST %', type: 'number', required: true, hint: 'Own GST rate for this service line (e.g. 18 for installation services)' },
     { key: 'description', label: 'Description' },
-  ], summary: (p) => `${p.name} · ${p.unit} · ₹${(p.rate || 0).toLocaleString('en-IN')}` },
+  ], summary: (p) => `${p.name} · ${p.unit} · ₹${(p.rate || 0).toLocaleString('en-IN')}${p.gst_pct == null ? ' · GST MISSING' : ` · GST ${p.gst_pct}%`}` },
   fuel:      { icon: Fuel,     label: 'Fuel Types',       color: 'rose', fields: [
     { key: 'name', label: 'Fuel Name', required: true, hint: 'Diesel / Petrol / LPG / Grid Electricity' },
     { key: 'unit', label: 'Unit', type: 'select', opts: ['litre', 'kg', 'scm', 'kWh'] },
@@ -98,8 +100,8 @@ export default function PricingConfig() {
 
   const saveConfig = async () => {
     setSavingConfig(true);
-    try { const r = await catalogueAPI.updateConfig(config); setConfig(r.data); }
-    catch (e) { alert('Save failed'); } finally { setSavingConfig(false); }
+    try { const { _id, key, updated_at, ...payload } = config; const r = await catalogueAPI.updateConfig(payload); setConfig(r.data); }
+    catch (e) { alert(e.response?.data?.detail || 'Save failed'); } finally { setSavingConfig(false); }
   };
 
   const currentList = products[active] || [];
@@ -200,11 +202,34 @@ export default function PricingConfig() {
         {/* Global Defaults */}
         <TabsContent value="defaults" className="space-y-3">
           <Card>
-            <CardHeader className="pb-2"><CardTitle className="text-base font-['Outfit']">Global Defaults & Calculator Constants</CardTitle></CardHeader>
+            <CardHeader className="pb-2"><CardTitle className="text-base font-['Outfit']">Cash Rounding & Calculator Constants</CardTitle></CardHeader>
             <CardContent>
+              <div className="rounded-md border border-emerald-200 bg-emerald-50/50 p-3 mb-4" data-testid="rounding-rule-card">
+                <p className="text-sm font-semibold text-slate-800">One cash-rounding rule <span className="text-xs text-slate-500 font-normal">— applied to the final total of quotes, kit prices and invoices. Line prices are never rounded.</span></p>
+                <p className="text-xs text-slate-500 mt-0.5 mb-2">There is <b>no</b> global GST% or margin% any more: every priced line (inventory items, structure, cabling, installation, other lines) carries its own, and anything missing is flagged in the Pricelist, calculator and PDFs.</p>
+                {config && (
+                  <div className="flex flex-wrap gap-3 items-end">
+                    <div className="space-y-1">
+                      <Label className="text-xs">Round to nearest</Label>
+                      <Select value={String(config.rounding_step ?? 1)} onValueChange={(v) => setConfig(p => ({ ...p, rounding_step: parseInt(v) }))}>
+                        <SelectTrigger className="h-9 w-32" data-testid="rounding-step-select"><SelectValue /></SelectTrigger>
+                        <SelectContent><SelectItem value="1">₹1</SelectItem><SelectItem value="10">₹10</SelectItem><SelectItem value="100">₹100</SelectItem></SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs">Direction</Label>
+                      <Select value={config.rounding_mode || 'nearest'} onValueChange={(v) => setConfig(p => ({ ...p, rounding_mode: v }))}>
+                        <SelectTrigger className="h-9 w-36" data-testid="rounding-mode-select"><SelectValue /></SelectTrigger>
+                        <SelectContent><SelectItem value="nearest">Nearest</SelectItem><SelectItem value="up">Always up</SelectItem><SelectItem value="down">Always down</SelectItem></SelectContent>
+                      </Select>
+                    </div>
+                    <p className="text-xs text-slate-500 pb-2" data-testid="rounding-example">e.g. ₹1,23,456.70 → ₹{(() => { const st = config.rounding_step || 1, md = config.rounding_mode || 'nearest', v = 123456.7; const r = md === 'up' ? Math.ceil(v / st) * st : md === 'down' ? Math.floor(v / st) * st : Math.round(v / st) * st; return r.toLocaleString('en-IN'); })()}</p>
+                  </div>
+                )}
+              </div>
               {!config ? <Loader2 className="h-5 w-5 animate-spin" /> : (
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  {Object.entries(config).filter(([k]) => !['_id', 'key', 'updated_at'].includes(k)).map(([k, v]) => (
+                  {Object.entries(config).filter(([k]) => !['_id', 'key', 'updated_at', 'rounding_step', 'rounding_mode', 'gst_pct', 'default_margin_pct', 'kit_rounding_step', 'kit_rounding_mode'].includes(k)).map(([k, v]) => (
                     <div key={k} className="space-y-1">
                       <Label className="text-xs capitalize">{k.replace(/_/g, ' ')}</Label>
                       <Input value={v ?? ''} onChange={(e) => setConfig(p => ({ ...p, [k]: isNaN(parseFloat(e.target.value)) ? e.target.value : parseFloat(e.target.value) }))} className="h-9" data-testid={`config-${k}`} />

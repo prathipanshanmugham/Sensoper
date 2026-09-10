@@ -51,7 +51,8 @@ def _row(client, item_id, **params):
 class TestPricelistView:
     def test_shape_and_every_item_visible(self, client, items):
         d = client.get(f"{API}/pricelist", params={"status": "all"}, timeout=60).json()
-        assert {"categories", "items", "default_margin_pct", "gst_pct", "total"} <= set(d)
+        assert {"categories", "items", "missing_pricing_count", "total"} <= set(d)
+        assert "default_margin_pct" not in d and "gst_pct" not in d, "Iter 52: no blanket defaults"
         ids = {r["id"] for r in d["items"]}
         assert set(items) <= ids, "every inventory item must appear in the pricelist"
         assert d["total"] == len(d["items"])
@@ -63,12 +64,12 @@ class TestPricelistView:
         row0, _ = _row(client, items[0])
         assert row0["category"] == "inverters" and row0["category_label"] == "Inverters"
 
-    def test_default_margin_and_math(self, client, items):
+    def test_missing_margin_is_flagged_not_defaulted(self, client, items):
         row, d = _row(client, items[0])
-        assert row["margin_is_default"] is True and row["margin_pct"] == d["default_margin_pct"]
-        assert row["selling_price"] == round(10000 * (1 + d["default_margin_pct"] / 100), 2)
-        assert row["gst_pct"] == 12
-        assert row["price_incl_gst"] == round(row["selling_price"] * 1.12, 2)
+        assert row["margin_missing"] is True and row["margin_pct"] is None and row["pricing_complete"] is False
+        assert row["selling_price"] is None and row["price_incl_gst"] is None
+        assert row["gst_pct"] == 12 and row["gst_missing"] is False
+        assert d["missing_pricing_count"] >= 1
 
     def test_filters(self, client, items):
         d = client.get(f"{API}/pricelist", params={"status": "all", "category": "inverters"}, timeout=60).json()
@@ -82,7 +83,8 @@ class TestPricelistEdits:
         r = client.put(f"{API}/pricelist/items/{items[0]}", json={"margin_pct": 22.5}, timeout=60)
         assert r.status_code == 200, r.text
         row = r.json()
-        assert row["margin_pct"] == 22.5 and row["margin_is_default"] is False and row["selling_price"] == 12250.0
+        assert row["margin_pct"] == 22.5 and row["margin_missing"] is False and row["selling_price"] == 12250.0
+        assert row["pricing_complete"] is True and row["price_incl_gst"] == round(12250.0 * 1.12, 2)
         again, _ = _row(client, items[0])
         assert again["margin_pct"] == 22.5, "margin did not persist"
         inv = client.get(f"{API}/inventory/items", timeout=60).json()
@@ -156,7 +158,8 @@ class TestCategoryNormalise:
 
 
 class TestCalculatorConsistency:
-    def test_quick_calc_uses_pricelist_default_margin(self, client):
+    def test_quick_calc_has_no_blanket_defaults(self, client):
         cfg = client.get(f"{API}/catalogue/config", timeout=60).json()
-        d = client.get(f"{API}/pricelist", timeout=60).json()
-        assert d["default_margin_pct"] == cfg["default_margin_pct"]
+        assert "default_margin_pct" not in cfg and "gst_pct" not in cfg
+        r = client.put(f"{API}/catalogue/config", json={"gst_pct": 13.8}, timeout=60)
+        assert r.status_code == 400, "retired global GST must be rejected"

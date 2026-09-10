@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import { toast } from 'sonner';
 import { partnersAPI, projectsAPI } from '../utils/api';
 import { useAuth } from '../contexts/AuthContext';
 import { Button } from '../components/ui/button';
@@ -10,7 +11,7 @@ import { Label } from '../components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../components/ui/dialog';
 import { Textarea } from '../components/ui/textarea';
-import { Loader2, ArrowLeft, Star, Plus, ShieldCheck, Clock, Wallet, Pencil } from 'lucide-react';
+import { Loader2, ArrowLeft, Star, Plus, ShieldCheck, Clock, Wallet, Pencil, Trash2 } from 'lucide-react';
 
 const STATUS_COLORS = { active: 'bg-emerald-100 text-emerald-800', inactive: 'bg-slate-100 text-slate-600', blacklisted: 'bg-red-100 text-red-800' };
 const ASSIGN_STATUS_COLORS = { assigned: 'bg-blue-100 text-blue-800', in_progress: 'bg-amber-100 text-amber-800', completed: 'bg-emerald-100 text-emerald-800', payment_pending: 'bg-orange-100 text-orange-800', closed: 'bg-slate-100 text-slate-600' };
@@ -129,6 +130,18 @@ export default function PartnerDetail() {
   };
 
   // Edit-partner (Iter 47)
+  const [showDelete, setShowDelete] = useState(false);
+  const [deleteReason, setDeleteReason] = useState('');
+  const [deleteErr, setDeleteErr] = useState('');
+  const [deleting, setDeleting] = useState(false);
+  const confirmDelete = async () => {
+    if (deleteReason.trim().length < 3) { setDeleteErr('Please give a reason (at least 3 characters)'); return; }
+    setDeleting(true); setDeleteErr('');
+    try { await partnersAPI.remove(id, deleteReason.trim()); toast.success('Partner deleted'); navigate('/dashboard/partners'); }
+    catch (e) { setDeleteErr(e.response?.data?.detail || 'Delete failed'); }
+    finally { setDeleting(false); }
+  };
+
   const openEdit = async () => {
     setError(''); setStatusOverrideReason(''); setNeedsStatusOverride(false);
     setEditForm({
@@ -191,6 +204,7 @@ export default function PartnerDetail() {
         </div>
         <div className="flex gap-2">
           {canManage && <Button variant="outline" onClick={openEdit} className="gap-1.5" data-testid="edit-partner-btn"><Pencil className="h-4 w-4" />Edit</Button>}
+          {isAdmin && <Button variant="outline" onClick={() => { setDeleteReason(''); setDeleteErr(''); setShowDelete(true); }} className="gap-1.5 border-rose-300 text-rose-700 hover:bg-rose-50" data-testid="delete-partner-btn"><Trash2 className="h-4 w-4" />Delete</Button>}
           {canManage && <Button onClick={openAssign} className="bg-emerald-600 hover:bg-emerald-700 text-white gap-1.5" data-testid="new-assignment-btn"><Plus className="h-4 w-4" />New Assignment</Button>}
         </div>
       </div>
@@ -386,6 +400,25 @@ export default function PartnerDetail() {
             <div className="space-y-1"><Label>Delay Reason (if any)</Label><Input value={qualityForm.delay_reason} onChange={e => setQualityForm(p => ({ ...p, delay_reason: e.target.value }))} /></div>
           </div>
           <DialogFooter><Button variant="outline" onClick={() => setShowQuality(null)}>Cancel</Button><Button onClick={submitQuality} disabled={saving} className="bg-emerald-600 hover:bg-emerald-700 text-white" data-testid="quality-submit-btn">{saving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Save'}</Button></DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Partner dialog (Iter 52) — guardrails live on the API: blocked while live assignments / held retention exist */}
+      <Dialog open={showDelete} onOpenChange={setShowDelete}>
+        <DialogContent className="max-w-md" data-testid="delete-partner-dialog">
+          <DialogHeader><DialogTitle className="text-rose-700">Delete partner</DialogTitle></DialogHeader>
+          <div className="space-y-3 text-sm">
+            <p className="text-slate-600">This removes <b>{partner?.name}</b> from the directory. Blocked automatically if the partner still has active assignments or held retention. A full snapshot is kept in the audit log.</p>
+            <div className="space-y-1">
+              <Label className="text-xs">Reason *</Label>
+              <Input value={deleteReason} onChange={e => setDeleteReason(e.target.value)} placeholder="e.g. Duplicate entry / stopped working with us" className="h-9" data-testid="delete-partner-reason" />
+            </div>
+            {deleteErr && <p className="text-xs text-rose-600 bg-rose-50 border border-rose-200 rounded p-2" data-testid="delete-partner-error">{deleteErr}</p>}
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setShowDelete(false)} disabled={deleting}>Cancel</Button>
+            <Button onClick={confirmDelete} disabled={deleting} className="bg-rose-600 hover:bg-rose-700 text-white" data-testid="delete-partner-confirm">{deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Delete partner'}</Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 

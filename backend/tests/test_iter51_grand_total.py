@@ -22,8 +22,9 @@ ADDONS = [
     {"name": f"{TAG} SPD kit", "category": "bos", "unit_price": 4000, "quantity": 2, "gst_percentage": 18, "margin_percentage": 10},
     {"name": f"{TAG} Wi-Fi logger", "category": "cables_accessories", "unit_price": 6000, "quantity": 1, "gst_percentage": 12, "margin_percentage": 0},
 ]
-MANUAL = [{"description": f"{TAG} crane hire", "amount": 2500}]
-ADDONS_TOTAL = (8000 + 800 + 1440) + (6000 + 720) + 2500   # 19,460
+MANUAL = [{"description": f"{TAG} crane hire", "amount": 2500, "gst_pct": 18, "margin_pct": 0}]
+ADDONS_TOTAL = (8000 + 800 + 1440) + (6000 + 720) + (2500 + 450)   # 19,910 — crane hire now carries its own 18% GST
+SYSTEM_GST = 24840.0   # Iter 52: per-line GST from the calculator (13.8% composite retired) — pinned in _quick.total_gst
 
 
 @pytest.fixture(scope="module")
@@ -36,12 +37,15 @@ def client():
 
 @pytest.fixture(scope="module")
 def gst_pct(client):
-    return float(client.get(f"{API}/catalogue/config", timeout=60).json()["gst_pct"])
+    cfg = client.get(f"{API}/catalogue/config", timeout=60).json()
+    assert "gst_pct" not in cfg and "default_margin_pct" not in cfg, "Iter 52: blanket GST/margin defaults must be gone"
+    assert cfg["rounding_step"] in (1, 10, 100)
+    return SYSTEM_GST / SYSTEM_COST * 100
 
 
 @pytest.fixture(scope="module")
-def expected(gst_pct):
-    system_gst = SYSTEM_COST * gst_pct / 100
+def expected():
+    system_gst = SYSTEM_GST
     return {"system_gst": round(system_gst, 2), "gross": round(SYSTEM_COST + system_gst + ADDONS_TOTAL, 2),
             "grand": round(SYSTEM_COST + system_gst + ADDONS_TOTAL - SUBSIDY, 2)}
 
@@ -53,7 +57,8 @@ def project(client):
         "location": {"address": "1 Test Lane", "city": "Chennai", "state": "Tamil Nadu", "pincode": "600001"},
         "electrical": {"sanction_load_kw": 3, "connected_load_kw": 3, "monthly_consumption_units": 300, "eb_tariff": 7}, "mounting": {"roof_type": "RCC", "tilt_angle": 15, "structure_type": "fixed"}, "additional": {"cable_length_meters": 20, "inverter_to_panel_distance": 10}, "solar_system": {"system_type": "on-grid", "capacity_kw": 3},
         "selected_items": ADDONS, "manual_costs": MANUAL,
-        "custom_fields": {"proposed_solution": {"system_size_kw": 3, "total_cost": SYSTEM_COST, "subsidy": SUBSIDY, "net_cost": SYSTEM_COST - SUBSIDY}},
+        "custom_fields": {"proposed_solution": {"system_size_kw": 3, "total_cost": SYSTEM_COST, "subsidy": SUBSIDY, "net_cost": SYSTEM_COST - SUBSIDY,
+                                                "_quick": {"total_gst": SYSTEM_GST, "lines": {"panels": {"amount": 180000, "gst_pct": 13.8, "gst_amount": 24840}}}}},
     }
     r = client.post(f"{API}/projects", json=payload, timeout=60)
     assert r.status_code in (200, 201), r.text
@@ -84,11 +89,11 @@ class TestGrandTotalIncludesBaseSystem:
         assert r.status_code == 200, r.text
         inv = r.json()
         sys_line = inv["line_items"][0]
-        assert sys_line["taxable_value"] == SYSTEM_COST and sys_line["gst_pct"] == gst_pct
+        assert sys_line["taxable_value"] == SYSTEM_COST and abs(sys_line["gst_pct"] - gst_pct) < 0.01
         # intra-state: CGST + SGST split of the system GST, never IGST
         assert round(sys_line["cgst"] + sys_line["sgst"], 2) == expected["system_gst"] and sys_line["igst"] == 0
         assert inv["total_taxable_value"] == round(SYSTEM_COST + 8800 + 6000 + 2500, 2)
-        assert round(inv["total_cgst"] + inv["total_sgst"], 2) == round(expected["system_gst"] + 1440 + 720, 2)
+        assert round(inv["total_cgst"] + inv["total_sgst"], 2) == round(expected["system_gst"] + 1440 + 720 + 450, 2)
         assert inv["grand_total"] == expected["grand"], "invoice grand total must equal the corrected project total"
 
     def test_profit_calculator_uses_corrected_total(self, client, project, expected):
@@ -97,16 +102,24 @@ class TestGrandTotalIncludesBaseSystem:
             pytest.skip("profit endpoint not available for this project state")
         d = r.json()
         # revenue = gross (before subsidy) minus GST pass-through → must include the base system
-        assert abs(d["revenue"] - (expected["gross"] - (expected["system_gst"] + 1440 + 720))) < 1, d
+        assert abs(d["revenue"] - (expected["gross"] - (expected["system_gst"] + 1440 + 720 + 450))) < 1, d
         assert d["revenue"] > SYSTEM_COST
 
     def test_updating_calculator_result_recomputes_total(self, client, project, gst_pct):
-        new_ps = {"proposed_solution": {"system_size_kw": 5, "total_cost": 300000, "subsidy": SUBSIDY}}
+        new_ps = {"proposed_solution": {"system_size_kw": 5, "total_cost": 300000, "subsidy": SUBSIDY, "_quick": {"total_gst": 36000}}}
         r = client.put(f"{API}/projects/{project['id']}", json={"custom_fields": new_ps}, timeout=60)
         assert r.status_code == 200, r.text
         ce = client.get(f"{API}/projects/{project['id']}", timeout=60).json()["cost_estimation"]
-        assert ce["system_cost"] == 300000
-        assert ce["total_cost"] == round(300000 * (1 + gst_pct / 100) + ADDONS_TOTAL - SUBSIDY, 2)
+        assert ce["system_cost"] == 300000 and ce["system_gst"] == 36000
+        assert ce["total_cost"] == round(300000 + 36000 + ADDONS_TOTAL - SUBSIDY, 2)
+        assert ce["pricing_issues"] == [], ce["pricing_issues"]
+
+    def test_missing_gst_is_flagged_not_defaulted(self, client, project):
+        r = client.put(f"{API}/projects/{project['id']}", json={"manual_costs": [{"description": "no-gst line", "amount": 1000}]}, timeout=60)
+        assert r.status_code == 200, r.text
+        ce = client.get(f"{API}/projects/{project['id']}", timeout=60).json()["cost_estimation"]
+        assert any("no-gst line" in m and "GST%" in m for m in ce["pricing_issues"]), ce["pricing_issues"]
+        assert ce["manual_costs"][0]["gst_amount"] == 0 and ce["manual_costs"][0]["gst_pct"] is None
 
     def test_project_without_calculator_result_still_sums_addons(self, client):
         payload = {"customer": {"name": f"{TAG} NoSys", "phone": "9000000052", "address": "x"}, "location": {"address": "x"}, "electrical": {"sanction_load_kw": 3, "connected_load_kw": 3, "monthly_consumption_units": 300, "eb_tariff": 7}, "mounting": {"roof_type": "RCC", "tilt_angle": 15, "structure_type": "fixed"}, "additional": {"cable_length_meters": 20, "inverter_to_panel_distance": 10},

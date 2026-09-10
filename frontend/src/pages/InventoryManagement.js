@@ -42,9 +42,11 @@ export default function InventoryManagement() {
   const [itemForm, setItemForm] = useState({
     name: '', sku_code: '', category: '',
     zone: '', aisle: '', shelf: '', rack: '', bin_location: '',
-    quantity: 0, unit_price: 0, supplier: '', gst_percentage: 18, hsn_code: '', reorder_level: 10,
+    quantity: 0, unit_price: 0, supplier: '', gst_percentage: '', margin_pct: '', wattage_w: '', hsn_code: '', reorder_level: 10,
     image_url: '', active: true, qc_checklist: [], procurement_date: '', location_id: ''
   });
+  const [viewMode, setViewMode] = useState('all');   // all | panels (Iter 52)
+  const isPanelCategory = (slug) => /panel/i.test(slug || '');
   const [newQcItem, setNewQcItem] = useState('');
   
   const [actionLoading, setActionLoading] = useState(false);
@@ -151,7 +153,8 @@ export default function InventoryManagement() {
         zone: item.zone || '', aisle: item.aisle || '', shelf: item.shelf || '',
         rack: item.rack || '', bin_location: item.bin_location || '',
         quantity: item.quantity, unit_price: item.unit_price,
-        supplier: item.supplier || '', gst_percentage: item.gst_percentage || 18,
+        supplier: item.supplier || '', gst_percentage: item.gst_percentage ?? '', margin_pct: item.margin_pct ?? '',
+        wattage_w: item.specs?.wattage ?? '',
         hsn_code: item.hsn_code || '',
         reorder_level: item.reorder_level || 10, image_url: item.image_url || '',
         active: item.active !== undefined ? item.active : true,
@@ -164,7 +167,7 @@ export default function InventoryManagement() {
       setItemForm({
         name: '', sku_code: '', category: categories[0]?.slug || '',
         zone: '', aisle: '', shelf: '', rack: '', bin_location: '',
-        quantity: 0, unit_price: 0, supplier: '', gst_percentage: 18, hsn_code: '', reorder_level: 10,
+        quantity: 0, unit_price: 0, supplier: '', gst_percentage: '', margin_pct: '', wattage_w: '', hsn_code: '', reorder_level: 10,
         image_url: '', active: true, qc_checklist: [], procurement_date: '', location_id: user?.default_location_id || ''
       });
     }
@@ -191,10 +194,18 @@ export default function InventoryManagement() {
       setError('Image URL must be a valid http(s) URL');
       return;
     }
+    if (isPanelCategory(itemForm.category) && !(parseFloat(itemForm.wattage_w) > 0)) {
+      setError('Wattage (W) is required for panels — the calculator uses it to work out the panel count');
+      return;
+    }
     setActionLoading(true);
     setError('');
     try {
-      const payload = { ...itemForm, location_id: itemForm.location_id || '' };
+      const { wattage_w, ...rest } = itemForm;
+      const toPct = (v) => (v === '' || v === null || v === undefined ? null : parseFloat(v));
+      const specs = { ...(editingItem?.specs || {}) };
+      if (isPanelCategory(itemForm.category)) { if (wattage_w === '' || wattage_w === null) delete specs.wattage; else specs.wattage = parseFloat(wattage_w); }
+      const payload = { ...rest, gst_percentage: toPct(itemForm.gst_percentage), margin_pct: toPct(itemForm.margin_pct), specs, location_id: itemForm.location_id || '' };
       if (editingItem) {
         await inventoryAPI.updateItem(editingItem.id, payload);
       } else {
@@ -232,7 +243,8 @@ export default function InventoryManagement() {
   const filteredItems = items.filter(item => {
     if (searchQuery && !item.name.toLowerCase().includes(searchQuery.toLowerCase()) &&
         !item.sku_code.toLowerCase().includes(searchQuery.toLowerCase())) return false;
-    if (filterCategory !== 'all' && item.category !== filterCategory) return false;
+    if (viewMode === 'panels' && !isPanelCategory(item.category)) return false;
+    if (viewMode !== 'panels' && filterCategory !== 'all' && item.category !== filterCategory) return false;
     if (filterLocation === 'global' && item.location_id) return false;
     if (filterLocation !== 'all' && filterLocation !== 'global' && item.location_id !== filterLocation) return false;
     return true;
@@ -275,6 +287,14 @@ export default function InventoryManagement() {
           </Card>
         )}
 
+        {/* Iter 52 — Panels tab */}
+        <div className="flex gap-1 mb-3 rounded-lg bg-slate-100 p-1 w-fit" data-testid="inventory-view-tabs">
+          <button type="button" onClick={() => setViewMode('all')} className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${viewMode === 'all' ? 'bg-white shadow text-slate-900' : 'text-slate-500 hover:text-slate-800'}`} data-testid="inventory-tab-all">All Items</button>
+          <button type="button" onClick={() => setViewMode('panels')} className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${viewMode === 'panels' ? 'bg-white shadow text-slate-900' : 'text-slate-500 hover:text-slate-800'}`} data-testid="inventory-tab-panels">Panels <span className="text-xs text-slate-400">({items.filter(i => isPanelCategory(i.category)).length})</span></button>
+        </div>
+        {viewMode === 'panels' && items.some(i => isPanelCategory(i.category) && !(i.specs?.wattage > 0)) && (
+          <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-3 py-2 mb-3" data-testid="panels-missing-wattage-banner">{items.filter(i => isPanelCategory(i.category) && !(i.specs?.wattage > 0)).length} panel(s) have no Wattage (W) — the calculator cannot work out panel counts for them. Edit each panel to add it.</p>
+        )}
         {/* Filters */}
         <Card className="border-slate-200 mb-4">
           <CardContent className="p-3 sm:p-4">
@@ -330,6 +350,7 @@ export default function InventoryManagement() {
                     <th className="text-left py-3 px-4 text-xs font-semibold uppercase text-slate-500 cursor-pointer select-none" onClick={toggleBranchSort} data-testid="sort-branch-header">Branch{branchSort === 'asc' ? ' ▲' : branchSort === 'desc' ? ' ▼' : ''}</th>
                     <th className="text-left py-3 px-4 text-xs font-semibold uppercase text-slate-500">Bin Location</th>
                     <th className="text-right py-3 px-4 text-xs font-semibold uppercase text-slate-500">Qty</th>
+                    {viewMode === 'panels' && <th className="text-right py-3 px-4 text-xs font-semibold uppercase text-slate-500">Wattage</th>}
                     <th className="text-right py-3 px-4 text-xs font-semibold uppercase text-slate-500">Price</th>
                     <th className="text-right py-3 px-4 text-xs font-semibold uppercase text-slate-500">GST</th>
                     <th className="text-left py-3 px-4 text-xs font-semibold uppercase text-slate-500">HSN</th>
@@ -366,8 +387,9 @@ export default function InventoryManagement() {
                       <td className="py-3 px-4"><Badge variant="outline" className={`text-xs ${item.location_id ? 'border-blue-200 bg-blue-50 text-blue-700' : 'border-slate-200 text-slate-500'}`} data-testid={`branch-badge-${item.id}`}>{getBranchLabel(item)}</Badge></td>
                       <td className="py-3 px-4 text-sm text-slate-600"><div className="flex items-center gap-1"><Warehouse className="h-3 w-3 text-slate-400" />{getWarehouseLocation(item)}</div></td>
                       <td className="py-3 px-4 text-right"><span className={item.quantity <= item.reorder_level ? 'text-red-600 font-semibold' : 'text-slate-900'}>{item.quantity}</span>{item.quantity <= item.reorder_level && <AlertTriangle className="h-3 w-3 inline ml-1 text-red-500" />}</td>
+                      {viewMode === 'panels' && <td className="py-3 px-4 text-right" data-testid={`item-wattage-${item.id}`}>{item.specs?.wattage > 0 ? <span className="font-medium text-slate-900">{item.specs.wattage} W</span> : <span className="text-amber-600 text-xs font-medium">missing</span>}</td>}
                       <td className="py-3 px-4 text-right font-medium text-slate-900">₹{item.unit_price.toLocaleString('en-IN')}</td>
-                      <td className="py-3 px-4 text-right text-slate-600">{item.gst_percentage}%</td>
+                      <td className="py-3 px-4 text-right text-slate-600" data-testid={`item-gst-${item.id}`}>{item.gst_percentage == null ? <span className="text-amber-600 text-xs font-medium">not set</span> : `${item.gst_percentage}%`}</td>
                       <td className="py-3 px-4 text-xs font-mono text-slate-600" data-testid={`hsn-${item.id}`}>{item.hsn_code || '—'}</td>
                       <td className="py-3 px-4 text-right">
                         <div className="flex justify-end gap-1">
@@ -437,7 +459,7 @@ export default function InventoryManagement() {
             <DialogDescription>Fill in item details and warehouse location</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
-            {error && <div className="p-3 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg">{error}</div>}
+            {error && <div className="p-3 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg" role="alert" data-testid="item-form-error">{error}</div>}
 
             {/* Image URL + Preview */}
             <div className="space-y-2">
@@ -523,7 +545,9 @@ export default function InventoryManagement() {
             <div className="grid grid-cols-3 gap-4">
               <div className="space-y-2"><Label>Quantity</Label><Input type="number" min="0" value={itemForm.quantity} onChange={(e) => setItemForm(p => ({ ...p, quantity: parseInt(e.target.value) || 0 }))} className="h-11" data-testid="item-quantity-input" /></div>
               <div className="space-y-2"><Label>Unit Price (₹)</Label><Input type="number" min="0" value={itemForm.unit_price} onChange={(e) => setItemForm(p => ({ ...p, unit_price: parseFloat(e.target.value) || 0 }))} className="h-11" data-testid="item-price-input" /></div>
-              <div className="space-y-2"><Label>GST %</Label><Input type="number" min="0" max="100" value={itemForm.gst_percentage} onChange={(e) => setItemForm(p => ({ ...p, gst_percentage: parseFloat(e.target.value) || 0 }))} className="h-11" data-testid="item-gst-input" /></div>
+              <div className="space-y-2"><Label>GST % <span className="text-xs text-slate-400">(per item, no default)</span></Label><Input type="number" min="0" max="100" step="0.5" value={itemForm.gst_percentage} placeholder="required" onChange={(e) => setItemForm(p => ({ ...p, gst_percentage: e.target.value }))} className={`h-11 ${itemForm.gst_percentage === '' ? 'border-amber-400 bg-amber-50/60' : ''}`} data-testid="item-gst-input" /></div>
+              <div className="space-y-2"><Label>Margin % <span className="text-xs text-slate-400">(per item, no default)</span></Label><Input type="number" min="0" max="500" step="0.5" value={itemForm.margin_pct} placeholder="required" onChange={(e) => setItemForm(p => ({ ...p, margin_pct: e.target.value }))} className={`h-11 ${itemForm.margin_pct === '' ? 'border-amber-400 bg-amber-50/60' : ''}`} data-testid="item-margin-input" /></div>
+              {isPanelCategory(itemForm.category) && <div className="space-y-2"><Label>Wattage (W) *</Label><Input type="number" min="1" step="5" value={itemForm.wattage_w} placeholder="e.g. 550" onChange={(e) => setItemForm(p => ({ ...p, wattage_w: e.target.value }))} className={`h-11 ${!(parseFloat(itemForm.wattage_w) > 0) ? 'border-amber-400 bg-amber-50/60' : ''}`} data-testid="item-wattage-input" />{!(parseFloat(itemForm.wattage_w) > 0) && <p className="text-xs text-amber-700" data-testid="item-wattage-required-error">Required for panels — used to work out the panel count in the calculator.</p>}</div>}
               <div className="space-y-2"><Label>HSN Code</Label><Input type="text" maxLength={10} value={itemForm.hsn_code} onChange={(e) => setItemForm(p => ({ ...p, hsn_code: e.target.value.trim() }))} placeholder="e.g., 85414011" className="h-11" data-testid="item-hsn-input" /></div>
             </div>
             <div className="grid grid-cols-2 gap-4">

@@ -1,0 +1,41 @@
+{
+  "summary": "Iteration 52 frontend verification + light backend spot-check. Ran 9 scripted flows on the preview URL as admin. 8/9 flows fully pass end-to-end; 1 minor divergence from spec on ProjectDetails team-assignment card (uses a manage-link → separate page instead of inline checkboxes). Backend spot-check: 4/4 pass. Cleaned up all test data (2 teams, 1 partner, 1 asset doc).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "InventoryManagement > Panels tab > Edit dialog", "issue": "The wattage field is spec'd as required for panels (placeholder 'required'), but when I cleared it and clicked Save no visible validation message appeared via the standard .error/[role=alert]/.text-red-500 selectors. The save may be silently rejected (row still shows 'missing') but the user gets no feedback that it was blocked. Backend/API-level rejection may exist, but the UI does not surface an inline error for the wattage-required rule.", "selector": "[data-testid='item-wattage-input']", "priority": "MEDIUM"},
+      {"component": "ProjectDetails > project-teams-card", "issue": "Card renders only 'project-teams-manage-link' + 'project-teams-assigned' — no inline 'project-team-check-{id}' checkboxes or 'project-teams-save-btn' as the spec requested. The team assignment happens on a separate manage page reached via the link. Functionally OK (teams can still be assigned) but diverges from the checkbox-inline UX in the spec.", "selector": "[data-testid='project-teams-card']", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_iter52.py"],
+  "action_items": [
+    "InventoryManagement panels edit: surface a visible inline error (data-testid='item-wattage-required-error' or similar) when saving a panel with an empty required Wattage field so users know why the save is blocked.",
+    "OPTIONAL — align ProjectDetails project-teams-card with the requested spec: add inline 'project-team-check-{id}' checkboxes, 'project-teams-save-btn' and 'project-team-badge-{id}' badges (currently only a manage-link is rendered)."
+  ],
+  "critical_code_review_comments": [
+    "AssetsPage.js: the asset detail dialog is opened only by clicking the asset NAME text ('<p onClick={openDetail}>' line 241). There is no data-testid='open-asset-{id}' or similar button — makes automation and discoverability harder. Consider exposing a dedicated 'view/detail' action button on each card in addition to the name click.",
+    "PricingConfig: 'Save Defaults' button carries data-testid='config-save-btn' as expected; retired keys (gst_pct, default_margin_pct) fully removed from the DOM — good.",
+    "quick_calc / /api/calculate/quick: returns line objects with gst_pct/margin_pct fields explicitly null when unset, matching the iter52 'never backfill' contract. pricing_issues stays empty when amounts are 0 (nothing to price) — behavior is consistent."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100% (4/4 spot-check)", "frontend": "≈95% (all 9 flows pass; 2 minor UX/consistency gaps)"},
+  "test_credentials": "admin@sensoper.com / Admin@123 (from /app/memory/test_credentials.md)",
+  "seed_data_creation": "Created and cleaned up: 2 internal teams (TEST52_Alpha_*, TEST52_Beta_*) via UI then deleted via DELETE /api/internal-teams/{id}; 1 partner (TEST52_Throwaway_*) created via UI and deleted via the delete-partner-dialog flow (verified redirect + gone from list); 1 asset document uploaded to the existing 'QA Pending Archive Asset' and deleted via asset-doc-delete-{id}. Pricelist DC Cable 50m Roll margin was temporarily set to 15 then reverted to empty (missing).",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "All iter52 features verified on the preview URL as admin. Kit Explainer downloads as 'Kit-Explainer-INTERNAL-SCR-{shortid}.pdf'. project-teams-card uses a manage-link workflow (not inline checkboxes) — if the spec strictly requires inline checkboxes, that needs a UI change; if the manage page is acceptable, mark as pass. Panels edit dialog needs an inline required-wattage error to be visible to users.",
+  "verified_flows": [
+    "Pricing Config: rounding-step-select + rounding-mode-select persist (₹100/Always up), reset to ₹1/Nearest; no gst_pct/default_margin_pct inputs.",
+    "Pricelist: pricelist-missing-banner = '7 items missing…', 7/40 selling cells render 'margin missing'; entering margin=15 + Enter on a missing row makes selling appear (₹4,025) live.",
+    "Inventory: inventory-tab-all + inventory-tab-panels; Panels tab shows 29 panels, 27 missing wattage, banner text matches spec; edit dialog exposes item-wattage-input/item-gst-input/item-margin-input with placeholder='required'.",
+    "Solar Calculator: line-structure/cabling/installation each with cost/margin/gst inputs. Before fill: pricing-issues lists 8 missing (panels+inverter benchmark, plus 3 lines × 2). Filling margin=10 + gst=18 on all 3: pricing-issues drops to 2 (panels/inverter benchmark), total-gst = ₹13,068 (was ₹0), incl-gst = ₹1,84,668 = cost + gst.",
+    "Materials manual costs: add-manual-cost-btn adds row with manual-cost-0-desc/amount/margin/gst. cost-summary-pricing-issues appears when margin/gst missing. cost-summary-rounding correctly absent when step=1.",
+    "ProjectDetails: download-kit-explainer-btn (admin) visible → downloads 'Kit-Explainer-INTERNAL-SCR-15742B.pdf'. download-kit-pdf-btn + download-pdf-btn also present.",
+    "Teams: team-new-btn → team-editor with team-name-input/team-lead-select/team-roster/team-save-btn. Alpha + Beta created. Duplicate name → team-form-error = \"A team named 'X' already exists\". teams-performance table populated. team-open-{id} → team-detail visible.",
+    "Assets: clicking asset NAME opens detail dialog with asset-documents. Upload via asset-doc-file-input creates asset-doc-{id} + asset-doc-open-{id} (href = /api/files/sensoper-solar/assets/{id}/…) + asset-doc-delete-{id}; delete works ('Document removed' toast).",
+    "Partners: create → open → delete-partner-btn → delete-partner-dialog. Empty reason confirm → delete-partner-error = 'Please give a reason (at least 3 characters)'. Valid reason → deletes + redirects to /dashboard/partners, partner gone.",
+    "Backend spot-check: GET /api/catalogue/config has no gst_pct/default_margin_pct; PUT gst_pct → 400 with retirement message; POST /api/calculate/quick returns lines.structure/cabling/installation with gst_pct/margin_pct fields; anon POST /api/auth/register → 401."
+  ]
+}

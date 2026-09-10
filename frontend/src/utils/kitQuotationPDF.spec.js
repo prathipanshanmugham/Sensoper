@@ -7,7 +7,7 @@
  *
  * Run with:  node frontend/src/utils/kitQuotationPDF.spec.js
  */
-import { buildKitPresentation, roundKitPrice } from './kitQuotationPDF.js';
+import { buildKitPresentation, roundKitPrice, roundCash } from './kitQuotationPDF.js';
 
 const sampleProject = {
   id: '6a1065cb1b5eace19fe23532',
@@ -26,7 +26,7 @@ const addonGroups = [
   { name: 'Safety & Protection', description: 'SPDs, extra earthing, fire safety.', show_on_pdf: true, optional_priced_separately: false },
   { name: 'Monitoring', description: 'Wi-Fi datalogger + cloud subscription.', show_on_pdf: true, optional_priced_separately: false },
 ];
-const config = { kit_rounding_step: 500, kit_rounding_mode: 'nearest', gst_pct: 13.8 };
+const config = { rounding_step: 100, rounding_mode: 'nearest' };
 
 const pres = buildKitPresentation(sampleProject, config, addonGroups);
 
@@ -64,6 +64,11 @@ assert(roundKitPrice(96351, 5000, 'down') === 95000, 'roundKitPrice down to near
 assert(typeof pres.totals.gst === 'number', 'totals.gst is a number');
 assert(pres.totals.subsidy === 78000, 'totals.subsidy pulled from subsidy_tracking');
 assert(pres.totals.netPayable > 0, 'totals.netPayable computed');
+// Iter 52: single cash-rounding rule on the total only
+assert(pres.totals.netPayable % 100 === 0, 'netPayable rounded to nearest ₹100 per rounding_step');
+assert(roundCash(96351, { rounding_step: 10, rounding_mode: 'up' }) === 96360, 'roundCash up to nearest 10');
+assert(roundCash(96351, { rounding_step: 100, rounding_mode: 'down' }) === 96300, 'roundCash down to nearest 100');
+assert(roundCash(96351.4, { rounding_step: 1, rounding_mode: 'nearest' }) === 96351, 'roundCash nearest rupee');
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail === 0 ? 0 : 1);

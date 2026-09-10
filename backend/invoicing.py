@@ -222,18 +222,32 @@ def create_router(db, get_current_user, create_audit_log):
                 {"name": {"$in": [re.compile(f"^{re.escape(n)}$", re.IGNORECASE) for n in set(names_needing_lookup)]}}
             ).to_list(500)
             hsn_by_name = {d["name"].lower(): d.get("hsn_code", "") for d in name_docs}
-        # Iter 51: the base solar system (calculator) is the first invoice line — composite GST rate (HSN 8541 solar power system)
+        # Iter 52: the base solar system is invoiced line-by-line — each line carries its own GST% (no composite rate)
         system_cost = float(ce.get("system_cost", 0) or 0)
         if system_cost > 0:
-            sys_gst = float(ce.get("system_gst", 0) or 0)
             kw = ce.get("system_size_kw") or (project.get("custom_fields", {}).get("proposed_solution", {}) or {}).get("system_size_kw")
-            line_items.append({
-                "description": f"{kw} kWp Solar Power System (panels, inverter, structure, BOS, installation)" if kw else "Solar Power System (panels, inverter, structure, BOS, installation)",
-                "hsn_sac": "8541", "quantity": 1, "unit_price": round(system_cost, 2), "taxable_value": round(system_cost, 2),
-                "gst_pct": ce.get("system_gst_pct", 13.8), "gst_amount": round(sys_gst, 2),
-                "cgst": round(sys_gst / 2, 2) if not inter_state else 0, "sgst": round(sys_gst / 2, 2) if not inter_state else 0,
-                "igst": round(sys_gst, 2) if inter_state else 0,
-            })
+            sys_lines = ce.get("system_lines") or {}
+            labels = {"panels": ("Solar PV Panels", "8541"), "inverter": ("Solar Inverter", "8504"), "battery": ("Battery Storage", "8507"),
+                      "structure": ("Mounting Structure", "7308"), "cabling": ("Cabling & Electrical", "8544"), "installation": ("Installation & Commissioning", "995461")}
+            priced = [(k, sys_lines.get(k)) for k in labels if isinstance(sys_lines.get(k), dict) and float(sys_lines[k].get("amount") or 0) > 0]
+            if priced:
+                for k, ln in priced:
+                    amt = float(ln.get("amount") or 0)
+                    g = float(ln.get("gst_amount") or 0)
+                    line_items.append({
+                        "description": f"{labels[k][0]}{f' — {kw} kWp system' if k == 'panels' and kw else ''}", "hsn_sac": labels[k][1], "quantity": 1,
+                        "unit_price": round(amt, 2), "taxable_value": round(amt, 2), "gst_pct": ln.get("gst_pct"), "gst_amount": round(g, 2),
+                        "cgst": round(g / 2, 2) if not inter_state else 0, "sgst": round(g / 2, 2) if not inter_state else 0, "igst": round(g, 2) if inter_state else 0,
+                    })
+            else:
+                sys_gst = float(ce.get("system_gst", 0) or 0)
+                line_items.append({
+                    "description": f"{kw} kWp Solar Power System (panels, inverter, structure, BOS, installation)" if kw else "Solar Power System (panels, inverter, structure, BOS, installation)",
+                    "hsn_sac": "8541", "quantity": 1, "unit_price": round(system_cost, 2), "taxable_value": round(system_cost, 2),
+                    "gst_pct": round(sys_gst / system_cost * 100, 2) if system_cost else None, "gst_amount": round(sys_gst, 2),
+                    "cgst": round(sys_gst / 2, 2) if not inter_state else 0, "sgst": round(sys_gst / 2, 2) if not inter_state else 0,
+                    "igst": round(sys_gst, 2) if inter_state else 0,
+                })
         for it in ce.get("items_breakdown", []):
             gst_amt = float(it.get("gst_amount", 0) or 0)
             hsn = hsn_by_id.get(it.get("inventory_item_id")) or hsn_by_name.get((it.get("name") or "").lower(), "")
@@ -250,10 +264,13 @@ def create_router(db, get_current_user, create_audit_log):
                 "igst": round(gst_amt, 2) if inter_state else 0,
             })
         for mc in ce.get("manual_costs", []) or []:
+            taxable = float(mc.get("amount", 0) or 0) + float(mc.get("margin_amount", 0) or 0)
+            g = float(mc.get("gst_amount", 0) or 0)
             line_items.append({
                 "description": mc.get("description", ""), "hsn_sac": "", "quantity": 1,
-                "unit_price": mc.get("amount", 0), "taxable_value": round(float(mc.get("amount", 0) or 0), 2),
-                "gst_pct": 0, "gst_amount": 0, "cgst": 0, "sgst": 0, "igst": 0,
+                "unit_price": round(taxable, 2), "taxable_value": round(taxable, 2),
+                "gst_pct": mc.get("gst_pct"), "gst_amount": round(g, 2),
+                "cgst": round(g / 2, 2) if not inter_state else 0, "sgst": round(g / 2, 2) if not inter_state else 0, "igst": round(g, 2) if inter_state else 0,
             })
 
         total_taxable = round(sum(li["taxable_value"] for li in line_items), 2)
@@ -261,7 +278,11 @@ def create_router(db, get_current_user, create_audit_log):
         total_sgst = round(sum(li["sgst"] for li in line_items), 2)
         total_igst = round(sum(li["igst"] for li in line_items), 2)
         subsidy = float(ce.get("subsidy", 0) or 0)
-        grand_total = round(total_taxable + total_cgst + total_sgst + total_igst - subsidy, 2)
+        from quick_calc import round_cash
+        pcfg = await db.pricing_config.find_one({"key": "defaults"}) or {}
+        grand_exact = round(total_taxable + total_cgst + total_sgst + total_igst - subsidy, 2)
+        grand_total = round(round_cash(grand_exact, {"rounding_step": pcfg.get("rounding_step", 1), "rounding_mode": pcfg.get("rounding_mode", "nearest")}), 2)
+        round_off = round(grand_total - grand_exact, 2)
 
         invoice_number = await _next_invoice_number()
         now = datetime.now(timezone.utc)
@@ -293,6 +314,7 @@ def create_router(db, get_current_user, create_audit_log):
             "total_sgst": total_sgst,
             "total_igst": total_igst,
             "grand_total": grand_total,
+            "round_off": round_off,
             "amount_in_words": amount_in_words(grand_total),
             "declaration": "We declare that this invoice shows the actual price of the goods/services described "
                             "and that all particulars are true and correct.",

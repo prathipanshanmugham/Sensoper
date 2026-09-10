@@ -26,8 +26,9 @@ from fastapi import APIRouter, Request
 from pydantic import BaseModel
 from bson import ObjectId
 
-DEFAULT_MARGIN_PCT = 15.0
 BOS_SHARE = 0.40
+# Iter 52: the old BOS lump is split into three priced lines, each with its own GST% and margin%
+BOS_SPLIT = {"structure": 0.40, "cabling": 0.25, "installation": 0.35}
 PANEL_BENCH_SHARE = 0.45
 INVERTER_BENCH_SHARE = 0.15
 ROOF_SQFT_PER_KW = 100
@@ -43,12 +44,30 @@ def _num(v, default=0.0) -> float:
         return default
 
 
-def sell_price(item: Optional[Dict[str, Any]], default_margin: float = DEFAULT_MARGIN_PCT) -> float:
+def _pct(v) -> Optional[float]:
+    """Explicit percentage or None. Iter 52: there is NO blanket default — None means 'missing'."""
+    if v is None or v == "":
+        return None
+    return _num(v, 0.0)
+
+
+def sell_price(item: Optional[Dict[str, Any]]) -> float:
+    """Selling price = cost × (1 + item margin). Items without a margin sell at cost and are flagged missing."""
     if not item:
         return 0.0
-    margin = item.get("margin_pct")
-    margin = default_margin if margin is None else _num(margin, default_margin)
+    margin = _pct(item.get("margin_pct")) or 0.0
     return _num(item.get("unit_price")) * (1 + margin / 100)
+
+
+def round_cash(value: float, config: Dict[str, Any]) -> float:
+    """Single cash-rounding rule (Iter 52): step ∈ {1,10,100}, mode ∈ {nearest,up,down}. Applied to totals only."""
+    step = _num((config or {}).get("rounding_step"), 1) or 1
+    mode = (config or {}).get("rounding_mode") or "nearest"
+    if mode == "up":
+        return math.ceil(value / step) * step
+    if mode == "down":
+        return math.floor(value / step) * step
+    return round(value / step) * step
 
 
 def pm_surya_ghar_reference(kw: float, config: Dict[str, Any]) -> int:
@@ -138,15 +157,32 @@ def compute_quick(inputs: Dict[str, Any], config: Dict[str, Any],
     if needs_battery:
         battery_count = int(_num(bc_manual)) if bc_manual not in (None, "") else (battery_count_auto or 0)
 
-    # ── Cost lines ───────────────────────────────────────────────────
-    default_margin = _num((config or {}).get("default_margin_pct"), DEFAULT_MARGIN_PCT)  # same default the Pricelist uses
-    panel_sell = sell_price(panel, default_margin)
+    # ── Cost lines (Iter 52: every line carries its own GST% & margin%, no blanket defaults) ──
+    pricing_issues: List[str] = []
+
+    def item_pricing(item, field, label):
+        """Returns (gst_pct, margin_pct) for an inventory item, flagging anything missing."""
+        if not item:
+            return None, None
+        g, m = _pct(item.get("gst_percentage")), _pct(item.get("margin_pct"))
+        if g is None:
+            pricing_issues.append(f"{label}: GST% missing on '{item.get('name')}' — set it in the Pricelist.")
+            warn(field, f"'{item.get('name')}' has no GST% in the Pricelist.")
+        if m is None:
+            pricing_issues.append(f"{label}: margin% missing on '{item.get('name')}' — set it in the Pricelist.")
+            warn(field, f"'{item.get('name')}' has no margin% in the Pricelist.")
+        return g, m
+
+    panel_gst, panel_margin = item_pricing(panel, "panel_item_id", "Panels")
+    panel_sell = sell_price(panel)
     panel_cost = panel_sell * panel_count if (panel and panel_sell > 0 and panel_count > 0) else PANEL_BENCH_SHARE * base_kwp * kw
     panel_benchmark = not (panel and panel_sell > 0 and panel_count > 0)
-    inverter_sell = sell_price(inverter, default_margin)
+    inverter_gst, inverter_margin = item_pricing(inverter, "inverter_item_id", "Inverter")
+    inverter_sell = sell_price(inverter)
     inverter_cost = inverter_sell if (inverter and inverter_sell > 0) else INVERTER_BENCH_SHARE * type_kwp * kw
     inverter_benchmark = not (inverter and inverter_sell > 0)
-    battery_sell = sell_price(battery, default_margin)
+    battery_gst, battery_margin = item_pricing(battery, "battery_item_id", "Battery") if needs_battery else (None, None)
+    battery_sell = sell_price(battery)
     battery_cost = 0.0
     battery_benchmark = False
     if needs_battery and battery_count > 0:
@@ -155,11 +191,34 @@ def compute_quick(inputs: Dict[str, Any], config: Dict[str, Any],
         else:
             battery_cost = battery_count * battery_unit_kwh * _num(config.get("battery_benchmark_per_kwh"), 20000)
             battery_benchmark = True
+    if panel_benchmark and kw > 0:
+        pricing_issues.append("Panels: benchmark price used — pick a panel from Inventory to price with its GST% & margin%.")
+    if inverter_benchmark and kw > 0:
+        pricing_issues.append("Inverter: benchmark price used — pick an inverter from Inventory to price with its GST% & margin%.")
+
     bos_auto = BOS_SHARE * base_kwp * kw
-    bos_manual = overrides.get("bos_cost")
-    bos_cost = _num(bos_manual) if bos_manual not in (None, "") else bos_auto
+    legacy_bos = overrides.get("bos_cost")
+    service_lines: Dict[str, Dict[str, Any]] = {}
+    for key, share in BOS_SPLIT.items():
+        auto_cost = (_num(legacy_bos) if legacy_bos not in (None, "") else bos_auto) * share
+        manual_cost = overrides.get(f"{key}_cost")
+        cost = _num(manual_cost) if manual_cost not in (None, "") else auto_cost
+        g, m = _pct(overrides.get(f"{key}_gst_pct")), _pct(overrides.get(f"{key}_margin_pct"))
+        label = key.capitalize()
+        if kw > 0 and g is None:
+            pricing_issues.append(f"{label}: GST% not set.")
+            warn(f"{key}_gst_pct", f"{label} line needs its own GST%.")
+        if kw > 0 and m is None:
+            pricing_issues.append(f"{label}: margin% not set.")
+            warn(f"{key}_margin_pct", f"{label} line needs its own margin%.")
+        amount = cost * (1 + (m or 0) / 100)
+        service_lines[key] = {"cost": round(cost), "auto": round(auto_cost), "amount": round(amount), "gst_pct": g, "margin_pct": m,
+                              "gst_amount": round(amount * (g or 0) / 100), "gst_missing": g is None, "margin_missing": m is None}
+    bos_cost = sum(l["amount"] for l in service_lines.values())
 
     total_cost = round(panel_cost + inverter_cost + battery_cost + bos_cost) if kw > 0 else 0
+    total_gst = (panel_cost * (panel_gst or 0) / 100 + inverter_cost * (inverter_gst or 0) / 100 + battery_cost * (battery_gst or 0) / 100
+                 + sum(l["gst_amount"] for l in service_lines.values())) if kw > 0 else 0
     subsidy = max(_num(inputs.get("subsidy")), 0)
     if subsidy > total_cost > 0:
         warn("subsidy", f"Subsidy ₹{subsidy:,.0f} is more than the system cost ₹{total_cost:,.0f} — check the amount.")
@@ -213,12 +272,21 @@ def compute_quick(inputs: Dict[str, Any], config: Dict[str, Any],
         "battery_count_auto": battery_count_auto,
         "battery_count": battery_count,
         "lines": {
-            "panels": {"amount": round(panel_cost), "benchmark": panel_benchmark, "unit_price": round(panel_sell, 2) if panel else None},
-            "inverter": {"amount": round(inverter_cost), "benchmark": inverter_benchmark, "unit_price": round(inverter_sell, 2) if inverter else None},
-            "battery": {"amount": round(battery_cost), "benchmark": battery_benchmark, "unit_price": round(battery_sell, 2) if battery else None} if needs_battery else None,
+            "panels": {"amount": round(panel_cost), "benchmark": panel_benchmark, "unit_price": round(panel_sell, 2) if panel else None,
+                       "gst_pct": panel_gst, "margin_pct": panel_margin, "gst_amount": round(panel_cost * (panel_gst or 0) / 100)},
+            "inverter": {"amount": round(inverter_cost), "benchmark": inverter_benchmark, "unit_price": round(inverter_sell, 2) if inverter else None,
+                         "gst_pct": inverter_gst, "margin_pct": inverter_margin, "gst_amount": round(inverter_cost * (inverter_gst or 0) / 100)},
+            "battery": {"amount": round(battery_cost), "benchmark": battery_benchmark, "unit_price": round(battery_sell, 2) if battery else None,
+                        "gst_pct": battery_gst, "margin_pct": battery_margin, "gst_amount": round(battery_cost * (battery_gst or 0) / 100)} if needs_battery else None,
+            "structure": service_lines["structure"],
+            "cabling": service_lines["cabling"],
+            "installation": service_lines["installation"],
             "bos": {"amount": round(bos_cost), "auto": round(bos_auto)},
         },
         "total_cost": total_cost,
+        "total_gst": round(total_gst),
+        "total_incl_gst": round(total_cost + total_gst),
+        "pricing_issues": pricing_issues,
         "subsidy": round(subsidy),
         "subsidy_reference": subsidy_ref,
         "net_cost": round(net_cost),

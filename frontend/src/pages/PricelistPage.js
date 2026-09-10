@@ -73,7 +73,7 @@ export default function PricelistPage() {
       const company = (await companyAPI.getActive()).data;
       const groups = grouped.filter(g => opts.categories.includes(g.slug)).map(g => ({ ...g, items: g.items.filter(i => i.active) })).filter(g => g.items.length);
       if (!groups.length) { toast.error('Nothing to print for the chosen categories'); return; }
-      await generatePriceListPDF({ groups, company, gstPct: data.gst_pct, options: opts });
+      await generatePriceListPDF({ groups, company, options: opts });
       toast.success('Price list PDF downloaded');
     } catch (e) { console.error(e); toast.error('Failed to generate PDF'); }
   };
@@ -87,7 +87,8 @@ export default function PricelistPage() {
           <Link to="/dashboard"><Button variant="ghost" size="icon"><ArrowLeft className="h-5 w-5" /></Button></Link>
           <div>
             <h1 className="text-2xl font-bold font-['Outfit'] flex items-center gap-2"><Tags className="h-5 w-5 text-emerald-600" />Pricelist</h1>
-            <p className="text-sm text-slate-500">Cost, margin and selling price for every inventory item — edits save instantly and feed the calculator and PDFs. Default margin {data?.default_margin_pct ?? 15}%.</p>
+            <p className="text-sm text-slate-500">Cost, margin and selling price for every inventory item — edits save instantly and feed the calculator and PDFs. Every item needs its own margin% and GST% — there is no global default.</p>
+            {data?.missing_pricing_count > 0 && <p className="text-xs text-amber-700 font-medium mt-1" data-testid="pricelist-missing-banner">{data.missing_pricing_count} item{data.missing_pricing_count === 1 ? '' : 's'} missing margin% or GST% — these price at cost and are flagged in quotes until fixed.</p>}
           </div>
         </div>
         <div className="flex gap-2">
@@ -177,10 +178,10 @@ function GroupRows({ group, selected, toggleOne, save, toggleArchive, setHistory
           </td>
           <td className="px-3 py-2 text-xs text-slate-500"><p>{r.sku_code || '—'}</p><PriceCell type="text" value={r.hsn_code || ''} placeholder="HSN" onSave={v => save(r, 'hsn_code', v)} testId={`pricelist-hsn-${r.id}`} width="w-24" /></td>
           <td className="px-3 py-2"><PriceCell value={r.unit_price} onSave={v => save(r, 'unit_price', v)} testId={`pricelist-unit-price-${r.id}`} width="w-28" /></td>
-          <td className="px-3 py-2"><PriceCell value={r.margin_pct} muted={r.margin_is_default} onSave={v => save(r, 'margin_pct', v)} testId={`pricelist-margin-${r.id}`} width="w-20" suffix="%" /></td>
-          <td className="px-3 py-2 text-right font-semibold text-emerald-700 tabular-nums" data-testid={`pricelist-selling-${r.id}`}>{inr(r.selling_price)}</td>
-          <td className="px-3 py-2"><PriceCell value={r.gst_pct} onSave={v => save(r, 'gst_percentage', v)} testId={`pricelist-gst-${r.id}`} width="w-20" suffix="%" /></td>
-          <td className="px-3 py-2 text-right tabular-nums text-slate-800" data-testid={`pricelist-incl-${r.id}`}>{inr(r.price_incl_gst)}</td>
+          <td className="px-3 py-2"><PriceCell value={r.margin_pct} missing={r.margin_missing} placeholder="set" onSave={v => save(r, 'margin_pct', v)} testId={`pricelist-margin-${r.id}`} width="w-20" suffix="%" /></td>
+          <td className="px-3 py-2 text-right font-semibold text-emerald-700 tabular-nums" data-testid={`pricelist-selling-${r.id}`}>{r.selling_price == null ? <span className="text-amber-600 text-xs font-medium">margin missing</span> : inr(r.selling_price)}</td>
+          <td className="px-3 py-2"><PriceCell value={r.gst_pct} missing={r.gst_missing} placeholder="set" onSave={v => save(r, 'gst_percentage', v)} testId={`pricelist-gst-${r.id}`} width="w-20" suffix="%" /></td>
+          <td className="px-3 py-2 text-right tabular-nums text-slate-800" data-testid={`pricelist-incl-${r.id}`}>{r.price_incl_gst == null ? <span className="text-amber-600 text-xs font-medium">{r.gst_missing ? 'GST missing' : '—'}</span> : inr(r.price_incl_gst)}</td>
           <td className="px-3 py-2">
             <div className="flex gap-1 justify-end">
               <Button size="icon" variant="ghost" className="h-7 w-7" title="Price history" onClick={() => setHistoryItem(r)} data-testid={`pricelist-history-${r.id}`}><History className="h-3.5 w-3.5 text-slate-500" /></Button>

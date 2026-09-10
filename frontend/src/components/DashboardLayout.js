@@ -89,6 +89,7 @@ export default function DashboardLayout({ children }) {
     { icon: Tags, label: 'Pricelist', href: '/dashboard/pricelist', show: isAdmin },
     { icon: Store, label: 'Vendors', href: '/dashboard/vendors', show: isAdmin || isManager },
     { icon: HardHat, label: 'Partners', href: '/dashboard/partners', show: true },
+    { icon: Users, label: 'Teams', href: '/dashboard/teams', show: true },
     { icon: ShoppingBag, label: 'Ecommerce', href: '/dashboard/ecommerce', show: true },
   ].filter(item => item.show);
 

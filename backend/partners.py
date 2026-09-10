@@ -12,7 +12,7 @@ from typing import List, Optional, Dict, Any
 from datetime import datetime, timezone
 from pydantic import BaseModel
 from bson import ObjectId
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Body, HTTPException, Request
 
 
 # ═══════════ Models ═══════════
@@ -129,6 +129,9 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+LIVE_ASSIGNMENT_STATUSES = ("assigned", "in_progress")
+
+
 def _rate_for_activity(partner: Dict[str, Any], activity: str, at_date: Optional[str] = None) -> Optional[Dict[str, Any]]:
     """Most recent rate-card entry for `activity` with effective_from <= at_date (versioned rates —
     a past assignment keeps the rate that was in effect when it was priced)."""
@@ -167,7 +170,7 @@ def create_router(db, get_current_user, require_role, create_audit_log):
                              status: Optional[str] = None, search: Optional[str] = None,
                              min_rating: Optional[float] = None, sort: Optional[str] = None):
         await get_current_user(request)
-        q: Dict[str, Any] = {"active": {"$ne": False}}
+        q: Dict[str, Any] = {"active": {"$ne": False}, "deleted": {"$ne": True}}
         if partner_type: q["partner_type"] = partner_type
         if speciality: q["specialities"] = speciality
         if specialities:
@@ -369,18 +372,32 @@ def create_router(db, get_current_user, require_role, create_audit_log):
         return _clean(await db.partners.find_one({"_id": oid}))
 
     @router.delete("/partners/{partner_id}")
-    async def delist_partner(partner_id: str, request: Request):
+    async def delete_partner(partner_id: str, request: Request, payload: Optional[Dict[str, Any]] = Body(None), reason: Optional[str] = None):
+        """Iter 52: soft delete with guardrails — blocked while live assignments exist, reason mandatory, full snapshot in the audit log."""
         user = await require_role("admin")(request)
         try:
             oid = ObjectId(partner_id)
         except Exception:
             raise HTTPException(status_code=400, detail="Invalid partner id")
         existing = await db.partners.find_one({"_id": oid})
-        if not existing:
+        if not existing or existing.get("deleted"):
             raise HTTPException(status_code=404, detail="Partner not found")
-        await db.partners.update_one({"_id": oid}, {"$set": {"active": False, "status": "inactive"}})
-        await create_audit_log(user["id"], user["name"], "delete", "partner", partner_id)
-        return {"message": "Partner archived"}
+        reason_text = ((payload or {}).get("reason") or reason or "").strip()
+        if len(reason_text) < 3:
+            raise HTTPException(status_code=400, detail="A reason (at least 3 characters) is required to delete a partner")
+        live = await db.partner_assignments.count_documents({"partner_id": partner_id, "status": {"$in": list(LIVE_ASSIGNMENT_STATUSES)}})
+        if live:
+            raise HTTPException(status_code=409, detail=f"Cannot delete: {live} active assignment(s) still open — complete or cancel them first")
+        unpaid = await db.partner_assignments.count_documents({"partner_id": partner_id, "retention_held": {"$gt": 0}, "retention_released": {"$ne": True}})
+        if unpaid:
+            raise HTTPException(status_code=409, detail=f"Cannot delete: retention is still held on {unpaid} assignment(s) — release it first")
+        now = _now()
+        snapshot = _clean(existing)
+        await db.partners.update_one({"_id": oid}, {"$set": {"deleted": True, "active": False, "status": "inactive", "deleted_at": now,
+                                                              "deleted_by": user["id"], "deleted_by_name": user["name"], "delete_reason": reason_text}})
+        await create_audit_log(user["id"], user["name"], "partner_deleted", "partner", partner_id, old_data=snapshot,
+                               new_data={"reason": reason_text, "deleted_at": now}, details=f"Partner '{existing.get('name')}' deleted: {reason_text}")
+        return {"message": "Partner deleted", "reason": reason_text}
 
     # ── Assignments ──
     @router.post("/partners/{partner_id}/assignments")

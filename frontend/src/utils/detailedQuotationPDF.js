@@ -13,6 +13,23 @@ const round1 = (v) => Math.round(v * 10) / 10;
 const val = (v, unit = '') => (v === 0 || v === '' || v === null || v === undefined ? null : `${v}${unit}`);
 
 /** Every headline number on the cover derives from here — one source, consistent everywhere. */
+const gstLabel = (v) => (v === null || v === undefined ? 'GST not set' : `${v}%`);
+
+/** Iter 52: the base system prints line-by-line (panels / inverter / battery / structure / cabling / installation), each with its own GST%. */
+function systemRows(ce, project) {
+  if (!(ce.system_cost > 0)) return [];
+  const lines = ce.system_lines || project.custom_fields?.proposed_solution?._quick?.lines || {};
+  const kw = ce.system_size_kw ? `${ce.system_size_kw} kWp ` : '';
+  const ps = project.custom_fields?.proposed_solution || {};
+  const labels = [['panels', `${kw}Solar PV panels${ps.panel_count ? ` — ${ps.panel_count} nos` : ''}`], ['inverter', 'Solar inverter'], ['battery', 'Battery storage'],
+                  ['structure', 'Mounting structure'], ['cabling', 'Cabling & electrical'], ['installation', 'Installation & commissioning']];
+  const rows = labels.filter(([k]) => lines[k] && lines[k].amount > 0).map(([k, label], i) =>
+    [{ content: label, styles: i === 0 ? { fontStyle: 'bold' } : {} }, 'System', k === 'panels' && ps.panel_count ? String(ps.panel_count) : '1',
+     k === 'panels' && ps.panel_count ? inr(lines[k].amount / ps.panel_count) : inr(lines[k].amount), gstLabel(lines[k].gst_pct), inr(lines[k].amount)]);
+  if (rows.length) return rows;
+  return [[{ content: `${kw}Solar Power System — panels, inverter, structure, BOS & installation`, styles: { fontStyle: 'bold' } }, 'System', '1', inr(ce.system_cost), ce.system_cost ? `${Math.round((ce.system_gst || 0) / ce.system_cost * 1000) / 10}%` : '—', inr(ce.system_cost)]];
+}
+
 export function deriveSalesNumbers(project) {
   const ps = project.custom_fields?.proposed_solution || {};
   const q = ps._quick || {}, d = ps._derived || {}, ce = project.cost_estimation || {};
@@ -94,7 +111,7 @@ export async function generateDetailedQuotationPDF({ project, companyProfile, te
   const monthly = el.monthly_consumption_units ?? project.site_measurements?.load?.monthly_units;
   const siteRows = [
     ['Customer', [cust.name, cust.phone, cust.email].filter(Boolean).join(' · ')], ['Address', cust.address],
-    ['Site', [loc.address, loc.site_location_words ? `///${loc.site_location_words}` : null].filter(Boolean).join(' · ')],
+    ['Site', loc.address || '—'],
     ['Roof', [mt.roof_type, mt.structure_type, mt.tilt_angle ? `${mt.tilt_angle}° tilt` : null].filter(Boolean).join(' · ')],
     ['Service type', [el.service_type, el.connection_phase].filter(Boolean).join(' · ')],
     ['Sanctioned load', val(el.sanction_load_kw, ' kW')], ['Connected load', val(connected, ' kW')],
@@ -112,9 +129,9 @@ export async function generateDetailedQuotationPDF({ project, companyProfile, te
   autoTable(doc, {
     startY: y, margin: { left: m, right: m, top: 44 }, theme: 'grid',
     head: [['Item', 'Category', 'Qty', 'Unit price', 'GST', 'Amount']],
-    body: [...(ce.system_cost > 0 ? [[{ content: `${ce.system_size_kw ? `${ce.system_size_kw} kWp ` : ''}Solar Power System — panels, inverter, structure, BOS & installation`, styles: { fontStyle: 'bold' } }, 'System', '1', inr(ce.system_cost), `${ce.system_gst_pct ?? 13.8}%`, inr(ce.system_cost)]] : []),
-           ...items.map(it => [it.name, categoryLabels[it.category] || it.category || '', String(it.quantity ?? 1), inr(it.unit_price), `${it.gst_percentage ?? 18}%`, inr(it.amount || (it.unit_price || 0) * (it.quantity || 1))]),
-           ...manualCosts.map(c => [{ content: c.description || 'Additional', styles: { fontStyle: 'italic' } }, '', '', '', '', inr(c.amount)])],
+    body: [...systemRows(ce, project),
+           ...items.map(it => [it.name, categoryLabels[it.category] || it.category || '', String(it.quantity ?? 1), inr(it.unit_price), gstLabel(it.gst_percentage), inr(it.amount || (it.unit_price || 0) * (it.quantity || 1))]),
+           ...manualCosts.map(c => [{ content: c.description || 'Additional', styles: { fontStyle: 'italic' } }, '', '', '', gstLabel(c.gst_pct), inr((c.amount || 0) + (c.margin_amount || 0))])],
     headStyles: { font: FONT, fillColor: INK, textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 8.5 },
     styles: { font: FONT, fontSize: 8.5, cellPadding: 2.6, textColor: INK, lineColor: LINE, lineWidth: 0.3 },
     columnStyles: { 0: { cellWidth: contentW * 0.32 }, 1: { cellWidth: contentW * 0.17 }, 2: { halign: 'center', cellWidth: contentW * 0.07 }, 3: { halign: 'right', cellWidth: contentW * 0.15 }, 4: { halign: 'center', cellWidth: contentW * 0.09 }, 5: { halign: 'right', cellWidth: contentW * 0.2, fontStyle: 'bold' } },
@@ -124,6 +141,7 @@ export async function generateDetailedQuotationPDF({ project, companyProfile, te
   y = doc.lastAutoTable.finalY + 2;
   const totals = [['Subtotal', inr(ce.subtotal)], ['GST', inr(ce.total_gst)], [{ content: 'Total (incl. GST)', styles: { fontStyle: 'bold' } }, { content: inr(n.totalQuoted), styles: { fontStyle: 'bold' } }]];
   if (n.subsidy > 0) totals.push(['Less subsidy', `− ${inr(n.subsidy)}`]);
+  if (Math.abs(ce.rounding?.adjustment || 0) >= 0.5) totals.push(['Round off', `${ce.rounding.adjustment > 0 ? '+' : '−'} ${inr(Math.abs(ce.rounding.adjustment))}`]);
   totals.push([{ content: 'YOU PAY', styles: { fontStyle: 'bold', fillColor: p, textColor: INK, fontSize: 11 } }, { content: inr(n.netPay), styles: { fontStyle: 'bold', fillColor: p, textColor: INK, fontSize: 11, halign: 'right' } }]);
   autoTable(doc, { startY: y, margin: { left: W / 2, right: m }, theme: 'plain', styles: { font: FONT, fontSize: 9.5, cellPadding: 2.4, textColor: INK }, columnStyles: { 0: { cellWidth: 'auto' }, 1: { halign: 'right', cellWidth: 45 } }, body: totals });
   y = doc.lastAutoTable.finalY + 8;

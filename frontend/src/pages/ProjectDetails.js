@@ -48,6 +48,8 @@ import SubsidyTrackingCard from '../components/SubsidyTrackingCard';
 import KitPriceExplainerModal from '../components/KitPriceExplainerModal';
 import MaterialReconciliationCard from '../components/MaterialReconciliationCard';
 import { generateKitQuotationPDF } from '../utils/kitQuotationPDF';
+import { generateKitExplainerPDF } from '../utils/kitExplainerPDF';
+import ProjectTeamsCard from '../components/ProjectTeamsCard';
 import { generateDetailedQuotationPDF } from '../utils/detailedQuotationPDF';
 import { catalogueAPI } from '../utils/api';
 import ProjectInvoiceCard from '../components/ProjectInvoiceCard';
@@ -377,6 +379,14 @@ export default function ProjectDetails() {
               } catch (e) { alert('Kit PDF failed: ' + (e.message || 'unknown')); }
             }} className="gap-2 border-emerald-300 text-emerald-700 hover:bg-emerald-50" data-testid="download-kit-pdf-btn"><Download className="h-4 w-4" />Kit Quotation</Button>
             <Button variant="ghost" onClick={() => setShowKitExplainer(true)} className="gap-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100" data-testid="explain-kit-price-btn" title="Sales-side breakdown vs customer-side lump sum"><FileSpreadsheet className="h-4 w-4" />Explain</Button>
+            {(isAdmin || isManager) && (
+              <Button variant="outline" onClick={async () => {
+                try {
+                  const [cfg, groups] = await Promise.all([catalogueAPI.getConfig(), catalogueAPI.addonGroups()]);
+                  await generateKitExplainerPDF({ ...project, id }, companyProfile, cfg.data, groups.data, { apiUrl: API_URL, preparedBy: user?.name });
+                } catch (e) { alert('Kit Explainer failed: ' + (e.message || 'unknown')); }
+              }} className="gap-2 border-rose-300 text-rose-700 hover:bg-rose-50" data-testid="download-kit-explainer-btn" title="Internal cost/margin/GST breakdown — not for customers"><FileSpreadsheet className="h-4 w-4" />Kit Explainer (Internal)</Button>
+            )}
             {(project.status === 'approved' || project.status === 'completed') && (
               <Button variant="outline" onClick={shareViaWhatsApp} className="gap-2" data-testid="share-whatsapp-btn"><Share2 className="h-4 w-4" />WhatsApp</Button>
             )}
@@ -587,6 +597,7 @@ export default function ProjectDetails() {
 
             {/* Labour & Subcontractor assignment — inline from Project Details (Iter 46 Change 1 / Task 3) */}
             {(isAdmin || isManager) && <ProjectPartnerCard projectId={id} canManage={isAdmin || isManager} />}
+            <ProjectTeamsCard projectId={id} canManage={isAdmin || isManager} />
 
             {/* Site Documentation */}
             {project.drive_folder_link && (

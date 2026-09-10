@@ -59,21 +59,29 @@ ALIASES = {  # hand-picked synonyms → canonical slug (keys are _norm_key'd)
 }
 
 
-def compute_row(item: dict[str, Any], default_margin: float, cat_labels: dict[str, str]) -> dict[str, Any]:
+def compute_row(item: dict[str, Any], cat_labels: dict[str, str]) -> dict[str, Any]:
+    """Iter 52: no blanket defaults — a missing margin/GST is reported as missing, never silently filled."""
     raw_margin = item.get("margin_pct")
-    margin_is_default = raw_margin is None
-    margin = default_margin if margin_is_default else float(raw_margin)
+    raw_gst = item.get("gst_percentage")
+    margin_missing = raw_margin is None
+    gst_missing = raw_gst is None
+    margin = 0.0 if margin_missing else float(raw_margin)
     cost = float(item.get("unit_price") or 0)
-    gst = float(item.get("gst_percentage") if item.get("gst_percentage") is not None else 18)
+    gst = 0.0 if gst_missing else float(raw_gst)
     selling = round(cost * (1 + margin / 100), 2)
+    wattage = ((item.get("specs") or {}).get("wattage")) if isinstance(item.get("specs"), dict) else None
     cat = item.get("category") or ""
     known = cat in cat_labels
     return {
         "id": str(item["_id"]), "name": item.get("name"), "sku_code": item.get("sku_code"), "hsn_code": item.get("hsn_code"),
         "category": cat if known else UNCATEGORISED, "raw_category": cat, "category_label": cat_labels.get(cat, cat or "Uncategorised"),
         "supplier": item.get("supplier"), "quantity": item.get("quantity", 0), "active": item.get("active", True) is not False,
-        "unit_price": cost, "margin_pct": margin, "margin_is_default": margin_is_default, "selling_price": selling,
-        "gst_pct": gst, "gst_amount": round(selling * gst / 100, 2), "price_incl_gst": round(selling * (1 + gst / 100), 2),
+        "unit_price": cost, "margin_pct": None if margin_missing else margin, "margin_missing": margin_missing,
+        "selling_price": None if margin_missing else selling, "wattage_w": wattage,
+        "gst_pct": None if gst_missing else gst, "gst_missing": gst_missing,
+        "gst_amount": None if (gst_missing or margin_missing) else round(selling * gst / 100, 2),
+        "price_incl_gst": None if (gst_missing or margin_missing) else round(selling * (1 + gst / 100), 2),
+        "pricing_complete": not (margin_missing or gst_missing),
         "updated_at": item.get("updated_at"),
     }
 
@@ -81,35 +89,26 @@ def compute_row(item: dict[str, Any], default_margin: float, cat_labels: dict[st
 def create_router(db, get_current_user, require_role, create_audit_log):
     router = APIRouter()
 
-    async def _default_margin() -> float:
-        doc = await db.pricing_config.find_one({"key": "defaults"}) or {}
-        try:
-            return float(doc.get("default_margin_pct", 15.0))
-        except (TypeError, ValueError):
-            return 15.0
-
     async def _cat_labels() -> dict[str, str]:
         cats = await db.inventory_categories.find({}).to_list(200)
         return {c["slug"]: c["name"] for c in cats}
 
-    async def _gst_default() -> float:
-        doc = await db.pricing_config.find_one({"key": "defaults"}) or {}
-        return float(doc.get("gst_pct", 18))
-
     @router.get("/pricelist")
     async def list_pricelist(request: Request, search: str | None = None, category: str | None = None, status: str = "active"):
         await get_current_user(request)
-        labels, default_margin = await _cat_labels(), await _default_margin()
+        labels = await _cat_labels()
         q: dict[str, Any] = {}
         if status == "active":
             q["active"] = {"$ne": False}
         elif status == "archived":
             q["active"] = False
         items = await db.inventory_items.find(q).sort("name", 1).to_list(20000)
-        rows = [compute_row(i, default_margin, labels) for i in items]
+        rows = [compute_row(i, labels) for i in items]
         counts: dict[str, int] = {}
+        missing_count = 0
         for r in rows:
             counts[r["category"]] = counts.get(r["category"], 0) + 1
+            missing_count += 0 if r["pricing_complete"] else 1
         if category and category != "all":
             rows = [r for r in rows if r["category"] == category]
         if search:
@@ -119,7 +118,7 @@ def create_router(db, get_current_user, require_role, create_audit_log):
         categories = [{"slug": c["slug"], "name": c["name"], "count": counts.get(c["slug"], 0)} for c in cats_sorted]
         if counts.get(UNCATEGORISED):
             categories.append({"slug": UNCATEGORISED, "name": "Uncategorised", "count": counts[UNCATEGORISED]})
-        return {"categories": categories, "default_margin_pct": default_margin, "gst_pct": await _gst_default(),
+        return {"categories": categories, "missing_pricing_count": missing_count,
                 "total": sum(counts.values()), "items": rows}
 
     async def _apply(user, item: dict[str, Any], changes: dict[str, Any], source: str) -> dict[str, Any]:
@@ -153,7 +152,7 @@ def create_router(db, get_current_user, require_role, create_audit_log):
         if not item:
             raise HTTPException(status_code=404, detail="Item not found")
         updated = await _apply(user, item, payload.dict(exclude_unset=True), "inline_edit")
-        return compute_row(updated, await _default_margin(), await _cat_labels())
+        return compute_row(updated, await _cat_labels())
 
     @router.post("/pricelist/bulk")
     async def bulk_adjust(payload: BulkAdjust, request: Request):
@@ -163,19 +162,21 @@ def create_router(db, get_current_user, require_role, create_audit_log):
         oids = [ObjectId(i) for i in payload.item_ids if ObjectId.is_valid(i)]
         if not oids:
             raise HTTPException(status_code=400, detail="Select at least one item")
-        default_margin, labels = await _default_margin(), await _cat_labels()
+        labels = await _cat_labels()
         rows = []
         for item in await db.inventory_items.find({"_id": {"$in": oids}}).to_list(5000):
             if payload.action == "set_margin":
                 changes = {"margin_pct": round(payload.value, 2)}
             elif payload.action == "adjust_margin_pts":
                 cur = item.get("margin_pct")
-                changes = {"margin_pct": round((default_margin if cur is None else float(cur)) + payload.value, 2)}
+                if cur is None:
+                    continue  # no blanket default to adjust from — set an explicit margin first
+                changes = {"margin_pct": round(float(cur) + payload.value, 2)}
             elif payload.action == "set_gst":
                 changes = {"gst_percentage": payload.value}
             else:
                 changes = {"unit_price": round(float(item.get("unit_price") or 0) * (1 + payload.value / 100), 2)}
-            rows.append(compute_row(await _apply(user, item, changes, f"bulk_{payload.action}"), default_margin, labels))
+            rows.append(compute_row(await _apply(user, item, changes, f"bulk_{payload.action}"), labels))
         return {"updated": len(rows), "items": rows}
 
     @router.get("/pricelist/items/{item_id}/history")

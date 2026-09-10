@@ -436,6 +436,8 @@ def create_router(db, get_current_user, require_role, generate_pdf=None, company
     @router.post("/{sale_id}/payment")
     async def add_payment(sale_id: str, payload: SalePaymentAdd, request: Request):
         user = await get_current_user(request)
+        if user["role"] != "admin" and check_module_permission and not await check_module_permission(user, "module_direct_sales", "edit"):
+            raise HTTPException(status_code=403, detail="Permission denied: module_direct_sales.edit")
         sale = await db.sales.find_one({"_id": ObjectId(sale_id)})
         if not sale: raise HTTPException(404, "Sale not found")
         new_p = payload.model_dump()
