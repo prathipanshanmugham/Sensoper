@@ -174,7 +174,7 @@ export default function DeliveryOutboundPage() {
                     {d.status === 'dispatched' && (
                       <Button size="sm" variant="outline" className="h-7 text-xs gap-1 text-rose-600 border-rose-200" onClick={() => { setCancelTarget(d); setActionError(''); }} data-testid={`cancel-delivery-${d.id}`}><Ban className="h-3.5 w-3.5" />Cancel</Button>
                     )}
-                    {isAdmin && <HardDeleteButton type="delivery" id={d.id} label="Hard Delete" onDeleted={fetch} testid={`hard-delete-delivery-${d.id}`} />}
+                    {(isAdmin || isManager) && <HardDeleteButton type="delivery" id={d.id} label="Hard Delete" onDeleted={fetch} testid={`hard-delete-delivery-${d.id}`} />}
                   </div>
                 </div>
               </CardContent>

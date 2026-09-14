@@ -8,6 +8,7 @@ from motor.motor_asyncio import AsyncIOMotorClient
 from bson import ObjectId
 from pymongo import ReturnDocument
 import os
+import asyncio
 import logging
 from pathlib import Path
 from pydantic import BaseModel, Field, EmailStr
@@ -191,6 +192,7 @@ class ProjectCreate(BaseModel):
     solar_report: Optional[dict] = None
     calculation_snapshot: Optional[dict] = None
     terms_id: Optional[str] = None
+    invoice_terms_id: Optional[str] = None   # Iter 53: per-project invoice T&C template
     notes: Optional[str] = None
     reference_project_id: Optional[str] = None
     installation_date: Optional[str] = None
@@ -214,6 +216,7 @@ class ProjectUpdate(BaseModel):
     solar_report: Optional[dict] = None
     calculation_snapshot: Optional[dict] = None
     terms_id: Optional[str] = None
+    invoice_terms_id: Optional[str] = None   # Iter 53: per-project invoice T&C template
     notes: Optional[str] = None
     reference_project_id: Optional[str] = None
     installation_date: Optional[str] = None
@@ -570,7 +573,9 @@ async def get_current_user(request: Request) -> dict:
             "phone": user.get("phone"),
             "created_at": user["created_at"],
             "location_ids": user.get("location_ids", []),
-            "default_location_id": user.get("default_location_id")
+            "default_location_id": user.get("default_location_id"),
+            "must_reset_password": bool(user.get("must_reset_password")),
+            "totp_enabled": bool(user.get("totp_enabled"))
         }
     except jwt.ExpiredSignatureError:
         raise HTTPException(status_code=401, detail="Token expired")
@@ -955,21 +960,29 @@ async def login(credentials: UserLogin, response: Response, request: Request):
     
     # Clear failed attempts on success
     await db.login_attempts.delete_one({"identifier": identifier})
-    
+    if user.get("totp_enabled"):
+        # Iter 53: second factor required — no session until the authenticator code is verified
+        return await _start_preauth(db, response, user)
+    return _issue_session(response, user)
+
+
+def _issue_session(response: Response, user: dict) -> dict:
+    """Set the access/refresh cookies for a fully authenticated user and return the login payload."""
     user_id = str(user["_id"])
-    access_token = create_access_token(user_id, email, user["role"])
+    access_token = create_access_token(user_id, user["email"], user["role"])
     refresh_token = create_refresh_token(user_id)
-    
     response.set_cookie(key="access_token", value=access_token, httponly=True, secure=False, samesite="lax", max_age=3600, path="/")
     response.set_cookie(key="refresh_token", value=refresh_token, httponly=True, secure=False, samesite="lax", max_age=604800, path="/")
-    
+    asyncio.ensure_future(db.users.update_one({"_id": user["_id"]}, {"$set": {"last_login_at": datetime.now(timezone.utc).isoformat()}}))
     return {
         "id": user_id,
         "email": user["email"],
         "name": user["name"],
         "role": user["role"],
         "phone": user.get("phone"),
-        "created_at": user["created_at"]
+        "created_at": user["created_at"],
+        "must_reset_password": bool(user.get("must_reset_password")),
+        "totp_enabled": bool(user.get("totp_enabled")),
     }
 
 @api_router.post("/auth/logout")
@@ -1079,6 +1092,8 @@ async def update_user(user_id: str, request: Request):
         update_data["phone"] = body["phone"]
     if "password" in body and body["password"]:
         update_data["password_hash"] = hash_password(body["password"])
+        update_data["password_changed_at"] = datetime.now(timezone.utc).isoformat()
+        update_data["must_reset_password"] = False
     if "location_ids" in body:
         update_data["location_ids"] = body["location_ids"]
     if "default_location_id" in body:
@@ -2508,6 +2523,8 @@ _amc_router = _create_amc_router(
     create_audit_log=create_audit_log, check_module_permission=check_module_permission,
 )
 api_router.include_router(_amc_router)
+from amc_ops import create_router as _create_amc_ops_router  # noqa: E402
+api_router.include_router(_create_amc_ops_router(db=db, get_current_user=get_current_user, require_role=require_role, create_audit_log=create_audit_log))
 
 # ═══════════ MULTI-LOCATION ACCESS CONTROL (Iter 42 Change 8) ═══════════
 from locations import create_router as _create_locations_router, location_scope_filter
@@ -3419,6 +3436,7 @@ async def create_project(project: ProjectCreate, request: Request):
         "solar_report": project.solar_report or None,
         "calculation_snapshot": project.calculation_snapshot or None,
         "terms_id": project.terms_id or None,
+        "invoice_terms_id": project.invoice_terms_id or None,
         "reference_project_id": project.reference_project_id or None,
         "installation_date": project.installation_date or None,
         "commissioning_date": project.commissioning_date or None,
@@ -3686,6 +3704,9 @@ async def get_project(project_id: str, request: Request):
         "solar_report": project.get("solar_report"),
         "calculation_snapshot": project.get("calculation_snapshot"),
         "terms_id": project.get("terms_id"),
+        "invoice_terms_id": project.get("invoice_terms_id"),
+        "amc_interest": project.get("amc_interest"),
+        "team_ids": project.get("team_ids", []),
         "reference_project_id": project.get("reference_project_id"),
         "installation_date": project.get("installation_date"),
         "commissioning_date": project.get("commissioning_date"),
@@ -3724,11 +3745,23 @@ async def update_project(project_id: str, updates: ProjectUpdate, request: Reque
         and all(getattr(updates, f) is None for f in [
             "customer", "location", "electrical", "solar_system", "mounting", "additional",
             "selected_items", "manual_costs", "site_images", "drive_folder_name", "drive_folder_link",
-            "drive_folder_id", "site_measurements", "custom_fields", "solar_report", "terms_id",
+            "drive_folder_id", "site_measurements", "custom_fields", "solar_report", "terms_id", "invoice_terms_id",
             "reference_project_id", "installation_date", "commissioning_date", "status"
         ])
     )
     
+    # Iter 53 root cause of "T&C not settable": terms could only be changed while draft/approved. Choosing which
+    # T&C template prints on the documents is a document-formatting choice, so a terms-only update is allowed
+    # for admins/managers in any status (like notes).
+    terms_only = (
+        (updates.terms_id is not None or updates.invoice_terms_id is not None)
+        and all(getattr(updates, f) is None for f in [
+            "customer", "location", "electrical", "solar_system", "mounting", "additional",
+            "selected_items", "manual_costs", "site_images", "drive_folder_name", "drive_folder_link",
+            "drive_folder_id", "site_measurements", "custom_fields", "solar_report", "notes",
+            "reference_project_id", "installation_date", "commissioning_date", "status"
+        ])
+    )
     # Staff can only edit their own draft projects (notes are exception — see below)
     if user["role"] == "staff":
         if project["created_by"] != user["id"]:
@@ -3736,7 +3769,7 @@ async def update_project(project_id: str, updates: ProjectUpdate, request: Reque
         if project["status"] != "draft" and not notes_only:
             raise HTTPException(status_code=400, detail="Can only edit draft projects")
     elif user["role"] in ["admin", "manager"]:
-        if project["status"] not in editable_statuses and not notes_only:
+        if project["status"] not in editable_statuses and not notes_only and not terms_only:
             raise HTTPException(status_code=400, detail=f"Can only edit projects in: {', '.join(editable_statuses)}")
     
     update_data = {"updated_at": datetime.now(timezone.utc).isoformat()}
@@ -3769,6 +3802,8 @@ async def update_project(project_id: str, updates: ProjectUpdate, request: Reque
         update_data["solar_report"] = updates.solar_report
     if updates.terms_id is not None:
         update_data["terms_id"] = updates.terms_id or None
+    if updates.invoice_terms_id is not None:
+        update_data["invoice_terms_id"] = updates.invoice_terms_id or None
     if updates.reference_project_id is not None:
         update_data["reference_project_id"] = updates.reference_project_id or None
     if updates.installation_date is not None:
@@ -4339,8 +4374,7 @@ async def get_dashboard_stats(request: Request):
         stats["pending_deletions"] = pending_deletions
         
         # Pending approvals count
-        pending_approvals = await db.approvals.count_documents({"status": "pending"})
-        stats["pending_approvals"] = pending_approvals
+        stats["pending_approvals"] = await _unified_pending_approvals()
         
         # Low stock alerts count — scoped to the user's assigned location(s)
         loc_filter = location_scope_filter(user)
@@ -4437,7 +4471,7 @@ async def get_ceo_dashboard(request: Request, location_id: Optional[str] = None)
     low_stock = sum(1 for i in inv_items if i.get("quantity", 0) <= i.get("reorder_level", 5))
     
     # Pending approvals
-    pending_approvals = await db.approvals.count_documents({"status": "pending"})
+    pending_approvals = await _unified_pending_approvals()
     
     # Customer credit data
     credits = await db.customer_credits.find({"status": {"$ne": "closed"}}).to_list(500)
@@ -5657,9 +5691,11 @@ async def get_alerts_dashboard(request: Request):
         by_type[a["type"]]["count"] += 1
         by_type[a["type"]]["impact"] += a.get("impact", 0)
     chart_data = [{"name": k.replace("_", " ").title(), "value": v["impact"]} for k, v in by_type.items() if v["impact"] > 0]
+    due_notifs = await db.notifications.count_documents({"channel": "in_app", "user_id": user["id"], "status": "pending", "notify_at": {"$lte": datetime.now(timezone.utc).isoformat()}})
     return {
         "total_leakage": round(total_leakage),
-        "total_alerts": len(all_alerts),
+        "total_alerts": len(all_alerts) + due_notifs,
+        "notifications_due": due_notifs,
         "risky_projects": len(project_risks),
         "top_risks": sorted(project_risks, key=lambda x: x["risk_score"], reverse=True)[:10],
         "alerts_by_type": by_type,
@@ -5860,8 +5896,10 @@ async def approve_request(approval_id: str, request: Request):
         if not has_perm:
             raise HTTPException(status_code=403, detail="You don't have permission to approve this type")
     
-    # Execute the approval action
-    executed = await execute_approval_action(approval)
+    if approval["type"] == "deletion" and approval.get("entity_type") in HARD_DELETE_ENTITY_TYPES and user["role"] != "admin":
+        raise HTTPException(status_code=403, detail="Permanent deletion of sales, purchase orders, deliveries and partners can only be approved by an admin")
+    # Execute the approval action — a failed action must NOT be recorded as approved (Iter 53 root-cause fix)
+    executed = await execute_approval_action(approval, request)
     
     await db.approvals.update_one(
         {"_id": ObjectId(approval_id)},
@@ -5914,15 +5952,28 @@ async def reject_request(approval_id: str, request: Request):
     await create_audit_log(user["id"], user["name"], "reject", "approval", approval_id)
     return {"message": "Request rejected"}
 
-async def execute_approval_action(approval: dict) -> str:
-    """Execute the actual action when an approval is granted"""
+async def _unified_pending_approvals() -> int:
+    """Iter 53: every pending item an approver can act on, across all five approval sources."""
+    return (await db.approvals.count_documents({"status": "pending"})
+            + await db.projects.count_documents({"status": "submitted", "deleted_at": {"$exists": False}})
+            + await db.deletion_requests.count_documents({"status": "pending"})
+            + await db.inbound_action_requests.count_documents({"status": "pending"})
+            + await db.purchase_orders.count_documents({"status": "pending"}))
+
+
+HARD_DELETE_ENTITY_TYPES = ("sale", "purchase_order", "delivery", "partner")
+
+
+async def execute_approval_action(approval: dict, request: Optional[Request] = None) -> str:
+    """Execute the actual action when an approval is granted. Raises HTTPException(409) on failure so the
+    approval stays pending instead of being marked approved with an 'Error: …' string (Iter 53 fix)."""
     atype = approval["type"]
     payload = approval.get("data_payload", {})
     entity_id = approval.get("entity_id", "")
-    
     try:
         if atype == "deletion":
             entity_type = approval.get("entity_type", "")
+            reason = approval.get("description") or "Approved deletion request"
             if entity_type == "project" and entity_id:
                 await db.projects.update_one(
                     {"_id": ObjectId(entity_id)},
@@ -5932,7 +5983,15 @@ async def execute_approval_action(approval: dict) -> str:
             elif entity_type == "inventory_item" and entity_id:
                 await db.inventory_items.delete_one({"_id": ObjectId(entity_id)})
                 return "Inventory item deleted"
-        
+            elif entity_type in ("sale", "purchase_order", "delivery") and entity_id and request is not None:
+                # Iter 53: manager-requested hard deletes run through the SAME admin-only hard-delete handlers
+                fn = {"sale": hard_delete_sale, "purchase_order": hard_delete_po, "delivery": hard_delete_delivery}[entity_type]
+                res = await fn(entity_id, HardDeletePayload(reason=reason, gst_warning_acknowledged=bool(payload.get("gst_warning_acknowledged"))), request)
+                return res.get("message", f"{entity_type} deleted")
+            elif entity_type == "partner" and entity_id and request is not None:
+                res = await _partner_delete_endpoint(entity_id, request, {"reason": reason})
+                return res.get("message", "Partner deleted")
+            raise ValueError(f"Nothing to delete for entity_type '{entity_type}'")
         elif atype == "margin_change":
             if entity_id and "item_margins" in payload:
                 project = await db.projects.find_one({"_id": ObjectId(entity_id)})
@@ -5981,10 +6040,13 @@ async def execute_approval_action(approval: dict) -> str:
                 )
                 return f"User role changed to {new_role}"
         
-        return "No action taken"
+        raise ValueError("No action matched this approval — check type/entity_type/data_payload")
+    except HTTPException as e:
+        logger.error(f"Approval execution refused: {e.detail}")
+        raise HTTPException(status_code=409, detail=f"Could not execute the approved action: {e.detail}")
     except Exception as e:
         logger.error(f"Approval execution error: {e}")
-        return f"Error: {str(e)}"
+        raise HTTPException(status_code=409, detail=f"Could not execute the approved action: {e}")
 
 # ================== PERMISSIONS MANAGEMENT ==================
 
@@ -6459,8 +6521,41 @@ async def delete_po(po_id: str, request: Request):
 @api_router.put("/purchase-orders/{po_id}/approve")
 async def approve_po(po_id: str, request: Request):
     user = await require_permission(request, "can_manage_company")
+    po = await db.purchase_orders.find_one({"_id": ObjectId(po_id)})
+    if not po:
+        raise HTTPException(status_code=404, detail="Purchase order not found")
+    if po.get("status") != "pending":
+        raise HTTPException(status_code=400, detail="Only a pending PO can be approved")
     await db.purchase_orders.update_one({"_id": ObjectId(po_id)}, {"$set": {"status": "approved", "approved_by": user["name"], "approved_at": datetime.now(timezone.utc).isoformat()}})
     return {"message": "PO approved"}
+
+@api_router.get("/inventory/storage-locations")
+async def storage_location_options(request: Request, location_id: Optional[str] = None):
+    """Iter 53: distinct zone/aisle/shelf/rack/bin values already used on inventory items, for the cascading picker."""
+    await get_current_user(request)
+    q = {"location_id": location_id} if location_id else {}
+    combos = []
+    async for it in db.inventory_items.find(q, {"zone": 1, "aisle": 1, "shelf": 1, "rack": 1, "bin_location": 1}):
+        combos.append({"zone": it.get("zone") or None, "aisle": it.get("aisle") or None, "shelf": it.get("shelf") or None, "rack": it.get("rack") or None, "bin": it.get("bin_location") or None})
+    combos = [c for c in combos if any(c.values())]
+    return {"combos": combos, "zones": sorted({c["zone"] for c in combos if c["zone"]}), "aisles": sorted({c["aisle"] for c in combos if c["aisle"]}),
+            "shelves": sorted({c["shelf"] for c in combos if c["shelf"]}), "racks": sorted({c["rack"] for c in combos if c["rack"]}), "bins": sorted({c["bin"] for c in combos if c["bin"]})}
+
+@api_router.put("/purchase-orders/{po_id}/reject")
+async def reject_po(po_id: str, request: Request):
+    """Iter 53: a pending PO can be rejected (kept for history, never received)."""
+    user = await require_permission(request, "can_manage_company")
+    body = await request.json() if (await request.body()) else {}
+    po = await db.purchase_orders.find_one({"_id": ObjectId(po_id)})
+    if not po:
+        raise HTTPException(status_code=404, detail="Purchase order not found")
+    if po.get("status") != "pending":
+        raise HTTPException(status_code=400, detail="Only a pending PO can be rejected")
+    now_iso = datetime.now(timezone.utc).isoformat()
+    await db.purchase_orders.update_one({"_id": ObjectId(po_id)}, {"$set": {"status": "rejected", "rejected_by": user["id"], "rejected_by_name": user["name"],
+                                                                            "rejected_at": now_iso, "rejection_reason": body.get("reason", "")}})
+    await create_audit_log(user["id"], user["name"], "reject", "purchase_order", po_id, None, {"reason": body.get("reason", "")})
+    return {"message": "PO rejected"}
 
 @api_router.put("/purchase-orders/{po_id}/arrival")
 async def record_arrival(po_id: str, request: Request):
@@ -6491,7 +6586,14 @@ async def complete_inbound(po_id: str, request: Request):
     if po.get("status") == "completed":
         raise HTTPException(status_code=400, detail="This PO has already been received. Use Edit to correct a quantity, or Reverse to undo it.")
 
-    location = body.get("storage_location", "")
+    # Iter 53: structured storage location {zone, aisle, shelf, rack, bin} (deeper levels optional) — no free text
+    raw_loc = body.get("storage_location") or {}
+    if isinstance(raw_loc, str):
+        raise HTTPException(status_code=400, detail="storage_location must be structured: {zone, aisle, shelf, rack, bin}")
+    loc_struct = {k: (str(raw_loc.get(k) or "").strip() or None) for k in ("zone", "aisle", "shelf", "rack", "bin")}
+    if not any(loc_struct.values()):
+        raise HTTPException(status_code=400, detail="Pick at least a zone or a bin for where this stock is being placed")
+    location = " / ".join(f"{k.title()} {v}" for k, v in loc_struct.items() if v)
     now_iso = datetime.now(timezone.utc).isoformat()
     received_items, failed_lines, movements = [], [], []
     for item in po.get("items", []):
@@ -6504,7 +6606,8 @@ async def complete_inbound(po_id: str, request: Request):
             failed_lines.append(item.get("name", "Unknown item"))
             continue
         qty = float(item.get("qty", 0))
-        await db.inventory_items.update_one({"_id": inv_item["_id"]}, {"$inc": {"quantity": qty}})
+        loc_set = {k: v for k, v in {"zone": loc_struct["zone"], "aisle": loc_struct["aisle"], "shelf": loc_struct["shelf"], "rack": loc_struct["rack"], "bin_location": loc_struct["bin"]}.items() if v}
+        await db.inventory_items.update_one({"_id": inv_item["_id"]}, {"$inc": {"quantity": qty}, "$set": loc_set})
         received_items.append({
             "inventory_item_id": str(inv_item["_id"]), "name": inv_item["name"],
             "sku_code": inv_item.get("sku_code"), "qty_received": qty, "received_at": now_iso,
@@ -6520,7 +6623,7 @@ async def complete_inbound(po_id: str, request: Request):
     if movements:
         await db.inventory_movements.insert_many(movements)
     await db.purchase_orders.update_one({"_id": ObjectId(po_id)}, {"$set": {
-        "status": "completed", "storage_location": location, "completed_at": now_iso,
+        "status": "completed", "storage_location": location, "storage_location_struct": loc_struct, "completed_at": now_iso,
         "received_items": received_items,
         "completed_by": current_user["id"], "completed_by_name": current_user["name"],
     }})
@@ -7972,6 +8075,65 @@ async def solar_merge_pdf(
 
 
 # Include the router in the main app
+# ═══════════ ACCOUNT SECURITY — 2FA + CREDENTIALS (Iter 53) ═══════════
+from security import create_router as _create_security_router, start_preauth as _start_preauth  # noqa: E402
+api_router.include_router(_create_security_router(db=db, get_current_user=get_current_user, require_role=require_role, create_audit_log=create_audit_log,
+                                                  verify_password=verify_password, hash_password=hash_password, issue_session=_issue_session))
+
+# ═══════════ UNIFIED APPROVALS INBOX (Iter 53) ═══════════
+from approvals_inbox import create_router as _create_inbox_router  # noqa: E402
+
+_partner_delete_endpoint = next(r.endpoint for r in _partners_router.routes if r.path == "/partners/{partner_id}" and "DELETE" in r.methods)
+
+
+async def _approve_generic(item_id: str, request: Request):
+    return (await approve_request(item_id, request)).get("execution_result")
+
+
+async def _reject_generic(item_id: str, request: Request):
+    return (await reject_request(item_id, request)).get("message")
+
+
+async def _approve_project_submission(item_id: str, request: Request):
+    return (await approve_project(item_id, request)).get("message")
+
+
+async def _reject_project_submission(item_id: str, request: Request):
+    return (await reject_project(item_id, request)).get("message")
+
+
+async def _approve_deletion_request(item_id: str, request: Request):
+    return (await approve_deletion(item_id, request)).get("message")
+
+
+async def _reject_deletion_request(item_id: str, request: Request):
+    return (await reject_deletion(item_id, request)).get("message")
+
+
+async def _approve_inbound(item_id: str, request: Request):
+    return (await approve_inbound_action_request(item_id, request)).get("message")
+
+
+async def _reject_inbound(item_id: str, request: Request):
+    return (await reject_inbound_action_request(item_id, request)).get("message")
+
+
+async def _approve_po(item_id: str, request: Request):
+    return (await approve_po(item_id, request)).get("message")
+
+
+async def _reject_po(item_id: str, request: Request):
+    return (await reject_po(item_id, request)).get("message")
+
+
+api_router.include_router(_create_inbox_router(db=db, get_current_user=get_current_user, require_role=require_role, handlers={
+    "approve_approval": _approve_generic, "reject_approval": _reject_generic,
+    "approve_project_submission": _approve_project_submission, "reject_project_submission": _reject_project_submission,
+    "approve_deletion_request": _approve_deletion_request, "reject_deletion_request": _reject_deletion_request,
+    "approve_inbound_action": _approve_inbound, "reject_inbound_action": _reject_inbound,
+    "approve_purchase_order": _approve_po, "reject_purchase_order": _reject_po,
+}))
+
 app.include_router(api_router)
 
 # CORS — origins come from CORS_ORIGINS (comma-separated). "*" is expressed as an origin regex so the

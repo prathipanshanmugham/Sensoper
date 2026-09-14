@@ -31,6 +31,13 @@ export function AuthProvider({ children }) {
       { email, password },
       { withCredentials: true }
     );
+    if (data.requires_2fa) return data;          // Iter 53: second step pending — no session yet
+    setUser(data);
+    return data;
+  }, []);
+
+  const completeTwoFactor = useCallback(async (code) => {
+    const { data } = await axios.post(`${API_URL}/api/auth/login/2fa`, { code }, { withCredentials: true });
     setUser(data);
     return data;
   }, []);
@@ -65,7 +72,7 @@ export function AuthProvider({ children }) {
   const contextValue = useMemo(() => ({
     user, 
     loading, 
-    login, 
+    login, completeTwoFactor, 
     register, 
     logout, 
     refreshToken,
@@ -73,7 +80,7 @@ export function AuthProvider({ children }) {
     isAdmin: user?.role === 'admin',
     isManager: user?.role === 'manager',
     isStaff: user?.role === 'staff'
-  }), [user, loading, login, register, logout, refreshToken]);
+  }), [user, loading, login, completeTwoFactor, register, logout, refreshToken]);
 
   return (
     <AuthContext.Provider value={contextValue}>

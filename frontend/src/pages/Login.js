@@ -15,15 +15,26 @@ export default function Login() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const { login } = useAuth();
+  const { login, completeTwoFactor } = useAuth();
   const navigate = useNavigate();
+  const [needs2fa, setNeeds2fa] = useState(false);
+  const [code, setCode] = useState('');
+
+  const handleCode = async (e) => {
+    e.preventDefault();
+    setError(''); setLoading(true);
+    try { await completeTwoFactor(code); navigate('/dashboard'); }
+    catch (err) { setError(formatApiErrorDetail(err.response?.data?.detail) || 'Invalid code'); }
+    finally { setLoading(false); }
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
     setLoading(true);
     try {
-      await login(email, password);
+      const res = await login(email, password);
+      if (res?.requires_2fa) { setNeeds2fa(true); return; }
       navigate('/dashboard');
     } catch (err) {
       setError(formatApiErrorDetail(err.response?.data?.detail) || 'Login failed');
@@ -69,6 +80,17 @@ export default function Login() {
             <CardDescription className="text-slate-500">Sign in to your account to continue</CardDescription>
           </CardHeader>
           <CardContent>
+            {needs2fa ? (
+              <form onSubmit={handleCode} className="space-y-4" data-testid="login-2fa-form">
+                <div className="space-y-2">
+                  <Label htmlFor="code">Authenticator code</Label>
+                  <p className="text-xs text-slate-500">Enter the 6-digit code from your authenticator app, or one of your backup codes.</p>
+                  <Input id="code" value={code} onChange={(e) => setCode(e.target.value)} placeholder="123 456" autoFocus autoComplete="one-time-code" className="h-11 tracking-widest" data-testid="login-2fa-code-input" />
+                </div>
+                <Button type="submit" disabled={loading || !code} className="w-full h-11 bg-emerald-600 hover:bg-emerald-700" data-testid="login-2fa-submit">{loading ? 'Verifying…' : 'Verify & sign in'}</Button>
+                <button type="button" onClick={() => { setNeeds2fa(false); setCode(''); }} className="text-xs text-slate-500 underline w-full" data-testid="login-2fa-back">Back</button>
+              </form>
+            ) : (
             <form onSubmit={handleSubmit} className="space-y-4">
               {error && (
                 <div className="p-3 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg" data-testid="login-error">{error}</div>
@@ -105,6 +127,7 @@ export default function Login() {
                 {loading ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Signing in...</> : 'Sign in'}
               </Button>
             </form>
+            )}
             <div className="mt-6 text-center text-sm text-slate-500">
               Don't have an account?{' '}
               <Link to="/register" className="text-[#2D9BF0] hover:text-[#1a8ae0] font-medium" data-testid="register-link">Create account</Link>

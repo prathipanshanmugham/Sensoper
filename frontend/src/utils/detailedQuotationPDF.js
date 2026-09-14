@@ -30,6 +30,30 @@ function systemRows(ce, project) {
   return [[{ content: `${kw}Solar Power System — panels, inverter, structure, BOS & installation`, styles: { fontStyle: 'bold' } }, 'System', '1', inr(ce.system_cost), ce.system_cost ? `${Math.round((ce.system_gst || 0) / ce.system_cost * 1000) / 10}%` : '—', inr(ce.system_cost)]];
 }
 
+/** Iter 53 — "Combined" layout: one subtotal per logical section. Same lines, same totals, presented grouped. */
+export function combinedSections(ce, project, items = [], manualCosts = []) {
+  const lines = ce.system_lines || project.custom_fields?.proposed_solution?._quick?.lines || {};
+  const amt = (k) => (lines[k] && lines[k].amount > 0 ? lines[k].amount : 0);
+  const gst = (k) => (lines[k] ? lines[k].gst_amount || 0 : 0);
+  const sysFallback = !['panels', 'inverter', 'battery', 'structure', 'cabling', 'installation'].some(k => amt(k) > 0) && ce.system_cost > 0;
+  const addonsAmt = items.reduce((s, it) => s + (it.amount || (it.unit_price || 0) * (it.quantity || 1)), 0) + manualCosts.reduce((s, c) => s + (c.amount || 0) + (c.margin_amount || 0), 0);
+  const addonsGst = items.reduce((s, it) => s + (it.gst_amount || 0), 0) + manualCosts.reduce((s, c) => s + (c.gst_amount || 0), 0);
+  const sections = [
+    { name: 'Panels', amount: sysFallback ? ce.system_cost : amt('panels'), gst: sysFallback ? (ce.system_gst || 0) : gst('panels'), count: sysFallback ? 1 : (amt('panels') > 0 ? 1 : 0) },
+    { name: 'Inverter', amount: amt('inverter'), gst: gst('inverter'), count: amt('inverter') > 0 ? 1 : 0 },
+    { name: 'Battery storage', amount: amt('battery'), gst: gst('battery'), count: amt('battery') > 0 ? 1 : 0 },
+    { name: 'Structure & Cabling', amount: amt('structure') + amt('cabling'), gst: gst('structure') + gst('cabling'), count: (amt('structure') > 0) + (amt('cabling') > 0) },
+    { name: 'Installation & Commissioning', amount: amt('installation'), gst: gst('installation'), count: amt('installation') > 0 ? 1 : 0 },
+    { name: 'Add-ons & other lines', amount: addonsAmt, gst: addonsGst, count: items.length + manualCosts.length },
+  ].filter(s => s.amount > 0);
+  return { sections, total: sections.reduce((s, x) => s + x.amount, 0), gst: sections.reduce((s, x) => s + x.gst, 0) };
+}
+
+function combinedRows(ce, project, items, manualCosts) {
+  const { sections } = combinedSections(ce, project, items, manualCosts);
+  return sections.map(s => [{ content: s.name, styles: { fontStyle: 'bold' } }, 'Section', String(s.count), '', s.amount ? `${Math.round(s.gst / s.amount * 1000) / 10}%` : '—', inr(s.amount)]);
+}
+
 export function deriveSalesNumbers(project) {
   const ps = project.custom_fields?.proposed_solution || {};
   const q = ps._quick || {}, d = ps._derived || {}, ce = project.cost_estimation || {};
@@ -56,7 +80,7 @@ export function deriveSalesNumbers(project) {
 
 const SYS_LABEL = { 'on-grid': 'On-Grid', 'off-grid': 'Off-Grid', hybrid: 'Hybrid', 'solar-pump': 'Solar Pump' };
 
-export async function generateDetailedQuotationPDF({ project, companyProfile, terms, refSummary, stats, categoryLabels = {}, apiUrl, inventoryNames = {} }) {
+export async function generateDetailedQuotationPDF({ project, companyProfile, terms, refSummary, stats, categoryLabels = {}, apiUrl, inventoryNames = {}, layout = 'list' }) {
   const cp = companyProfile || {};
   const { doc, ctx } = await createBrandDoc(cp, apiUrl);
   const { FONT, m, contentW, W, p } = ctx;
@@ -125,11 +149,11 @@ export async function generateDetailedQuotationPDF({ project, companyProfile, te
   const manualCosts = project.cost_estimation?.manual_costs || project.manual_costs || [];
   const ce = project.cost_estimation || {};
   y = ensureSpace(doc, ctx, y, 70);
-  y = sectionTitle(doc, ctx, y, 'Price breakdown', 'Every item, nothing hidden');
+  y = sectionTitle(doc, ctx, y, 'Price breakdown', layout === 'combined' ? 'Grouped by section — same total as the itemised view' : 'Every item, nothing hidden');
   autoTable(doc, {
     startY: y, margin: { left: m, right: m, top: 44 }, theme: 'grid',
     head: [['Item', 'Category', 'Qty', 'Unit price', 'GST', 'Amount']],
-    body: [...systemRows(ce, project),
+    body: layout === 'combined' ? combinedRows(ce, project, items, manualCosts) : [...systemRows(ce, project),
            ...items.map(it => [it.name, categoryLabels[it.category] || it.category || '', String(it.quantity ?? 1), inr(it.unit_price), gstLabel(it.gst_percentage), inr(it.amount || (it.unit_price || 0) * (it.quantity || 1))]),
            ...manualCosts.map(c => [{ content: c.description || 'Additional', styles: { fontStyle: 'italic' } }, '', '', '', gstLabel(c.gst_pct), inr((c.amount || 0) + (c.margin_amount || 0))])],
     headStyles: { font: FONT, fillColor: INK, textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 8.5 },

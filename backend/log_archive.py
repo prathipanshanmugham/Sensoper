@@ -112,9 +112,16 @@ def create_router(db, get_current_user, require_role, create_audit_log, put_obje
         except Exception as e:  # noqa: BLE001
             doc["error"] = str(e)
             log.error("Archive %s failed: %s", label, e)
-        await db.log_archives.update_one({"quarter": label, "status": "archived"}, {"$setOnInsert": doc}, upsert=True) if doc["status"] == "archived" \
-            else await db.log_archives.insert_one(doc)
-        saved = await db.log_archives.find_one({"quarter": label, "status": "archived"}) or doc
+        if doc["status"] == "archived":
+            await db.log_archives.update_one({"quarter": label, "status": "archived"}, {"$setOnInsert": doc}, upsert=True)
+            await db.log_archives.delete_many({"quarter": label, "status": "failed"})   # a success clears earlier failed attempts
+        else:
+            # Iter 53: ONE failed row per quarter (the daily scheduler used to insert a fresh red row on every retry)
+            prev = await db.log_archives.find_one({"quarter": label, "status": "failed"})
+            doc["attempts"] = int((prev or {}).get("attempts", 0)) + 1
+            doc["first_failed_at"] = (prev or {}).get("first_failed_at") or now
+            await db.log_archives.update_one({"quarter": label, "status": "failed"}, {"$set": doc}, upsert=True)
+        saved = await db.log_archives.find_one({"quarter": label, "status": "archived"}) or await db.log_archives.find_one({"quarter": label, "status": "failed"}) or doc
         return _clean(saved)
 
     def _clean(d):

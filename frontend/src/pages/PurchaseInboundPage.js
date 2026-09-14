@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { purchaseOrdersAPI, inventoryAPI, inboundApprovalsAPI, locationsAPI } from '../utils/api';
+import { StorageLocationPicker } from '../components/StorageLocationPicker';
 import { useAuth } from '../contexts/AuthContext';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
@@ -15,8 +16,7 @@ const STATUS_COLORS = { pending: 'bg-amber-100 text-amber-700', approved: 'bg-bl
 const STATUS_LABELS = { pending: 'Pending Approval', approved: 'Approved', arrived: 'Material Arrived', qc_done: 'QC Passed', completed: 'Completed' };
 
 export default function PurchaseInboundPage() {
-  const { user } = useAuth();
-  const isAdmin = user?.role === 'admin';
+  const { user, isAdmin, isManager } = useAuth();
   const [orders, setOrders] = useState([]);
   const [inventoryItems, setInventoryItems] = useState([]);
   const [pendingApprovals, setPendingApprovals] = useState([]);
@@ -227,7 +227,7 @@ export default function PurchaseInboundPage() {
                 </div>
               )}
               {activeAction.type === 'inbound' && (
-                <div className="space-y-1"><Label className="text-xs">Storage Location (Zone/Aisle/Shelf/Rack/Bin)</Label><Input value={actionForm.storage_location || ''} onChange={(e) => setActionForm(p => ({...p, storage_location: e.target.value}))} placeholder="e.g., A/2/3/1/5" className="h-9" data-testid="inbound-location" /></div>
+                <StorageLocationPicker value={actionForm.storage_location || {}} onChange={(loc) => setActionForm(prev => ({ ...prev, storage_location: loc }))} />
               )}
               {actionError && <p className="text-xs text-rose-600 flex items-center gap-1" data-testid="action-error"><AlertTriangle className="h-3.5 w-3.5 shrink-0" />{actionError}</p>}
               <div className="flex gap-2 justify-end">
@@ -273,7 +273,7 @@ export default function PurchaseInboundPage() {
                         <Button size="sm" variant="outline" className="h-7 text-xs gap-1 text-rose-600 border-rose-200" onClick={() => { setReverseTarget(po); setActionError(''); }} data-testid={`reverse-inbound-${po.id}`}><Undo2 className="h-3 w-3" />Reverse</Button>
                       </>
                     )}
-                    {isAdmin && <HardDeleteButton type="purchase_order" id={po.id} label="Hard Delete" onDeleted={fetch} testid={`hard-delete-po-${po.id}`} />}
+                    {(isAdmin || isManager) && <HardDeleteButton type="purchase_order" id={po.id} label="Hard Delete" onDeleted={fetch} testid={`hard-delete-po-${po.id}`} />}
                   </div>
                 </div>
               </CardContent>

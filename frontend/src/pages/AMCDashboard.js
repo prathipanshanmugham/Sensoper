@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { amcAPI, projectsAPI } from '../utils/api';
+import { AmcOpsPanel } from '../components/AmcOps';
 import { useAuth } from '../contexts/AuthContext';
 import { useLocationScope, LocationScopeSelect } from '../components/LocationScope';
 import { Button } from '../components/ui/button';
@@ -121,6 +122,7 @@ export default function AMCDashboard() {
             </div>
           )}
         </div>
+        <AmcOpsPanel canManage={canManage} />
 
         <div className="flex gap-2">
           <button onClick={() => setTab('contracts')} className={`px-3 py-1.5 text-xs rounded-full border ${tab === 'contracts' ? 'bg-emerald-100 border-emerald-300 text-emerald-800 font-medium' : 'bg-white border-slate-200 text-slate-600'}`} data-testid="amc-tab-contracts">Dashboard &amp; Contracts</button>

@@ -50,6 +50,8 @@ import MaterialReconciliationCard from '../components/MaterialReconciliationCard
 import { generateKitQuotationPDF } from '../utils/kitQuotationPDF';
 import { generateKitExplainerPDF } from '../utils/kitExplainerPDF';
 import ProjectTeamsCard from '../components/ProjectTeamsCard';
+import ProjectTermsCard from '../components/ProjectTermsCard';
+import { AmcInterestToggle } from '../components/AmcOps';
 import { generateDetailedQuotationPDF } from '../utils/detailedQuotationPDF';
 import { catalogueAPI } from '../utils/api';
 import ProjectInvoiceCard from '../components/ProjectInvoiceCard';
@@ -64,6 +66,8 @@ export default function ProjectDetails() {
   const { user, isAdmin, isManager, isStaff } = useAuth();
   const [project, setProject] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [quoteLayout, setQuoteLayoutState] = useState(() => localStorage.getItem('sensoper.detailedQuoteLayout') || 'list');
+  const setQuoteLayout = (v) => { localStorage.setItem('sensoper.detailedQuoteLayout', v); setQuoteLayoutState(v); };
   const [actionLoading, setActionLoading] = useState(false);
   const [showRejectDialog, setShowRejectDialog] = useState(false);
   const [rejectReason, setRejectReason] = useState('');
@@ -118,9 +122,15 @@ export default function ProjectDetails() {
         // Fall back to active if the specific terms_id lookup fails (e.g., template deleted)
         try { const fb = await termsAPI.getActive('en', 'quotation'); setTerms(fb.data); } catch (e2) { console.error('Failed to fetch terms:', e2); }
       }
-      // Invoice terms use the same category system but are chosen at the template
-      // level (no per-project invoice_terms_id) — matched to the quotation's language.
-      try { const iRes = await termsAPI.getActive(quoteLang, 'invoice'); setInvoiceTerms(iRes.data); } catch (e) { console.error('Failed to fetch invoice terms:', e); }
+      // Iter 53: invoice terms — the project's own invoice_terms_id first, then the active invoice template
+      // in the quotation's language, then the quotation terms so the invoice is never blank.
+      try {
+        if (res.data.invoice_terms_id) { const iRes = await termsAPI.getById(res.data.invoice_terms_id); setInvoiceTerms(iRes.data); }
+        else { const iRes = await termsAPI.getActive(quoteLang, 'invoice'); setInvoiceTerms(iRes.data); }
+      } catch (e) {
+        try { const fb = await termsAPI.getActive(quoteLang, 'invoice'); setInvoiceTerms(fb.data); }
+        catch (e2) { console.warn('No invoice terms template — falling back to quotation terms', e2); setInvoiceTerms(null); }
+      }
     } catch (error) { navigate('/dashboard/projects'); }
     finally { setLoading(false); }
   }, [id, navigate]);
@@ -217,7 +227,7 @@ export default function ProjectDetails() {
     if (project.reference_project_id) { try { refSummary = (await projectsAPI.getReferenceSummary(project.reference_project_id)).data; } catch (e) { console.warn('Reference summary unavailable', e); } }
     try { stats = (await companyAPI.salesStats()).data; } catch (e) { console.warn('Sales stats unavailable', e); }
     try { (await inventoryAPI.getItems({})).data.forEach(i => { inventoryNames[i.id] = i.name; }); } catch (e) { console.warn('Inventory names unavailable', e); }
-    await generateDetailedQuotationPDF({ project: { ...project, id }, companyProfile, terms, refSummary, stats, categoryLabels: CATEGORY_LABELS, apiUrl: API_URL, inventoryNames });
+    await generateDetailedQuotationPDF({ project: { ...project, id }, companyProfile, terms, refSummary, stats, categoryLabels: CATEGORY_LABELS, apiUrl: API_URL, inventoryNames, layout: quoteLayout });
   };
 
   const generateExcel = () => {
@@ -367,6 +377,10 @@ export default function ProjectDetails() {
               <Link to={`/dashboard/projects/${id}/edit`}><Button variant="outline" className="gap-2" data-testid="edit-project-btn"><Pencil className="h-4 w-4" />Edit</Button></Link>
             )}
             <Button variant="outline" onClick={generateExcel} className="gap-2" data-testid="download-excel-btn"><FileSpreadsheet className="h-4 w-4" />Excel</Button>
+            <div className="flex rounded-md border border-slate-200 overflow-hidden text-xs" title="Detailed PDF layout — remembered as your default" data-testid="quote-layout-toggle">
+              <button type="button" onClick={() => setQuoteLayout('list')} className={`px-2.5 py-1.5 ${quoteLayout === 'list' ? 'bg-slate-900 text-white' : 'bg-white text-slate-600'}`} data-testid="quote-layout-list">List</button>
+              <button type="button" onClick={() => setQuoteLayout('combined')} className={`px-2.5 py-1.5 ${quoteLayout === 'combined' ? 'bg-slate-900 text-white' : 'bg-white text-slate-600'}`} data-testid="quote-layout-combined">Combined</button>
+            </div>
             <Button variant="outline" onClick={generatePDF} className="gap-2" data-testid="download-pdf-btn"><Download className="h-4 w-4" />Detailed PDF</Button>
             <Button variant="outline" onClick={async () => {
               try {
@@ -390,7 +404,8 @@ export default function ProjectDetails() {
             {(project.status === 'approved' || project.status === 'completed') && (
               <Button variant="outline" onClick={shareViaWhatsApp} className="gap-2" data-testid="share-whatsapp-btn"><Share2 className="h-4 w-4" />WhatsApp</Button>
             )}
-            {(isAdmin || isManager) && <ProjectInvoiceCard projectId={id} companyProfile={companyProfile} terms={invoiceTerms} />}
+            {(isAdmin || isManager) && <ProjectTermsCard projectId={id} project={project} canManage={isAdmin || isManager} onSaved={fetchProject} />}
+            {(isAdmin || isManager) && <ProjectInvoiceCard projectId={id} companyProfile={companyProfile} terms={invoiceTerms || terms} />}
           </div>
         </div>
 
@@ -590,6 +605,7 @@ export default function ProjectDetails() {
             <SubsidyTrackingCard projectId={id} />
 
             {/* Excess Material Reconciliation — required once a project is completed (Iter 42 Change 4) */}
+            {project.status === 'completed' && <AmcInterestToggle projectId={id} interest={project.amc_interest} onChanged={fetchProject} />}
             {project.status === 'completed' && <MaterialReconciliationCard projectId={id} />}
 
             {/* Profit Calculator — admin only, reads the same cost_estimation as everything else (Iter 44 Batch A) */}

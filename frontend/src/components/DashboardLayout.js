@@ -85,6 +85,7 @@ export default function DashboardLayout({ children }) {
     { icon: Building2, label: 'Company Profile', href: '/dashboard/company-profile', show: isAdmin },
     { icon: Map, label: 'Locations', href: '/dashboard/locations', show: isAdmin },
     { icon: History, label: 'Audit Logs', href: '/dashboard/audit-logs', show: isAdmin },
+    { icon: Settings, label: 'Account Security', href: '/dashboard/security', show: true },
     { icon: Settings, label: 'Pricing & Config', href: '/dashboard/pricing-config', show: isAdmin },
     { icon: Tags, label: 'Pricelist', href: '/dashboard/pricelist', show: isAdmin },
     { icon: Store, label: 'Vendors', href: '/dashboard/vendors', show: isAdmin || isManager },

@@ -16,7 +16,30 @@ export const authAPI = {
   register: (userData) => api.post('/auth/register', userData),
   logout: () => api.post('/auth/logout'),
   me: () => api.get('/auth/me'),
-  refresh: () => api.post('/auth/refresh')
+  refresh: () => api.post('/auth/refresh'),
+  login2fa: (code) => api.post('/auth/login/2fa', { code }),
+  changePassword: (current_password, new_password) => api.post('/auth/change-password', { current_password, new_password }),
+  twoFaStatus: () => api.get('/auth/2fa/status'),
+  twoFaSetup: () => api.post('/auth/2fa/setup'),
+  twoFaEnable: (code) => api.post('/auth/2fa/enable', { code }),
+  twoFaDisable: (password, code) => api.post('/auth/2fa/disable', { password, code })
+};
+
+// Iter 53 — admin credentials management
+export const securityAPI = {
+  credentials: () => api.get('/security/credentials'),
+  updateConfig: (data) => api.put('/security/config', data),
+  requireReset: (userId) => api.post(`/security/credentials/${userId}/require-reset`),
+  adminDisable2fa: (userId) => api.post(`/security/credentials/${userId}/disable-2fa`)
+};
+
+// Iter 53 — unified approvals inbox
+export const inboxAPI = {
+  list: (source) => api.get('/approvals/inbox', { params: source && source !== 'all' ? { source } : {} }),
+  count: () => api.get('/approvals/inbox/count'),
+  history: () => api.get('/approvals/inbox/history'),
+  approve: (source, id) => api.post(`/approvals/inbox/${source}/${id}/approve`, {}),
+  reject: (source, id, reason) => api.post(`/approvals/inbox/${source}/${id}/reject`, { reason })
 };
 
 // Projects API
@@ -215,6 +238,7 @@ export const termsAPI = {
 
 // Inventory API
 export const inventoryAPI = {
+  storageLocations: (location_id) => api.get('/inventory/storage-locations', { params: location_id ? { location_id } : {} }),
   // Categories
   getCategories: () => api.get('/inventory/categories'),
   createCategory: (data) => api.post('/inventory/categories', data),
@@ -489,7 +513,18 @@ export const amcAPI = {
   completeVisit: (id, data) => api.put(`/amc/visits/${id}/complete`, data),
   listVisits: (params = {}) => api.get('/amc/visits', { params }),
   dashboard: (params = {}) => api.get('/amc/dashboard', { params }),
-  recurringRevenueReport: (params = {}) => api.get('/amc/recurring-revenue-report', { params })
+  recurringRevenueReport: (params = {}) => api.get('/amc/recurring-revenue-report', { params }),
+  setInterest: (projectId, data) => api.put(`/amc/interest/${projectId}`, data),
+  followUps: () => api.get('/amc/follow-ups'),
+  scheduleWithNotifications: (id, data) => api.post(`/amc/contracts/${id}/schedule`, data),
+  schedule: (params = {}) => api.get('/amc/schedule', { params }),
+  batching: (days = 30) => api.get('/amc/batching', { params: { days } }),
+  outbox: (allPending = false) => api.get('/amc/outbox', { params: { all_pending: allPending } }),
+  outboxSent: (id) => api.post(`/amc/outbox/${id}/sent`)
+};
+export const notificationsAPI = {
+  list: () => api.get('/notifications'),
+  dismiss: (id) => api.post(`/notifications/${id}/dismiss`)
 };
 
 // Multi-location (Iter 42 Change 8)

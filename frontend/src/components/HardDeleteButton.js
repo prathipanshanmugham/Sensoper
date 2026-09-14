@@ -5,7 +5,8 @@ import { Label } from './ui/label';
 import { Textarea } from './ui/textarea';
 import { Checkbox } from './ui/checkbox';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from './ui/dialog';
-import { hardDeleteAPI } from '../utils/api';
+import { hardDeleteAPI, approvalsAPI } from '../utils/api';
+import { useAuth } from '../contexts/AuthContext';
 import { AlertTriangle, Loader2, Trash2 } from 'lucide-react';
 
 /**
@@ -23,12 +24,21 @@ export default function HardDeleteButton({ type, id, label = 'Hard Delete', onDe
   const [error, setError] = useState('');
 
   const apiFor = { sale: hardDeleteAPI.sale, purchase_order: hardDeleteAPI.purchaseOrder, delivery: hardDeleteAPI.delivery }[type];
+  const { isAdmin } = useAuth();
+  // Iter 53: managers don't delete directly — they file a deletion request that lands in the admin's Approvals inbox
+  const requestOnly = !isAdmin;
 
   const doDelete = async () => {
     setError('');
     if (!reason || reason.trim().length < 3) { setError('A reason is required'); return; }
     setBusy(true);
     try {
+      if (requestOnly) {
+        await approvalsAPI.create({ type: 'deletion', entity_type: type, entity_id: id, description: reason.trim(), data_payload: { gst_warning_acknowledged: ackGst } });
+        setOpen(false); setReason(''); onDeleted && onDeleted();
+        window.alert('Deletion request sent to an admin for approval — track it under Approvals.');
+        return;
+      }
       await apiFor(id, { reason: reason.trim(), gst_warning_acknowledged: ackGst });
       setOpen(false); setReason(''); setAckGst(false); setNeedsGstAck(false);
       onDeleted && onDeleted();
@@ -41,7 +51,7 @@ export default function HardDeleteButton({ type, id, label = 'Hard Delete', onDe
   return (
     <>
       <Button variant="outline" size="sm" onClick={() => setOpen(true)} className="h-8 text-xs text-red-600 border-red-200 hover:bg-red-50 gap-1" data-testid={testid || `hard-delete-${type}-${id}`}>
-        <Trash2 className="h-3.5 w-3.5" />{label}
+        <Trash2 className="h-3.5 w-3.5" />{requestOnly && label ? "Request deletion" : label}
       </Button>
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent data-testid={`hard-delete-dialog-${type}`}>

@@ -336,7 +336,7 @@ export default function DirectSalesPage() {
                               <Button size="icon" variant="ghost" className="h-7 w-7 text-blue-500" onClick={() => openEditSale(s)} data-testid={`edit-sale-${s.id}`}><Pencil className="h-3.5 w-3.5" /></Button>
                               <Button size="icon" variant="ghost" className="h-7 w-7 text-rose-500" onClick={() => { setDeleteTarget(s); setActionError(''); }} data-testid={`delete-sale-${s.id}`}><Trash2 className="h-3.5 w-3.5" /></Button>
                             </>)}
-                            {isAdmin && <HardDeleteButton type="sale" id={s.id} label="" onDeleted={fetchAll} testid={`hard-delete-sale-${s.id}`} />}
+                            {(isAdmin || isManager) && <HardDeleteButton type="sale" id={s.id} label="" onDeleted={fetchAll} testid={`hard-delete-sale-${s.id}`} />}
                           </div>
                         </td>
                       )}

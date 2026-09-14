@@ -61,7 +61,8 @@ export default function LogArchivesPanel({ isAdmin }) {
             <tbody>{archives.map(a => (
               <tr key={a.id} className="border-b last:border-0" data-testid={`archive-row-${a.quarter}`}>
                 <td className="py-1.5 font-medium">{a.quarter}</td>
-                <td><span className={`px-2 py-0.5 rounded-full text-[11px] ${a.status === 'archived' ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'}`}>{a.status}</span>{a.error && <span className="ml-2 text-[11px] text-rose-600">{a.error}</span>}</td>
+                <td><span className={`px-2 py-0.5 rounded-full text-[11px] ${a.status === 'archived' ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'}`} data-testid={`archive-status-${a.quarter}`}>{a.status}</span>
+                  {a.error && <span className="ml-2 text-[11px] text-rose-600" title={a.error} data-testid={`archive-error-${a.quarter}`}>Archive to storage failed{a.attempts > 1 ? ` (${a.attempts} attempts)` : ''} — live logs are untouched. {isAdmin && <button type="button" className="underline" disabled={!!busy} onClick={() => run('retry', async () => { await auditLogsAPI.runArchive(a.quarter); return `Retried ${a.quarter}`; })} data-testid={`archive-retry-${a.quarter}`}>Retry</button>}</span>}</td>
                 <td>{a.row_count}</td><td>{a.deletion_snapshot_count}</td>
                 <td className="text-slate-500">{(a.created_at || '').slice(0, 10)}</td>
                 <td className="text-slate-500">{a.purged_at ? `${a.purged_at.slice(0, 10)} (${a.purged_rows} rows)` : '—'}</td>

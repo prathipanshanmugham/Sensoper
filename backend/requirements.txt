@@ -71,6 +71,8 @@ packaging==26.0
 pandas==3.0.1
 passlib==1.7.4
 pathspec==1.0.4
+pdfminer.six==20251230
+pdfplumber==0.11.9
 pillow==12.1.1
 platformdirs==4.9.4
 pluggy==1.6.0
@@ -87,7 +89,11 @@ pyflakes==3.4.0
 Pygments==2.19.2
 PyJWT==2.12.1
 pymongo==4.5.0
+pymupdf==1.28.2
+PyOTP==2.10.0
 pyparsing==3.3.2
+pypdf==6.12.0
+pypdfium2==5.8.0
 pytest==9.0.2
 python-dateutil==2.9.0.post0
 python-dotenv==1.2.2
@@ -95,8 +101,10 @@ python-jose==3.5.0
 python-multipart==0.0.22
 pytokens==0.4.1
 PyYAML==6.0.3
+qrcode==8.2
 referencing==0.37.0
 regex==2026.2.28
+reportlab==4.5.1
 requests==2.32.5
 requests-oauthlib==2.0.0
 rich==14.3.3
@@ -124,5 +132,3 @@ watchfiles==1.1.1
 websockets==16.0
 yarl==1.23.0
 zipp==3.23.0
-pypdf==6.12.0
-reportlab==4.5.1
