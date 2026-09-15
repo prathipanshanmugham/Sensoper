@@ -43,39 +43,36 @@ if not JWT_SECRET or not JWT_SECRET.strip():
     )
 JWT_ALGORITHM = "HS256"
 
-# Object Storage Configuration
-STORAGE_URL = "https://integrations.emergentagent.com/objstore/api/v1/storage"
-EMERGENT_KEY = os.environ.get("EMERGENT_LLM_KEY")
+# Object Storage Configuration — local filesystem (Emergent's hosted object store is not
+# provisioned for this deployment; store files on local disk instead).
+import pathlib
 APP_NAME = "sensoper-solar"
-storage_key = None
+STORAGE_ROOT = pathlib.Path(os.environ.get("STORAGE_ROOT", "/root/Sensoper/storage"))
+
+def _storage_path(path: str) -> pathlib.Path:
+    full_path = (STORAGE_ROOT / path).resolve()
+    if STORAGE_ROOT.resolve() not in full_path.parents:
+        raise ValueError(f"Invalid object path: {path}")
+    return full_path
 
 def init_storage():
-    global storage_key
-    if storage_key:
-        return storage_key
-    resp = http_requests.post(f"{STORAGE_URL}/init", json={"emergent_key": EMERGENT_KEY}, timeout=30)
-    resp.raise_for_status()
-    storage_key = resp.json()["storage_key"]
-    return storage_key
+    STORAGE_ROOT.mkdir(parents=True, exist_ok=True)
+    return str(STORAGE_ROOT)
 
 def put_object(path: str, data: bytes, content_type: str) -> dict:
-    key = init_storage()
-    resp = http_requests.put(
-        f"{STORAGE_URL}/objects/{path}",
-        headers={"X-Storage-Key": key, "Content-Type": content_type},
-        data=data, timeout=120
-    )
-    resp.raise_for_status()
-    return resp.json()
+    full_path = _storage_path(path)
+    full_path.parent.mkdir(parents=True, exist_ok=True)
+    full_path.write_bytes(data)
+    full_path.with_suffix(full_path.suffix + ".meta").write_text(content_type)
+    return {"path": path, "size": len(data)}
 
 def get_object(path: str):
-    key = init_storage()
-    resp = http_requests.get(
-        f"{STORAGE_URL}/objects/{path}",
-        headers={"X-Storage-Key": key}, timeout=60
-    )
-    resp.raise_for_status()
-    return resp.content, resp.headers.get("Content-Type", "application/octet-stream")
+    full_path = _storage_path(path)
+    if not full_path.exists():
+        raise FileNotFoundError(f"Object not found: {path}")
+    meta_path = full_path.with_suffix(full_path.suffix + ".meta")
+    content_type = meta_path.read_text() if meta_path.exists() else "application/octet-stream"
+    return full_path.read_bytes(), content_type
 
 # Create the main app
 app = FastAPI(title="Sensoper Solar Estimator API")
