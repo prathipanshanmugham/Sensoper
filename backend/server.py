@@ -649,7 +649,12 @@ DEFAULT_PERMISSIONS = {
         "module_locations": {"view": True, "create": True, "edit": True, "delete": True, "export": True},
         "module_partners": {"view": True, "create": True, "edit": True, "delete": True, "export": True},
         "module_ecommerce": {"view": True, "create": True, "edit": True, "delete": True, "export": True},
-        "module_teams": {"view": True, "create": True, "edit": True, "delete": True, "export": True}
+        "module_teams": {"view": True, "create": True, "edit": True, "delete": True, "export": True},
+        "module_projects": {"view": True, "create": True, "edit": True, "delete": True, "export": True},
+        "module_daily_updates": {"view": True, "create": True, "edit": True, "delete": True, "export": True},
+        "module_vendors": {"view": True, "create": True, "edit": True, "delete": True, "export": True},
+        "module_vault": {"view": True, "create": True, "edit": True, "delete": True, "export": False},
+        "module_sensobrain": {"view": True, "create": True, "edit": True, "delete": True, "export": True}
     },
     "manager": {
         "can_create_project": True, "can_edit_project": True, "can_delete_project": False,
@@ -682,7 +687,12 @@ DEFAULT_PERMISSIONS = {
         "module_locations": {"view": True, "create": False, "edit": False, "delete": False, "export": False},
         "module_partners": {"view": True, "create": True, "edit": True, "delete": False, "export": True},
         "module_ecommerce": {"view": True, "create": True, "edit": True, "delete": False, "export": True},
-        "module_teams": {"view": True, "create": True, "edit": True, "delete": False, "export": True}
+        "module_teams": {"view": True, "create": True, "edit": True, "delete": False, "export": True},
+        "module_projects": {"view": True, "create": True, "edit": True, "delete": False, "export": True},
+        "module_daily_updates": {"view": True, "create": True, "edit": True, "delete": False, "export": True},
+        "module_vendors": {"view": True, "create": True, "edit": True, "delete": False, "export": True},
+        "module_vault": {"view": False, "create": False, "edit": False, "delete": False, "export": False},
+        "module_sensobrain": {"view": True, "create": True, "edit": False, "delete": False, "export": False}
     },
     "staff": {
         "can_create_project": True, "can_edit_project": True, "can_delete_project": False,
@@ -715,7 +725,12 @@ DEFAULT_PERMISSIONS = {
         "module_locations": {"view": True, "create": False, "edit": False, "delete": False, "export": False},
         "module_partners": {"view": True, "create": False, "edit": False, "delete": False, "export": False},
         "module_ecommerce": {"view": True, "create": False, "edit": False, "delete": False, "export": False},
-        "module_teams": {"view": True, "create": False, "edit": False, "delete": False, "export": False}
+        "module_teams": {"view": True, "create": False, "edit": False, "delete": False, "export": False},
+        "module_projects": {"view": True, "create": True, "edit": True, "delete": False, "export": False},
+        "module_daily_updates": {"view": True, "create": True, "edit": True, "delete": False, "export": False},
+        "module_vendors": {"view": False, "create": False, "edit": False, "delete": False, "export": False},
+        "module_vault": {"view": False, "create": False, "edit": False, "delete": False, "export": False},
+        "module_sensobrain": {"view": True, "create": True, "edit": False, "delete": False, "export": False}
     }
 }
 
@@ -1376,7 +1391,8 @@ async def get_all_terms(request: Request, category: Optional[str] = None):
     
     query: Dict[str, Any] = {}
     if category:
-        query["category"] = category
+        # Iter 54: templates created before the category field existed are quotation templates
+        query = {"$or": [{"category": category}, {"category": {"$in": [None, ""]}}, {"category": {"$exists": False}}]} if category == "quotation" else {"category": category}
     terms = await db.terms_conditions.find(query).sort("version", -1).to_list(100)
     return [
         {
@@ -2862,6 +2878,14 @@ api_router.include_router(_log_archive_router)
 # ═══════════ QUICK SOLAR CALCULATOR + SALES STATS (Iter 48) ═══════════
 from quick_calc import create_router as _create_quick_calc_router  # noqa: E402
 api_router.include_router(_create_quick_calc_router(db=db, get_current_user=get_current_user, get_calc_config=_get_calc_config))
+
+# ═══════════ ITER 54: geo reference · credential vault · Sensobrain ═══════════
+from geo_reference import create_router as _create_geo_router  # noqa: E402
+from vault import create_router as _create_vault_router  # noqa: E402
+from sensobrain import create_router as _create_sensobrain_router  # noqa: E402
+api_router.include_router(_create_geo_router(db=db, get_current_user=get_current_user, require_role=require_role, get_default_pincodes=get_default_pincodes))
+api_router.include_router(_create_vault_router(db=db, require_role=require_role, create_audit_log=create_audit_log))
+api_router.include_router(_create_sensobrain_router(db=db, app=app, get_current_user=get_current_user, require_role=require_role))
 
 
 
@@ -4935,9 +4959,30 @@ async def get_report(report_type: str, request: Request, date_from: str = None, 
             item_data[log.get("item_name","")]["act"] += log.get("actual_qty",0)
             item_data[log.get("item_name","")]["waste"] += log.get("wastage",0)
         variance_rows = [{"item": k, "estimated": round(v["est"],1), "actual": round(v["act"],1), "variance": round(v["act"]-v["est"],1), "wastage": round(v["waste"],1)} for k,v in item_data.items()]
-        tabs_data = {"profit": {"rows": rows}, "material_variance": {"rows": variance_rows if variance_rows else [{"item": "No data", "estimated": 0, "actual": 0, "variance": 0, "wastage": 0}]}}
-        chart_data = [{"name": "Base Cost", "value": round(total_cost)}, {"name": "Margin", "value": round(total_margin)}, {"name": "GST", "value": round(total_selling-total_cost-total_margin)}, {"name": "Leakage", "value": round(total_leakage)}]
-        return {"title": "Profit & Leakage Report", "summary": {"total_selling": round(total_selling), "total_margin": round(total_margin), "avg_margin_pct": round((total_margin/total_selling)*100,1) if total_selling else 0, "total_leakage": round(total_leakage)}, "rows": tabs_data.get(tab or "profit", tabs_data["profit"])["rows"], "tabs": list(tabs_data.keys()), "chart_data": [c for c in chart_data if c["value"]>0]}
+        # Iter 54: implied carrying cost of overdue customer credit (reporting only — never invoiced)
+        from credit_interest import load_rate_inputs, annotate_credit
+        _ri = await load_rate_inputs(db)
+        credit_rows = []
+        credit_by_customer = defaultdict(lambda: {"balance": 0.0, "interest_cost": 0.0, "records": 0})
+        total_credit_interest = 0.0
+        async for c in db.customer_credits.find({"status": {"$ne": "closed"}}):
+            ann = annotate_credit(c, _ri["default_pct"], _ri["customer_rates"])
+            if ann["days_overdue"] <= 0:
+                continue
+            credit_rows.append({"customer": c.get("customer_name", ""), "invoice": c.get("invoice_ref", ""), "project_ref": c.get("project_ref", ""), "balance": round(c.get("balance", 0)),
+                                "due_date": c.get("due_date", ""), "days_overdue": ann["days_overdue"], "monthly_rate_pct": ann["effective_monthly_pct"],
+                                "rate_source": ann["rate_source"], "interest_cost": round(ann["interest_cost"])})
+            agg = credit_by_customer[c.get("customer_name", "")]
+            agg["balance"] += c.get("balance", 0); agg["interest_cost"] += ann["interest_cost"]; agg["records"] += 1
+            total_credit_interest += ann["interest_cost"]
+        credit_rows.sort(key=lambda r: -r["interest_cost"])
+        customer_rows = sorted([{"customer": k, "records": v["records"], "balance": round(v["balance"]), "interest_cost": round(v["interest_cost"])} for k, v in credit_by_customer.items()], key=lambda r: -r["interest_cost"])
+        tabs_data = {"profit": {"rows": rows}, "material_variance": {"rows": variance_rows if variance_rows else [{"item": "No data", "estimated": 0, "actual": 0, "variance": 0, "wastage": 0}]},
+                     "credit_interest": {"rows": credit_rows}, "credit_by_customer": {"rows": customer_rows}}
+        chart_data = [{"name": "Base Cost", "value": round(total_cost)}, {"name": "Margin", "value": round(total_margin)}, {"name": "GST", "value": round(total_selling-total_cost-total_margin)}, {"name": "Leakage", "value": round(total_leakage)}, {"name": "Credit Interest", "value": round(total_credit_interest)}]
+        return {"title": "Profit & Leakage Report", "summary": {"total_selling": round(total_selling), "total_margin": round(total_margin), "avg_margin_pct": round((total_margin/total_selling)*100,1) if total_selling else 0, "total_leakage": round(total_leakage),
+                                                                "credit_interest_cost": round(total_credit_interest), "credit_interest_rate_pct": _ri["default_pct"]},
+                "rows": tabs_data.get(tab or "profit", tabs_data["profit"])["rows"], "tabs": list(tabs_data.keys()), "chart_data": [c for c in chart_data if c["value"]>0]}
 
     # === 3. PROJECT EXECUTION ===
     elif report_type == "project_execution":
@@ -6419,6 +6464,8 @@ async def list_credits(request: Request, status: str = None):
     if status and status != "all": query["status"] = status
     credits = await db.customer_credits.find(query).sort("created_at", -1).to_list(500)
     now = datetime.now(timezone.utc)
+    from credit_interest import load_rate_inputs, annotate_credit
+    _ri = await load_rate_inputs(db)
     for c in credits:
         c["id"] = str(c.pop("_id"))
         if c.get("due_date") and c["status"] == "active":
@@ -6431,7 +6478,54 @@ async def list_credits(request: Request, status: str = None):
                     await db.customer_credits.update_one({"_id": ObjectId(c["id"])}, {"$set": {"status": "overdue"}})
             except (ValueError, TypeError):
                 pass
+        c.update(annotate_credit(c, _ri["default_pct"], _ri["customer_rates"], now))
     return credits
+
+
+class CreditRateIn(BaseModel):
+    monthly_pct: Optional[float] = None  # None clears the override
+
+
+@api_router.put("/credits/{credit_id}/interest-rate")
+async def set_credit_interest_rate(credit_id: str, payload: CreditRateIn, request: Request):
+    """Iter 54: per-record override of the implied credit-interest rate (reporting only)."""
+    user = await require_module(request, "module_credits", "edit")
+    if not ObjectId.is_valid(credit_id) or not await db.customer_credits.find_one({"_id": ObjectId(credit_id)}):
+        raise HTTPException(status_code=404, detail="Credit not found")
+    if payload.monthly_pct is not None and (payload.monthly_pct < 0 or payload.monthly_pct > 100):
+        raise HTTPException(status_code=400, detail="monthly_pct must be between 0 and 100")
+    upd = {"$set": {"interest_rate_override": payload.monthly_pct}} if payload.monthly_pct is not None else {"$unset": {"interest_rate_override": ""}}
+    await db.customer_credits.update_one({"_id": ObjectId(credit_id)}, upd)
+    await create_audit_log(user["id"], user["name"], "credit_interest_rate_override", "customer_credit", credit_id, None, {"monthly_pct": payload.monthly_pct}, "Credit interest rate override")
+    return {"message": "Rate updated", "interest_rate_override": payload.monthly_pct}
+
+
+class CustomerRateIn(BaseModel):
+    customer_name: str
+    monthly_pct: Optional[float] = None
+
+
+@api_router.get("/credits/customer-rates")
+async def list_customer_rates(request: Request):
+    await get_current_user(request)
+    return [{"customer_name": r.get("customer_name"), "customer_key": r["customer_key"], "monthly_pct": r["monthly_pct"]} async for r in db.customer_credit_rates.find({})]
+
+
+@api_router.put("/credits/customer-rates")
+async def set_customer_rate(payload: CustomerRateIn, request: Request):
+    """Iter 54: per-customer override (applies to all of that customer's credit records without a record override)."""
+    user = await require_module(request, "module_credits", "edit")
+    key = payload.customer_name.strip().lower()
+    if not key:
+        raise HTTPException(status_code=400, detail="customer_name is required")
+    if payload.monthly_pct is None:
+        await db.customer_credit_rates.delete_one({"customer_key": key})
+    else:
+        if payload.monthly_pct < 0 or payload.monthly_pct > 100:
+            raise HTTPException(status_code=400, detail="monthly_pct must be between 0 and 100")
+        await db.customer_credit_rates.update_one({"customer_key": key}, {"$set": {"customer_name": payload.customer_name.strip(), "monthly_pct": payload.monthly_pct, "updated_by": user["id"], "updated_at": datetime.now(timezone.utc).isoformat()}}, upsert=True)
+    await create_audit_log(user["id"], user["name"], "customer_credit_rate_override", "customer_credit_rate", key, None, {"monthly_pct": payload.monthly_pct}, "Customer credit interest rate override")
+    return {"message": "Customer rate updated", "customer_key": key, "monthly_pct": payload.monthly_pct}
 
 @api_router.post("/credits/{credit_id}/pay")
 async def record_credit_payment(credit_id: str, payment: CreditPaymentCreate, request: Request):
@@ -7404,6 +7498,10 @@ async def startup_event():
     # Iter 52: retire blanket GST/margin + kit rounding → single cash-rounding rule (idempotent)
     await db.pricing_config.update_one({"key": "defaults"}, {"$unset": {"gst_pct": "", "default_margin_pct": "", "kit_rounding_step": "", "kit_rounding_mode": ""},
                                                              "$setOnInsert": {"rounding_step": 1, "rounding_mode": "nearest"}}, upsert=True)
+    # Iter 54: T&C templates from before the category field → quotation (so project dropdowns keep showing them)
+    _bf = await db.terms_conditions.update_many({"$or": [{"category": {"$exists": False}}, {"category": {"$in": [None, ""]}}]}, {"$set": {"category": "quotation"}})
+    if _bf.modified_count:
+        logger.info(f"Backfilled category=quotation on {_bf.modified_count} legacy T&C templates")
     # Init object storage
     try:
         init_storage()

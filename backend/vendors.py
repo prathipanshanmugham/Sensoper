@@ -16,6 +16,7 @@ class VendorCreate(BaseModel):
     gstin: Optional[str] = ""
     address: Optional[str] = ""
     district: Optional[str] = ""
+    state: Optional[str] = ""
     payment_terms: Optional[str] = ""
     category: Optional[str] = ""  # panels | inverters | structure | transport | services | other
     notes: Optional[str] = ""
@@ -29,6 +30,7 @@ class VendorUpdate(BaseModel):
     gstin: Optional[str] = None
     address: Optional[str] = None
     district: Optional[str] = None
+    state: Optional[str] = None
     payment_terms: Optional[str] = None
     category: Optional[str] = None
     notes: Optional[str] = None
@@ -47,7 +49,8 @@ def create_router(db, get_current_user, require_role, create_audit_log):
     @router.get("/vendors")
     async def list_vendors(request: Request, search: Optional[str] = None,
                             category: Optional[str] = None, status: Optional[str] = None,
-                            district: Optional[str] = None, sort: Optional[str] = None):
+                            district: Optional[str] = None, sort: Optional[str] = None,
+                            districts: Optional[str] = None, states: Optional[str] = None):
         await get_current_user(request)
         q: Dict[str, Any] = {}
         if status == "inactive":
@@ -58,6 +61,10 @@ def create_router(db, get_current_user, require_role, create_audit_log):
             q["category"] = category
         if district:
             q["district"] = {"$regex": f"^{district}$", "$options": "i"}
+        if districts:  # Iter 54: checkbox multi-select (OR), same pattern as partners
+            q["district"] = {"$in": [d.strip() for d in districts.split(",") if d.strip()]}
+        if states:
+            q["state"] = {"$in": [s.strip() for s in states.split(",") if s.strip()]}
         if search:
             q["$or"] = [
                 {"name": {"$regex": search, "$options": "i"}},
@@ -90,7 +97,7 @@ def create_router(db, get_current_user, require_role, create_audit_log):
         elif sort == "recent_asc":
             out.sort(key=lambda r: r.get("last_order_date") or "9999-99-99")
         elif sort == "location_asc":
-            out.sort(key=lambda r: ((r.get("district") or "zzz").lower(), (r.get("name") or "").lower()))
+            out.sort(key=lambda r: ((r.get("state") or "zzz").lower(), (r.get("district") or "zzz").lower(), (r.get("name") or "").lower()))
         return out
 
     @router.post("/vendors")

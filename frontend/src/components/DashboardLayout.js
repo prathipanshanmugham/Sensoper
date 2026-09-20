@@ -1,14 +1,14 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { dashboardAPI, alertsAPI } from '../utils/api';
+import { dashboardAPI, alertsAPI, permissionsAPI } from '../utils/api';
 import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
 import {
   LayoutDashboard, FolderPlus, Users, LogOut, FileText, TrendingUp,
   Menu, X, Package, History, ScrollText, Building2, ClipboardCheck, Shield,
   Layers, BarChart3, CalendarDays, AlertTriangle, CreditCard, Truck, Undo2, ClipboardList, Bell, Activity, MapPin, Settings, ShoppingCart,
-  Wrench, RefreshCw, Map, Tags, Store, HardHat, ShoppingBag
+  Wrench, RefreshCw, Map, Tags, Store, HardHat, ShoppingBag, Brain, KeyRound
 } from 'lucide-react';
 
 const LOGO_URL = "https://customer-assets.emergentagent.com/job_solar-estimator-14/artifacts/2dpfr2zb_slg.png";
@@ -21,6 +21,21 @@ export default function DashboardLayout({ children }) {
   const [stats, setStats] = useState(null);
   const [alertInfo, setAlertInfo] = useState(null);
   const [showAlertPanel, setShowAlertPanel] = useState(false);
+  const [perms, setPerms] = useState(null);
+
+  // Iter 54: nav items render only when the role's permission matrix grants module.view (undefined key = allowed, so
+  // nothing disappears for roles whose stored matrix predates a module; explicit view:false hides it entirely).
+  useEffect(() => {
+    if (!user?.role) return;
+    permissionsAPI.getRole(user.role).then(r => setPerms(r.data?.permissions || {})).catch(() => setPerms({}));
+  }, [user?.role]);
+
+  const canSeeModule = (item) => {
+    if (!perms) return false;
+    if (item.module) { const m = perms[item.module]; if (m && typeof m === 'object' && m.view === false) return false; }
+    if (item.flag && perms[item.flag] === false) return false;
+    return true;
+  };
 
   const fetchStats = useCallback(async () => {
     try {
@@ -59,40 +74,42 @@ export default function DashboardLayout({ children }) {
   };
 
   const navItems = [
-    { icon: LayoutDashboard, label: 'Dashboard', href: '/dashboard' , show: true },
-    { icon: TrendingUp, label: 'CEO Dashboard', href: '/dashboard/ceo', show: isAdmin || isManager },
-    { icon: FolderPlus, label: 'New Project', href: '/dashboard/projects/new', show: true },
-    { icon: FileText, label: 'All Projects', href: '/dashboard/projects', show: true },
-    { icon: ClipboardCheck, label: 'Approvals', href: '/dashboard/approvals', show: isAdmin || isManager, badge: stats?.pending_approvals },
-    { icon: BarChart3, label: 'Reports', href: '/dashboard/reports', show: isAdmin || isManager },
-    { icon: ShoppingCart, label: 'Direct Sales', href: '/dashboard/sales', show: true },
-    { icon: MapPin, label: 'Expansion', href: '/dashboard/expansion', show: isAdmin || isManager },
-    { icon: AlertTriangle, label: 'Profit Alerts', href: '/dashboard/alerts', show: isAdmin || isManager },
-    { icon: CreditCard, label: 'Accounts', href: '/dashboard/credits', show: isAdmin || isManager },
-    { icon: Package, label: 'Purchase Inbound', href: '/dashboard/purchase-inbound', show: isAdmin || isManager },
-    { icon: Truck, label: 'Delivery Outbound', href: '/dashboard/delivery-outbound', show: isAdmin || isManager },
-    { icon: Undo2, label: 'Brand Returns', href: '/dashboard/returns', show: true },
-    { icon: ClipboardList, label: 'Weekly Audits', href: '/dashboard/audits', show: isAdmin || isManager },
-    { icon: CalendarDays, label: 'Daily Updates', href: '/dashboard/daily-updates', show: true },
-    { icon: Activity, label: 'Readings', href: '/dashboard/readings', show: true },
-    { icon: Package, label: 'Inventory', href: '/dashboard/inventory', show: isAdmin || isManager, badge: stats?.low_stock_alerts },
-    { icon: RefreshCw, label: 'AMC Contracts', href: '/dashboard/amc', show: isAdmin || isManager },
-    { icon: Wrench, label: 'Assets & Tools', href: '/dashboard/assets', show: true },
-    { icon: ScrollText, label: 'Terms & Conditions', href: '/dashboard/terms', show: isAdmin || isManager },
-    { icon: Users, label: 'User Management', href: '/dashboard/users', show: isAdmin },
-    { icon: Shield, label: 'Permissions', href: '/dashboard/permissions', show: isAdmin },
-    { icon: Layers, label: 'Form Builder', href: '/dashboard/form-tabs', show: isAdmin },
-    { icon: Building2, label: 'Company Profile', href: '/dashboard/company-profile', show: isAdmin },
-    { icon: Map, label: 'Locations', href: '/dashboard/locations', show: isAdmin },
-    { icon: History, label: 'Audit Logs', href: '/dashboard/audit-logs', show: isAdmin },
+    { icon: LayoutDashboard, label: 'Dashboard', href: '/dashboard' , show: true, module: 'module_dashboard' },
+    { icon: TrendingUp, label: 'CEO Dashboard', href: '/dashboard/ceo', show: isAdmin || isManager, module: 'module_ceo_dashboard' },
+    { icon: FolderPlus, label: 'New Project', href: '/dashboard/projects/new', show: true, module: 'module_projects' },
+    { icon: FileText, label: 'All Projects', href: '/dashboard/projects', show: true, module: 'module_projects' },
+    { icon: ClipboardCheck, label: 'Approvals', href: '/dashboard/approvals', show: isAdmin || isManager, badge: stats?.pending_approvals, module: 'module_approvals' },
+    { icon: BarChart3, label: 'Reports', href: '/dashboard/reports', show: isAdmin || isManager, module: 'module_reports' },
+    { icon: Brain, label: 'Sensobrain', href: '/dashboard/sensobrain', show: true, module: 'module_sensobrain' },
+    { icon: ShoppingCart, label: 'Direct Sales', href: '/dashboard/sales', show: true, module: 'module_direct_sales' },
+    { icon: MapPin, label: 'Expansion', href: '/dashboard/expansion', show: isAdmin || isManager, module: 'module_expansion' },
+    { icon: AlertTriangle, label: 'Profit Alerts', href: '/dashboard/alerts', show: isAdmin || isManager, module: 'module_alerts' },
+    { icon: CreditCard, label: 'Accounts', href: '/dashboard/credits', show: isAdmin || isManager, module: 'module_credits' },
+    { icon: Package, label: 'Purchase Inbound', href: '/dashboard/purchase-inbound', show: isAdmin || isManager, module: 'module_purchase_inbound' },
+    { icon: Truck, label: 'Delivery Outbound', href: '/dashboard/delivery-outbound', show: isAdmin || isManager, module: 'module_delivery_outbound' },
+    { icon: Undo2, label: 'Brand Returns', href: '/dashboard/returns', show: true, module: 'module_returns' },
+    { icon: ClipboardList, label: 'Weekly Audits', href: '/dashboard/audits', show: isAdmin || isManager, module: 'module_audits' },
+    { icon: CalendarDays, label: 'Daily Updates', href: '/dashboard/daily-updates', show: true, module: 'module_daily_updates' },
+    { icon: Activity, label: 'Readings', href: '/dashboard/readings', show: true, module: 'module_readings' },
+    { icon: Package, label: 'Inventory', href: '/dashboard/inventory', show: isAdmin || isManager, badge: stats?.low_stock_alerts, module: 'module_inventory' },
+    { icon: RefreshCw, label: 'AMC Contracts', href: '/dashboard/amc', show: isAdmin || isManager, module: 'module_amc' },
+    { icon: Wrench, label: 'Assets & Tools', href: '/dashboard/assets', show: true, module: 'module_assets' },
+    { icon: ScrollText, label: 'Terms & Conditions', href: '/dashboard/terms', show: isAdmin || isManager, flag: 'can_manage_terms' },
+    { icon: Users, label: 'User Management', href: '/dashboard/users', show: isAdmin, module: 'module_users' },
+    { icon: Shield, label: 'Permissions', href: '/dashboard/permissions', show: isAdmin, module: 'module_permissions' },
+    { icon: Layers, label: 'Form Builder', href: '/dashboard/form-tabs', show: isAdmin, module: 'module_settings' },
+    { icon: Building2, label: 'Company Profile', href: '/dashboard/company-profile', show: isAdmin, flag: 'can_manage_company' },
+    { icon: Map, label: 'Locations', href: '/dashboard/locations', show: isAdmin, module: 'module_locations' },
+    { icon: History, label: 'Audit Logs', href: '/dashboard/audit-logs', show: isAdmin, flag: 'can_view_audit_logs' },
+    { icon: KeyRound, label: 'Credential Vault', href: '/dashboard/vault', show: isAdmin, module: 'module_vault' },
     { icon: Settings, label: 'Account Security', href: '/dashboard/security', show: true },
-    { icon: Settings, label: 'Pricing & Config', href: '/dashboard/pricing-config', show: isAdmin },
-    { icon: Tags, label: 'Pricelist', href: '/dashboard/pricelist', show: isAdmin },
-    { icon: Store, label: 'Vendors', href: '/dashboard/vendors', show: isAdmin || isManager },
-    { icon: HardHat, label: 'Partners', href: '/dashboard/partners', show: true },
-    { icon: Users, label: 'Teams', href: '/dashboard/teams', show: true },
-    { icon: ShoppingBag, label: 'Ecommerce', href: '/dashboard/ecommerce', show: true },
-  ].filter(item => item.show);
+    { icon: Settings, label: 'Pricing & Config', href: '/dashboard/pricing-config', show: isAdmin, module: 'module_settings' },
+    { icon: Tags, label: 'Pricelist', href: '/dashboard/pricelist', show: isAdmin, module: 'module_settings' },
+    { icon: Store, label: 'Vendors', href: '/dashboard/vendors', show: isAdmin || isManager, module: 'module_vendors' },
+    { icon: HardHat, label: 'Partners', href: '/dashboard/partners', show: true, module: 'module_partners' },
+    { icon: Users, label: 'Teams', href: '/dashboard/teams', show: true, module: 'module_teams' },
+    { icon: ShoppingBag, label: 'Ecommerce', href: '/dashboard/ecommerce', show: true, module: 'module_ecommerce' },
+  ].filter(item => item.show && canSeeModule(item));
 
   const isActive = (href) => {
     if (href === '/dashboard') return location.pathname === '/dashboard';

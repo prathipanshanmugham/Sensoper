@@ -123,6 +123,7 @@ def _pricing_config_defaults() -> dict:
         "panel_area_sqft_per_kwp": 65.0,
         "co2_kg_per_kwh_grid": 0.82,
         "string_low_temp_default_c": -10.0,  # Change 5 — admin-configurable per DISCOM/pincode
+        "credit_interest_monthly_pct": 1.5,  # Iter 54 — implied carrying cost of overdue customer credit (reporting only)
     }
 
 

@@ -158,7 +158,40 @@ export const creditsAPI = {
   list: (params = {}) => api.get('/credits', { params }),
   pay: (id, data) => api.post(`/credits/${id}/pay`, data),
   getPayments: (id) => api.get(`/credits/${id}/payments`),
-  delete: (id) => api.delete(`/credits/${id}`)
+  delete: (id) => api.delete(`/credits/${id}`),
+  setRate: (id, monthly_pct) => api.put(`/credits/${id}/interest-rate`, { monthly_pct }),
+  customerRates: () => api.get('/credits/customer-rates'),
+  setCustomerRate: (customer_name, monthly_pct) => api.put('/credits/customer-rates', { customer_name, monthly_pct })
+};
+
+// Iter 54 — geo reference (vendor state/district dropdowns)
+export const geoAPI = {
+  states: () => api.get('/geo/states'),
+  districts: (state) => api.get('/geo/districts', { params: state ? { state } : {} }),
+  addDistrict: (state, district) => api.post('/geo/districts', { state, district })
+};
+
+// Iter 54 — Credential Vault (admin only)
+export const vaultAPI = {
+  list: (params = {}) => api.get('/vault', { params }),
+  dashboard: () => api.get('/vault/dashboard'),
+  create: (data) => api.post('/vault', data),
+  update: (id, data) => api.put(`/vault/${id}`, data),
+  remove: (id) => api.delete(`/vault/${id}`),
+  reveal: (id) => api.post(`/vault/${id}/reveal`),
+  accessLog: (id) => api.get(`/vault/${id}/access-log`),
+  setConfig: (rotation_days) => api.put('/vault/config', { rotation_days })
+};
+
+// Iter 54 — Sensobrain (chat itself streams via fetch in the page)
+export const sensobrainAPI = {
+  status: () => api.get('/sensobrain/status'),
+  settings: () => api.get('/sensobrain/settings'),
+  saveSettings: (data) => api.put('/sensobrain/settings', data),
+  conversations: () => api.get('/sensobrain/conversations'),
+  conversation: (id) => api.get(`/sensobrain/conversations/${id}`),
+  adminConversations: (params = {}) => api.get('/sensobrain/admin/conversations', { params }),
+  usage: () => api.get('/sensobrain/admin/usage')
 };
 
 // Purchase Orders

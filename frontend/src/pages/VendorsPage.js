@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
-import { vendorsAPI } from '../utils/api';
+import { vendorsAPI, geoAPI } from '../utils/api';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
@@ -11,7 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { ArrowLeft, Plus, Search, Save, Loader2, Trash2, Edit, Store, Phone, Mail, Receipt, X, History } from 'lucide-react';
 
 const CATEGORIES = ['panels', 'inverters', 'batteries', 'structure', 'transport', 'services', 'other'];
-const blankForm = { name: '', contact_person: '', phone: '', email: '', gstin: '', address: '', district: '', payment_terms: '', category: 'other', notes: '' };
+const blankForm = { name: '', contact_person: '', phone: '', email: '', gstin: '', address: '', state: 'Tamil Nadu', district: '', payment_terms: '', category: 'other', notes: '' };
 
 export default function VendorsPage() {
   const [vendors, setVendors] = useState([]);
@@ -19,7 +19,10 @@ export default function VendorsPage() {
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState('all');
   const [status, setStatus] = useState('active');
-  const [district, setDistrict] = useState('');
+  const [selectedStates, setSelectedStates] = useState([]);
+  const [selectedDistricts, setSelectedDistricts] = useState([]);
+  const [states, setStates] = useState([]);
+  const [districtMap, setDistrictMap] = useState({});
   const [sort, setSort] = useState('name');
   const [openForm, setOpenForm] = useState(false);
   const [editingId, setEditingId] = useState(null);
@@ -36,13 +39,22 @@ export default function VendorsPage() {
       if (search) params.search = search;
       if (category !== 'all') params.category = category;
       if (status !== 'all') params.status = status;
-      if (district) params.district = district;
+      if (selectedStates.length) params.states = selectedStates.join(',');
+      if (selectedDistricts.length) params.districts = selectedDistricts.join(',');
       if (sort !== 'name') params.sort = sort;
       const r = await vendorsAPI.list(params);
       setVendors(r.data);
     } catch (e) { console.error(e); }
     finally { setLoading(false); }
-  }, [search, category, status, district, sort]);
+  }, [search, category, status, selectedStates, selectedDistricts, sort]);
+
+  useEffect(() => {
+    geoAPI.states().then(r => setStates(r.data || [])).catch(() => {});
+    geoAPI.districts().then(r => setDistrictMap(r.data || {})).catch(() => {});
+  }, []);
+  const toggle = (setter) => (v) => setter(prev => prev.includes(v) ? prev.filter(x => x !== v) : [...prev, v]);
+  const filterStates = selectedStates.length ? selectedStates : ['Tamil Nadu'];
+  const filterDistricts = filterStates.flatMap(st => districtMap[st] || []);
 
   useEffect(() => {
     const t = setTimeout(() => fetchAll(), 300);
@@ -52,7 +64,7 @@ export default function VendorsPage() {
   const openCreate = () => { setEditingId(null); setForm(blankForm); setOpenForm(true); };
   const openEdit = (v) => {
     setEditingId(v.id);
-    setForm({ name: v.name || '', contact_person: v.contact_person || '', phone: v.phone || '', email: v.email || '', gstin: v.gstin || '', address: v.address || '', district: v.district || '', payment_terms: v.payment_terms || '', category: v.category || 'other', notes: v.notes || '' });
+    setForm({ name: v.name || '', contact_person: v.contact_person || '', phone: v.phone || '', email: v.email || '', gstin: v.gstin || '', address: v.address || '', state: v.state || 'Tamil Nadu', district: v.district || '', payment_terms: v.payment_terms || '', category: v.category || 'other', notes: v.notes || '' });
     setOpenForm(true);
   };
 
@@ -112,8 +124,25 @@ export default function VendorsPage() {
           <SelectTrigger className="h-10" data-testid="vendor-sort"><SelectValue /></SelectTrigger>
           <SelectContent><SelectItem value="name">Sort: Name</SelectItem><SelectItem value="business_desc">Sort: Business value ↓</SelectItem><SelectItem value="recent_desc">Sort: Most recent order</SelectItem><SelectItem value="recent_asc">Sort: Oldest last order</SelectItem><SelectItem value="location_asc">Sort: Location (district)</SelectItem></SelectContent>
         </Select>
-        <div className="sm:col-span-5">
-          <Input value={district} onChange={e => setDistrict(e.target.value)} placeholder="Filter by district (exact match)" className="h-9" data-testid="vendor-district-filter" />
+        <div className="sm:col-span-5 space-y-2" data-testid="vendor-location-filters">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="text-[11px] uppercase tracking-wider text-slate-400 mr-1">State</span>
+            {states.filter(st => ['Tamil Nadu', 'Kerala', 'Karnataka', 'Andhra Pradesh', 'Telangana', 'Puducherry'].includes(st) || selectedStates.includes(st)).map(st => (
+              <label key={st} className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-full border cursor-pointer select-none ${selectedStates.includes(st) ? 'bg-sky-100 border-sky-300 text-sky-800' : 'bg-white border-slate-200 text-slate-600 hover:border-sky-300'}`} data-testid={`vendor-state-filter-${st.replace(/\s+/g, '-')}`}>
+                <input type="checkbox" className="h-3 w-3 accent-sky-600" checked={selectedStates.includes(st)} onChange={() => toggle(setSelectedStates)(st)} />{st}
+              </label>
+            ))}
+            {selectedStates.length > 0 && <button type="button" className="text-[11px] text-slate-500 underline" onClick={() => setSelectedStates([])} data-testid="vendor-state-filter-clear">clear</button>}
+          </div>
+          <div className="flex flex-wrap items-center gap-1.5 max-h-24 overflow-y-auto">
+            <span className="text-[11px] uppercase tracking-wider text-slate-400 mr-1">District</span>
+            {filterDistricts.map(d => (
+              <label key={d} className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-full border cursor-pointer select-none ${selectedDistricts.includes(d) ? 'bg-emerald-100 border-emerald-300 text-emerald-800' : 'bg-white border-slate-200 text-slate-600 hover:border-emerald-300'}`} data-testid={`vendor-district-filter-${d.replace(/\s+/g, '-')}`}>
+                <input type="checkbox" className="h-3 w-3 accent-emerald-600" checked={selectedDistricts.includes(d)} onChange={() => toggle(setSelectedDistricts)(d)} />{d}
+              </label>
+            ))}
+            {selectedDistricts.length > 0 && <button type="button" className="text-[11px] text-slate-500 underline" onClick={() => setSelectedDistricts([])} data-testid="vendor-district-filter-clear">clear</button>}
+          </div>
         </div>
       </div>
 
@@ -140,7 +169,7 @@ export default function VendorsPage() {
                 {v.phone && <p className="flex items-center gap-1"><Phone className="h-3 w-3" />{v.phone}</p>}
                 {v.email && <p className="flex items-center gap-1"><Mail className="h-3 w-3" />{v.email}</p>}
                 {v.gstin && <p className="flex items-center gap-1"><Receipt className="h-3 w-3" />{v.gstin}</p>}
-                {v.district && <p>{v.district}</p>}
+                {(v.district || v.state) && <p data-testid={`vendor-location-${v.id}`}>{[v.district, v.state].filter(Boolean).join(', ')}</p>}
               </div>
               <div className="flex items-center justify-between text-xs pt-1 border-t border-slate-100">
                 <span className="text-emerald-700 font-medium">₹{(v.business_value || 0).toLocaleString('en-IN')}</span>
@@ -178,7 +207,20 @@ export default function VendorsPage() {
             </div>
             <div className="space-y-1"><Label className="text-xs">Address</Label><Input value={form.address} onChange={(e) => setForm(p => ({...p, address: e.target.value}))} className="h-9" /></div>
             <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1"><Label className="text-xs">District</Label><Input value={form.district} onChange={(e) => setForm(p => ({...p, district: e.target.value}))} className="h-9" data-testid="vendor-district-input" /></div>
+              <div className="space-y-1"><Label className="text-xs">State</Label>
+                <Select value={form.state || ''} onValueChange={(v) => setForm(p => ({...p, state: v, district: ''}))}>
+                  <SelectTrigger className="h-9" data-testid="vendor-state-select"><SelectValue placeholder="Select state" /></SelectTrigger>
+                  <SelectContent className="max-h-64">{states.map(st => <SelectItem key={st} value={st}>{st}</SelectItem>)}</SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1"><Label className="text-xs">District</Label>
+                <Select value={form.district || ''} onValueChange={(v) => setForm(p => ({...p, district: v}))} disabled={!form.state}>
+                  <SelectTrigger className="h-9" data-testid="vendor-district-select"><SelectValue placeholder={(districtMap[form.state] || []).length ? 'Select district' : 'No district list for this state'} /></SelectTrigger>
+                  <SelectContent className="max-h-64">{(districtMap[form.state] || []).map(d => <SelectItem key={d} value={d}>{d}</SelectItem>)}</SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1"><Label className="text-xs">Payment Terms</Label><Input value={form.payment_terms} onChange={(e) => setForm(p => ({...p, payment_terms: e.target.value}))} placeholder="Net 30, PDC 60, etc." className="h-9" data-testid="vendor-payment-terms-input" /></div>
             </div>
             <div className="space-y-1"><Label className="text-xs">Notes</Label><Input value={form.notes} onChange={(e) => setForm(p => ({...p, notes: e.target.value}))} className="h-9" /></div>

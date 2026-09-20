@@ -11,6 +11,7 @@ import AccountsSection from '../components/AccountsSection';
 import ExpensesSection from '../components/ExpensesSection';
 import GstSection from '../components/GstSection';
 import CustomerSection from '../components/CustomerSection';
+import { CreditInterestCell } from '../components/CreditInterestCell';
 
 const STATUS_COLORS = { active: 'bg-blue-100 text-blue-700', overdue: 'bg-red-100 text-red-700', closed: 'bg-emerald-100 text-emerald-700' };
 
@@ -148,6 +149,7 @@ export default function CustomerCreditsPage() {
                   <th className="px-4 py-2.5 text-left text-xs font-semibold text-slate-600">Balance</th>
                   <th className="px-4 py-2.5 text-left text-xs font-semibold text-slate-600">Status</th>
                   <th className="px-4 py-2.5 text-left text-xs font-semibold text-slate-600">Due</th>
+                  <th className="px-4 py-2.5 text-left text-xs font-semibold text-slate-600" title="Implied carrying cost of the overdue balance — reporting only, never invoiced">Interest cost</th>
                   <th className="px-4 py-2.5"></th>
                 </tr></thead>
                 <tbody>
@@ -160,6 +162,7 @@ export default function CustomerCreditsPage() {
                       <td className="px-4 py-2.5 font-semibold">₹{(c.balance || 0).toLocaleString('en-IN')}</td>
                       <td className="px-4 py-2.5"><Badge className={`text-[10px] ${STATUS_COLORS[c.status] || ''}`}>{c.status}</Badge></td>
                       <td className="px-4 py-2.5 text-xs text-slate-500">{c.due_date || '-'}</td>
+                      <td className="px-4 py-2.5"><CreditInterestCell credit={c} onChanged={fetch} /></td>
                       <td className="px-4 py-2.5 flex gap-1">
                         {c.status !== 'closed' && <Button variant="ghost" size="sm" className="h-7 text-xs text-blue-600" onClick={() => setShowPay(c.id)} data-testid={`pay-btn-${c.id}`}>Pay</Button>}
                         <Button variant="ghost" size="icon" className="h-7 w-7 text-red-400" onClick={async () => { await creditsAPI.delete(c.id); fetch(); }}><Trash2 className="h-3.5 w-3.5" /></Button>

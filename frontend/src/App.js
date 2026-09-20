@@ -42,6 +42,8 @@ import LocationsPage from "./pages/LocationsPage";
 import PartnersPage from "./pages/PartnersPage";
 import TeamsPage from "./pages/TeamsPage";
 import CredentialsPage from "./pages/CredentialsPage";
+import VaultPage from "./pages/VaultPage";
+import SensobrainPage from "./pages/SensobrainPage";
 import PartnerDetail from "./pages/PartnerDetail";
 import EcommercePage from "./pages/EcommercePage";
 
@@ -145,6 +147,8 @@ function AppRoutes() {
       <Route path="/dashboard/partners/:id" element={<ProtectedRoute><DashboardLayout><PartnerDetail /></DashboardLayout></ProtectedRoute>} />
       <Route path="/dashboard/teams" element={<ProtectedRoute><DashboardLayout><TeamsPage /></DashboardLayout></ProtectedRoute>} />
       <Route path="/dashboard/security" element={<ProtectedRoute><DashboardLayout><CredentialsPage /></DashboardLayout></ProtectedRoute>} />
+      <Route path="/dashboard/vault" element={<ProtectedRoute allowedRoles={["admin"]}><DashboardLayout><VaultPage /></DashboardLayout></ProtectedRoute>} />
+      <Route path="/dashboard/sensobrain" element={<ProtectedRoute><DashboardLayout><SensobrainPage /></DashboardLayout></ProtectedRoute>} />
       <Route path="/dashboard/ecommerce" element={<ProtectedRoute><DashboardLayout><EcommercePage /></DashboardLayout></ProtectedRoute>} />
       {/* Default Redirect */}
       <Route path="/" element={<Navigate to="/dashboard" replace />} />
