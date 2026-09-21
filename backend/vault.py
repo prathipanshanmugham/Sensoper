@@ -24,7 +24,8 @@ DEFAULT_ROTATION_DAYS = 180
 def _fernet() -> Fernet:
     key = os.environ.get("VAULT_MASTER_KEY")
     if not key:
-        raise HTTPException(status_code=503, detail="Credential Vault is not configured: VAULT_MASTER_KEY is missing from the server environment")
+        raise HTTPException(status_code=503, detail="Credential Vault is not configured: add VAULT_MASTER_KEY to the backend environment (.env) and restart. "
+                                                    "Generate one with: python3 -c \"from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())\"")
     try:
         return Fernet(key.encode())
     except (ValueError, TypeError):
