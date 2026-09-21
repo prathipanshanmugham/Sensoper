@@ -4,20 +4,22 @@
   so role + location scoping is exactly what that user gets in the UI.
 * Hard-blocked path prefixes (Credential Vault, auth, users, permissions, security, Sensobrain settings) can never be
   reached; a configurable `excluded_paths` list extends the block list.
+* Chat completions go straight to the OpenAI API with the `openai` SDK (native streaming + tool calling) — no dependency
+  on emergentintegrations, so this runs unchanged on a self-hosted VPS.
 * Every request logs token usage → cost (USD at configured per-1M pricing, INR at configured FX) and the full
   transcript is stored per conversation for admin review. Users see a permanent notice in the UI.
 """
 from __future__ import annotations
 import json
 import os
-import uuid
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 import httpx
 from bson import ObjectId
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
+from openai import AsyncOpenAI
 from pydantic import BaseModel
 
 from vault import encrypt_secret, decrypt_secret
@@ -55,6 +57,15 @@ TOOLS: List[Dict[str, Any]] = [
 
 def _now() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def _client_kwargs(api_key: str) -> Dict[str, Any]:
+    """Real OpenAI keys go straight to api.openai.com. An Emergent universal key (sk-emergent-…) is routed through
+    Emergent's OpenAI-compatible proxy instead — optional, only used if that kind of key is pasted."""
+    if api_key.startswith("sk-emergent-"):
+        base = os.environ.get("INTEGRATION_PROXY_URL") or "https://integrations.emergentagent.com"
+        return {"base_url": f"{base.rstrip('/')}/llm"}
+    return {}
 
 
 def _trim_project(p: Dict[str, Any]) -> Dict[str, Any]:
@@ -223,38 +234,68 @@ def create_router(db, app, get_current_user, require_role):
         convo_id = str(convo["_id"])
         history = [{"role": "system", "content": SYSTEM_PROMPT}] + [{"role": m["role"], "content": m["content"]} for m in convo.get("messages", [])[-20:] if m.get("role") in ("user", "assistant") and m.get("content")]
 
-        from emergentintegrations.llm.chat import LlmChat, UserMessage, TextDelta, ToolCallReady, StreamDone
-        llm = LlmChat(api_key=api_key, session_id=convo_id, system_message=SYSTEM_PROMPT, initial_messages=history).with_model("openai", s["model"]).with_tools(TOOLS, tool_choice="auto")
+        messages: List[Dict[str, Any]] = history + [{"role": "user", "content": payload.message}]
+        client = AsyncOpenAI(api_key=api_key, **_client_kwargs(api_key))
+
+        async def stream_turn():
+            """One streamed completion → (text, tool_calls[{id,name,arguments_json}], usage)."""
+            text_parts: List[str] = []
+            calls: Dict[int, Dict[str, str]] = {}
+            usage = None
+            stream = await client.chat.completions.create(model=s["model"], messages=messages, tools=TOOLS, tool_choice="auto",
+                                                          stream=True, stream_options={"include_usage": True})
+            async for chunk in stream:
+                if chunk.usage:
+                    usage = chunk.usage
+                if not chunk.choices:
+                    continue
+                delta = chunk.choices[0].delta
+                if delta.content:
+                    text_parts.append(delta.content)
+                    yield ("delta", delta.content)
+                for tc in delta.tool_calls or []:
+                    slot = calls.setdefault(tc.index, {"id": "", "name": "", "arguments": ""})
+                    if tc.id:
+                        slot["id"] = tc.id
+                    if tc.function and tc.function.name:
+                        slot["name"] = tc.function.name
+                    if tc.function and tc.function.arguments:
+                        slot["arguments"] += tc.function.arguments
+            yield ("done", {"text": "".join(text_parts), "tool_calls": [calls[i] for i in sorted(calls)], "usage": usage})
 
         async def gen():
             yield f"data: {json.dumps({'type': 'start', 'conversation_id': convo_id})}\n\n"
-            text_parts: List[str] = []
+            answer_parts: List[str] = []
             tools_used: List[Dict[str, Any]] = []
             inp = out = 0
-            user_msg = UserMessage(text=payload.message)
             try:
                 for _ in range(6):
-                    pending = []
-                    async for ev in llm.stream_message(user_msg):
-                        if isinstance(ev, TextDelta):
-                            text_parts.append(ev.content)
-                            yield f"data: {json.dumps({'type': 'delta', 'content': ev.content})}\n\n"
-                        elif isinstance(ev, ToolCallReady):
-                            pending.append(ev.tool_call)
-                        elif isinstance(ev, StreamDone):
-                            inp += ev.usage.input_tokens or 0
-                            out += ev.usage.output_tokens or 0
-                    if not pending:
+                    turn = None
+                    async for kind, data in stream_turn():
+                        if kind == "delta":
+                            answer_parts.append(data)
+                            yield f"data: {json.dumps({'type': 'delta', 'content': data})}\n\n"
+                        else:
+                            turn = data
+                    if turn["usage"]:
+                        inp += turn["usage"].prompt_tokens or 0
+                        out += turn["usage"].completion_tokens or 0
+                    if not turn["tool_calls"]:
                         break
-                    for tc in pending:
-                        yield f"data: {json.dumps({'type': 'tool', 'name': tc.name})}\n\n"
-                        result = await dispatch(request, tc.name, tc.arguments or {}, s["excluded_paths"])
-                        tools_used.append({"name": tc.name, "arguments": tc.arguments, "ok": not (isinstance(result, dict) and "error" in result)})
-                        llm.add_tool_result(tc.id, json.dumps(result, default=str)[:60000])
-                    user_msg = None
+                    messages.append({"role": "assistant", "content": turn["text"] or None,
+                                     "tool_calls": [{"id": tc["id"], "type": "function", "function": {"name": tc["name"], "arguments": tc["arguments"] or "{}"}} for tc in turn["tool_calls"]]})
+                    for tc in turn["tool_calls"]:
+                        yield f"data: {json.dumps({'type': 'tool', 'name': tc['name']})}\n\n"
+                        try:
+                            args = json.loads(tc["arguments"] or "{}")
+                        except json.JSONDecodeError:
+                            args = {}
+                        result = await dispatch(request, tc["name"], args, s["excluded_paths"])
+                        tools_used.append({"name": tc["name"], "arguments": args, "ok": not (isinstance(result, dict) and "error" in result)})
+                        messages.append({"role": "tool", "tool_call_id": tc["id"], "content": json.dumps(result, default=str)[:60000]})
             except Exception as e:  # provider/network errors → surface to the user, still log the turn
                 yield f"data: {json.dumps({'type': 'error', 'message': str(e)[:300]})}\n\n"
-            answer = "".join(text_parts)
+            answer = "".join(answer_parts)
             cost = _cost(s["model"], s["pricing"], inp, out)
             ts = _now().isoformat()
             await db.sensobrain_conversations.update_one({"_id": convo["_id"]}, {
