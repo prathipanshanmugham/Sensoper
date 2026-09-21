@@ -5784,47 +5784,9 @@ async def update_thresholds(body: ThresholdUpdate, request: Request):
 
 @api_router.post("/ai/recommendations")
 async def get_ai_recommendations(data: AIRecommendationRequest, request: Request):
+    """Legacy one-shot recommendation. Uses the OpenAI key stored in Sensobrain settings (openai SDK, no emergentintegrations)."""
     await get_current_user(request)
-    
-    try:
-        from emergentintegrations.llm.chat import LlmChat, UserMessage
-        
-        api_key = os.environ.get("EMERGENT_LLM_KEY")
-        if not api_key:
-            raise HTTPException(status_code=500, detail="AI service not configured")
-        
-        chat = LlmChat(
-            api_key=api_key,
-            session_id=f"solar-rec-{uuid.uuid4()}",
-            system_message="""You are a solar energy consultant for Sensoper Controls and Renewables. 
-            Provide concise, practical recommendations for solar system installations based on the user's energy consumption and site details.
-            Focus on:
-            1. Recommended system capacity (kW)
-            2. Panel type and count
-            3. Inverter recommendations
-            4. Estimated savings
-            5. ROI timeline
-            Keep responses under 300 words and use bullet points."""
-        )
-        
-        chat.with_model("openai", "gpt-5.2")
-        
-        prompt = f"""Based on the following details, provide solar system recommendations:
-        
-        - Monthly Electricity Consumption: {data.monthly_consumption_units} units
-        - Sanctioned Load: {data.sanction_load_kw} kW
-        - Roof Type: {data.roof_type}
-        - Budget Range: {data.budget_range or 'Not specified'}
-        
-        Please recommend the optimal solar system configuration."""
-        
-        user_message = UserMessage(text=prompt)
-        response = await chat.send_message(user_message)
-        
-        return {"recommendation": response}
-    
-    except ImportError:
-        return {"recommendation": f"""Based on your monthly consumption of {data.monthly_consumption_units} units:
+    fallback = f"""Based on your monthly consumption of {data.monthly_consumption_units} units:
 
 **Recommended System:**
 - Capacity: {max(1, data.monthly_consumption_units / 120):.1f} kW
@@ -5836,7 +5798,24 @@ async def get_ai_recommendations(data: AIRecommendationRequest, request: Request
 - ROI: 4-5 years
 - System Life: 25+ years
 
-*For detailed AI-powered analysis, please configure the AI service.*"""}
+*For detailed AI-powered analysis, add the OpenAI API key under Sensobrain → Settings.*"""
+    settings_doc = await db.sensobrain_settings.find_one({"key": "defaults"}) or {}
+    if not settings_doc.get("openai_api_key_enc"):
+        return {"recommendation": fallback}
+    try:
+        from openai import AsyncOpenAI
+        from vault import decrypt_secret
+        from sensobrain import _client_kwargs
+        api_key = decrypt_secret(settings_doc["openai_api_key_enc"])
+        client = AsyncOpenAI(api_key=api_key, **_client_kwargs(api_key))
+        resp = await client.chat.completions.create(
+            model=settings_doc.get("model", "gpt-5.4-mini"),
+            messages=[
+                {"role": "system", "content": "You are a solar energy consultant for Sensoper Controls and Renewables. Provide concise, practical recommendations for solar system installations based on the user's energy consumption and site details. Focus on: recommended capacity (kW), panel type and count, inverter, estimated savings, ROI timeline. Under 300 words, bullet points."},
+                {"role": "user", "content": f"Monthly consumption: {data.monthly_consumption_units} units; sanctioned load: {data.sanction_load_kw} kW; roof type: {data.roof_type}; budget: {data.budget_range or 'Not specified'}. Recommend the optimal solar system configuration."},
+            ],
+        )
+        return {"recommendation": resp.choices[0].message.content}
     except Exception as e:
         logger.error(f"AI recommendation error: {e}")
         return {"recommendation": f"Could not generate AI recommendation. Basic estimate: {max(1, data.monthly_consumption_units / 120):.1f} kW system recommended."}
