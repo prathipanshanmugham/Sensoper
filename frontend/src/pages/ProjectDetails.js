@@ -51,6 +51,8 @@ import { generateKitQuotationPDF } from '../utils/kitQuotationPDF';
 import { generateKitExplainerPDF } from '../utils/kitExplainerPDF';
 import ProjectTeamsCard from '../components/ProjectTeamsCard';
 import ProjectTermsCard from '../components/ProjectTermsCard';
+import AdhocLinesCard from '../components/AdhocLinesCard';
+import { AdhocTag } from '../components/AdhocLine';
 import { AmcInterestToggle } from '../components/AmcOps';
 import { generateDetailedQuotationPDF } from '../utils/detailedQuotationPDF';
 import { catalogueAPI } from '../utils/api';
@@ -404,6 +406,7 @@ export default function ProjectDetails() {
             {(project.status === 'approved' || project.status === 'completed') && (
               <Button variant="outline" onClick={shareViaWhatsApp} className="gap-2" data-testid="share-whatsapp-btn"><Share2 className="h-4 w-4" />WhatsApp</Button>
             )}
+            <AdhocLinesCard projectId={id} canManage={isAdmin || isManager} onChanged={fetchProject} />
             {(isAdmin || isManager) && <ProjectTermsCard projectId={id} project={project} canManage={isAdmin || isManager} onSaved={fetchProject} />}
             {(isAdmin || isManager) && <ProjectInvoiceCard projectId={id} companyProfile={companyProfile} terms={invoiceTerms || terms} />}
           </div>
@@ -842,7 +845,7 @@ export default function ProjectDetails() {
                       </tr></thead>
                       <tbody>{selectedItems.map((item, i) => (
                         <tr key={item.inventory_item_id || `row-${i}`} className="border-b border-slate-100">
-                          <td className="py-2 px-4 font-medium">{item.name}</td><td className="py-2 px-4 text-slate-500">{CATEGORY_LABELS[item.category] || item.category}</td>
+                          <td className="py-2 px-4 font-medium">{item.name} <AdhocTag item={item} className="ml-1" /></td><td className="py-2 px-4 text-slate-500">{CATEGORY_LABELS[item.category] || item.category}</td>
                           <td className="py-2 px-4 text-center">{item.quantity}</td><td className="py-2 px-4 text-right">₹{(item.unit_price || 0).toLocaleString('en-IN')}</td>
                           <td className="py-2 px-4 text-right text-slate-500">{item.gst_percentage}%</td><td className="py-2 px-4 text-right font-medium">₹{(item.amount || item.unit_price * item.quantity).toLocaleString('en-IN')}</td>
                         </tr>

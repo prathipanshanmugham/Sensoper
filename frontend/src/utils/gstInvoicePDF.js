@@ -59,7 +59,7 @@ export async function generateGstInvoicePDF(invoice, companyProfile, format = 'l
     columnStyles = { 1: { halign: 'right' }, 2: { halign: 'center' }, 3: { halign: 'right' }, 4: { halign: 'right', fontStyle: 'bold' } };
   } else {
     head = [['#', 'Description', 'HSN/SAC', 'Qty', 'Unit Price', 'Taxable Value', 'GST %', igst ? 'IGST' : 'CGST + SGST']];
-    body = (invoice.line_items || []).map((li, i) => [i + 1, li.description, li.hsn_sac || '—', li.quantity, CURRENCY(li.unit_price), CURRENCY(li.taxable_value), `${li.gst_pct}%`, CURRENCY(igst ? li.igst : li.cgst + li.sgst)]);
+    body = (invoice.line_items || []).map((li, i) => [i + 1, li.sku_code ? `${li.description}\nSKU ${li.sku_code}` : li.description, li.hsn_sac || '—', li.quantity, CURRENCY(li.unit_price), CURRENCY(li.taxable_value), `${li.gst_pct}%`, CURRENCY(igst ? li.igst : li.cgst + li.sgst)]);
     columnStyles = { 0: { cellWidth: 7, halign: 'center' }, 1: { cellWidth: 52 }, 2: { cellWidth: 18, halign: 'center' }, 3: { cellWidth: 10, halign: 'center' }, 4: { halign: 'right' }, 5: { halign: 'right' }, 6: { cellWidth: 13, halign: 'center' }, 7: { halign: 'right' } };
   }
   autoTable(doc, {

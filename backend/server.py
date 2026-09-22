@@ -164,6 +164,16 @@ class SelectedItem(BaseModel):
     gst_percentage: Optional[float] = None   # Iter 52: no blanket default — must be set per item
     quantity: int = 1
     margin_percentage: Optional[float] = None
+    # Iter 55 — ad-hoc (not-yet-in-inventory) lines carry their own details until promoted
+    line_id: Optional[str] = None
+    is_adhoc: bool = False
+    description: Optional[str] = None
+    specification: Optional[str] = None
+    hsn_code: Optional[str] = None
+    supplier_hint: Optional[str] = None
+    promoted: bool = False
+    promoted_inventory_item_id: Optional[str] = None
+    sku_code: Optional[str] = None
 
 class ManualCost(BaseModel):
     description: str
@@ -798,6 +808,15 @@ def _pct_or_none(v):
         return None
 
 
+def _with_line_id(si: dict) -> dict:
+    """Iter 55: every quotation line gets a stable id so ad-hoc lines can be promoted/linked later."""
+    if not si.get("line_id"):
+        si["line_id"] = uuid.uuid4().hex[:12]
+    if si.get("is_adhoc") and not si.get("inventory_item_id"):
+        si["promoted"] = bool(si.get("promoted"))
+    return si
+
+
 def calculate_cost_estimation(selected_items: list, manual_costs: list, custom_fields: Optional[dict] = None,
                               rounding: Optional[dict] = None) -> dict:
     """Grand total = base system (calculator, per-line GST) + add-ons/manual (each with its own GST & margin) − subsidy.
@@ -834,7 +853,15 @@ def calculate_cost_estimation(selected_items: list, manual_costs: list, custom_f
             "margin_percentage": margin_pct,
             "amount": round(item_cost, 2),
             "gst_amount": round(item_gst, 2),
-            "margin_amount": round(item_margin, 2)
+            "margin_amount": round(item_margin, 2),
+            # Iter 55 — ad-hoc provenance travels with the breakdown (internal only; PDFs ignore these flags)
+            "line_id": item.get("line_id"),
+            "is_adhoc": bool(item.get("is_adhoc")),
+            "hsn_code": item.get("hsn_code"),
+            "sku_code": item.get("sku_code"),
+            "specification": item.get("specification"),
+            "promoted": bool(item.get("promoted")),
+            "promoted_inventory_item_id": item.get("promoted_inventory_item_id"),
         })
 
     manual_rows = []
@@ -2886,6 +2913,8 @@ from sensobrain import create_router as _create_sensobrain_router  # noqa: E402
 api_router.include_router(_create_geo_router(db=db, get_current_user=get_current_user, require_role=require_role, get_default_pincodes=get_default_pincodes))
 api_router.include_router(_create_vault_router(db=db, require_role=require_role, create_audit_log=create_audit_log))
 api_router.include_router(_create_sensobrain_router(db=db, app=app, get_current_user=get_current_user, require_role=require_role))
+from adhoc_promotion import create_router as _create_adhoc_router  # noqa: E402
+api_router.include_router(_create_adhoc_router(db=db, get_current_user=get_current_user, require_role=require_role, create_audit_log=create_audit_log, build_cost_estimation=build_cost_estimation))
 
 
 
@@ -3436,7 +3465,7 @@ async def create_project(project: ProjectCreate, request: Request):
     user = await get_current_user(request)
     
     # Build selected items list for cost calculation
-    selected_items_data = [si.model_dump() for si in project.selected_items]
+    selected_items_data = [_with_line_id(si.model_dump()) for si in project.selected_items]
     manual_costs_data = [mc.model_dump() for mc in project.manual_costs]
     
     project_doc = {
@@ -3834,7 +3863,7 @@ async def update_project(project_id: str, updates: ProjectUpdate, request: Reque
     if updates.notes is not None:
         update_data["notes"] = updates.notes
     if updates.selected_items is not None:
-        update_data["selected_items"] = [si.model_dump() for si in updates.selected_items]
+        update_data["selected_items"] = [_with_line_id(si.model_dump()) for si in updates.selected_items]
     if updates.manual_costs is not None:
         update_data["manual_costs"] = [mc.model_dump() for mc in updates.manual_costs]
     if updates.status and user["role"] in ["admin", "manager"]:

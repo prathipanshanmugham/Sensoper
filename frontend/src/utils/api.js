@@ -305,6 +305,13 @@ export const inventoryAPI = {
 };
 
 // Material Kits API (Solution Kits)
+// Iter 55 — ad-hoc quotation lines → inventory promotion
+export const adhocAPI = {
+  list: (projectId) => api.get(`/projects/${projectId}/adhoc-lines`),
+  promote: (projectId, data) => api.post(`/projects/${projectId}/adhoc-lines/promote`, data),
+  addToKit: (projectId, lineId, data) => api.post(`/projects/${projectId}/adhoc-lines/${lineId}/add-to-kit`, data)
+};
+
 export const materialKitsAPI = {
   getAll: (params = {}) => api.get('/material-kits', { params }),
   getOne: (id) => api.get(`/material-kits/${id}`),

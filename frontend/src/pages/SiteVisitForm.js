@@ -15,6 +15,7 @@ import { Progress } from '../components/ui/progress';
 import { ComboInput } from '../components/ui/combo-input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '../components/ui/dialog';
 import ProposedSolutionSection from '../components/ProposedSolutionSection';
+import { AdhocLineForm, AdhocTag } from '../components/AdhocLine';
 import { 
   User, MapPin, Zap, ArrowRight, ArrowLeft, Loader2, CheckCircle2,
   Sparkles, Plus, Trash2, Package, FolderOpen, X, Percent, FolderPlus, ExternalLink, CheckCircle, Link2,
@@ -98,6 +99,7 @@ export default function SiteVisitForm() {
   const [availableKits, setAvailableKits] = useState([]);
   const [suggestedKit, setSuggestedKit] = useState(null);
   const [appliedKitId, setAppliedKitId] = useState(null);
+  const [showAdhocForm, setShowAdhocForm] = useState(false);
   const [kitDismissed, setKitDismissed] = useState(false);
   const [pricingCfg, setPricingCfg] = useState({ rounding_step: 1, rounding_mode: 'nearest' });
   useEffect(() => { catalogueAPI.getConfig().then(r => setPricingCfg(r.data || {})).catch(() => {}); }, []);
@@ -166,7 +168,8 @@ export default function SiteVisitForm() {
         selected_items: (p.selected_items || []).map(si => ({
           inventory_item_id: si.inventory_item_id, name: si.name, category: si.category,
           unit_price: si.unit_price, gst_percentage: si.gst_percentage ?? null, quantity: si.quantity || 1,
-          margin_percentage: si.margin_percentage ?? null
+          margin_percentage: si.margin_percentage ?? null,
+          line_id: si.line_id, is_adhoc: !!si.is_adhoc, description: si.description ?? null, specification: si.specification ?? null, hsn_code: si.hsn_code ?? null, supplier_hint: si.supplier_hint ?? null, promoted: !!si.promoted, promoted_inventory_item_id: si.promoted_inventory_item_id ?? null, sku_code: si.sku_code ?? null
         })),
         manual_costs: p.manual_costs || [],
         drive_folder_name: p.drive_folder_name || '',
@@ -663,9 +666,10 @@ export default function SiteVisitForm() {
           inverter_to_panel_unit: formData.additional.inverter_to_panel_unit || 'm'
         },
         selected_items: formData.selected_items.map(si => ({
-          inventory_item_id: si.inventory_item_id, name: si.name, category: si.category,
+          inventory_item_id: si.inventory_item_id || null, name: si.name, category: si.category,
           unit_price: si.unit_price, gst_percentage: pct(si.gst_percentage), quantity: parseInt(si.quantity) || 1,
-          margin_percentage: pct(si.margin_percentage)
+          margin_percentage: pct(si.margin_percentage),
+          line_id: si.line_id, is_adhoc: !!si.is_adhoc, description: si.description ?? null, specification: si.specification ?? null, hsn_code: si.hsn_code ?? null, supplier_hint: si.supplier_hint ?? null, promoted: !!si.promoted, promoted_inventory_item_id: si.promoted_inventory_item_id ?? null, sku_code: si.sku_code ?? null
         })),
         manual_costs: formData.manual_costs.filter(c => c.description && c.amount > 0).map(c => ({
           description: c.description, amount: parseFloat(c.amount) || 0, gst_pct: pct(c.gst_pct), margin_pct: pct(c.margin_pct)
@@ -1283,6 +1287,11 @@ export default function SiteVisitForm() {
                         })}
                       </SelectContent>
                     </Select>
+                    <div className="pt-1 flex items-center justify-between gap-2 flex-wrap">
+                      <p className="text-[11px] text-slate-500">Need something that isn't catalogued yet?</p>
+                      <Button type="button" variant="outline" size="sm" className="h-8 text-xs border-amber-300 text-amber-800 hover:bg-amber-50" onClick={() => setShowAdhocForm(v => !v)} data-testid="adhoc-toggle-btn"><Plus className="h-3.5 w-3.5 mr-1" />Add item not in inventory</Button>
+                    </div>
+                    {showAdhocForm && <AdhocLineForm categories={categories} onCancel={() => setShowAdhocForm(false)} onAdd={(line) => { setFormData(prev => ({ ...prev, selected_items: [...prev.selected_items, line] })); setShowAdhocForm(false); }} />}
                     {/* Quick-add strip: 6 most recent items */}
                     {inventoryItems.length > 0 && (
                       <div className="pt-1">
@@ -1313,8 +1322,8 @@ export default function SiteVisitForm() {
                         <div key={item.inventory_item_id || `item-${idx}`} className="p-3 bg-slate-50 rounded-lg border border-slate-200" data-testid={`selected-item-${idx}`}>
                           <div className="flex items-center gap-2">
                             <div className="flex-1 min-w-0">
-                              <p className="font-medium text-sm text-slate-900 truncate">{item.name}</p>
-                              <p className="text-xs text-slate-500">{getCategoryLabel(item.category)} - ₹{item.unit_price.toLocaleString('en-IN')} x</p>
+                              <p className="font-medium text-sm text-slate-900 truncate flex items-center gap-1.5">{item.name}<AdhocTag item={item} /></p>
+                              <p className="text-xs text-slate-500">{getCategoryLabel(item.category)}{item.specification ? ` · ${item.specification}` : ''} - ₹{item.unit_price.toLocaleString('en-IN')} x</p>
                             </div>
                             <Input type="number" min="1" value={item.quantity} onChange={(e) => updateSelectedItem(idx, 'quantity', parseInt(e.target.value) || 1)} className="w-16 h-9 text-center text-sm" data-testid={`item-qty-${idx}`} />
                             <span className="text-sm font-medium text-slate-900 w-24 text-right">₹{(item.unit_price * item.quantity).toLocaleString('en-IN')}</span>

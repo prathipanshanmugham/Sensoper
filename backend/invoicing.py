@@ -214,6 +214,9 @@ def create_router(db, get_current_user, create_audit_log):
         if item_ids:
             inv_docs = await db.inventory_items.find({"_id": {"$in": [ObjectId(i) for i in set(item_ids)]}}).to_list(500)
             hsn_by_id = {str(d["_id"]): d.get("hsn_code", "") for d in inv_docs}
+            sku_by_id = {str(d["_id"]): d.get("sku_code", "") for d in inv_docs}
+        else:
+            sku_by_id = {}
         names_needing_lookup = [it["name"] for it in ce.get("items_breakdown", [])
                                  if not it.get("inventory_item_id") and it.get("name")]
         hsn_by_name: Dict[str, str] = {}
@@ -250,10 +253,13 @@ def create_router(db, get_current_user, create_audit_log):
                 })
         for it in ce.get("items_breakdown", []):
             gst_amt = float(it.get("gst_amount", 0) or 0)
-            hsn = hsn_by_id.get(it.get("inventory_item_id")) or hsn_by_name.get((it.get("name") or "").lower(), "")
+            # Iter 55: promoted/linked lines reference the real item's SKU+HSN; un-promoted ad-hoc lines use their own HSN
+            hsn = hsn_by_id.get(it.get("inventory_item_id")) or it.get("hsn_code") or hsn_by_name.get((it.get("name") or "").lower(), "")
             line_items.append({
                 "description": it.get("name", ""),
                 "hsn_sac": hsn or "",
+                "inventory_item_id": it.get("inventory_item_id"),
+                "sku_code": sku_by_id.get(it.get("inventory_item_id")) or it.get("sku_code") or "",
                 "quantity": it.get("quantity", 1),
                 "unit_price": it.get("unit_price", 0),
                 "taxable_value": round(float(it.get("amount", 0) or 0) + float(it.get("margin_amount", 0) or 0), 2),
