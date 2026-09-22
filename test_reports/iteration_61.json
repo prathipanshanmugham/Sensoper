@@ -1,0 +1,35 @@
+{
+  "summary": "Iteration 55 (ad-hoc quotation lines) verified. Backend: full pytest suite in test_iter55_adhoc.py (6/6) and new test_iter55_pdf_and_extras.py (5/5) all pass — covering ad-hoc calc parity, draft-cannot-promote, promotion + zero-stock creation, price-lock, near-duplicate linking, promote-all + add-to-kit, staff 403, PDF privacy (no leaked internal tag) and invoice SKU/HSN. Frontend: created a project via API, verified in browser at /dashboard/projects/{id} — draft shows adhoc-lines-card + adhoc-tag with NO promote buttons; after PUT status=approved the line-level adhoc-promote-{id} button appears, clicking promotes (green 'In inventory · PAN-TESTUI55-WAAREE-58-C12B' badge shown, toast 'Invoice INV-1005 generated with SKU/HSN references'), the adhoc-kit-dialog opens and adhoc-kit-skip closes it. Cost Summary reflects ₹50,000 + ₹6,000 GST correctly. All created data cleaned up.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "ProjectDetails / AdhocLinesCard", "issues": ["React hydration warning: <p> cannot contain <div>. AdhocLinesCard.js line 74 wraps a <Badge> (div) inside a <p>. Non-blocking but pollutes console on every render. Fix: change the wrapper <p> to a <span> or <div>."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter55_adhoc.py",
+    "/app/backend/tests/test_iter55_pdf_and_extras.py",
+    "/app/test_reports/pytest/iter55_results.xml"
+  ],
+  "action_items": [
+    "Optional: fix <p><div/></p> hydration warning in /app/frontend/src/components/AdhocLinesCard.js (~line 74) — swap outer <p> for <span>/<div>.",
+    "Optional: add aria-describedby / <DialogDescription> to the ad-hoc kit dialog to silence Radix a11y warning."
+  ],
+  "critical_code_review_comments": [
+    "AdhocLinesCard.js line 74: <p> wrapping <Badge/> triggers React hydration error 'div cannot be a descendant of p'.",
+    "adhoc-kit-dialog DialogContent missing Description/aria-describedby (Radix a11y warning).",
+    "Overall implementation matches spec: promotion creates zero-stock item, keeps quoted price locked, HSN falls back to line hsn_code, invoice line_items carry sku_code + inventory_item_id, near-duplicate detection surfaces similar items, staff role blocked with 403, audit log entries emitted for promote_adhoc_line and adhoc_line_added_to_kit."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter55_pdf_and_extras.py (new — PDF privacy + invoice SKU + smoke)"
+  ],
+  "success_rate": {"backend": "100% (11/11)", "frontend": "100% of tested flows"},
+  "test_credentials": "admin@sensoper.com / Admin@123",
+  "seed_data_creation": "Ephemeral only — all test projects, inventory items, kits and staff users are cleaned up (DELETE ... /force, DELETE /api/inventory/items/{id}, DELETE /api/material-kits/{id}, DELETE /api/users/{id}) within each test.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Iter55 ad-hoc lines fully verified end-to-end. New extras test file /app/backend/tests/test_iter55_pdf_and_extras.py is reusable for PDF-leak regression. Only cosmetic React hydration warning remains in AdhocLinesCard.js (~L74). 72 pre-existing legacy pytest failures in old iteration files documented by previous agent are unrelated and untouched.",
+  "rca of the issue": "N/A — no functional bugs found. Hydration warning root cause: <p className='...'><Badge/>...</p> in AdhocLinesCard.js; Radix Badge renders as <div>, and HTML forbids block descendants inside <p>. Replace the wrapper <p> with <span> or <div>."
+}

@@ -6,7 +6,7 @@ import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Badge } from './ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from './ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from './ui/dialog';
 import { toast } from 'sonner';
 import { PackagePlus, AlertTriangle, Loader2, Boxes, Link2, CheckCircle2 } from 'lucide-react';
 
@@ -71,10 +71,10 @@ export default function AdhocLinesCard({ projectId, canManage, onChanged }) {
             <div key={l.line_id} className="p-3 rounded-lg border border-slate-200 bg-white" data-testid={`adhoc-line-${l.line_id}`}>
               <div className="flex items-start gap-2 flex-wrap">
                 <div className="flex-1 min-w-[200px]">
-                  <p className="text-sm font-medium text-slate-900 flex items-center gap-2">{l.name}
+                  <div className="text-sm font-medium text-slate-900 flex items-center gap-2">{l.name}
                     {l.promoted ? <Badge className="bg-emerald-100 text-emerald-800 hover:bg-emerald-100 text-[10px]" data-testid={`adhoc-promoted-${l.line_id}`}><CheckCircle2 className="h-3 w-3 mr-1" />In inventory · {l.sku_code}</Badge>
                       : <Badge className="bg-amber-100 text-amber-800 hover:bg-amber-100 text-[10px]">Not yet in inventory</Badge>}
-                  </p>
+                  </div>
                   <p className="text-xs text-slate-500">{l.category}{l.specification ? ` · ${l.specification}` : ''} · ₹{Number(l.unit_price).toLocaleString('en-IN')} × {l.quantity} · GST {l.gst_percentage}%{l.hsn_code ? ` · HSN ${l.hsn_code}` : ''}{l.supplier_hint ? ` · from ${l.supplier_hint}` : ''}</p>
                 </div>
                 {canManage && !l.promoted && data.can_promote && (
@@ -102,14 +102,14 @@ export default function AdhocLinesCard({ projectId, canManage, onChanged }) {
 
       <Dialog open={!!kitPrompt} onOpenChange={v => !v && setKitPrompt(null)}>
         <DialogContent className="max-w-lg" data-testid="adhoc-kit-dialog">
-          <DialogHeader><DialogTitle>Add to a Solution Kit?</DialogTitle></DialogHeader>
-          <p className="text-xs text-slate-500">Optional — makes the item a standard kit line so the next similar quote doesn't need manual entry. Skip for genuinely one-off items.</p>
+          <DialogHeader><DialogTitle>Add to a Solution Kit?</DialogTitle>
+            <DialogDescription className="text-xs">Optional — makes the item a standard kit line so the next similar quote doesn't need manual entry. Skip for genuinely one-off items.</DialogDescription></DialogHeader>
           <div className="space-y-3 max-h-[50vh] overflow-y-auto">
             {(kitPrompt?.promoted || []).map(c => {
               const sel = kitSel[c.line_id] || {};
               return (
                 <div key={c.line_id} className="p-2 rounded border border-slate-200 space-y-2" data-testid={`adhoc-kit-row-${c.line_id}`}>
-                  <p className="text-sm font-medium">{c.name} <span className="text-xs text-slate-400">{c.sku_code}</span>{sel.done && <Badge className="ml-2 bg-emerald-100 text-emerald-800 hover:bg-emerald-100 text-[10px]">Added</Badge>}</p>
+                  <div className="text-sm font-medium">{c.name} <span className="text-xs text-slate-400">{c.sku_code}</span>{sel.done && <Badge className="ml-2 bg-emerald-100 text-emerald-800 hover:bg-emerald-100 text-[10px]">Added</Badge>}</div>
                   {!sel.done && (
                     <div className="grid grid-cols-6 gap-2 items-end">
                       <div className="col-span-3 space-y-1"><Label className="text-xs">Kit</Label>
