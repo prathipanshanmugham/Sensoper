@@ -195,6 +195,14 @@ User choices: Sensobrain uses the company's OWN OpenAI key (admin-entered); voic
 - `invoicing.py` line items now include `inventory_item_id` + `sku_code`; HSN resolution: linked item → line's own `hsn_code` → name match.
 - `AdhocLinesCard.js` on Project Details: pending count, per-line "Add to Inventory & Invoice" (or "Link & Invoice" when a similar-item radio is chosen), "Add all N", then auto-generates the GST invoice if none exists (existing invoice is left untouched — immutability), then the skippable "Add to a Solution Kit?" dialog (kit select, qty, formula, per-row Add, Skip/Done).
 
+## Iteration 56 — DONE (2026-09-24; pytest test_iter56_vault_rotation.py 4/4; testing_agent iteration_62 full pass)
+**"Account Security" = the subscribed-service credential vault (renamed); rotation reminders made active**
+- Nav: "Account Security" → `/dashboard/vault` (admin, `module_vault`); the app-user page is now "My Login & 2FA" (`/dashboard/security`, admin card "App User Credentials"). VaultPage heading/subtitle updated.
+- Per-service `rotation_days` on vault records (create/edit field "Rotate every (days)"; `0` on update = revert to company default). Company default now **90** (`PUT /vault/config`). `vault.rotation_state()` (pure) → `rotation_days, rotation_source (service|default), days_since_rotation, days_overdue, rotation_stale`.
+- "Due for rotation" card at the top of the tab (`vault-due-rotation`, rows `vault-due-{id}` with "Rotate now" → edit dialog; `rotation_upcoming` = due within 14 days), dashboard `rotation_overdue` sorted by most overdue.
+- Active reminders via the existing alerts mechanism: `sync_rotation_alerts()` (called from `GET /vault`, `GET /vault/dashboard`, and `GET /alerts/dashboard` for admins) inserts `notifications{kind:"vault_rotation", vault_id, user_id:<each admin>, week, channel:"in_app", link:"/dashboard/vault"}` — one per service per admin per ISO week; rotating the password (or deleting the record) marks them `resolved`. `/alerts/dashboard` now returns `notifications[]` (top 8 due in-app items) and the header bell panel ("Alerts & Notifications") lists them with dismiss (`inapp-notification-{id}`, `inapp-dismiss-{id}`). `/notifications` excludes dismissed + resolved.
+- Unchanged from Iter 54: Fernet at rest with `VAULT_MASTER_KEY` (env), admin-only API, masked by default, every reveal logged per record + audit log, hard-excluded from Sensobrain.
+
 ## Deployment readiness (2026-09-07) — PASS
 - deployment_agent: fixed 2 blockers — duplicated `include_router`/CORS block at end of server.py removed; CORS now reads `CORS_ORIGINS` env ("*" → `allow_origin_regex=".*"` so the requesting origin is echoed, required by cookie auth). Second run: no findings.
 - Assets: `_book_value` guards non-numeric `useful_life_years`; edit dialog casts it to a number.
