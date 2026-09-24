@@ -13,7 +13,7 @@ import { KeyRound, Plus, Eye, EyeOff, Copy, Edit, Trash2, History, ShieldAlert, 
 
 const CATEGORIES = ['email', 'hosting', 'domain', 'financial', 'software', 'other'];
 const METHODS = [['authenticator_app', 'Authenticator app'], ['sms', 'SMS'], ['backup_codes', 'Backup codes'], ['none', 'None']];
-const blank = { service_name: '', account_identifier: '', password: '', associated_phone: '', two_fa_enabled: false, two_fa_method: 'none', notes: '', category: 'other', owner: '', url: '' };
+const blank = { service_name: '', account_identifier: '', password: '', associated_phone: '', two_fa_enabled: false, two_fa_method: 'none', notes: '', category: 'other', owner: '', url: '', rotation_days: '' };
 
 function RevealCell({ item, onRevealed }) {
   const [plain, setPlain] = useState(null);
@@ -64,12 +64,13 @@ export default function VaultPage() {
   useEffect(() => { const t = setTimeout(load, 250); return () => clearTimeout(t); }, [load]);
 
   const openCreate = () => { setEditingId(null); setForm(blank); setOpen(true); };
-  const openEdit = (it) => { setEditingId(it.id); setForm({ ...blank, ...it, password: '' }); setOpen(true); };
+  const openEdit = (it) => { setEditingId(it.id); setForm({ ...blank, ...it, password: '', rotation_days: it.rotation_source === 'service' ? it.rotation_days : '' }); setOpen(true); };
   const save = async () => {
     if (!form.service_name || !form.account_identifier || (!editingId && !form.password)) { toast.error('Service, account and password are required'); return; }
     setSaving(true);
     try {
-      const payload = { ...form }; if (editingId && !payload.password) delete payload.password;
+      const payload = { ...form, rotation_days: form.rotation_days === '' || form.rotation_days == null ? (editingId ? 0 : null) : parseInt(form.rotation_days, 10) }; if (editingId && !payload.password) delete payload.password;
+      delete payload.rotation_source; delete payload.days_since_rotation; delete payload.days_overdue; delete payload.rotation_stale;
       delete payload.id; delete payload.last_updated; delete payload.last_rotated; delete payload.rotation_stale; delete payload.view_count; delete payload.last_viewed;
       if (editingId) await vaultAPI.update(editingId, payload); else await vaultAPI.create(payload);
       toast.success(editingId ? 'Credential updated' : 'Credential stored (encrypted)'); setOpen(false); load();
@@ -84,11 +85,35 @@ export default function VaultPage() {
     <div className="p-4 max-w-6xl mx-auto space-y-4" data-testid="vault-page">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
-          <h1 className="text-2xl font-bold font-['Outfit'] flex items-center gap-2"><KeyRound className="h-5 w-5 text-amber-600" />Credential Vault</h1>
-          <p className="text-sm text-slate-500">Company logins to external services (Google Workspace, hosting, domains…). Admin only — every reveal is logged.</p>
+          <h1 className="text-2xl font-bold font-['Outfit'] flex items-center gap-2"><KeyRound className="h-5 w-5 text-amber-600" />Account Security</h1>
+          <p className="text-sm text-slate-500">Credentials for every subscribed service the company uses (Google Workspace, hosting, domain registrar, SaaS). Admin only — every reveal is logged. Not this app's own user logins (see "My Login &amp; 2FA").</p>
         </div>
         <Button onClick={openCreate} className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white" data-testid="vault-new-btn"><Plus className="h-4 w-4" />Add credential</Button>
       </div>
+
+      {dash && (dash.rotation_overdue.length > 0 || dash.rotation_upcoming?.length > 0) && (
+        <Card className="border-red-300 bg-red-50/50" data-testid="vault-due-rotation">
+          <CardContent className="p-3">
+            <p className="text-sm font-semibold text-red-800 flex items-center gap-1.5"><Clock className="h-4 w-4" />Due for rotation — {dash.rotation_overdue.length} overdue{dash.rotation_upcoming?.length ? ` · ${dash.rotation_upcoming.length} due within 14 days` : ''}</p>
+            <p className="text-[11px] text-red-700/80 mb-2">These also appear in the header bell for every admin until the password is rotated (edit → new password).</p>
+            <div className="space-y-1">
+              {dash.rotation_overdue.map(i => (
+                <div key={i.id} className="flex items-center justify-between gap-2 text-xs bg-white rounded border border-red-200 px-2.5 py-1.5" data-testid={`vault-due-${i.id}`}>
+                  <span className="font-medium text-slate-900 truncate">{i.service_name} <span className="text-slate-500 font-normal">· {i.account_identifier}</span></span>
+                  <span className="text-red-700 shrink-0">{i.days_since_rotation == null ? 'never rotated' : `${i.days_overdue}d overdue`} · every {i.rotation_days}d</span>
+                  <Button size="sm" variant="outline" className="h-7 text-xs shrink-0" onClick={() => openEdit(i)} data-testid={`vault-rotate-now-${i.id}`}>Rotate now</Button>
+                </div>
+              ))}
+              {(dash.rotation_upcoming || []).map(i => (
+                <div key={i.id} className="flex items-center justify-between gap-2 text-xs bg-white rounded border border-amber-200 px-2.5 py-1.5" data-testid={`vault-upcoming-${i.id}`}>
+                  <span className="font-medium text-slate-900 truncate">{i.service_name} <span className="text-slate-500 font-normal">· {i.account_identifier}</span></span>
+                  <span className="text-amber-700 shrink-0">due in {i.rotation_days - i.days_since_rotation}d</span>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {dash && (
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3" data-testid="vault-dashboard">
@@ -98,11 +123,11 @@ export default function VaultPage() {
             <p className="text-[11px] text-slate-500 truncate">{dash.two_fa_disabled.map(i => i.service_name).join(', ') || 'All services protected'}</p>
           </CardContent></Card>
           <Card className="border-amber-200 bg-amber-50/40"><CardContent className="p-3">
-            <p className="text-xs uppercase tracking-wider text-amber-700 flex items-center gap-1"><Clock className="h-3.5 w-3.5" />Not rotated in {dash.rotation_days}d</p>
+            <p className="text-xs uppercase tracking-wider text-amber-700 flex items-center gap-1"><Clock className="h-3.5 w-3.5" />Overdue rotation (default {dash.rotation_days}d)</p>
             <p className="text-2xl font-bold text-amber-700" data-testid="vault-rotation-overdue-count">{dash.rotation_overdue.length}</p>
             <div className="flex items-center gap-1 mt-1">
               <Input value={rotationDays} onChange={e => setRotationDays(e.target.value)} type="number" className="h-7 w-20 text-xs" data-testid="vault-rotation-days" />
-              <Button size="sm" variant="outline" className="h-7 text-xs" onClick={saveRotation} data-testid="vault-rotation-save"><Save className="h-3 w-3 mr-1" />days</Button>
+              <Button size="sm" variant="outline" className="h-7 text-xs" onClick={saveRotation} data-testid="vault-rotation-save"><Save className="h-3 w-3 mr-1" />days default</Button>
             </div>
           </CardContent></Card>
           <Card className="border-slate-200"><CardContent className="p-3">
@@ -134,7 +159,7 @@ export default function VaultPage() {
                   <td className="px-3 py-2"><RevealCell item={it} onRevealed={load} /></td>
                   <td className="px-3 py-2">{it.two_fa_enabled ? <Badge className="bg-emerald-100 text-emerald-800 hover:bg-emerald-100 text-[10px]">{METHODS.find(m => m[0] === it.two_fa_method)?.[1] || 'On'}</Badge> : <Badge className="bg-red-100 text-red-700 hover:bg-red-100 text-[10px]" data-testid={`vault-2fa-off-${it.id}`}>Off — risk</Badge>}</td>
                   <td className="px-3 py-2 text-slate-600 text-xs">{it.owner || '—'}</td>
-                  <td className="px-3 py-2 text-xs"><span className={it.rotation_stale ? 'text-amber-700 font-medium' : 'text-slate-500'}>{it.last_rotated?.slice(0, 10) || '—'}</span></td>
+                  <td className="px-3 py-2 text-xs"><span className={it.rotation_stale ? 'text-red-700 font-medium' : 'text-slate-500'} data-testid={`vault-rotation-${it.id}`}>{it.last_rotated?.slice(0, 10) || '—'}</span><span className="block text-[10px] text-slate-400">every {it.rotation_days}d{it.rotation_source === 'service' ? '' : ' (default)'}{it.rotation_stale ? ` · ${it.days_since_rotation == null ? 'never' : `${it.days_overdue}d overdue`}` : ''}</span></td>
                   <td className="px-3 py-2 text-xs text-slate-500">{it.view_count}{it.last_viewed && <span className="block text-[10px]">{it.last_viewed.slice(0, 16).replace('T', ' ')}</span>}</td>
                   <td className="px-3 py-2"><div className="flex gap-0.5">
                     <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => showLog(it)} data-testid={`vault-log-${it.id}`}><History className="h-3.5 w-3.5" /></Button>
@@ -167,7 +192,10 @@ export default function VaultPage() {
               <div className="flex items-center gap-2 h-9"><Switch checked={form.two_fa_enabled} onCheckedChange={v => setForm(p => ({ ...p, two_fa_enabled: v, two_fa_method: v ? (p.two_fa_method === 'none' ? 'authenticator_app' : p.two_fa_method) : 'none' }))} data-testid="vault-2fa-switch" /><Label className="text-xs">2FA enabled</Label></div>
               <div className="space-y-1"><Label className="text-xs">2FA method</Label><Select value={form.two_fa_method} onValueChange={v => setForm(p => ({ ...p, two_fa_method: v }))} disabled={!form.two_fa_enabled}><SelectTrigger className="h-9" data-testid="vault-2fa-method"><SelectValue /></SelectTrigger><SelectContent>{METHODS.map(([v, l]) => <SelectItem key={v} value={v}>{l}</SelectItem>)}</SelectContent></Select></div>
             </div>
-            <div className="space-y-1"><Label className="text-xs">Login URL</Label><Input value={form.url} onChange={e => setForm(p => ({ ...p, url: e.target.value }))} className="h-9" placeholder="https://" /></div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1"><Label className="text-xs">Login URL</Label><Input value={form.url} onChange={e => setForm(p => ({ ...p, url: e.target.value }))} className="h-9" placeholder="https://" /></div>
+              <div className="space-y-1"><Label className="text-xs">Rotate every (days)</Label><Input type="number" min="1" value={form.rotation_days ?? ''} onChange={e => setForm(p => ({ ...p, rotation_days: e.target.value }))} placeholder={`default ${dash?.rotation_days || 90}`} className="h-9" data-testid="vault-rotation-days-input" /></div>
+            </div>
             <div className="space-y-1"><Label className="text-xs">Notes</Label><Input value={form.notes} onChange={e => setForm(p => ({ ...p, notes: e.target.value }))} className="h-9" data-testid="vault-notes-input" /></div>
           </div>
           <DialogFooter><Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button><Button onClick={save} disabled={saving} className="bg-emerald-600 hover:bg-emerald-700 text-white" data-testid="vault-save-btn">{saving ? <Loader2 className="h-4 w-4 animate-spin" /> : editingId ? 'Save changes' : 'Store encrypted'}</Button></DialogFooter>

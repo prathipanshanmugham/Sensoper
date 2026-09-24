@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { dashboardAPI, alertsAPI, permissionsAPI } from '../utils/api';
+import { dashboardAPI, alertsAPI, permissionsAPI, notificationsAPI } from '../utils/api';
 import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
 import {
@@ -101,8 +101,8 @@ export default function DashboardLayout({ children }) {
     { icon: Building2, label: 'Company Profile', href: '/dashboard/company-profile', show: isAdmin, flag: 'can_manage_company' },
     { icon: Map, label: 'Locations', href: '/dashboard/locations', show: isAdmin, module: 'module_locations' },
     { icon: History, label: 'Audit Logs', href: '/dashboard/audit-logs', show: isAdmin, flag: 'can_view_audit_logs' },
-    { icon: KeyRound, label: 'Credential Vault', href: '/dashboard/vault', show: isAdmin, module: 'module_vault' },
-    { icon: Settings, label: 'Account Security', href: '/dashboard/security', show: true },
+    { icon: KeyRound, label: 'Account Security', href: '/dashboard/vault', show: isAdmin, module: 'module_vault' },
+    { icon: Settings, label: 'My Login & 2FA', href: '/dashboard/security', show: true },
     { icon: Settings, label: 'Pricing & Config', href: '/dashboard/pricing-config', show: isAdmin, module: 'module_settings' },
     { icon: Tags, label: 'Pricelist', href: '/dashboard/pricelist', show: isAdmin, module: 'module_settings' },
     { icon: Store, label: 'Vendors', href: '/dashboard/vendors', show: isAdmin || isManager, module: 'module_vendors' },
@@ -190,11 +190,25 @@ export default function DashboardLayout({ children }) {
                   >
                     <div className="px-4 py-3 border-b border-slate-100 bg-gradient-to-r from-red-50 to-amber-50 flex items-center justify-between">
                       <div>
-                        <p className="text-sm font-semibold text-slate-900 flex items-center gap-1.5"><AlertTriangle className="h-4 w-4 text-red-500" />Profit Leakage Alerts</p>
+                        <p className="text-sm font-semibold text-slate-900 flex items-center gap-1.5"><AlertTriangle className="h-4 w-4 text-red-500" />Alerts &amp; Notifications</p>
                         <p className="text-xs text-slate-500">{alertInfo?.total_alerts || 0} active · Impact ₹{(alertInfo?.total_leakage || 0).toLocaleString('en-IN')}</p>
                       </div>
                     </div>
                     <div className="max-h-80 overflow-y-auto">
+                      {alertInfo?.notifications?.length > 0 && (
+                        <ul className="divide-y divide-slate-100 border-b border-slate-200 bg-amber-50/30" data-testid="notification-inapp-list">
+                          {alertInfo.notifications.map((n) => (
+                            <li key={n.id} className="flex items-start gap-2 px-4 py-2.5" data-testid={`inapp-notification-${n.id}`}>
+                              <div className={`h-2 w-2 rounded-full mt-1.5 shrink-0 ${n.kind === 'vault_rotation' ? 'bg-red-500' : 'bg-sky-500'}`} />
+                              <Link to={n.link} onClick={() => setShowAlertPanel(false)} className="flex-1 min-w-0">
+                                <p className="text-sm font-medium text-slate-900 truncate">{n.title}</p>
+                                <p className="text-xs text-slate-500 truncate">{n.message}</p>
+                              </Link>
+                              <button type="button" onClick={async (e) => { e.stopPropagation(); try { await notificationsAPI.dismiss(n.id); fetchAlerts(); } catch { /* silent */ } }} className="text-[11px] text-slate-400 hover:text-slate-700 shrink-0" data-testid={`inapp-dismiss-${n.id}`}>dismiss</button>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
                       {alertInfo?.top_risks?.length > 0 ? (
                         <ul className="divide-y divide-slate-100">
                           {alertInfo.top_risks.slice(0, 6).map((r) => (

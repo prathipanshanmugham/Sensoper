@@ -48,7 +48,7 @@ export default function CredentialsPage() {
       <div className="flex items-center gap-3">
         <Link to="/dashboard"><Button variant="ghost" size="icon"><ArrowLeft className="h-5 w-5" /></Button></Link>
         <div>
-          <h1 className="text-2xl font-bold font-['Outfit'] flex items-center gap-2"><ShieldCheck className="h-5 w-5 text-emerald-600" />Account Security</h1>
+          <h1 className="text-2xl font-bold font-['Outfit'] flex items-center gap-2"><ShieldCheck className="h-5 w-5 text-emerald-600" />My Login &amp; 2FA</h1>
           <p className="text-sm text-slate-500">Two-factor authentication, password age and forced resets{isAdmin ? ' for every account' : ''}.</p>
         </div>
       </div>
@@ -58,7 +58,7 @@ export default function CredentialsPage() {
       {isAdmin && (loading ? <Loader2 className="h-5 w-5 animate-spin text-emerald-600" /> : data && (
         <Card data-testid="credentials-admin-card">
           <CardHeader className="pb-2 flex flex-row items-center justify-between space-y-0 flex-wrap gap-2">
-            <CardTitle className="text-base font-['Outfit']">Credentials Management <span className="text-xs text-slate-400 font-normal">admin only</span></CardTitle>
+            <CardTitle className="text-base font-['Outfit']">App User Credentials <span className="text-xs text-slate-400 font-normal">admin only · this app's logins, not external services</span></CardTitle>
             <div className="flex items-center gap-2 text-xs">
               <Label className="text-xs">Flag passwords older than</Label>
               <Input type="number" min="7" max="3650" value={days} onChange={(e) => setDays(e.target.value)} className="h-8 w-20" data-testid="rotation-days-input" />

@@ -2911,7 +2911,8 @@ from geo_reference import create_router as _create_geo_router  # noqa: E402
 from vault import create_router as _create_vault_router  # noqa: E402
 from sensobrain import create_router as _create_sensobrain_router  # noqa: E402
 api_router.include_router(_create_geo_router(db=db, get_current_user=get_current_user, require_role=require_role, get_default_pincodes=get_default_pincodes))
-api_router.include_router(_create_vault_router(db=db, require_role=require_role, create_audit_log=create_audit_log))
+_vault_router = _create_vault_router(db=db, require_role=require_role, create_audit_log=create_audit_log)
+api_router.include_router(_vault_router)
 api_router.include_router(_create_sensobrain_router(db=db, app=app, get_current_user=get_current_user, require_role=require_role))
 from adhoc_promotion import create_router as _create_adhoc_router  # noqa: E402
 api_router.include_router(_create_adhoc_router(db=db, get_current_user=get_current_user, require_role=require_role, create_audit_log=create_audit_log, build_cost_estimation=build_cost_estimation))
@@ -5762,11 +5763,20 @@ async def get_alerts_dashboard(request: Request):
         by_type[a["type"]]["count"] += 1
         by_type[a["type"]]["impact"] += a.get("impact", 0)
     chart_data = [{"name": k.replace("_", " ").title(), "value": v["impact"]} for k, v in by_type.items() if v["impact"] > 0]
-    due_notifs = await db.notifications.count_documents({"channel": "in_app", "user_id": user["id"], "status": "pending", "notify_at": {"$lte": datetime.now(timezone.utc).isoformat()}})
+    if user["role"] == "admin":
+        try:
+            await _vault_router.sync_rotation_alerts()  # Iter 56: overdue credential rotations → bell
+        except Exception as e:
+            logger.warning(f"vault rotation alert sync skipped: {e}")
+    _nq = {"channel": "in_app", "user_id": user["id"], "status": "pending", "notify_at": {"$lte": datetime.now(timezone.utc).isoformat()}}
+    due_notifs = await db.notifications.count_documents(_nq)
+    notif_rows = [{"id": str(n["_id"]), "kind": n.get("kind", "amc"), "title": n.get("title"), "message": n.get("message"), "link": n.get("link") or "/dashboard/amc", "notify_at": n.get("notify_at")}
+                  async for n in db.notifications.find(_nq).sort("notify_at", -1).limit(8)]
     return {
         "total_leakage": round(total_leakage),
         "total_alerts": len(all_alerts) + due_notifs,
         "notifications_due": due_notifs,
+        "notifications": notif_rows,
         "risky_projects": len(project_risks),
         "top_risks": sorted(project_risks, key=lambda x: x["risk_score"], reverse=True)[:10],
         "alerts_by_type": by_type,

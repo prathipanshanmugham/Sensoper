@@ -8,8 +8,8 @@ Entirely separate from this app's user accounts. Highest-sensitivity data in the
 """
 from __future__ import annotations
 import os
-from datetime import datetime, timezone, timedelta
-from typing import Any, Dict, List, Optional
+from datetime import datetime, timezone
+from typing import Any, Dict, Optional
 
 from bson import ObjectId
 from cryptography.fernet import Fernet, InvalidToken
@@ -18,7 +18,7 @@ from pydantic import BaseModel
 
 CATEGORIES = ["email", "hosting", "domain", "financial", "software", "other"]
 TWO_FA_METHODS = ["authenticator_app", "sms", "backup_codes", "none"]
-DEFAULT_ROTATION_DAYS = 180
+DEFAULT_ROTATION_DAYS = 90
 
 
 def _fernet() -> Fernet:
@@ -54,6 +54,7 @@ class VaultCreate(BaseModel):
     category: str = "other"
     owner: Optional[str] = ""
     url: Optional[str] = ""
+    rotation_days: Optional[int] = None   # Iter 56 — per-service interval; None → company default
 
 
 class VaultUpdate(BaseModel):
@@ -67,6 +68,7 @@ class VaultUpdate(BaseModel):
     category: Optional[str] = None
     owner: Optional[str] = None
     url: Optional[str] = None
+    rotation_days: Optional[int] = None
 
 
 class VaultConfigIn(BaseModel):
@@ -77,15 +79,26 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def rotation_state(doc: Dict[str, Any], default_days: int, now: Optional[datetime] = None) -> Dict[str, Any]:
+    """Pure: per-service interval (or default) vs last_rotated → stale flag, age and days overdue."""
+    now = now or datetime.now(timezone.utc)
+    days = int(doc.get("rotation_days") or default_days)
+    last_rot = doc.get("last_rotated")
+    try:
+        age = (now - datetime.fromisoformat(last_rot)).days if last_rot else None
+    except ValueError:
+        age = None
+    overdue = (age - days) if age is not None else None
+    return {"rotation_days": days, "rotation_source": "service" if doc.get("rotation_days") else "default", "days_since_rotation": age,
+            "days_overdue": max(overdue, 0) if overdue is not None else None, "rotation_stale": age is None or overdue > 0}
+
+
 def _public(doc: Dict[str, Any], rotation_days: int) -> Dict[str, Any]:
     last_rot = doc.get("last_rotated")
-    stale = True
-    if last_rot:
-        try:
-            stale = datetime.fromisoformat(last_rot) < datetime.now(timezone.utc) - timedelta(days=rotation_days)
-        except ValueError:
-            stale = True
+    rs = rotation_state(doc, rotation_days)
+    stale = rs["rotation_stale"]
     return {
+        **rs,
         "id": str(doc["_id"]),
         "service_name": doc.get("service_name"),
         "account_identifier": doc.get("account_identifier"),
@@ -128,9 +141,39 @@ def create_router(db, require_role, create_audit_log):
         await db.credential_vault.update_one({"_id": doc_id}, {"$push": {"access_log": entry}})
         await _audit(user, action, str(doc_id), details)
 
+    async def sync_rotation_alerts() -> int:
+        """Iter 56: overdue rotations become in-app notifications for every admin (one per service per week),
+        so they surface in the header bell without anyone visiting this page. Rotating the password resolves them."""
+        days = await _rotation_days()
+        now = datetime.now(timezone.utc)
+        week = now.strftime("%G-W%V")
+        admins = [u async for u in db.users.find({"role": "admin", "is_active": {"$ne": False}}, {"_id": 1})]
+        created = 0
+        async for doc in db.credential_vault.find({}):
+            rs = rotation_state(doc, days, now)
+            vid = str(doc["_id"])
+            if not rs["rotation_stale"]:
+                await db.notifications.update_many({"kind": "vault_rotation", "vault_id": vid, "status": "pending"}, {"$set": {"status": "resolved", "resolved_at": now.isoformat()}})
+                continue
+            for a in admins:
+                uid = str(a["_id"])
+                if await db.notifications.find_one({"kind": "vault_rotation", "vault_id": vid, "user_id": uid, "week": week}):
+                    continue
+                await db.notifications.insert_one({"kind": "vault_rotation", "vault_id": vid, "user_id": uid, "week": week, "channel": "in_app", "audience": "admin",
+                                                   "status": "pending", "notify_at": now.isoformat(), "created_at": now.isoformat(), "created_by": "system",
+                                                   "link": "/dashboard/vault",
+                                                   "title": f"Password rotation overdue: {doc.get('service_name')}",
+                                                   "message": (f"{doc.get('account_identifier')} · {rs['days_overdue']} day(s) past its {rs['rotation_days']}-day interval" if rs["days_overdue"] is not None
+                                                               else f"{doc.get('account_identifier')} · never rotated (interval {rs['rotation_days']} days)")})
+                created += 1
+        return created
+
+    router.sync_rotation_alerts = sync_rotation_alerts
+
     @router.get("/vault")
     async def list_vault(request: Request, category: Optional[str] = None, search: Optional[str] = None):
         await require_role("admin")(request)
+        await sync_rotation_alerts()
         q: Dict[str, Any] = {}
         if category and category != "all":
             q["category"] = category
@@ -142,13 +185,16 @@ def create_router(db, require_role, create_audit_log):
     @router.get("/vault/dashboard")
     async def vault_dashboard(request: Request):
         await require_role("admin")(request)
+        await sync_rotation_alerts()
         days = await _rotation_days()
         items = [_public(d, days) async for d in db.credential_vault.find({})]
         return {
             "total": len(items),
             "rotation_days": days,
             "two_fa_disabled": [i for i in items if not i["two_fa_enabled"]],
-            "rotation_overdue": [i for i in items if i["rotation_stale"]],
+            "rotation_overdue": sorted([i for i in items if i["rotation_stale"]], key=lambda i: -(i["days_overdue"] if i["days_overdue"] is not None else 10**6)),
+            "rotation_upcoming": sorted([i for i in items if not i["rotation_stale"] and i["days_since_rotation"] is not None and i["rotation_days"] - i["days_since_rotation"] <= 14],
+                                        key=lambda i: i["rotation_days"] - i["days_since_rotation"]),
             "by_category": {c: sum(1 for i in items if i["category"] == c) for c in CATEGORIES},
             "encryption": {"scheme": "Fernet (AES-128-CBC + HMAC-SHA256)", "key_source": "VAULT_MASTER_KEY env",
                            "configured": bool(os.environ.get("VAULT_MASTER_KEY")),
@@ -172,6 +218,8 @@ def create_router(db, require_role, create_audit_log):
             raise HTTPException(status_code=400, detail=f"two_fa_method must be one of {TWO_FA_METHODS}")
         if not payload.service_name.strip() or not payload.account_identifier.strip() or not payload.password:
             raise HTTPException(status_code=400, detail="service_name, account_identifier and password are required")
+        if payload.rotation_days is not None and payload.rotation_days < 1:
+            raise HTTPException(status_code=400, detail="rotation_days must be at least 1")
         doc = payload.dict()
         doc["password_encrypted"] = encrypt_secret(doc.pop("password"))
         doc.update({"created_by": user["id"], "created_at": _now(), "last_updated": _now(), "last_rotated": _now(), "access_log": []})
@@ -188,6 +236,12 @@ def create_router(db, require_role, create_audit_log):
             raise HTTPException(status_code=400, detail=f"category must be one of {CATEGORIES}")
         if "two_fa_method" in changes and changes["two_fa_method"] not in TWO_FA_METHODS:
             raise HTTPException(status_code=400, detail=f"two_fa_method must be one of {TWO_FA_METHODS}")
+        unset: Dict[str, str] = {}
+        if "rotation_days" in changes:
+            if changes["rotation_days"] == 0:      # 0 = "use company default"
+                changes.pop("rotation_days"); unset["rotation_days"] = ""
+            elif changes["rotation_days"] < 1:
+                raise HTTPException(status_code=400, detail="rotation_days must be at least 1")
         rotated = False
         if "password" in changes:
             pw = changes.pop("password")
@@ -196,7 +250,9 @@ def create_router(db, require_role, create_audit_log):
                 changes["last_rotated"] = _now()
                 rotated = True
         changes["last_updated"] = _now()
-        await db.credential_vault.update_one({"_id": doc["_id"]}, {"$set": changes})
+        await db.credential_vault.update_one({"_id": doc["_id"]}, {"$set": changes, **({"$unset": unset} if unset else {})})
+        if rotated:
+            await db.notifications.update_many({"kind": "vault_rotation", "vault_id": vault_id, "status": "pending"}, {"$set": {"status": "resolved", "resolved_at": _now()}})
         await _log(doc["_id"], user, "rotate" if rotated else "update", request, {"fields": [k for k in changes if k != "password_encrypted"]})
         return _public(await _get(vault_id), await _rotation_days())
 
@@ -206,6 +262,7 @@ def create_router(db, require_role, create_audit_log):
         doc = await _get(vault_id)
         await _audit(user, "delete", vault_id, {"service_name": doc.get("service_name"), "account_identifier": doc.get("account_identifier")})
         await db.credential_vault.delete_one({"_id": doc["_id"]})
+        await db.notifications.update_many({"kind": "vault_rotation", "vault_id": vault_id, "status": "pending"}, {"$set": {"status": "resolved", "resolved_at": _now()}})
         return {"message": "Credential deleted"}
 
     @router.post("/vault/{vault_id}/reveal")

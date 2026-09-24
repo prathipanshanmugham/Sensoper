@@ -162,7 +162,7 @@ def create_router(db, get_current_user, require_role, create_audit_log):
     @router.get("/notifications")
     async def my_notifications(request: Request, include_upcoming: bool = False):
         user = await get_current_user(request)
-        q: Dict[str, Any] = {"channel": "in_app", "user_id": user["id"], "status": {"$ne": "dismissed"}}
+        q: Dict[str, Any] = {"channel": "in_app", "user_id": user["id"], "status": {"$nin": ["dismissed", "resolved"]}}
         if not include_upcoming:
             q["notify_at"] = {"$lte": _iso(_now())}
         rows = [{**{k: v for k, v in n.items() if k != "_id"}, "id": str(n["_id"])} async for n in db.notifications.find(q).sort("notify_at", -1).limit(100)]
