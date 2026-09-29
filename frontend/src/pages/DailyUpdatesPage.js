@@ -51,6 +51,7 @@ export default function DailyUpdatesPage() {
     for (const u of mine) { if (u.project_id && u.project_id !== 'general' && !seen.has(u.project_id)) { seen.add(u.project_id); const pr = projects.find(p => p.id === u.project_id); if (pr) out.push(pr); } if (out.length >= 3) break; }
     return out;
   }, [mine, projects]);
+  useEffect(() => { if (!projectId && recent[0]) setProjectId(recent[0].id); }, [recent, projectId]);
   const meta = TYPES.find(t => t.id === type);
   const today = new Date().toISOString().slice(0, 10);
   const ready = type === 'leads' ? Object.values(f).some(v => Number(v) > 0) : projectId && (type === 'progress' ? f.work_done : type === 'payment' ? Number(f.amount) > 0 : f.service);
