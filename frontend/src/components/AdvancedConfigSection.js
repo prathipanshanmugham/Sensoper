@@ -56,7 +56,8 @@ function SectionCard({ icon: Icon, title, desc, loading, saving, saved, onSave, 
 }
 
 
-export default function AdvancedConfigSection() {
+export default function AdvancedConfigSection({ only }) {
+  const show = (k) => !only || only.includes(k);
   // ── Calculator config ────────────────────────────────────────────
   const [calc, setCalc] = useState(null);
   const [calcLoading, setCalcLoading] = useState(true);
@@ -190,7 +191,7 @@ export default function AdvancedConfigSection() {
   return (
     <div className="space-y-4" data-testid="advanced-config">
       {/* ── DISCOM + PIN Backfill utility ── */}
-      <Card className="border-emerald-200 bg-emerald-50/40" data-testid="admin-utilities">
+      {show('utilities') && <Card className="border-emerald-200 bg-emerald-50/40" data-testid="admin-utilities">
         <CardHeader className="pb-2">
           <CardTitle className="text-base font-['Outfit'] flex items-center gap-2"><Wand2 className="h-4 w-4 text-emerald-600" />Admin Utilities</CardTitle>
           <CardDescription className="text-xs">One-shot data operations — safe to run repeatedly.</CardDescription>
@@ -243,10 +244,10 @@ export default function AdvancedConfigSection() {
             </div>
           )}
         </CardContent>
-      </Card>
+      </Card>}
 
       {/* ── Solar Calculator constants ── */}
-      <SectionCard testid="calc-config" icon={Zap} title="Solar Calculator Constants" desc="Cost per kWp, PSH default, PM-Surya-Ghar slabs, PM-KUSUM benchmark, diesel prices."
+      {show('calc') && <SectionCard testid="calc-config" icon={Zap} title="Solar Calculator Constants" desc="Cost per kWp, PSH default, PM-Surya-Ghar slabs, PM-KUSUM benchmark, diesel prices."
                     loading={calcLoading} saving={calcSaving} saved={calcSaved} onSave={saveCalc} onReload={loadCalc}>
         {calc && (
           <div className="space-y-3">
@@ -284,10 +285,10 @@ export default function AdvancedConfigSection() {
             </div>
           </div>
         )}
-      </SectionCard>
+      </SectionCard>}
 
       {/* ── Company Health Score config ── */}
-      <SectionCard testid="health-config" icon={Activity} title="Company Health Score" desc="Pillar weights + targets + band thresholds — feeds the CEO Dashboard hero gauge."
+      {show('health') && <SectionCard testid="health-config" icon={Activity} title="Company Health Score" desc="Pillar weights + targets + band thresholds — feeds the CEO Dashboard hero gauge."
                     loading={healthLoading} saving={healthSaving} saved={healthSaved} onSave={saveHealth} onReload={loadHealth}>
         {health && (
           <div className="space-y-3">
@@ -337,10 +338,10 @@ export default function AdvancedConfigSection() {
             </div>
           </div>
         )}
-      </SectionCard>
+      </SectionCard>}
 
       {/* ── Expansion config ── */}
-      <SectionCard testid="expansion-config" icon={MapPin} title="Expansion Module Weights" desc="Sub-component weights + thresholds — governs the district ranking on /dashboard/expansion."
+      {show('expansion') && <SectionCard testid="expansion-config" icon={MapPin} title="Expansion Module Weights" desc="Sub-component weights + thresholds — governs the district ranking on /dashboard/expansion."
                     loading={expLoading} saving={expSaving} saved={expSaved} onSave={saveExp} onReload={loadExp}>
         {exp && (
           <div className="space-y-3">
@@ -390,7 +391,7 @@ export default function AdvancedConfigSection() {
             </div>
           </div>
         )}
-      </SectionCard>
+      </SectionCard>}
     </div>
   );
 }

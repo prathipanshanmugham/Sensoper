@@ -251,7 +251,11 @@ export const auditsAPI = {
   create: (data) => api.post('/audits', data),
   list: (params = {}) => api.get('/audits', { params }),
   update: (id, data) => api.put(`/audits/${id}`, data),
-  addIssue: (id, data) => api.put(`/audits/${id}/issue`, data)
+  addIssue: (id, data) => api.put(`/audits/${id}/issue`, data),
+  thisWeek: () => api.post('/audits/this-week'),
+  setPointStatus: (id, idx, status) => api.put(`/audits/${id}/issue/${idx}/status`, { status }),
+  templates: () => api.get('/audit-templates'),
+  saveTemplates: (templates) => api.put('/audit-templates', { templates })
 };
 
 // AI API

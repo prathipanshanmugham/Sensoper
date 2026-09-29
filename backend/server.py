@@ -7303,6 +7303,53 @@ async def add_audit_issue(audit_id: str, request: Request):
     await db.audits.update_one({"_id": ObjectId(audit_id)}, {"$push": {"issues": issue}})
     return {"message": "Issue added"}
 
+# Iter 57 — fast weekly-audit flow: auto week audit, point status board, reusable templates
+DEFAULT_AUDIT_TEMPLATES = ["Safety: PPE / harness not used", "Housekeeping: site not clean", "Stock accuracy: count mismatch", "Documentation: checklist incomplete",
+                          "Installation quality: loose fixing / cabling", "Tools: missing or damaged", "Vehicle: log / condition"]
+
+@api_router.post("/audits/this-week")
+async def get_or_create_week_audit(request: Request):
+    user = await require_module(request, "module_audits", "create")
+    now = datetime.now(timezone.utc)
+    title = f"Weekly Audit {now.strftime('%G-W%V')}"
+    doc = await db.audits.find_one({"title": title})
+    if not doc:
+        doc = {"title": title, "project_id": "", "auditor_name": user["name"], "deadline": (now + timedelta(days=7)).date().isoformat(), "checklist": [], "notes": "",
+               "issues": [], "status": "open", "created_by": user["id"], "created_by_name": user["name"], "created_at": now.isoformat()}
+        res = await db.audits.insert_one(doc)
+        doc["_id"] = res.inserted_id
+    doc["id"] = str(doc.pop("_id"))
+    return doc
+
+@api_router.put("/audits/{audit_id}/issue/{idx}/status")
+async def set_audit_issue_status(audit_id: str, idx: int, request: Request):
+    body = await request.json()
+    user = await require_module(request, "module_audits", "edit")
+    status = body.get("status", "resolved")
+    if status not in ("open", "resolved"):
+        raise HTTPException(status_code=400, detail="status must be open or resolved")
+    doc = await db.audits.find_one({"_id": ObjectId(audit_id)})
+    if not doc or idx < 0 or idx >= len(doc.get("issues", [])):
+        raise HTTPException(status_code=404, detail="Audit point not found")
+    upd = {f"issues.{idx}.status": status, f"issues.{idx}.resolved_at": datetime.now(timezone.utc).isoformat() if status == "resolved" else None,
+           f"issues.{idx}.resolved_by": user["name"] if status == "resolved" else None}
+    await db.audits.update_one({"_id": doc["_id"]}, {"$set": upd})
+    return {"message": "Point updated", "status": status}
+
+@api_router.get("/audit-templates")
+async def get_audit_templates(request: Request):
+    await get_current_user(request)
+    doc = await db.settings.find_one({"type": "audit_templates"})
+    return {"templates": doc["templates"] if doc else DEFAULT_AUDIT_TEMPLATES}
+
+@api_router.put("/audit-templates")
+async def put_audit_templates(request: Request):
+    body = await request.json()
+    await require_role("admin", "manager")(request)
+    templates = [str(t).strip() for t in body.get("templates", []) if str(t).strip()][:40]
+    await db.settings.update_one({"type": "audit_templates"}, {"$set": {"templates": templates, "type": "audit_templates"}}, upsert=True)
+    return {"templates": templates}
+
 # ================== EMPLOYEE PERFORMANCE — MANUAL SCORES (Iter 44 Batch C) ==================
 
 class EmployeeScoreCreate(BaseModel):

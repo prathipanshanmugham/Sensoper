@@ -114,14 +114,6 @@ def _pricing_config_defaults() -> dict:
         # Iter 52: NO blanket GST% / margin% — every priced line carries its own. One cash-rounding rule for totals.
         "rounding_step": 1,                 # 1 | 10 | 100
         "rounding_mode": "nearest",         # nearest | up | down
-        "specific_yield_kwh_per_kwp_day": 4.5,
-        "peak_sun_hours_availability": 0.95,
-        "pump_oversizing_factor": 1.30,
-        "pump_derating_factor": 0.85,
-        "diesel_price_per_litre": 92.0,     # fallback if fuel_types collection is empty
-        "discount_rate_pct": 10.0,
-        "panel_area_sqft_per_kwp": 65.0,
-        "co2_kg_per_kwh_grid": 0.82,
         "string_low_temp_default_c": -10.0,  # Change 5 — admin-configurable per DISCOM/pincode
         "credit_interest_monthly_pct": 1.5,  # Iter 54 — implied carrying cost of overdue customer credit (reporting only)
     }
@@ -296,7 +288,10 @@ async def get_config(request: Request):
     return {**_pricing_config_defaults(), **{k: v for k, v in doc.items() if k not in ("_id", "key", *RETIRED_CONFIG_KEYS)}}
 
 
-RETIRED_CONFIG_KEYS = ("gst_pct", "default_margin_pct", "kit_rounding_step", "kit_rounding_mode")
+RETIRED_CONFIG_KEYS = ("gst_pct", "default_margin_pct", "kit_rounding_step", "kit_rounding_mode",
+                        # Iter 57 audit: read by nothing (calculator uses calc_config / pincode records instead)
+                        "specific_yield_kwh_per_kwp_day", "peak_sun_hours_availability", "pump_oversizing_factor", "pump_derating_factor",
+                        "diesel_price_per_litre", "discount_rate_pct", "panel_area_sqft_per_kwp", "co2_kg_per_kwh_grid", "history", "active")
 
 
 @router.put("/config")
