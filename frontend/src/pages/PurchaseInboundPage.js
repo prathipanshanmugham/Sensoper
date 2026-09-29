@@ -10,6 +10,7 @@ import { Badge } from '../components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '../components/ui/dialog';
 import { Loader2, Plus, Truck, CheckCircle2, ClipboardCheck, Package, X, Save, Trash2, Pencil, Undo2, AlertTriangle } from 'lucide-react';
+import { toast } from 'sonner';
 import HardDeleteButton from '../components/HardDeleteButton';
 
 const STATUS_COLORS = { pending: 'bg-amber-100 text-amber-700', approved: 'bg-blue-100 text-blue-700', arrived: 'bg-violet-100 text-violet-700', qc_done: 'bg-teal-100 text-teal-700', completed: 'bg-emerald-100 text-emerald-700' };
@@ -25,7 +26,13 @@ export default function PurchaseInboundPage() {
   const [activeAction, setActiveAction] = useState(null); // {poId, type}
   const [saving, setSaving] = useState(false);
   const [filter, setFilter] = useState('all');
-  const [form, setForm] = useState({ supplier_name: '', supplier_contact: '', items: [{ name: '', qty: '', unit_price: '', inventory_item_id: '', sku_code: '' }], expected_delivery: '', notes: '', location_id: '' });
+  const [form, setForm] = useState({ supplier_name: '', supplier_contact: '', items: [{ name: '', qty: '', unit_price: '', inventory_item_id: '', sku_code: '' }], expected_delivery: '', notes: '', location_id: '', po_number: '' });
+  const [nextPo, setNextPo] = useState('');
+  const [poError, setPoError] = useState('');
+  useEffect(() => {
+    if (!showCreate) return;
+    purchaseOrdersAPI.nextNumber(form.location_id || undefined).then(r => setNextPo(r.data.po_number)).catch(() => setNextPo(''));
+  }, [showCreate, form.location_id]);
   const [locations, setLocations] = useState([]);
   const [actionForm, setActionForm] = useState({});
   const [editInbound, setEditInbound] = useState(null); // { po, lines }
@@ -74,12 +81,17 @@ export default function PurchaseInboundPage() {
 
   const handleCreate = async () => {
     if (!form.supplier_name || form.items.length === 0) return;
-    setSaving(true);
+    setSaving(true); setPoError('');
     try {
       const items = form.items.filter(i => i.name).map(i => ({name: i.name, qty: parseFloat(i.qty) || 0, unit_price: parseFloat(i.unit_price) || 0, inventory_item_id: i.inventory_item_id || null, sku_code: i.sku_code || null}));
-      await purchaseOrdersAPI.create({...form, items});
-      setShowCreate(false); setForm({ supplier_name: '', supplier_contact: '', items: [{ name: '', qty: '', unit_price: '', inventory_item_id: '', sku_code: '' }], expected_delivery: '', notes: '', location_id: '' }); await fetch();
-    } catch (err) { console.error(err); } finally { setSaving(false); }
+      const r = await purchaseOrdersAPI.create({...form, po_number: form.po_number.trim() || null, items});
+      toast.success(`PO ${r.data.po_number} created`);
+      setShowCreate(false); setForm({ supplier_name: '', supplier_contact: '', items: [{ name: '', qty: '', unit_price: '', inventory_item_id: '', sku_code: '' }], expected_delivery: '', notes: '', location_id: '', po_number: '' }); await fetch();
+    } catch (err) {
+      const msg = err.response?.data?.detail || 'Could not create PO';
+      if (err.response?.status === 409) setPoError(typeof msg === 'string' ? msg : 'PO number already used for this supplier');
+      toast.error(typeof msg === 'string' ? msg : 'Could not create PO');
+    } finally { setSaving(false); }
   };
 
   const handleAction = async () => {
@@ -164,6 +176,11 @@ export default function PurchaseInboundPage() {
             <CardContent className="p-4 space-y-3">
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                 <div className="space-y-1"><Label className="text-xs">Supplier Name *</Label><Input value={form.supplier_name} onChange={(e) => setForm(p => ({...p, supplier_name: e.target.value}))} className="h-9" data-testid="po-supplier" /></div>
+                <div className="space-y-1">
+                  <Label className="text-xs">PO Number <span className="text-slate-400 font-normal">(blank = auto)</span></Label>
+                  <Input value={form.po_number} onChange={(e) => { setForm(p => ({...p, po_number: e.target.value})); setPoError(''); }} placeholder={nextPo ? `Auto: ${nextPo}` : 'Auto-generated'} className={`h-9 font-mono ${poError ? 'border-red-400' : ''}`} maxLength={40} data-testid="po-number-input" />
+                  {poError ? <p className="text-[11px] text-red-600" data-testid="po-number-error">{poError}</p> : <p className="text-[11px] text-slate-400">{form.po_number.trim() ? 'Manual — must be unique for this supplier' : nextPo ? `Will be ${nextPo}` : ''}</p>}
+                </div>
                 <div className="space-y-1"><Label className="text-xs">Contact</Label><Input value={form.supplier_contact} onChange={(e) => setForm(p => ({...p, supplier_contact: e.target.value}))} className="h-9" data-testid="po-contact" /></div>
                 <div className="space-y-1"><Label className="text-xs">Expected Delivery</Label><Input type="date" value={form.expected_delivery} onChange={(e) => setForm(p => ({...p, expected_delivery: e.target.value}))} className="h-9" data-testid="po-delivery" /></div>
                 <div className="space-y-1">

@@ -20,7 +20,7 @@ function RevealCell({ item, onRevealed }) {
   const [busy, setBusy] = useState(false);
   const reveal = async () => {
     setBusy(true);
-    try { const r = await vaultAPI.reveal(item.id); setPlain(r.data.password); onRevealed?.(); setTimeout(() => setPlain(null), 30000); }
+    try { const r = await vaultAPI.reveal(item.id); setPlain(r.data.password); onRevealed?.(item.id, r.data.revealed_at); setTimeout(() => setPlain(null), 30000); }
     catch (e) { toast.error(e.response?.data?.detail || 'Reveal failed'); }
     finally { setBusy(false); }
   };
@@ -62,6 +62,13 @@ export default function VaultPage() {
     finally { setLoading(false); }
   }, [search, category]);
   useEffect(() => { const t = setTimeout(load, 250); return () => clearTimeout(t); }, [load]);
+
+  // Iter 58 — after a reveal only refresh bookkeeping; never toggle `loading` or replace the row list
+  // (that unmounts RevealCell and wipes the plaintext before the user can read it).
+  const loadDashboard = useCallback(async (revealedId, revealedAt) => {
+    setItems(prev => prev.map(it => it.id === revealedId ? { ...it, view_count: (it.view_count || 0) + 1, last_viewed: revealedAt } : it));
+    try { const d = await vaultAPI.dashboard(); setDash(d.data); } catch (e) { console.warn('vault dashboard refresh failed', e); }
+  }, []);
 
   const openCreate = () => { setEditingId(null); setForm(blank); setOpen(true); };
   const openEdit = (it) => { setEditingId(it.id); setForm({ ...blank, ...it, password: '', rotation_days: it.rotation_source === 'service' ? it.rotation_days : '' }); setOpen(true); };
@@ -156,7 +163,7 @@ export default function VaultPage() {
                 <tr key={it.id} className="border-b border-slate-100 hover:bg-slate-50" data-testid={`vault-row-${it.id}`}>
                   <td className="px-3 py-2"><p className="font-medium text-slate-900">{it.service_name}</p><Badge variant="secondary" className="text-[10px]">{it.category}</Badge>{it.url && <a href={it.url} target="_blank" rel="noreferrer" className="block text-[11px] text-sky-600 truncate max-w-[180px]">{it.url}</a>}</td>
                   <td className="px-3 py-2 text-slate-700">{it.account_identifier}{it.associated_phone && <p className="text-[11px] text-slate-400">{it.associated_phone}</p>}</td>
-                  <td className="px-3 py-2"><RevealCell item={it} onRevealed={load} /></td>
+                  <td className="px-3 py-2"><RevealCell item={it} onRevealed={loadDashboard} /></td>
                   <td className="px-3 py-2">{it.two_fa_enabled ? <Badge className="bg-emerald-100 text-emerald-800 hover:bg-emerald-100 text-[10px]">{METHODS.find(m => m[0] === it.two_fa_method)?.[1] || 'On'}</Badge> : <Badge className="bg-red-100 text-red-700 hover:bg-red-100 text-[10px]" data-testid={`vault-2fa-off-${it.id}`}>Off — risk</Badge>}</td>
                   <td className="px-3 py-2 text-slate-600 text-xs">{it.owner || '—'}</td>
                   <td className="px-3 py-2 text-xs"><span className={it.rotation_stale ? 'text-red-700 font-medium' : 'text-slate-500'} data-testid={`vault-rotation-${it.id}`}>{it.last_rotated?.slice(0, 10) || '—'}</span><span className="block text-[10px] text-slate-400">every {it.rotation_days}d{it.rotation_source === 'service' ? '' : ' (default)'}{it.rotation_stale ? ` · ${it.days_since_rotation == null ? 'never' : `${it.days_overdue}d overdue`}` : ''}</span></td>

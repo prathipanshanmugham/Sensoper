@@ -30,7 +30,8 @@ class TestMaterialKits:
         for k in data:
             assert "id" in k and isinstance(k["id"], str)
             assert "_id" not in k
-            assert k["system_type"] in ("on-grid", "off-grid", "hybrid", "solar-pump")
+            assert k["system_type"] in ("on-grid", "off-grid", "hybrid", "solar-pump", None)  # Iter 58: custom categories have no system_type
+            assert k.get("category")
 
     def test_filter_by_solar_pump(self, admin_client):
         r = admin_client.get(f"{BASE_URL}/api/material-kits", params={"system_type": "solar-pump"}, timeout=30)

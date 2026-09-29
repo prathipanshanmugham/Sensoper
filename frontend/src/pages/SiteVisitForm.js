@@ -4,6 +4,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { projectsAPI, inventoryAPI, formTabsAPI, termsAPI, materialKitsAPI, catalogueAPI } from '../utils/api';
 import { pct, roundCash } from '../utils/solarCalc';
 import { formatApiErrorDetail } from '../contexts/AuthContext';
+import { toast } from 'sonner';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
@@ -287,27 +288,43 @@ export default function SiteVisitForm() {
     });
   }, [psTariffRaw, psCategoryRaw]);
 
+  const kitLinesToItems = (kit) => kit.lines.map(line => {
+    const inv = line.inventory_item_id ? inventoryItems.find(i => i.id === line.inventory_item_id) : null;
+    if (inv) {
+      return {
+        inventory_item_id: inv.id, name: inv.name, category: inv.category,
+        unit_price: inv.unit_price, gst_percentage: inv.gst_percentage ?? null,
+        quantity: parseInt(line.quantity) || 1, margin_percentage: inv.margin_pct ?? null
+      };
+    }
+    // Free-text line — no inventory ref
+    return {
+      inventory_item_id: null, name: line.name, category: line.category || 'kit_line',
+      unit_price: 0, gst_percentage: null,
+      quantity: parseInt(line.quantity) || 1, margin_percentage: null
+    };
+  });
+
   const applyKit = (kit) => {
     if (!kit) return;
-    // Convert kit lines into selected_items (using inventory info when linked)
-    const newItems = kit.lines.map(line => {
-      const inv = line.inventory_item_id ? inventoryItems.find(i => i.id === line.inventory_item_id) : null;
-      if (inv) {
-        return {
-          inventory_item_id: inv.id, name: inv.name, category: inv.category,
-          unit_price: inv.unit_price, gst_percentage: inv.gst_percentage ?? null,
-          quantity: parseInt(line.quantity) || 1, margin_percentage: inv.margin_pct ?? null
-        };
-      }
-      // Free-text line — no inventory ref
-      return {
-        inventory_item_id: null, name: line.name, category: line.category || 'kit_line',
-        unit_price: 0, gst_percentage: null,
-        quantity: parseInt(line.quantity) || 1, margin_percentage: null
-      };
-    });
-    setFormData(prev => ({ ...prev, selected_items: newItems }));
+    setFormData(prev => ({ ...prev, selected_items: kitLinesToItems(kit) }));
     setAppliedKitId(kit.id);
+  };
+
+  // Iter 58 — append a kit (any category, e.g. Solar Camera) to whatever is already selected; no system-type gating.
+  const addKitLines = (kit) => {
+    if (!kit) return;
+    const incoming = kitLinesToItems(kit);
+    setFormData(prev => {
+      const items = [...(prev.selected_items || [])];
+      incoming.forEach(n => {
+        const idx = items.findIndex(x => (n.inventory_item_id && x.inventory_item_id === n.inventory_item_id) || (!n.inventory_item_id && !x.inventory_item_id && x.name === n.name));
+        if (idx >= 0) items[idx] = { ...items[idx], quantity: (parseInt(items[idx].quantity) || 0) + n.quantity };
+        else items.push(n);
+      });
+      return { ...prev, selected_items: items };
+    });
+    toast.success(`Added ${incoming.length} line(s) from ${kit.name}`);
   };
 
   // Draft resume banner — check localStorage on mount
@@ -1238,12 +1255,13 @@ export default function SiteVisitForm() {
                   <div className="p-2 max-h-56 overflow-y-auto space-y-1.5 border-t border-slate-200">
                     {availableKits.length === 0 && <p className="text-[11px] text-slate-400 px-2">No kits yet. Ask an admin to add kits from Inventory → Solution Kits.</p>}
                     {availableKits.map(k => (
-                      <div key={k.id} className="flex items-center justify-between gap-2 px-2 py-1.5 rounded hover:bg-slate-50">
+                      <div key={k.id} className="flex items-center justify-between gap-2 px-2 py-1.5 rounded hover:bg-slate-50" data-testid={`browse-kit-${k.id}`}>
                         <div className="min-w-0 flex-1">
                           <p className="text-xs font-medium text-slate-800 truncate">{k.name}</p>
-                          <p className="text-[10px] text-slate-500">{k.system_type} · {k.capacity_kw} kW · {k.lines.length} lines</p>
+                          <p className="text-[10px] text-slate-500">{k.category || k.system_type}{k.system_type ? ` · ${k.capacity_kw} kW` : ' · product kit'} · {k.lines.length} lines</p>
                         </div>
-                        <Button type="button" size="sm" variant="outline" className="h-7 text-[11px] px-2" onClick={() => { applyKit(k); setKitDismissed(false); }} data-testid={`browse-apply-${k.id}`}>Apply</Button>
+                        <Button type="button" size="sm" variant="outline" className="h-7 text-[11px] px-2" onClick={() => addKitLines(k)} title="Append this kit's lines to the current selection" data-testid={`browse-add-${k.id}`}>+ Add</Button>
+                        {k.system_type && <Button type="button" size="sm" variant="ghost" className="h-7 text-[11px] px-2" onClick={() => { applyKit(k); setKitDismissed(false); }} title="Replace the selection with this kit" data-testid={`browse-apply-${k.id}`}>Replace</Button>}
                       </div>
                     ))}
                   </div>

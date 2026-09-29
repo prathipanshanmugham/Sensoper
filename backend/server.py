@@ -8,6 +8,7 @@ from motor.motor_asyncio import AsyncIOMotorClient
 from bson import ObjectId
 from pymongo import ReturnDocument
 import os
+import re
 import asyncio
 import logging
 from pathlib import Path
@@ -321,7 +322,8 @@ class MaterialKitLine(BaseModel):
 
 class MaterialKitCreate(BaseModel):
     name: str
-    system_type: Literal["on-grid", "off-grid", "hybrid", "solar-pump"]
+    category: Optional[str] = None          # Iter 58 — kit_categories slug (legacy kits: same as system_type)
+    system_type: Optional[str] = None       # only for calculator-driven categories (on-grid/off-grid/hybrid/solar-pump)
     capacity_kw: float = 0
     capacity_min_kw: Optional[float] = None
     capacity_max_kw: Optional[float] = None
@@ -331,7 +333,8 @@ class MaterialKitCreate(BaseModel):
 
 class MaterialKitUpdate(BaseModel):
     name: Optional[str] = None
-    system_type: Optional[Literal["on-grid", "off-grid", "hybrid", "solar-pump"]] = None
+    category: Optional[str] = None
+    system_type: Optional[str] = None
     capacity_kw: Optional[float] = None
     capacity_min_kw: Optional[float] = None
     capacity_max_kw: Optional[float] = None
@@ -478,6 +481,7 @@ class PurchaseOrderCreate(BaseModel):
     expected_delivery: str = ""
     notes: str = ""
     location_id: Optional[str] = None
+    po_number: Optional[str] = None   # Iter 58 — manual override; blank = auto-generated
 
 class InboundEditLine(BaseModel):
     inventory_item_id: str
@@ -2316,6 +2320,7 @@ def _serialize_kit(k):
     return {
         "id": str(k["_id"]),
         "name": k.get("name"),
+        "category": k.get("category") or k.get("system_type"),
         "system_type": k.get("system_type"),
         "capacity_kw": k.get("capacity_kw", 0),
         "capacity_min_kw": k.get("capacity_min_kw"),
@@ -2328,11 +2333,13 @@ def _serialize_kit(k):
     }
 
 @api_router.get("/material-kits")
-async def list_material_kits(request: Request, system_type: Optional[str] = None, capacity_kw: Optional[float] = None):
+async def list_material_kits(request: Request, system_type: Optional[str] = None, capacity_kw: Optional[float] = None, category: Optional[str] = None):
     await get_current_user(request)
     query = {"active": True}
     if system_type:
         query["system_type"] = system_type
+    if category:
+        query["category"] = category
     kits = await db.material_kits.find(query).sort("capacity_kw", 1).to_list(500)
     result = [_serialize_kit(k) for k in kits]
     # If a capacity_kw is specified, order by proximity so first item is best-match
@@ -2370,6 +2377,7 @@ async def get_material_kit(kit_id: str, request: Request):
 async def create_material_kit(kit: MaterialKitCreate, request: Request):
     current_user = await require_role("admin", "manager")(request)
     doc = kit.model_dump()
+    doc["category"], doc["system_type"] = await _resolve_kit_category(db, kit.category, kit.system_type)
     doc["created_at"] = datetime.now(timezone.utc).isoformat()
     doc["updated_at"] = doc["created_at"]
     doc["created_by"] = current_user["id"]
@@ -2383,6 +2391,8 @@ async def update_material_kit(kit_id: str, updates: MaterialKitUpdate, request: 
     if not kit:
         raise HTTPException(status_code=404, detail="Kit not found")
     upd = {k: v for k, v in updates.model_dump(exclude_unset=True).items() if v is not None}
+    if "category" in upd or "system_type" in upd:
+        upd["category"], upd["system_type"] = await _resolve_kit_category(db, upd.get("category"), upd.get("system_type") or (kit.get("system_type") if "category" not in upd else None))
     upd["updated_at"] = datetime.now(timezone.utc).isoformat()
     await db.material_kits.update_one({"_id": ObjectId(kit_id)}, {"$set": upd})
     return {"message": "Kit updated"}
@@ -2916,6 +2926,8 @@ api_router.include_router(_vault_router)
 api_router.include_router(_create_sensobrain_router(db=db, app=app, get_current_user=get_current_user, require_role=require_role))
 from adhoc_promotion import create_router as _create_adhoc_router  # noqa: E402
 api_router.include_router(_create_adhoc_router(db=db, get_current_user=get_current_user, require_role=require_role, create_audit_log=create_audit_log, build_cost_estimation=build_cost_estimation))
+from kit_categories import create_router as _create_kit_cat_router, resolve_category as _resolve_kit_category, ensure_seed as _seed_kit_categories  # noqa: E402
+api_router.include_router(_create_kit_cat_router(db=db, get_current_user=get_current_user, require_role=require_role, create_audit_log=create_audit_log))
 
 
 
@@ -6579,6 +6591,18 @@ async def _next_doc_sequence(key: str) -> int:
     )
     return doc["seq"]
 
+@api_router.get("/purchase-orders/next-number")
+async def preview_po_number(request: Request, location_id: Optional[str] = None):
+    """Preview (without consuming) the auto-generated PO number for a branch."""
+    user = await get_current_user(request)
+    location_id = location_id or user.get("default_location_id")
+    loc_code = None
+    if location_id and ObjectId.is_valid(location_id):
+        loc = await db.locations.find_one({"_id": ObjectId(location_id)})
+        loc_code = loc.get("code") if loc else None
+    counter = await db.counters.find_one({"_id": f"po_number_{loc_code or 'HO'}"}) or {}
+    return {"po_number": f"PO-{loc_code or 'HO'}-{int(counter.get('seq', 0)) + 1:04d}"}
+
 @api_router.post("/purchase-orders")
 async def create_po(po: PurchaseOrderCreate, request: Request):
     user = await require_module(request, "module_purchase_inbound", "create")
@@ -6589,8 +6613,19 @@ async def create_po(po: PurchaseOrderCreate, request: Request):
         loc = await db.locations.find_one({"_id": ObjectId(location_id)})
         loc_code = loc.get("code") if loc else None
     seq = await _next_doc_sequence(f"po_number_{loc_code or 'HO'}")
+    manual = (po.po_number or "").strip()
+    if manual:
+        if len(manual) > 40:
+            raise HTTPException(status_code=400, detail="PO number must be 40 characters or fewer")
+        clash = await db.purchase_orders.find_one({
+            "po_number": {"$regex": f"^{re.escape(manual)}$", "$options": "i"},
+            "supplier_name": {"$regex": f"^{re.escape(po.supplier_name.strip())}$", "$options": "i"},
+        })
+        if clash:
+            raise HTTPException(status_code=409, detail=f"PO number '{manual}' already exists for {po.supplier_name.strip()} (created {str(clash.get('created_at', ''))[:10]}, status {clash.get('status')}). Use a different number.")
     doc = {
-        "po_number": f"PO-{loc_code or 'HO'}-{seq:04d}",
+        "po_number": manual or f"PO-{loc_code or 'HO'}-{seq:04d}",
+        "po_number_manual": bool(manual),
         "supplier_name": po.supplier_name, "supplier_contact": po.supplier_contact,
         "items": po.items, "total_amount": round(total, 2),
         "expected_delivery": po.expected_delivery, "notes": po.notes,
@@ -6932,6 +6967,8 @@ async def _apply_action_request(doc: Dict[str, Any]):
     elif rt == "sale":
         from sales import apply_sale_cancellation
         await apply_sale_cancellation(db, rid)
+    elif rt == "brand_return" and doc.get("action") == "delete":
+        await _delete_brand_return(rid, doc.get("requested_by"), doc.get("requested_by_name"), doc.get("reason") or "", approved=True)
     else:
         raise HTTPException(status_code=400, detail=f"Unknown resource type: {rt}")
 
@@ -6980,10 +7017,14 @@ async def reject_action_request(req_id: str, request: Request):
         raise HTTPException(status_code=400, detail="This request is no longer pending")
     if not _can_manage_request_location(user, doc.get("location_id")):
         raise HTTPException(status_code=403, detail="This request belongs to a location outside your assignment")
+    try:
+        rejection_reason = ((await request.json()) or {}).get("reason", "")
+    except Exception:
+        rejection_reason = ""
     r = await db.action_requests.update_one(
         {"_id": ObjectId(req_id), "status": "pending"},
         {"$set": {"status": "rejected", "resolved_by": user["id"], "resolved_by_name": user["name"],
-                   "resolved_at": datetime.now(timezone.utc).isoformat()}})
+                   "rejection_reason": rejection_reason, "resolved_at": datetime.now(timezone.utc).isoformat()}})
     if r.matched_count == 0:
         raise HTTPException(status_code=400, detail="This request is no longer pending")
     return {"message": "Request rejected"}
@@ -7118,7 +7159,10 @@ async def list_returns(request: Request, status: str = None):
     query = {}
     if status and status != "all": query["status"] = status
     rets = await db.brand_returns.find(query).sort("created_at", -1).to_list(500)
-    for r in rets: r["id"] = str(r.pop("_id"))
+    pending = {r["resource_id"] async for r in db.action_requests.find({"resource_type": "brand_return", "action": "delete", "status": "pending"}, {"resource_id": 1})}
+    for r in rets:
+        r["id"] = str(r.pop("_id"))
+        r["delete_pending"] = r["id"] in pending
     return rets
 
 @api_router.put("/returns/{return_id}/complete")
@@ -7126,6 +7170,70 @@ async def complete_return(return_id: str, request: Request):
     await get_current_user(request)
     await db.brand_returns.update_one({"_id": ObjectId(return_id)}, {"$set": {"status": "completed", "completed_at": datetime.now(timezone.utc).isoformat()}})
     return {"message": "Return completed"}
+
+
+async def _brand_return_dependency(return_id: str) -> Optional[str]:
+    """Iter 58 — name the downstream record that blocks deleting a brand return, or None."""
+    entry = await db.account_entries.find_one({"$or": [{"reference_id": return_id}, {"return_id": return_id}]})
+    if entry:
+        return f"account entry '{entry.get('description') or entry.get('entry_type') or entry['_id']}' (₹{entry.get('amount', 0):,}) is already posted against this return"
+    names = await db.list_collection_names()
+    if "supplier_credit_notes" in names:
+        cn = await db.supplier_credit_notes.find_one({"return_id": return_id})
+        if cn:
+            return f"supplier credit note {cn.get('credit_note_number') or cn['_id']} has already been issued against this return"
+    po = await db.purchase_orders.find_one({"return_id": return_id})
+    if po:
+        return f"purchase order {po.get('po_number')} is linked to this return"
+    return None
+
+
+async def _delete_brand_return(return_id: str, user_id: str, user_name: str, reason: str, approved: bool = False):
+    doc = await db.brand_returns.find_one({"_id": ObjectId(return_id)})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Return not found")
+    dep = await _brand_return_dependency(return_id)
+    if dep:
+        raise HTTPException(status_code=409, detail=f"Cannot delete this return: {dep}. Remove that record first.")
+    snapshot = {**{k: v for k, v in doc.items() if k != "_id"}, "id": return_id}
+    await db.brand_returns.delete_one({"_id": doc["_id"]})
+    await db.action_requests.update_many({"resource_type": "brand_return", "resource_id": return_id, "status": "pending"},
+                                         {"$set": {"status": "superseded", "resolved_at": datetime.now(timezone.utc).isoformat()}})
+    await create_audit_log(user_id, user_name, "brand_return_deleted", "brand_return", return_id, snapshot, None,
+                           details=f"{'Approved deletion' if approved else 'Admin deletion'} — reason: {reason}")
+    return snapshot
+
+
+class ReturnDeletePayload(BaseModel):
+    reason: str = Field(..., min_length=3)
+
+
+@api_router.delete("/returns/{return_id}")
+async def delete_return(return_id: str, payload: ReturnDeletePayload, request: Request):
+    """Iter 58 — admin deletes directly; anyone else files an approval request. Snapshot always kept in the audit log."""
+    user = await get_current_user(request)
+    if not ObjectId.is_valid(return_id):
+        raise HTTPException(status_code=400, detail="Invalid id")
+    doc = await db.brand_returns.find_one({"_id": ObjectId(return_id)})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Return not found")
+    dep = await _brand_return_dependency(return_id)
+    if dep:
+        raise HTTPException(status_code=409, detail=f"Cannot delete this return: {dep}. Remove that record first.")
+    if user["role"] == "admin":
+        await _delete_brand_return(return_id, user["id"], user["name"], payload.reason)
+        return {"status": "deleted", "message": "Return deleted (snapshot kept in audit log)"}
+    now_iso = datetime.now(timezone.utc).isoformat()
+    if await db.action_requests.find_one({"resource_type": "brand_return", "resource_id": return_id, "status": "pending"}):
+        return {"status": "pending_approval", "message": "A deletion request for this return is already awaiting approval"}
+    await db.action_requests.insert_one({
+        "resource_type": "brand_return", "resource_id": return_id, "action": "delete", "reason": payload.reason,
+        "requested_by": user["id"], "requested_by_name": user["name"], "status": "pending", "requested_at": now_iso,
+        "location_id": doc.get("location_id"), "snapshot": {k: v for k, v in doc.items() if k != "_id"},
+        "title": f"{doc.get('item_name')} × {doc.get('quantity')}" + (f" · {doc.get('supplier_name')}" if doc.get("supplier_name") else ""),
+    })
+    await create_audit_log(user["id"], user["name"], "brand_return_delete_requested", "brand_return", return_id, None, None, details=payload.reason)
+    return {"status": "pending_approval", "message": "Deletion request sent to a manager/admin for approval"}
 
 # ================== HARD DELETE — Direct Sale / Purchase Inbound / Delivery Outbound (Iter 47) ==================
 # Admin-only permanent deletion, distinct from cancellation/reversal. Reverses all side effects,
@@ -7402,6 +7510,7 @@ async def health_check():
 
 @app.on_event("startup")
 async def startup_event():
+    await _seed_kit_categories(db)
     # Create indexes
     await db.users.create_index("email", unique=True)
     await db.login_attempts.create_index("identifier")
@@ -8286,12 +8395,21 @@ async def _reject_po(item_id: str, request: Request):
     return (await reject_po(item_id, request)).get("message")
 
 
+async def _approve_action_request(item_id: str, request: Request):
+    return (await approve_action_request(item_id, request)).get("message")
+
+
+async def _reject_action_request(item_id: str, request: Request):
+    return (await reject_action_request(item_id, request)).get("message")
+
+
 api_router.include_router(_create_inbox_router(db=db, get_current_user=get_current_user, require_role=require_role, handlers={
     "approve_approval": _approve_generic, "reject_approval": _reject_generic,
     "approve_project_submission": _approve_project_submission, "reject_project_submission": _reject_project_submission,
     "approve_deletion_request": _approve_deletion_request, "reject_deletion_request": _reject_deletion_request,
     "approve_inbound_action": _approve_inbound, "reject_inbound_action": _reject_inbound,
     "approve_purchase_order": _approve_po, "reject_purchase_order": _reject_po,
+    "approve_action_request": _approve_action_request, "reject_action_request": _reject_action_request,
 }))
 
 app.include_router(api_router)

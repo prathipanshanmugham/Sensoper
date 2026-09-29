@@ -1,25 +1,44 @@
 import { useState, useEffect, useCallback } from 'react';
 import { returnsAPI } from '../utils/api';
+import { useAuth } from '../contexts/AuthContext';
+import { toast } from 'sonner';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Card, CardContent } from '../components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Badge } from '../components/ui/badge';
-import { Loader2, Plus, X, Save, CheckCircle2, Undo2 } from 'lucide-react';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '../components/ui/dialog';
+import { Textarea } from '../components/ui/textarea';
+import { Loader2, Plus, X, Save, CheckCircle2, Undo2, Trash2, Clock } from 'lucide-react';
 
 export default function BrandReturnsPage() {
+  const { isAdmin } = useAuth();
   const [returns, setReturns] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({ project_id: '', supplier_name: '', item_name: '', quantity: '', reason: 'damage', notes: '' });
+  const [del, setDel] = useState(null);
+  const [delReason, setDelReason] = useState('');
+  const [deleting, setDeleting] = useState(false);
 
   const fetch = useCallback(async () => {
     try { const res = await returnsAPI.list(); setReturns(res.data); }
     catch (err) { console.error(err); } finally { setLoading(false); }
   }, []);
   useEffect(() => { fetch(); }, [fetch]);
+
+  const confirmDelete = async () => {
+    if (delReason.trim().length < 3) { toast.error('Please give a reason (at least 3 characters)'); return; }
+    setDeleting(true);
+    try {
+      const r = await returnsAPI.remove(del.id, delReason.trim());
+      toast[r.data.status === 'deleted' ? 'success' : 'info'](r.data.message);
+      setDel(null); setDelReason(''); await fetch();
+    } catch (e) { toast.error(e.response?.data?.detail || 'Delete failed'); }
+    finally { setDeleting(false); }
+  };
 
   const handleCreate = async () => {
     if (!form.item_name || !form.quantity) return;
@@ -74,12 +93,30 @@ export default function BrandReturnsPage() {
                   <div className="flex items-center gap-2"><Undo2 className="h-4 w-4 text-slate-400" /><h3 className="font-semibold">{r.item_name}</h3><Badge className={`text-[10px] ${r.status === 'pending' ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'}`}>{r.status}</Badge><Badge variant="outline" className="text-[10px]">{r.reason}</Badge></div>
                   <p className="text-xs text-slate-500 mt-1">Qty: {r.quantity}{r.supplier_name ? ` | Supplier: ${r.supplier_name}` : ''} | {new Date(r.created_at).toLocaleDateString('en-IN')}</p>
                 </div>
-                {r.status === 'pending' && <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={async () => { await returnsAPI.complete(r.id); fetch(); }} data-testid={`complete-return-${r.id}`}><CheckCircle2 className="h-3.5 w-3.5" />Complete</Button>}
+                <div className="flex items-center gap-2">
+                  {r.delete_pending && <Badge className="bg-amber-100 text-amber-700 text-[10px] gap-1" data-testid={`return-delete-pending-${r.id}`}><Clock className="h-3 w-3" />Deletion awaiting approval</Badge>}
+                  {r.status === 'pending' && <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={async () => { await returnsAPI.complete(r.id); fetch(); }} data-testid={`complete-return-${r.id}`}><CheckCircle2 className="h-3.5 w-3.5" />Complete</Button>}
+                  {!r.delete_pending && <Button size="sm" variant="ghost" className="h-7 text-xs gap-1 text-red-600 hover:text-red-700 hover:bg-red-50" onClick={() => { setDel(r); setDelReason(''); }} title={isAdmin ? 'Delete (snapshot kept in audit log)' : 'Request deletion — needs manager/admin approval'} data-testid={`delete-return-${r.id}`}><Trash2 className="h-3.5 w-3.5" />{isAdmin ? 'Delete' : 'Request delete'}</Button>}
+                </div>
               </CardContent>
             </Card>
           ))}
           {returns.length === 0 && <p className="text-sm text-slate-400 text-center py-8">No returns found</p>}
         </div>
+
+        <Dialog open={!!del} onOpenChange={(v) => !v && setDel(null)}>
+          <DialogContent className="max-w-md" data-testid="return-delete-dialog">
+            <DialogHeader>
+              <DialogTitle>{isAdmin ? 'Delete return' : 'Request deletion'}: {del?.item_name} × {del?.quantity}</DialogTitle>
+              <DialogDescription>{isAdmin ? 'The record is removed immediately; a full snapshot is kept in the audit log.' : 'A manager or admin must approve before the record is removed. A full snapshot is kept in the audit log.'}</DialogDescription>
+            </DialogHeader>
+            <Textarea rows={3} value={delReason} onChange={(e) => setDelReason(e.target.value)} placeholder="Reason (required)" data-testid="return-delete-reason" />
+            <DialogFooter>
+              <Button variant="ghost" onClick={() => setDel(null)} disabled={deleting}>Cancel</Button>
+              <Button className="bg-red-600 hover:bg-red-700 text-white" onClick={confirmDelete} disabled={deleting || delReason.trim().length < 3} data-testid="return-delete-confirm">{deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4 mr-1" />}{isAdmin ? 'Delete' : 'Send request'}</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </div>
   );

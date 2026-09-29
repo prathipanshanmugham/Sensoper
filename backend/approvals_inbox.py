@@ -13,7 +13,7 @@ from typing import Any, Callable, Dict, List, Optional
 from bson import ObjectId
 from fastapi import APIRouter, HTTPException, Request
 
-SOURCES = ("approval", "project_submission", "deletion_request", "inbound_action", "purchase_order")
+SOURCES = ("approval", "project_submission", "deletion_request", "inbound_action", "purchase_order", "action_request")
 
 
 def _sid(doc: Dict[str, Any]) -> str:
@@ -61,6 +61,15 @@ def create_router(db, get_current_user, require_role, handlers: Dict[str, Callab
             items.append({"source": "purchase_order", "id": _sid(po), "kind": "po_approval", "title": f"Purchase order — {po.get('supplier_name', '')}",
                           "description": f"{len(po.get('items') or [])} line(s) · ₹{round(total):,}", "entity_type": "purchase_order", "entity_id": _sid(po),
                           "requested_by_name": po.get("created_by_name"), "requested_at": po.get("created_at"), "data": {"total": total}, "approver_roles": ["admin", "manager"]})
+        # Iter 58 — generic action requests (brand-return delete, delivery/sale cancel, asset scrap) join the inbox
+        async for r in db.action_requests.find({"status": "pending"}).sort("requested_at", -1):
+            if not await _scope_ok(user, r.get("location_id")):
+                continue
+            rt, act = r.get("resource_type", ""), r.get("action", "")
+            items.append({"source": "action_request", "id": _sid(r), "kind": f"{rt}_{act}",
+                          "title": f"{act.title()} {rt.replace('_', ' ')} — {r.get('title') or (r.get('snapshot') or {}).get('item_name') or (r.get('snapshot') or {}).get('customer_name') or (r.get('snapshot') or {}).get('name') or ''}".strip(" —"),
+                          "description": r.get("reason", ""), "entity_type": rt, "entity_id": r.get("resource_id"),
+                          "requested_by_name": r.get("requested_by_name"), "requested_at": r.get("requested_at"), "data": {}, "approver_roles": ["admin", "manager"]})
         return items
 
     @router.get("/approvals/inbox")
@@ -100,6 +109,11 @@ def create_router(db, get_current_user, require_role, handlers: Dict[str, Callab
         async for po in db.purchase_orders.find({"status": {"$in": ["approved", "rejected"]}}).sort("approved_at", -1).limit(limit):
             rows.append({"source": "purchase_order", "id": _sid(po), "title": f"Purchase order — {po.get('supplier_name', '')}", "status": po.get("status"),
                          "resolved_by_name": po.get("approved_by") or po.get("rejected_by_name"), "resolved_at": po.get("approved_at") or po.get("rejected_at"), "reason": po.get("rejection_reason"), "requested_by_name": po.get("created_by_name")})
+        rows.sort(key=lambda r: r.get("resolved_at") or "", reverse=True)
+        async for r in db.action_requests.find({"status": {"$in": ["approved", "rejected"]}}).sort("resolved_at", -1).limit(limit):
+            rows.append({"source": "action_request", "id": _sid(r), "title": f"{(r.get('action') or '').title()} {(r.get('resource_type') or '').replace('_', ' ')} — {r.get('title') or ''}".strip(" —"),
+                         "status": r.get("status"), "resolved_by_name": r.get("resolved_by_name"), "resolved_at": r.get("resolved_at"),
+                         "reason": r.get("rejection_reason") or r.get("reason"), "requested_by_name": r.get("requested_by_name")})
         rows.sort(key=lambda r: r.get("resolved_at") or "", reverse=True)
         return rows[:limit]
 

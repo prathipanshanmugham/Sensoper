@@ -16,6 +16,7 @@ const SOURCE_META = {
   deletion_request: { label: 'Project deletion', icon: Trash2, color: 'bg-rose-100 text-rose-800' },
   inbound_action: { label: 'Inbound reversal', icon: Undo2, color: 'bg-amber-100 text-amber-800' },
   purchase_order: { label: 'Purchase order', icon: ShoppingCart, color: 'bg-emerald-100 text-emerald-800' },
+  action_request: { label: 'Record action', icon: Trash2, color: 'bg-slate-200 text-slate-800' },
 };
 const fmt = (iso) => (iso ? new Date(iso).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—');
 
@@ -82,7 +83,7 @@ export default function ApprovalsPage() {
         data.items.length === 0 ? <Card><CardContent className="py-12 text-center text-sm text-slate-400" data-testid="approvals-empty">Nothing waiting for approval.</CardContent></Card> : (
           <div className="space-y-2">
             {data.items.map(it => {
-              const m = SOURCE_META[it.source]; const Icon = m.icon;
+              const m = SOURCE_META[it.source] || SOURCE_META.action_request; const Icon = m.icon;
               return (
                 <Card key={`${it.source}-${it.id}`} data-testid={`approval-item-${it.source}-${it.id}`}>
                   <CardContent className="p-4 flex flex-wrap items-start gap-3">

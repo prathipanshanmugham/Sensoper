@@ -197,6 +197,7 @@ export const sensobrainAPI = {
 // Purchase Orders
 export const purchaseOrdersAPI = {
   create: (data) => api.post('/purchase-orders', data),
+  nextNumber: (location_id) => api.get('/purchase-orders/next-number', { params: location_id ? { location_id } : {} }),
   list: (params = {}) => api.get('/purchase-orders', { params }),
   approve: (id) => api.put(`/purchase-orders/${id}/approve`),
   arrival: (id, data) => api.put(`/purchase-orders/${id}/arrival`, data),
@@ -243,7 +244,14 @@ export const deliveriesAPI = {
 export const returnsAPI = {
   create: (data) => api.post('/returns', data),
   list: (params = {}) => api.get('/returns', { params }),
-  complete: (id) => api.put(`/returns/${id}/complete`)
+  complete: (id) => api.put(`/returns/${id}/complete`),
+  remove: (id, reason) => api.delete(`/returns/${id}`, { data: { reason } })
+};
+
+export const kitCategoriesAPI = {
+  list: (params = {}) => api.get('/kit-categories', { params }),
+  create: (data) => api.post('/kit-categories', data),
+  update: (id, data) => api.put(`/kit-categories/${id}`, data)
 };
 
 // Audits

@@ -1,7 +1,8 @@
 import { useEffect, useState, useCallback } from 'react';
 import { Link } from 'react-router-dom';
-import { materialKitsAPI, inventoryAPI } from '../utils/api';
-import { formatApiErrorDetail } from '../contexts/AuthContext';
+import { materialKitsAPI, inventoryAPI, kitCategoriesAPI } from '../utils/api';
+import { formatApiErrorDetail, useAuth } from '../contexts/AuthContext';
+import { KitCategoriesDialog, CATEGORY_COLORS } from '../components/KitCategoriesDialog';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
@@ -11,28 +12,24 @@ import { Badge } from '../components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '../components/ui/dialog';
 import {
-  ArrowLeft, Plus, Edit, Trash2, Loader2, Package, Zap, X, Wand2, Layers
+  ArrowLeft, Plus, Edit, Trash2, Loader2, Package, X, Wand2, Layers, Tags
 } from 'lucide-react';
 
-const SYSTEM_TYPES = [
-  { value: 'on-grid', label: 'On-Grid', color: 'bg-blue-100 text-blue-700 border-blue-300' },
-  { value: 'off-grid', label: 'Off-Grid', color: 'bg-orange-100 text-orange-700 border-orange-300' },
-  { value: 'hybrid', label: 'Hybrid', color: 'bg-violet-100 text-violet-700 border-violet-300' },
-  { value: 'solar-pump', label: 'Solar Pump', color: 'bg-cyan-100 text-cyan-700 border-cyan-300' }
-];
-
 const blankKit = {
-  name: '', system_type: 'on-grid',
+  name: '', category: 'on-grid',
   capacity_kw: 3, capacity_min_kw: 2, capacity_max_kw: 4,
   description: '', lines: [], active: true
 };
 
 export default function MaterialKitsPage() {
+  const { isAdmin } = useAuth();
   const [kits, setKits] = useState([]);
+  const [categories, setCategories] = useState([]);
   const [inventoryItems, setInventoryItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filterSystem, setFilterSystem] = useState('all');
   const [showDialog, setShowDialog] = useState(false);
+  const [showCats, setShowCats] = useState(false);
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState(blankKit);
   const [saving, setSaving] = useState(false);
@@ -41,17 +38,23 @@ export default function MaterialKitsPage() {
 
   const fetchKits = useCallback(async () => {
     try {
-      const [kitsRes, invRes] = await Promise.all([
+      const [kitsRes, invRes, catRes] = await Promise.all([
         materialKitsAPI.getAll(),
-        inventoryAPI.getItems()
+        inventoryAPI.getItems(),
+        kitCategoriesAPI.list({ include_retired: true })
       ]);
       setKits(kitsRes.data || []);
       setInventoryItems(invRes.data || []);
+      setCategories(catRes.data || []);
     } catch (e) { console.error(e); }
     finally { setLoading(false); }
   }, []);
 
   useEffect(() => { fetchKits(); }, [fetchKits]);
+
+  const activeCats = categories.filter(c => c.active);
+  const catOf = (slug) => categories.find(c => c.slug === slug);
+  const isSystemKit = (slug) => !!catOf(slug)?.system_type;
 
   const openDialog = (kit = null) => {
     setError('');
@@ -59,7 +62,7 @@ export default function MaterialKitsPage() {
       setEditing(kit);
       setForm({
         name: kit.name || '',
-        system_type: kit.system_type || 'on-grid',
+        category: kit.category || kit.system_type || 'on-grid',
         capacity_kw: kit.capacity_kw ?? 0,
         capacity_min_kw: kit.capacity_min_kw ?? '',
         capacity_max_kw: kit.capacity_max_kw ?? '',
@@ -93,11 +96,13 @@ export default function MaterialKitsPage() {
     if (!form.name.trim()) { setError('Kit name is required'); return; }
     setSaving(true); setError('');
     try {
+      const sys = isSystemKit(form.category);
       const payload = {
         ...form,
-        capacity_kw: parseFloat(form.capacity_kw) || 0,
-        capacity_min_kw: form.capacity_min_kw === '' ? null : parseFloat(form.capacity_min_kw),
-        capacity_max_kw: form.capacity_max_kw === '' ? null : parseFloat(form.capacity_max_kw),
+        system_type: sys ? form.category : null,
+        capacity_kw: sys ? (parseFloat(form.capacity_kw) || 0) : 0,
+        capacity_min_kw: !sys || form.capacity_min_kw === '' ? null : parseFloat(form.capacity_min_kw),
+        capacity_max_kw: !sys || form.capacity_max_kw === '' ? null : parseFloat(form.capacity_max_kw),
         lines: form.lines.map(l => ({
           inventory_item_id: l.inventory_item_id || null,
           name: l.name, category: l.category || null,
@@ -131,8 +136,8 @@ export default function MaterialKitsPage() {
     finally { setSeeding(false); }
   };
 
-  const shown = kits.filter(k => filterSystem === 'all' || k.system_type === filterSystem);
-  const meta = (t) => SYSTEM_TYPES.find(s => s.value === t) || { label: t, color: 'bg-slate-100 text-slate-600' };
+  const shown = kits.filter(k => filterSystem === 'all' || (k.category || k.system_type) === filterSystem);
+  const meta = (slug) => { const c = catOf(slug); return c ? { label: c.label, color: CATEGORY_COLORS[c.color] || CATEGORY_COLORS.slate } : { label: slug, color: CATEGORY_COLORS.slate }; };
 
   return (
     <div className="min-h-screen bg-slate-50 py-6 px-4">
@@ -142,10 +147,15 @@ export default function MaterialKitsPage() {
             <Link to="/dashboard/inventory"><Button variant="ghost" size="icon" className="text-slate-600" data-testid="back-btn"><ArrowLeft className="h-5 w-5" /></Button></Link>
             <div>
               <h1 className="text-xl sm:text-2xl font-bold font-['Outfit'] text-slate-900">Solution Kits</h1>
-              <p className="text-sm text-slate-500">{kits.length} pre-configured Material Kits · Auto-match by system + capacity</p>
+              <p className="text-sm text-slate-500">{kits.length} kits across {activeCats.length} categories · system kits auto-match by capacity, product kits (e.g. Solar Camera) are quoted standalone</p>
             </div>
           </div>
           <div className="flex gap-2">
+            {isAdmin && (
+              <Button variant="outline" onClick={() => setShowCats(true)} className="h-11" data-testid="manage-kit-categories-btn">
+                <Tags className="h-4 w-4 mr-1" /> Categories
+              </Button>
+            )}
             <Button variant="outline" onClick={seed} disabled={seeding} className="h-11" data-testid="seed-kits-btn">
               {seeding ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Wand2 className="h-4 w-4 mr-1" />} Seed Starter Kits
             </Button>
@@ -157,14 +167,14 @@ export default function MaterialKitsPage() {
 
         <Card className="border-slate-200 mb-4">
           <CardContent className="p-3 sm:p-4 flex flex-wrap gap-2">
-            {['all', ...SYSTEM_TYPES.map(s => s.value)].map(v => (
+            {['all', ...activeCats.map(c => c.slug)].map(v => (
               <button
                 key={v}
                 onClick={() => setFilterSystem(v)}
                 className={`px-3 py-1.5 text-xs rounded-full border transition-colors ${filterSystem === v ? 'bg-emerald-600 border-emerald-700 text-white' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}
                 data-testid={`filter-${v}`}
               >
-                {v === 'all' ? 'All Systems' : meta(v).label}
+                {v === 'all' ? 'All Categories' : `${meta(v).label} (${catOf(v)?.kit_count ?? 0})`}
               </button>
             ))}
           </CardContent>
@@ -187,11 +197,13 @@ export default function MaterialKitsPage() {
                     <div className="min-w-0">
                       <p className="font-semibold text-slate-900 text-sm truncate">{k.name}</p>
                       <div className="flex items-center gap-1.5 mt-1">
-                        <Badge className={`text-[10px] border ${meta(k.system_type).color}`}>{meta(k.system_type).label}</Badge>
-                        <span className="text-[11px] text-slate-500">
-                          {k.capacity_kw} kW
-                          {(k.capacity_min_kw !== null && k.capacity_max_kw !== null) && ` (${k.capacity_min_kw}-${k.capacity_max_kw} kW)`}
-                        </span>
+                        <Badge className={`text-[10px] border ${meta(k.category || k.system_type).color}`} data-testid={`kit-category-${k.id}`}>{meta(k.category || k.system_type).label}</Badge>
+                        {k.system_type ? (
+                          <span className="text-[11px] text-slate-500">
+                            {k.capacity_kw} kW
+                            {(k.capacity_min_kw !== null && k.capacity_max_kw !== null) && ` (${k.capacity_min_kw}-${k.capacity_max_kw} kW)`}
+                          </span>
+                        ) : <span className="text-[11px] text-slate-400">standalone bundle</span>}
                       </div>
                     </div>
                     <div className="flex gap-1">
@@ -221,8 +233,8 @@ export default function MaterialKitsPage() {
         <Dialog open={showDialog} onOpenChange={setShowDialog}>
           <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto" data-testid="kit-editor-dialog">
             <DialogHeader>
-              <DialogTitle>{editing ? 'Edit Kit' : 'New Material Kit'}</DialogTitle>
-              <DialogDescription>Configure pre-set material lines that auto-populate for a matching system type &amp; capacity.</DialogDescription>
+              <DialogTitle>{editing ? 'Edit Kit' : 'New Solution Kit'}</DialogTitle>
+              <DialogDescription>{isSystemKit(form.category) ? 'System kit — auto-suggested in the calculator for a matching system type & capacity.' : 'Product kit — a standalone bundle added to any quotation from “Browse all kits”, independent of the system-type calculator.'}</DialogDescription>
             </DialogHeader>
 
             {error && <div className="p-2.5 text-sm text-red-600 bg-red-50 border border-red-200 rounded" data-testid="kit-error">{error}</div>}
@@ -230,17 +242,19 @@ export default function MaterialKitsPage() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label className="text-xs">Kit Name *</Label>
-                <Input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="e.g., On-Grid Starter · 3 kW" data-testid="kit-name-input" />
+                <Input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="e.g., Solar Camera · 4 cam" data-testid="kit-name-input" />
               </div>
               <div className="space-y-1.5">
-                <Label className="text-xs">System Type *</Label>
-                <Select value={form.system_type} onValueChange={v => setForm(f => ({ ...f, system_type: v }))}>
+                <Label className="text-xs">Category *</Label>
+                <Select value={form.category} onValueChange={v => setForm(f => ({ ...f, category: v }))}>
                   <SelectTrigger data-testid="kit-system-type"><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    {SYSTEM_TYPES.map(s => <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>)}
+                    {activeCats.map(c => <SelectItem key={c.slug} value={c.slug} data-testid={`kit-category-option-${c.slug}`}>{c.label}{c.system_type ? '' : ' · product kit'}</SelectItem>)}
                   </SelectContent>
                 </Select>
+                {isAdmin && <button type="button" className="text-[11px] text-emerald-700 underline" onClick={() => setShowCats(true)} data-testid="kit-manage-cats-link">Manage categories</button>}
               </div>
+              {isSystemKit(form.category) && (<>
               <div className="space-y-1.5">
                 <Label className="text-xs">Nominal Capacity (kW) *</Label>
                 <Input type="number" step="0.1" value={form.capacity_kw} onChange={e => setForm(f => ({ ...f, capacity_kw: e.target.value }))} data-testid="kit-capacity-input" />
@@ -253,6 +267,7 @@ export default function MaterialKitsPage() {
                 <Label className="text-xs">Range Max (kW)</Label>
                 <Input type="number" step="0.1" value={form.capacity_max_kw} onChange={e => setForm(f => ({ ...f, capacity_max_kw: e.target.value }))} placeholder="e.g., 4" data-testid="kit-cap-max" />
               </div>
+              </>)}
               <div className="space-y-1.5 sm:col-span-2">
                 <Label className="text-xs">Description</Label>
                 <Textarea rows={2} value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} placeholder="Short summary of when this kit applies" data-testid="kit-description" />
@@ -314,6 +329,7 @@ export default function MaterialKitsPage() {
             </DialogFooter>
           </DialogContent>
         </Dialog>
+        <KitCategoriesDialog open={showCats} onOpenChange={setShowCats} categories={categories} onChanged={fetchKits} />
       </div>
     </div>
   );
