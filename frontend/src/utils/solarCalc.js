@@ -36,7 +36,32 @@ export const pmSuryaGharReference = (kw, config) => {
   return Math.min(amount, num(cfg.cap, 78000));
 };
 
-export function computeQuick(inputs, config, panel, inverter, battery) {
+/** Iter 59 — mirror of backend pricing_slabs.pick_slab / price_for. Boundary → lower slab; latest effective_from ≤ date wins. */
+export function pickSlab(slabs, value, onDate) {
+  const day = (onDate || new Date().toISOString()).slice(0, 10);
+  const latest = new Map();
+  (slabs || []).forEach(s => {
+    const eff = String(s.effective_from || '0000-01-01').slice(0, 10);
+    if (eff > day) return;
+    const hi = s.to_value === null || s.to_value === undefined || s.to_value === '' ? null : num(s.to_value);
+    const key = `${num(s.from_value)}|${hi === null ? '' : hi}`;
+    const cur = latest.get(key);
+    if (!cur || eff > String(cur.effective_from || '').slice(0, 10)) latest.set(key, s);
+  });
+  const matches = [...latest.values()].filter(s => { const lo = num(s.from_value); const hi = s.to_value === null || s.to_value === undefined || s.to_value === '' ? null : num(s.to_value); return value >= lo && (hi === null || value <= hi); });
+  if (!matches.length) return null;
+  return matches.reduce((a, b) => (num(a.from_value) <= num(b.from_value) ? a : b));
+}
+export function slabPriceFor(doc, value, onDate) {
+  if (!doc || doc.active === false || !(value > 0)) return null;
+  const s = pickSlab(doc.slabs, value, onDate);
+  if (!s) return null;
+  const rate = num(s.rate_per_unit); const total = Math.round(rate * value);
+  const gst = doc.gst_pct === null || doc.gst_pct === undefined || doc.gst_pct === '' ? null : num(doc.gst_pct);
+  return { category: doc.category, unit: doc.unit, rate_per_unit: rate, value, total, from_value: s.from_value, to_value: s.to_value ?? null, effective_from: s.effective_from, gst_pct: gst, gst_amount: gst === null ? null : Math.round(total * gst / 100), gst_missing: gst === null };
+}
+
+export function computeQuick(inputs, config, panel, inverter, battery, slabDoc) {
   const systemType = inputs.system_type || 'on-grid';
   const overrides = inputs.overrides || {};
   const customerType = inputs.customer_type || 'residential';
@@ -132,8 +157,16 @@ export function computeQuick(inputs, config, panel, inverter, battery) {
   });
   const bosCost = Object.values(serviceLines).reduce((s, l) => s + l.amount, 0);
 
-  const totalCost = kw > 0 ? Math.round(panelCost + inverterCost + batteryCost + bosCost) : 0;
-  const totalGst = kw > 0 ? (panelCost * (panelGst || 0) / 100 + inverterCost * (inverterGst || 0) / 100 + batteryCost * (batteryGst || 0) / 100 + Object.values(serviceLines).reduce((s, l) => s + l.gst_amount, 0)) : 0;
+  let totalCost = kw > 0 ? Math.round(panelCost + inverterCost + batteryCost + bosCost) : 0;
+  let totalGst = kw > 0 ? (panelCost * (panelGst || 0) / 100 + inverterCost * (inverterGst || 0) / 100 + batteryCost * (batteryGst || 0) / 100 + Object.values(serviceLines).reduce((s, l) => s + l.gst_amount, 0)) : 0;
+  const itemisedTotal = totalCost, itemisedGst = Math.round(totalGst);
+  const slab = kw > 0 ? slabPriceFor(slabDoc, kw) : null;
+  let pricingSource = 'itemised';
+  let pricingIssuesOut = pricingIssues;
+  if (slab && inputs.pricing_mode === 'slab') {
+    pricingSource = 'slab'; totalCost = slab.total; totalGst = slab.gst_amount || 0;
+    pricingIssuesOut = slab.gst_missing ? [`Slab rate for ${slab.category} has no GST% — set it in Pricing & Config → Slab rates.`] : [];
+  }
   const subsidy = Math.max(num(inputs.subsidy), 0);
   if (totalCost > 0 && subsidy > totalCost) warn('subsidy', `Subsidy ₹${fmt(subsidy)} is more than the system cost ₹${fmt(totalCost)} — check the amount.`);
   const netCost = Math.max(totalCost - subsidy, 0);
@@ -175,7 +208,7 @@ export function computeQuick(inputs, config, panel, inverter, battery) {
       structure: serviceLines.structure, cabling: serviceLines.cabling, installation: serviceLines.installation,
       bos: { amount: Math.round(bosCost), auto: Math.round(bosAuto) },
     },
-    total_cost: totalCost, total_gst: Math.round(totalGst), total_incl_gst: Math.round(totalCost + totalGst), pricing_issues: pricingIssues, subsidy: Math.round(subsidy), subsidy_reference: subsidyRef, net_cost: Math.round(netCost),
+    total_cost: totalCost, total_gst: Math.round(totalGst), total_incl_gst: Math.round(totalCost + totalGst), pricing_issues: pricingIssuesOut, pricing_source: pricingSource, slab, itemised_total: itemisedTotal, itemised_gst: itemisedGst, subsidy: Math.round(subsidy), subsidy_reference: subsidyRef, net_cost: Math.round(netCost),
     annual_generation_units: Math.round(annualGen), monthly_generation_units: Math.round(monthlyGen),
     monthly_bill_now: Math.round(monthlyBillNow), monthly_saving: Math.round(monthlySaving), annual_saving: Math.round(annualSaving),
     payback_years: paybackYears, lifetime_savings: Math.round(lifetime),

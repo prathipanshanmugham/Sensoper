@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
-import { inventoryAPI, calcAPI } from '../utils/api';
+import { inventoryAPI, calcAPI, pricingSlabsAPI } from '../utils/api';
 import { Label } from './ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from './ui/alert-dialog';
@@ -19,7 +19,7 @@ const SYSTEM_TYPES = [
   { value: 'off-grid', label: 'Off-Grid (battery only)' },
   { value: 'solar-pump', label: 'Solar Pump' },
 ];
-const GRID_KEYS = ['monthly_eb_bill', 'monthly_eb_units_entered', 'tariff_per_unit_manual', 'roof_area_sqft', 'panel_item_id', 'inverter_item_id', 'battery_item_id', 'backup_hours', 'subsidy', 'overrides', 'customer_type'];
+const GRID_KEYS = ['monthly_eb_bill', 'monthly_eb_units_entered', 'tariff_per_unit_manual', 'roof_area_sqft', 'panel_item_id', 'inverter_item_id', 'battery_item_id', 'backup_hours', 'subsidy', 'overrides', 'customer_type', 'pricing_mode'];
 const PUMP_KEYS = ['pump_path', 'required_flow_lpm', 'static_water_level_m', 'bore_casing_diameter_mm', 'daily_operating_hours', 'controller_max_voltage', 'string_voltage_v', '_pump_result', '_pump_warnings', 'pump_hp', 'pump_head_m', 'pump_discharge_lph', 'pump_type'];
 const BATTERY_KEYS = ['battery_item_id', 'backup_hours'];
 const RESULT_KEYS = ['system_size_kw', 'panel_count', 'battery_count', 'monthly_eb_units', 'tariff_per_unit', 'total_cost', 'net_cost', '_derived', '_quick'];
@@ -32,6 +32,7 @@ export default function ProposedSolutionSection({ value, onChange }) {
   const [inverters, setInverters] = useState([]);
   const [batteries, setBatteries] = useState([]);
   const [config, setConfig] = useState(null);
+  const [slabDocs, setSlabDocs] = useState([]);
   const [pendingType, setPendingType] = useState(null);
   const systemType = data.system_type || 'on-grid';
   const isPump = systemType === 'solar-pump';
@@ -41,13 +42,15 @@ export default function ProposedSolutionSection({ value, onChange }) {
     inventoryAPI.getItems({ category: 'inverters' }).then(r => setInverters((r.data || []).filter(active))).catch(() => {});
     inventoryAPI.getItems({ category: 'batteries' }).then(r => setBatteries((r.data || []).filter(active))).catch(() => {});
     calcAPI.getConfig().then(r => setConfig(r.data)).catch(() => {});
+    pricingSlabsAPI.list().then(r => setSlabDocs(r.data || [])).catch(() => {});
   }, []);
 
   const recompute = useMemo(() => (merged) => {
     const inputs = { ...merged, system_type: merged.system_type || 'on-grid', monthly_eb_units: merged.monthly_eb_units_entered, tariff_per_unit: merged.tariff_per_unit_manual };
-    const r = computeQuick(inputs, config, panels.find(p => p.id === merged.panel_item_id), inverters.find(i => i.id === merged.inverter_item_id), batteries.find(b => b.id === merged.battery_item_id));
+    const slabDoc = slabDocs.find(d => d.category === inputs.system_type);
+    const r = computeQuick(inputs, config, panels.find(p => p.id === merged.panel_item_id), inverters.find(i => i.id === merged.inverter_item_id), batteries.find(b => b.id === merged.battery_item_id), slabDoc);
     return projectResult(merged, r);
-  }, [config, panels, inverters, batteries]);
+  }, [config, panels, inverters, batteries, slabDocs]);
 
   const set = (patch) => { const merged = { ...data, ...patch }; onChange(isPump ? merged : recompute(merged)); };
 

@@ -17,7 +17,7 @@ import {
 
 const blankKit = {
   name: '', category: 'on-grid',
-  capacity_kw: 3, capacity_min_kw: 2, capacity_max_kw: 4,
+  capacity_kw: 3, capacity_min_kw: 2, capacity_max_kw: 4, size_value: '',
   description: '', lines: [], active: true
 };
 
@@ -66,6 +66,7 @@ export default function MaterialKitsPage() {
         capacity_kw: kit.capacity_kw ?? 0,
         capacity_min_kw: kit.capacity_min_kw ?? '',
         capacity_max_kw: kit.capacity_max_kw ?? '',
+        size_value: kit.size_value ?? '',
         description: kit.description || '',
         lines: kit.lines || [],
         active: kit.active !== false
@@ -103,6 +104,7 @@ export default function MaterialKitsPage() {
         capacity_kw: sys ? (parseFloat(form.capacity_kw) || 0) : 0,
         capacity_min_kw: !sys || form.capacity_min_kw === '' ? null : parseFloat(form.capacity_min_kw),
         capacity_max_kw: !sys || form.capacity_max_kw === '' ? null : parseFloat(form.capacity_max_kw),
+        size_value: sys || form.size_value === '' ? null : parseFloat(form.size_value),
         lines: form.lines.map(l => ({
           inventory_item_id: l.inventory_item_id || null,
           name: l.name, category: l.category || null,
@@ -203,8 +205,9 @@ export default function MaterialKitsPage() {
                             {k.capacity_kw} kW
                             {(k.capacity_min_kw !== null && k.capacity_max_kw !== null) && ` (${k.capacity_min_kw}-${k.capacity_max_kw} kW)`}
                           </span>
-                        ) : <span className="text-[11px] text-slate-400">standalone bundle</span>}
+                        ) : <span className="text-[11px] text-slate-400">standalone bundle{k.size_value ? ` · ${k.size_value} units` : ''}</span>}
                       </div>
+                      {k.slab_price && <p className="text-[11px] text-emerald-700 mt-1" data-testid={`kit-slab-price-${k.id}`}>Slab price ₹{k.slab_price.total.toLocaleString('en-IN')} <span className="text-slate-400">({k.slab_price.from_value}–{k.slab_price.to_value ?? '∞'} {k.slab_price.unit} @ ₹{k.slab_price.rate_per_unit.toLocaleString('en-IN')}{k.slab_price.gst_pct !== null ? ` · GST ${k.slab_price.gst_pct}%` : ''})</span></p>}
                     </div>
                     <div className="flex gap-1">
                       <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => openDialog(k)} data-testid={`edit-kit-${k.id}`}><Edit className="h-3.5 w-3.5" /></Button>
@@ -268,6 +271,12 @@ export default function MaterialKitsPage() {
                 <Input type="number" step="0.1" value={form.capacity_max_kw} onChange={e => setForm(f => ({ ...f, capacity_max_kw: e.target.value }))} placeholder="e.g., 4" data-testid="kit-cap-max" />
               </div>
               </>)}
+              {!isSystemKit(form.category) && (
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Size for slab pricing <span className="text-slate-400 font-normal">(units, e.g. 4 cameras)</span></Label>
+                  <Input type="number" step="1" value={form.size_value} onChange={e => setForm(f => ({ ...f, size_value: e.target.value }))} placeholder="optional" data-testid="kit-size-value" />
+                </div>
+              )}
               <div className="space-y-1.5 sm:col-span-2">
                 <Label className="text-xs">Description</Label>
                 <Textarea rows={2} value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} placeholder="Short summary of when this kit applies" data-testid="kit-description" />

@@ -327,6 +327,7 @@ class MaterialKitCreate(BaseModel):
     capacity_kw: float = 0
     capacity_min_kw: Optional[float] = None
     capacity_max_kw: Optional[float] = None
+    size_value: Optional[float] = None       # Iter 59 — size on the category's slab axis for product kits (e.g. 4 cameras)
     description: Optional[str] = None
     lines: List[MaterialKitLine] = []
     active: bool = True
@@ -338,6 +339,7 @@ class MaterialKitUpdate(BaseModel):
     capacity_kw: Optional[float] = None
     capacity_min_kw: Optional[float] = None
     capacity_max_kw: Optional[float] = None
+    size_value: Optional[float] = None
     description: Optional[str] = None
     lines: Optional[List[MaterialKitLine]] = None
     active: Optional[bool] = None
@@ -2325,12 +2327,23 @@ def _serialize_kit(k):
         "capacity_kw": k.get("capacity_kw", 0),
         "capacity_min_kw": k.get("capacity_min_kw"),
         "capacity_max_kw": k.get("capacity_max_kw"),
+        "size_value": k.get("size_value"),
         "description": k.get("description"),
         "lines": k.get("lines", []),
         "active": k.get("active", True),
         "created_at": k.get("created_at"),
         "updated_at": k.get("updated_at"),
     }
+
+async def _attach_kit_slab_prices(kits: list) -> list:
+    """Iter 59 — package price from pricing_slabs: system kits by capacity_kw, product kits by size_value."""
+    from pricing_slabs import price_for  # noqa: E402
+    cats = {k.get("category") for k in kits if k.get("category")}
+    docs = {d["category"]: d async for d in db.pricing_slabs.find({"category": {"$in": list(cats)}, "active": {"$ne": False}})} if cats else {}
+    for k in kits:
+        size = k.get("size_value") if k.get("size_value") not in (None, 0) else k.get("capacity_kw")
+        k["slab_price"] = price_for(docs.get(k.get("category")), float(size or 0))
+    return kits
 
 @api_router.get("/material-kits")
 async def list_material_kits(request: Request, system_type: Optional[str] = None, capacity_kw: Optional[float] = None, category: Optional[str] = None):
@@ -2341,7 +2354,7 @@ async def list_material_kits(request: Request, system_type: Optional[str] = None
     if category:
         query["category"] = category
     kits = await db.material_kits.find(query).sort("capacity_kw", 1).to_list(500)
-    result = [_serialize_kit(k) for k in kits]
+    result = await _attach_kit_slab_prices([_serialize_kit(k) for k in kits])
     # If a capacity_kw is specified, order by proximity so first item is best-match
     if capacity_kw is not None:
         result.sort(key=lambda r: abs(float(r.get("capacity_kw") or 0) - float(capacity_kw)))
@@ -2371,7 +2384,7 @@ async def get_material_kit(kit_id: str, request: Request):
     kit = await db.material_kits.find_one({"_id": ObjectId(kit_id)})
     if not kit:
         raise HTTPException(status_code=404, detail="Kit not found")
-    return _serialize_kit(kit)
+    return (await _attach_kit_slab_prices([_serialize_kit(kit)]))[0]
 
 @api_router.post("/material-kits")
 async def create_material_kit(kit: MaterialKitCreate, request: Request):
@@ -2928,6 +2941,8 @@ from adhoc_promotion import create_router as _create_adhoc_router  # noqa: E402
 api_router.include_router(_create_adhoc_router(db=db, get_current_user=get_current_user, require_role=require_role, create_audit_log=create_audit_log, build_cost_estimation=build_cost_estimation))
 from kit_categories import create_router as _create_kit_cat_router, resolve_category as _resolve_kit_category, ensure_seed as _seed_kit_categories  # noqa: E402
 api_router.include_router(_create_kit_cat_router(db=db, get_current_user=get_current_user, require_role=require_role, create_audit_log=create_audit_log))
+from pricing_slabs import create_router as _create_pricing_slabs_router  # noqa: E402
+api_router.include_router(_create_pricing_slabs_router(db=db, get_current_user=get_current_user, require_role=require_role, create_audit_log=create_audit_log))
 
 
 

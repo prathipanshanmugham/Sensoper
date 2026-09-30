@@ -83,7 +83,9 @@ def pm_surya_ghar_reference(kw: float, config: Dict[str, Any]) -> int:
 
 def compute_quick(inputs: Dict[str, Any], config: Dict[str, Any],
                   panel: Optional[Dict] = None, inverter: Optional[Dict] = None,
-                  battery: Optional[Dict] = None) -> Dict[str, Any]:
+                  battery: Optional[Dict] = None, slab_doc: Optional[Dict] = None) -> Dict[str, Any]:
+    """`slab_doc` = the category's pricing_slabs document (Iter 59). When present AND inputs.pricing_mode == 'slab',
+    the package price kW × slab rate replaces the itemised total; itemised lines stay in the result for reference."""
     system_type = inputs.get("system_type") or "on-grid"
     overrides = inputs.get("overrides") or {}
     customer_type = inputs.get("customer_type") or "residential"
@@ -219,6 +221,15 @@ def compute_quick(inputs: Dict[str, Any], config: Dict[str, Any],
     total_cost = round(panel_cost + inverter_cost + battery_cost + bos_cost) if kw > 0 else 0
     total_gst = (panel_cost * (panel_gst or 0) / 100 + inverter_cost * (inverter_gst or 0) / 100 + battery_cost * (battery_gst or 0) / 100
                  + sum(l["gst_amount"] for l in service_lines.values())) if kw > 0 else 0
+    itemised_total, itemised_gst = total_cost, round(total_gst)
+    from pricing_slabs import price_for  # noqa: E402  (pure helper, no db)
+    slab = price_for(slab_doc, kw) if kw > 0 else None
+    pricing_source = "itemised"
+    if slab and (inputs.get("pricing_mode") == "slab"):
+        pricing_source = "slab"
+        total_cost = slab["total"]
+        total_gst = slab["gst_amount"] or 0
+        pricing_issues = [f"Slab rate for {slab['category']} has no GST% — set it in Pricing & Config → Slab rates."] if slab["gst_missing"] else []
     subsidy = max(_num(inputs.get("subsidy")), 0)
     if subsidy > total_cost > 0:
         warn("subsidy", f"Subsidy ₹{subsidy:,.0f} is more than the system cost ₹{total_cost:,.0f} — check the amount.")
@@ -286,6 +297,10 @@ def compute_quick(inputs: Dict[str, Any], config: Dict[str, Any],
         "total_cost": total_cost,
         "total_gst": round(total_gst),
         "total_incl_gst": round(total_cost + total_gst),
+        "pricing_source": pricing_source,
+        "slab": slab,
+        "itemised_total": itemised_total,
+        "itemised_gst": itemised_gst,
         "pricing_issues": pricing_issues,
         "subsidy": round(subsidy),
         "subsidy_reference": subsidy_ref,
@@ -315,6 +330,7 @@ class QuickCalcRequest(BaseModel):
     panel_item_id: Optional[str] = None
     inverter_item_id: Optional[str] = None
     battery_item_id: Optional[str] = None
+    pricing_mode: Optional[str] = "itemised"
     overrides: Dict[str, Any] = {}
 
 
@@ -334,7 +350,8 @@ def create_router(db, get_current_user, get_calc_config):
             return {"error": f"system_type must be one of {list(GRID_TYPES)} — solar pumps use /calculate/solution"}
         config = await get_calc_config()
         panel, inverter, battery = await _item(payload.panel_item_id), await _item(payload.inverter_item_id), await _item(payload.battery_item_id)
-        return compute_quick(payload.model_dump(), config, panel, inverter, battery)
+        slab_doc = await db.pricing_slabs.find_one({"category": payload.system_type, "active": {"$ne": False}})
+        return compute_quick(payload.model_dump(), config, panel, inverter, battery, slab_doc)
 
     @router.get("/company/sales-stats")
     async def sales_stats(request: Request):

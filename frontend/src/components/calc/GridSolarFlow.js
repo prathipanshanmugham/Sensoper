@@ -88,7 +88,22 @@ export function GridSolarFlow({ data, r, set, config, panels, inverters, batteri
 
       {/* Step 3 — price */}
       <StepTitle n={3} title="Price" sub="before GST" />
-      <div className="rounded-lg border border-slate-200 bg-white divide-y divide-slate-100 text-sm" data-testid="cost-lines">
+      {r?.slab && (
+        <div className={`rounded-lg border p-3 flex flex-wrap items-center gap-3 ${r.pricing_source === 'slab' ? 'border-emerald-300 bg-emerald-50/60' : 'border-slate-200 bg-slate-50'}`} data-testid="slab-rate-strip">
+          <div className="flex-1 min-w-[220px]">
+            <p className="text-xs font-semibold text-slate-800">Slab rate available · {r.slab.from_value}–{r.slab.to_value ?? '∞'} {r.slab.unit} @ {inr(r.slab.rate_per_unit)}/{r.slab.unit}</p>
+            <p className="text-[11px] text-slate-500">{r.system_size_kw} {r.slab.unit} × {inr(r.slab.rate_per_unit)} = <span className="font-medium text-slate-800" data-testid="slab-rate-total">{inr(r.slab.total)}</span> before GST{r.slab.gst_pct !== null ? ` · GST ${r.slab.gst_pct}%` : ' · GST% not set'} · itemised {inr(r.itemised_total)}</p>
+          </div>
+          <div className="grid grid-cols-2 rounded-md border border-slate-200 bg-white p-0.5 h-9 text-xs" data-testid="pricing-mode-toggle">
+            {[['itemised', 'Itemised'], ['slab', 'Slab rate']].map(([v, l]) => (
+              <button key={v} type="button" onClick={() => set({ pricing_mode: v })} data-testid={`pricing-mode-${v}`}
+                className={`rounded px-3 font-medium transition-colors ${(data.pricing_mode || 'itemised') === v ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-50'}`}>{l}</button>
+            ))}
+          </div>
+        </div>
+      )}
+      <div className={`rounded-lg border border-slate-200 bg-white divide-y divide-slate-100 text-sm ${r?.pricing_source === 'slab' ? 'opacity-90' : ''}`} data-testid="cost-lines">
+        {r?.pricing_source === 'slab' && <p className="px-3 py-1.5 text-[11px] text-emerald-800 bg-emerald-50" data-testid="slab-pricing-note">Priced by slab rate — the lines below are the itemised reference only.</p>}
         <CostLine label={`Panels${r?.panel_count ? ` · ${r.panel_count} × ${r.panel_wattage_w || '?'} W` : ''}`} line={r?.lines?.panels} testid="line-panels" />
         <CostLine label="Inverter" line={r?.lines?.inverter} testid="line-inverter" />
         {needsBattery && <CostLine label={`Battery${r?.battery_count ? ` · ${r.battery_count} nos` : ''}`} line={r?.lines?.battery} testid="line-battery" />}
@@ -96,7 +111,7 @@ export function GridSolarFlow({ data, r, set, config, panels, inverters, batteri
           <ServiceLine key={key} keyName={key} line={r?.lines?.[key]} ov={ov} setOv={setOv} warnFor={warnFor} />
         ))}
         <div className="flex items-center justify-between px-3 py-2.5 bg-slate-50">
-          <span className="font-semibold text-slate-800">Total system price <span className="text-slate-400 font-normal text-xs">before GST</span></span>
+          <span className="font-semibold text-slate-800">Total system price <span className="text-slate-400 font-normal text-xs">before GST{r?.pricing_source === 'slab' ? ' · slab rate' : ''}</span></span>
           <span className="font-bold text-slate-900 text-base" data-testid="result-total-cost">{inr(r?.total_cost)}</span>
         </div>
         <div className="flex items-center justify-between px-3 py-2 text-xs text-slate-600">

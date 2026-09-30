@@ -314,7 +314,13 @@ export default function SiteVisitForm() {
   // Iter 58 — append a kit (any category, e.g. Solar Camera) to whatever is already selected; no system-type gating.
   const addKitLines = (kit) => {
     if (!kit) return;
-    const incoming = kitLinesToItems(kit);
+    let incoming = kitLinesToItems(kit);
+    // Product kit with a slab package rate and no inventory-priced lines → one priced package line + zero-priced component lines
+    if (kit.slab_price && !incoming.some(x => x.inventory_item_id)) {
+      const sp = kit.slab_price;
+      incoming = [{ inventory_item_id: null, name: `${kit.name} — package (${sp.from_value}–${sp.to_value ?? '∞'} ${sp.unit} slab)`, category: kit.category || 'kit_package', unit_price: sp.total, gst_percentage: sp.gst_pct, quantity: 1, margin_percentage: 0 },
+        ...incoming.map(x => ({ ...x, name: `${x.name} (included)` }))];
+    }
     setFormData(prev => {
       const items = [...(prev.selected_items || [])];
       incoming.forEach(n => {
@@ -1258,7 +1264,7 @@ export default function SiteVisitForm() {
                       <div key={k.id} className="flex items-center justify-between gap-2 px-2 py-1.5 rounded hover:bg-slate-50" data-testid={`browse-kit-${k.id}`}>
                         <div className="min-w-0 flex-1">
                           <p className="text-xs font-medium text-slate-800 truncate">{k.name}</p>
-                          <p className="text-[10px] text-slate-500">{k.category || k.system_type}{k.system_type ? ` · ${k.capacity_kw} kW` : ' · product kit'} · {k.lines.length} lines</p>
+                          <p className="text-[10px] text-slate-500">{k.category || k.system_type}{k.system_type ? ` · ${k.capacity_kw} kW` : ' · product kit'} · {k.lines.length} lines{k.slab_price ? <span className="text-emerald-700" data-testid={`browse-slab-${k.id}`}> · slab ₹{k.slab_price.total.toLocaleString('en-IN')}</span> : ''}</p>
                         </div>
                         <Button type="button" size="sm" variant="outline" className="h-7 text-[11px] px-2" onClick={() => addKitLines(k)} title="Append this kit's lines to the current selection" data-testid={`browse-add-${k.id}`}>+ Add</Button>
                         {k.system_type && <Button type="button" size="sm" variant="ghost" className="h-7 text-[11px] px-2" onClick={() => { applyKit(k); setKitDismissed(false); }} title="Replace the selection with this kit" data-testid={`browse-apply-${k.id}`}>Replace</Button>}

@@ -254,6 +254,14 @@ export const kitCategoriesAPI = {
   update: (id, data) => api.put(`/kit-categories/${id}`, data)
 };
 
+export const pricingSlabsAPI = {
+  list: (params = {}) => api.get('/pricing-slabs', { params }),
+  lookup: (category, value, on_date) => api.get('/pricing-slabs/lookup', { params: { category, value, on_date } }),
+  create: (data) => api.post('/pricing-slabs', data),
+  update: (id, data) => api.put(`/pricing-slabs/${id}`, data),
+  remove: (id) => api.delete(`/pricing-slabs/${id}`)
+};
+
 // Audits
 export const auditsAPI = {
   create: (data) => api.post('/audits', data),

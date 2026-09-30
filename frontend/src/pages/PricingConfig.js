@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../components/ui/dialog';
 import { Checkbox } from '../components/ui/checkbox';
 import AdvancedConfigSection from '../components/AdvancedConfigSection';
+import { SlabRatesCard } from '../components/SlabRatesCard';
 import {
   Save, Loader2, Plus, Trash2, Edit, Upload,
   Settings2, Fuel, Sprout, Search, Package, Building2, Zap, Target, ChevronDown, ChevronRight
@@ -49,6 +50,7 @@ const SETTINGS_INDEX = [
   { label: 'Overdue credit interest rate (% per month)', section: 'company' },
   { label: 'Coldest design temperature for string voltage check', section: 'company', advanced: true },
   { label: 'Cost per kWp — on-grid / hybrid / off-grid / solar pump', section: 'solar' },
+  { label: 'Slab package rates (₹ per kW / HP / unit by size band, per kit category)', section: 'solar' },
   { label: 'Specific yield default (units per kWp per day)', section: 'solar' },
   { label: 'Battery unit size, benchmark price per kWh', section: 'solar' },
   { label: 'System life, panel degradation % per year', section: 'solar' },
@@ -272,8 +274,9 @@ export default function PricingConfig() {
         <p className="text-[11px] text-slate-400">There is no company-wide GST % or margin % — every priced line carries its own, and anything missing is flagged on the Pricelist and in quotes.</p>
       </Section>
 
-      <Section id="solar" icon={Zap} title="Solar &amp; Subsidy Rates" desc="Cost per kW by system type, PM Surya Ghar subsidy slabs, tariff and yield assumptions the calculator uses for every quote."
+      <Section id="solar" icon={Zap} title="Solar &amp; Subsidy Rates" desc="Cost per kW by system type, slab package rates, PM Surya Ghar subsidy slabs, tariff and yield assumptions the calculator uses for every quote."
         advanced={<AdvancedConfigSection only={['utilities']} />} advancedLabel="Pincode / DISCOM data tools">
+        <SlabRatesCard />
         <AdvancedConfigSection only={['calc']} />
       </Section>
 
