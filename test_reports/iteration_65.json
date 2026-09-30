@@ -1,0 +1,45 @@
+{
+  "summary": "Frontend-only testing of Sensoper Solar ERP iteration 60 features. Admin login OK. Pricing & Config: all 5 tabs (pc-tab-products/slabs/services/company/targets) render, pc-tab-line caption visible, no modal/dialog opens anywhere on the page. Task 1 (margin edit in Products/Pricelist) completed in ~3.7s. Task 2 (Slabs inline edit on-grid) completed in ~3.2s — slab-editor renders inline (no dialog), slab-row-add, slab-save-btn and slab-row-remove-N all work. Task 3 (per-location target save/persist/clear) completed in ~2-3s using inputs in location-targets-grid. Company Defaults 4 rows (cd-row-*) inline edit save/revert works (credit_interest_monthly_pct 1.5→1.6→1.5). Services table inline svc-add/svc-cancel works. Global search (pc-search) works for 'target' and 'rounding' (jumps to Targets & Company Defaults respectively) but does NOT match the exact query 'location target' from the spec (returns 0 results — needs 'target' or 'location targets'). CEO Dashboard: ceo-range-preset offers all 8 required options, Last month & Custom (12 Mar–28 Apr 2026) both fire /api/dashboard/ceo?date_from=…&date_to=… with correct params, ceo-range-label displays '12 Mar 2026 – 28 Apr 2026'. ceo-report-download-btn produces a 239 KB PDF whose header reads 'Location: All Locations — Consolidated · Period: 12 Mar 2026 – 28 Apr 2026'. Location switch works via ceo-location-select (Radix); network request carries both location_id and date_from/date_to. Expansion page: sidebar badge (286), location-review-panel with matching location-review-count, lr-row-<id> table with 286 draft entries, saving Salem/Tamil Nadu for a TEST_ row decrements count to 285 and to 284 and sidebar badge updates on reload; Auto-resolve toast fires and location-review-auto-result renders ('Last pass: 0 fixed automatically'); Salem now appears in Expansion analysis after reload.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "PricingConfig / pc-search", "issue": "Global search does not match the exact multi-word query 'location target' (returns 0 results); 'target' works. The review-request test step 'Type \"location target\" in pc-search → pc-search-results appears' fails. Recommend simple substring / fuzzy tokenised match so partial phrases also hit results.", "selector": "[data-testid=\"pc-search\"] / [data-testid=\"pc-search-results\"]", "priority": "MEDIUM"},
+      {"component": "AdvancedConfigSection", "issue": "Duplicate data-testid=\"location-targets-grid\" — the same testid is rendered twice (once in Health-Score section and again in Expansion-Config section). Playwright picks the first, and any tester iterating rows will see doubled counts.", "selector": "[data-testid=\"location-targets-grid\"] (lines 325 & 378 of AdvancedConfigSection.js)", "priority": "MEDIUM"},
+      {"component": "AdvancedConfigSection", "issue": "data-testid=\"location-targets-table\" is placed on a <p> heading element ('Per-Location Monthly Revenue Targets'), not on the actual grid/table container. It works as a scroll-anchor for pc-search jump, but semantically querySelector('[data-testid=\"location-targets-table\"] input') returns 0 inputs — misleading to automated tests referencing that testid as the table.", "selector": "[data-testid=\"location-targets-table\"]", "priority": "LOW"},
+      {"component": "CEO Dashboard / LocationScopeSelect", "issue": "Review request specifies testid 'ceo-location' but the component actually renders 'ceo-location-select' (LocationScopeSelect appends '-select'). Functionality is fine but the exact testid asked for does not exist.", "selector": "[data-testid=\"ceo-location\"] vs [data-testid=\"ceo-location-select\"]", "priority": "LOW"},
+      {"component": "SlabRatesCard", "issue": "When the newly-added band in slab-editor is saved with 'to' left blank per spec, backend returns 422 'Input should be a valid number' toast, so the 20–∞ band is never persisted. Reproduction: Slabs → slab-edit-on-grid → slab-row-add → from=20, to='', rate=40000, effective=today → slab-save-btn → toast error. Either the frontend should map blank 'to' to null/omit before POST, or the payload validator should accept blank/null for open-ended top band. Note: existing rows already show '∞' for the top band so the schema does support it — only the newly-added row path is broken.", "selector": "[data-testid=\"slab-editor\"] [data-testid=\"slab-row-add\"] + [data-testid=\"slab-save-btn\"]", "priority": "HIGH"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Expansion Analysis", "issues": ["System-Type Mix donut legend shows both 'on-grid' and 'on_grid' as separate slices — likely a data-normalisation issue producing two entries for the same category (visible in chart legend)."]}
+    ],
+    "console_warnings": [
+      "React 'Encountered two children with the same key' warning fires repeatedly (>8 times) while rendering Expansion/CEO Dashboard — indicates a .map() using non-unique keys somewhere (likely district / on-grid vs on_grid). Non-blocking but should be fixed."
+    ]
+  },
+  "walkthrough_timings_seconds": {"task1_products_margin": 3.7, "task2_slabs_band": 3.2, "task3_targets": 2.5, "all_under_30s": true},
+  "test_report_links": [],
+  "action_items": [
+    "Fix slab-save-btn payload when 'to' is blank (open-ended top band) so a newly added row can be saved as 20–∞.",
+    "Make pc-search accept partial multi-word queries (e.g. 'location target' should match 'Per-location monthly revenue target override').",
+    "Deduplicate data-testid=\"location-targets-grid\" (rename the Expansion section one, e.g. location-targets-grid-expansion).",
+    "Move data-testid=\"location-targets-table\" from the <p> heading onto the actual grid container (or rename the anchor to location-targets-anchor).",
+    "Add data-testid=\"ceo-location\" alias (or rename in spec) — currently only ceo-location-select is present.",
+    "Fix duplicate-key React warning on Expansion / System-Type Mix chart (on-grid vs on_grid data normalisation)."
+  ],
+  "critical_code_review_comments": [
+    "AdvancedConfigSection.js has duplicated per-location targets block (lines 321-331 and 374-384) with same testid — DRY violation and duplicated state.",
+    "LocationScopeSelect always appends '-select' to testIdPrefix; document this in the review-request spec or align both."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "not tested (frontend-only run)", "frontend": "85%"},
+  "test_credentials": "admin@sensoper.com / Admin@123",
+  "seed_data_creation": "Modified 2 TEST_ project rows on Expansion page — set district=Salem, state=Tamil Nadu.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "PDF header verified via pdfplumber at /tmp/ceo_report.pdf. Slab-add path fails with 422 when 'to' is blank; existing rows are fine. Global search fails for exact multi-word phrase 'location target'. Two TEST_ projects now have Salem as district (persisted). Expansion badge decremented from 286 → 284.",
+  "rca_of_the_issue": {
+    "slab_save_422": "Frontend sends empty string for 'to' field in new slab row; backend Pydantic validator rejects with 'Input should be a valid number'. Fix: convert '' to null/None in SlabRatesCard before POST, and/or make backend accept None to mean open-ended top band (existing rows already display ∞ so schema supports it internally).",
+    "pc_search_miss": "Search likely uses exact substring match on a single haystack per entry; a query like 'location target' with the phrase order flipped in the label ('Per-location monthly revenue target override') does not match. Fix: split query into tokens and require all tokens to appear (AND), case-insensitive."
+  }
+}

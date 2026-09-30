@@ -45,7 +45,8 @@ export const SEARCH_INDEX = [
 export default function PricingConfig() {
   const [tab, setTab] = useState(() => new URLSearchParams(window.location.search).get('tab') || 'products');
   const [q, setQ] = useState('');
-  const hits = q.trim().length > 1 ? SEARCH_INDEX.filter(s => s.label.toLowerCase().includes(q.trim().toLowerCase())).slice(0, 8) : [];
+  const words = q.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  const hits = q.trim().length > 1 ? SEARCH_INDEX.filter(s => words.every(w => s.label.toLowerCase().includes(w))).slice(0, 8) : [];
   const jump = useCallback((s) => {
     setTab(s.tab); setQ('');
     setTimeout(() => { const el = s.anchor && document.getElementById(s.anchor); if (el) { el.scrollIntoView({ behavior: 'smooth', block: 'start' }); el.classList.add('ring-2', 'ring-emerald-400'); setTimeout(() => el.classList.remove('ring-2', 'ring-emerald-400'), 1800); } }, 150);
