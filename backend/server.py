@@ -2943,6 +2943,9 @@ from kit_categories import create_router as _create_kit_cat_router, resolve_cate
 api_router.include_router(_create_kit_cat_router(db=db, get_current_user=get_current_user, require_role=require_role, create_audit_log=create_audit_log))
 from pricing_slabs import create_router as _create_pricing_slabs_router  # noqa: E402
 api_router.include_router(_create_pricing_slabs_router(db=db, get_current_user=get_current_user, require_role=require_role, create_audit_log=create_audit_log))
+from location_review import create_router as _create_location_review_router  # noqa: E402
+_location_review_router = _create_location_review_router(db=db, get_current_user=get_current_user, require_role=require_role, create_audit_log=create_audit_log)
+api_router.include_router(_location_review_router)
 
 
 
@@ -3532,6 +3535,11 @@ async def create_project(project: ProjectCreate, request: Request):
     project_doc["cost_estimation"] = await build_cost_estimation(selected_items_data, manual_costs_data, project_doc.get("custom_fields"))
     
     result = await db.projects.insert_one(project_doc)
+    # Iter 60 — resolve district now, or land the project on the "Needs Location Review" queue (never a silent "Unknown")
+    try:
+        await _location_review_router.try_autoresolve(result.inserted_id)
+    except Exception as _e:  # noqa: BLE001
+        logging.getLogger("server").warning("location autoresolve failed for %s: %s", result.inserted_id, _e)
     
     # Auto-generate reference number
     ref_number = f"SCR-{str(result.inserted_id)[-6:].upper()}"
@@ -4453,6 +4461,8 @@ async def get_dashboard_stats(request: Request):
         
         # Pending approvals count
         stats["pending_approvals"] = await _unified_pending_approvals()
+        from location_review import UNRESOLVED_Q as _UNRESOLVED_Q
+        stats["location_review_count"] = await db.projects.count_documents(_UNRESOLVED_Q)
         
         # Low stock alerts count — scoped to the user's assigned location(s)
         loc_filter = location_scope_filter(user)
@@ -4470,13 +4480,26 @@ async def get_dashboard_stats(request: Request):
 # ================== CEO DASHBOARD ==================
 
 @api_router.get("/dashboard/ceo")
-async def get_ceo_dashboard(request: Request, location_id: Optional[str] = None):
+async def get_ceo_dashboard(request: Request, location_id: Optional[str] = None, date_from: Optional[str] = None, date_to: Optional[str] = None):
     user = await get_current_user(request)
     if user["role"] not in ["admin", "manager"]:
         raise HTTPException(status_code=403, detail="CEO dashboard is admin/manager only")
     
     loc_filter = location_scope_filter(user, location_id)
     query = {"deleted_at": {"$exists": False}, **loc_filter}
+    # Iter 60 — arbitrary date range (inclusive, by project created_at); omitted = all time
+    for d in (date_from, date_to):
+        if d:
+            try:
+                datetime.strptime(d[:10], "%Y-%m-%d")
+            except ValueError:
+                raise HTTPException(status_code=400, detail="date_from / date_to must be YYYY-MM-DD")
+    if date_from or date_to:
+        rng = {}
+        if date_from: rng["$gte"] = date_from[:10]
+        if date_to: rng["$lte"] = date_to[:10] + "T23:59:59.999999"
+        query["created_at"] = rng
+    effective_location_id = loc_filter.get("location_id") if isinstance(loc_filter.get("location_id"), str) else location_id
     all_projects = await db.projects.find(query).to_list(5000)
     
     # Status counts
@@ -4601,7 +4624,9 @@ async def get_ceo_dashboard(request: Request, location_id: Optional[str] = None)
         },
         "accounts_summary": await _ceo_accounts_summary(),
         "readings_summary": await _ceo_readings_summary(),
-        "health_score": await _ceo_health_score(all_projects, credits, inv_items, pending_approvals),
+        "health_score": await _ceo_health_score(all_projects, credits, inv_items, pending_approvals, effective_location_id),
+        "period": {"from": date_from[:10] if date_from else None, "to": date_to[:10] if date_to else None, "all_time": not (date_from or date_to)},
+        "target": _resolve_target(await _get_health_config(), effective_location_id),
         "direct_sales": {
             "revenue": direct_sales_revenue,
             "margin": direct_sales_margin,
@@ -4675,6 +4700,7 @@ async def get_monthly_target(request: Request, location_id: Optional[str] = None
 # ================== CEO HEALTH SCORE ==================
 from dashboard_target import compute_monthly_target as _compute_monthly_target, compute_top_locations as _compute_top_locations
 from health import compute_pillars as _compute_health_pillars, DEFAULT_HEALTH_CONFIG
+from dashboard_target import resolve_target as _resolve_target  # noqa: E402
 
 
 async def _get_health_config():
@@ -4685,8 +4711,12 @@ async def _get_health_config():
     return doc
 
 
-async def _ceo_health_score(all_projects, credits, inv_items, pending_approvals_count):
+async def _ceo_health_score(all_projects, credits, inv_items, pending_approvals_count, location_id: Optional[str] = None):
     cfg = await _get_health_config()
+    # Iter 60 fix — the Health Score read targets.monthly_revenue_target directly and ignored health_config.location_targets,
+    # so a location-scoped CEO view was graded against the company-wide number. Resolve the location's own target first.
+    resolved = _resolve_target(cfg, location_id)
+    cfg = {**cfg, "targets": {**(cfg.get("targets") or {}), "monthly_revenue_target": resolved["target"]}, "target_source": resolved["source"]}
     # Fetch approvals list, daily_updates & weekly_audits + brand_returns for the pillars
     approvals_docs = await db.approvals.find({}).to_list(500)
     daily_updates_docs = await db.daily_updates.find({}).to_list(500)

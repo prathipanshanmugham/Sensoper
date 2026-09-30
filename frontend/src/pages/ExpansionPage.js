@@ -24,6 +24,7 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import * as XLSX from 'xlsx';
 import { saveAs } from 'file-saver';
+import { LocationReviewPanel } from '../components/LocationReviewPanel';
 
 const BAND_STYLES = {
   strong:   { color: 'text-emerald-700', bg: 'bg-emerald-100 border-emerald-200', label: 'Strong Case' },
@@ -407,6 +408,8 @@ export default function ExpansionPage() {
             <Button variant="outline" onClick={() => { setSelectedDistrict(null); runSim(); }} className="h-10" data-testid="simulator-btn"><Calculator className="h-4 w-4 mr-1" />Simulator</Button>
           </div>
         </div>
+
+        <div className="mb-4"><LocationReviewPanel onChanged={fetchAll} /></div>
 
         {loading ? (
           <div className="flex items-center justify-center py-12"><Loader2 className="h-8 w-8 animate-spin text-emerald-600" /></div>

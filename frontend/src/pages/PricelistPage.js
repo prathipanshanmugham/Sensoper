@@ -15,7 +15,7 @@ import { generatePriceListPDF } from '../utils/priceListPDF';
 const inr = (v) => `₹${Math.round(v || 0).toLocaleString('en-IN')}`;
 const STATUS = [{ id: 'active', label: 'Active' }, { id: 'archived', label: 'Archived' }, { id: 'all', label: 'All' }];
 
-export default function PricelistPage() {
+export default function PricelistPage({ embedded = false }) {
   const { isAdmin } = useAuth();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -81,10 +81,10 @@ export default function PricelistPage() {
   const stdCategories = (data?.categories || []).filter(c => c.slug !== 'uncategorised');
 
   return (
-    <div className="p-4 max-w-7xl mx-auto space-y-4" data-testid="pricelist-page">
+    <div className={embedded ? "space-y-4" : "p-4 max-w-7xl mx-auto space-y-4"} data-testid="pricelist-page">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div className="flex items-center gap-3">
-          <Link to="/dashboard"><Button variant="ghost" size="icon"><ArrowLeft className="h-5 w-5" /></Button></Link>
+          {!embedded && <Link to="/dashboard"><Button variant="ghost" size="icon"><ArrowLeft className="h-5 w-5" /></Button></Link>}
           <div>
             <h1 className="text-2xl font-bold font-['Outfit'] flex items-center gap-2"><Tags className="h-5 w-5 text-emerald-600" />Pricelist</h1>
             <p className="text-sm text-slate-500">Cost, margin and selling price for every inventory item — edits save instantly and feed the calculator and PDFs. Every item needs its own margin% and GST% — there is no global default.</p>

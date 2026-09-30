@@ -1,0 +1,61 @@
+AUTO-RESOLVED: 0
+REMAINING WORKLIST: 301
+  • 69d2c40060d31185fb082f5b | None | Test Customer | 123 Test Street, Test City Bangalore, Karnataka Ka | 2026-04-05
+  • 69d7aafea0e35289fc2396ce | None | prathipan shanmugham | 149 thiruvenkadampalayam , kaanjikovil road, perun | 2026-04-09
+  • 69d9408a2448fcbb88b6b739 | None | Prathipan Shanmugham | 149 thiruvenkadampalayam , kaanjikovil road, perun | 2026-04-10
+  • 69d94a220b0bcfd23b4a1448 | None | TEST_ServiceType_Single | Test Address test.single.phase | 2026-04-10
+  • 69d94a220b0bcfd23b4a144a | None | TEST_ServiceType_Three | Test Address test.three.phase | 2026-04-10
+  • 69d94a220b0bcfd23b4a144c | None | TEST_ServiceType_HT | Test Address test.ht.service | 2026-04-10
+  • 69d94a220b0bcfd23b4a144e | None | TEST_Margin_Project | Test Address test.margin.project | 2026-04-10
+  • 69d94a230b0bcfd23b4a1450 | None | TEST_Completion_Project | Test Address test.completion.project | 2026-04-10
+  • 69d94a250b0bcfd23b4a1453 | None | TEST_Full_Workflow | 123 Test Street Test Location test.full.workflow | 2026-04-10
+  • 69d9517ef9ce93d81bc6fd02 | SCR-C6FD02 | TEST_RefNum_Customer | Test Address Test Location test.words.here | 2026-04-10
+  • 69d9517ef9ce93d81bc6fd04 | SCR-C6FD04 | TEST_Status_Customer | Test Address Test Location test.words.here | 2026-04-10
+  • 69d9517ff9ce93d81bc6fd06 | SCR-C6FD06 | TEST_Gallery_Customer | Test Address Test Location test.words.here | 2026-04-10
+  • 69d9517ff9ce93d81bc6fd08 | SCR-C6FD08 | TEST_Complete_Customer | Test Address Test Location test.words.here | 2026-04-10
+  • 69d9517ff9ce93d81bc6fd0a | SCR-C6FD0A | TEST_Complete_Customer | Test Address Test Location test.words.here | 2026-04-10
+  • 69d95180f9ce93d81bc6fd0c | SCR-C6FD0C | TEST_Edit_Draft | Original Address Original Location test.words.here | 2026-04-10
+  • 69d95180f9ce93d81bc6fd0e | SCR-C6FD0E | TEST_Edit_Approved | Original Address Original Location test.words.here | 2026-04-10
+  • 69d95180f9ce93d81bc6fd10 | SCR-C6FD10 | TEST_Custom_ServiceType | Test Address Test Location test.words.here | 2026-04-10
+  • 69d95180f9ce93d81bc6fd12 | SCR-C6FD12 | TEST_Custom_SystemType | Test Address Test Location test.words.here | 2026-04-10
+  • 69d95180f9ce93d81bc6fd14 | SCR-C6FD14 | TEST_Custom_Complexity | Test Address Test Location test.words.here | 2026-04-10
+  • 69da545ebd988dd9dade758e | SCR-DE758E | TEST_SiteMeas_c375310b | Test Address Test Location test.site.measurements | 2026-04-11
+  • 69da545ebd988dd9dade7590 | SCR-DE7590 | TEST_EmptySiteMeas_4566a908 | Test Address Test Location test.empty.meas | 2026-04-11
+  • 69da545fbd988dd9dade7592 | SCR-DE7592 | TEST_UpdateSiteMeas_83f55f1b | Test Address Test Location test.update.meas | 2026-04-11
+  • 69da545fbd988dd9dade7595 | SCR-DE7595 | TEST_RoofType_RCC_2ffbe9cc | Test Address Test Location test.roof.rcc | 2026-04-11
+  • 69da5460bd988dd9dade7597 | SCR-DE7597 | TEST_RoofType_Sheet_2ffbe9cc | Test Address Test Location test.roof.sheet | 2026-04-11
+  • 69da5460bd988dd9dade7599 | SCR-DE7599 | TEST_RoofType_Tile_2ffbe9cc | Test Address Test Location test.roof.tile | 2026-04-11
+  • 69da5460bd988dd9dade759b | SCR-DE759B | TEST_RoofType_Other_2ffbe9cc | Test Address Test Location test.roof.other | 2026-04-11
+  • 69da5460bd988dd9dade759d | SCR-DE759D | TEST_Direction_North_4614f374 | Test Address Test Location test.dir.north | 2026-04-11
+  • 69da5460bd988dd9dade759f | SCR-DE759F | TEST_Direction_South_4614f374 | Test Address Test Location test.dir.south | 2026-04-11
+  • 69da5460bd988dd9dade75a1 | SCR-DE75A1 | TEST_Direction_East_4614f374 | Test Address Test Location test.dir.east | 2026-04-11
+  • 69da5460bd988dd9dade75a3 | SCR-DE75A3 | TEST_Direction_West_4614f374 | Test Address Test Location test.dir.west | 2026-04-11
+  • 69da5460bd988dd9dade75a5 | SCR-DE75A5 | TEST_Direction_North-East_4614f374 | Test Address Test Location test.dir.north-east | 2026-04-11
+  • 69da5460bd988dd9dade75a7 | SCR-DE75A7 | TEST_Direction_North-West_4614f374 | Test Address Test Location test.dir.north-west | 2026-04-11
+  • 69da5460bd988dd9dade75a9 | SCR-DE75A9 | TEST_Direction_South-East_4614f374 | Test Address Test Location test.dir.south-east | 2026-04-11
+  • 69da5460bd988dd9dade75ab | SCR-DE75AB | TEST_Direction_South-West_4614f374 | Test Address Test Location test.dir.south-west | 2026-04-11
+  • 69da5461bd988dd9dade75ad | SCR-DE75AD | TEST_ShadowSources_128319d7 | Test Address Test Location test.shadow.sources | 2026-04-11
+  • 69da5461bd988dd9dade75af | SCR-DE75AF | TEST_Obstructions_f8323f96 | Test Address Test Location test.obstructions | 2026-04-11
+  • 69da5462bd988dd9dade75b1 | SCR-DE75B1 | TEST_ConnType_Residential_2604e773 | Test Address Test Location test.conn.residential | 2026-04-11
+  • 69da5462bd988dd9dade75b3 | SCR-DE75B3 | TEST_ConnType_Commercial_2604e773 | Test Address Test Location test.conn.commercial | 2026-04-11
+  • 69da5462bd988dd9dade75b5 | SCR-DE75B5 | TEST_ConnType_Industrial_2604e773 | Test Address Test Location test.conn.industrial | 2026-04-11
+  • 69da5462bd988dd9dade75b7 | SCR-DE75B7 | TEST_AccessType_Stairs_5f84f638 | Test Address Test Location test.access.stairs | 2026-04-11
+  • 69da5462bd988dd9dade75b9 | SCR-DE75B9 | TEST_AccessType_Ladder_5f84f638 | Test Address Test Location test.access.ladder | 2026-04-11
+  • 69da5462bd988dd9dade75bb | SCR-DE75BB | TEST_AccessType_Direct_5f84f638 | Test Address Test Location test.access.direct | 2026-04-11
+  • 69f63e7cbe382e57dcab449d | SCR-AB449D | TEST_AutoSave_Draft | Test Address | 2026-05-02
+  • 69f63e7cbe382e57dcab449f | SCR-AB449F | TEST_AutoSave_Update | Updated Address with more details | 2026-05-02
+  • 69f63ef1be382e57dcab44a2 | SCR-AB44A2 | Auto Save Test | — | 2026-05-02
+  • 69f63f2ebe382e57dcab44a4 | SCR-AB44A4 | Test Name | Test Address | 2026-05-02
+  • 69f63feebe382e57dcab44a6 | SCR-AB44A6 | AutoSave_V5_1777745897 | Draft - Address TBD | 2026-05-02
+  • 69f78bf640b77170c3aa4783 | SCR-AA4783 | prathipan shanmugham | 149 thiruvenkadampalayam , kaanjikovil road, perun | 2026-05-03
+  • 69fb9ab4f078108c14e40378 | SCR-E40378 | TESTcustomer-n | Draft - Address TBD | 2026-05-06
+  • 69fb9ab5f078108c14e4037a | SCR-E4037A | Prathipan Shanmugham | 149 thiruvenkadampalayam , kaanjikovil road, perun | 2026-05-06
+  • 69fb9ad7f078108c14e4037c | SCR-E4037C | Prathipan Shanmugham | 149 thiruvenkadampalayam , kaanjikovil road, perun | 2026-05-06
+  • 69fb9af8f078108c14e4037f | SCR-E4037F | TEST W3W Customer | Test address 123 filled.count.soap | 2026-05-06
+  • 69fb9b16f078108c14e40381 | SCR-E40381 | Prathipan Shanmugham | 149 thiruvenkadampalayam , kaanjikovil road, perun | 2026-05-06
+  • 69fb9e47fe9d2c3dea667e2b | SCR-667E2B | Prathipan Shanmugham | 149 thiruvenkadampalayam , kaanjikovil road, perun | 2026-05-06
+  • 6a0f2fbd220cff721362f828 | SCR-62F828 | Prathipan Shanmugham | 149 thiruvenkadampalayam , kaanjikovil road, perun | 2026-05-21
+  • 6a0f338a491f3c29b29bda68 | SCR-9BDA68 | Solar QA User | Draft - Address TBD | 2026-05-21
+  • 6a0f36f4491f3c29b29bda75 | SCR-9BDA75 | Prathipan Shanmugham | 149 thiruvenkadampalayam , kaanjikovil road, perun | 2026-05-21
+  • 6a0f4ae1fe39cacecac1dd55 | SCR-C1DD55 | TEST_Iter30_PDF | 1 Test | 2026-05-21
+  • 6a0f4db2857a4325028296d7 | SCR-8296D7 |

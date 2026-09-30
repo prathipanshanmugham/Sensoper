@@ -82,7 +82,7 @@ export default function DashboardLayout({ children }) {
     { icon: BarChart3, label: 'Reports', href: '/dashboard/reports', show: isAdmin || isManager, module: 'module_reports' },
     { icon: Brain, label: 'Sensobrain', href: '/dashboard/sensobrain', show: true, module: 'module_sensobrain' },
     { icon: ShoppingCart, label: 'Direct Sales', href: '/dashboard/sales', show: true, module: 'module_direct_sales' },
-    { icon: MapPin, label: 'Expansion', href: '/dashboard/expansion', show: isAdmin || isManager, module: 'module_expansion' },
+    { icon: MapPin, label: 'Expansion', href: '/dashboard/expansion', show: isAdmin || isManager, badge: stats?.location_review_count, module: 'module_expansion' },
     { icon: AlertTriangle, label: 'Profit Alerts', href: '/dashboard/alerts', show: isAdmin || isManager, module: 'module_alerts' },
     { icon: CreditCard, label: 'Accounts', href: '/dashboard/credits', show: isAdmin || isManager, module: 'module_credits' },
     { icon: Package, label: 'Purchase Inbound', href: '/dashboard/purchase-inbound', show: isAdmin || isManager, module: 'module_purchase_inbound' },

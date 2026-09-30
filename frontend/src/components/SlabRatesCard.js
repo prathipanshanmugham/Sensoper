@@ -8,8 +8,7 @@ import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Badge } from './ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from './ui/dialog';
-import { Plus, Pencil, Trash2, Loader2, Layers, X } from 'lucide-react';
+import { Plus, Pencil, Trash2, Loader2, Layers, X, Check } from 'lucide-react';
 
 const inr = (v) => `₹${Math.round(v || 0).toLocaleString('en-IN')}`;
 const UNIT_LABEL = { kw: 'kW', hp: 'HP', unit: 'unit' };
@@ -46,29 +45,27 @@ export function SlabRatesCard() {
           <p className="text-[11px] text-slate-500">₹ per kW / HP / unit by size band, per kit category. Used by the calculator's "Slab rate" mode and shown on kits. Size on a boundary takes the lower band.</p></div>
         <Button size="sm" variant="outline" onClick={() => setEditing({ category: free[0]?.slug || '', unit: DEFAULT_UNIT[free[0]?.slug] || 'unit', gst_pct: '', slabs: [blankRow()], active: true })} disabled={!free.length} className="gap-1" data-testid="slab-add-btn"><Plus className="h-3.5 w-3.5" />Add category rates</Button>
       </div>
-      {loading ? <div className="p-4"><Loader2 className="h-4 w-4 animate-spin" /></div> : docs.length === 0 ? (
-        <p className="p-4 text-xs text-slate-400" data-testid="slab-empty">No slab rates yet. Add e.g. On-Grid: 1–3 kW ₹60,000/kW · 3–5 kW ₹55,000/kW · 5–10 kW ₹50,000/kW · 10+ kW ₹45,000/kW.</p>
-      ) : (
-        <ul className="divide-y divide-slate-100">
-          {docs.map(d => (
-            <li key={d.id} className={`px-3 py-2.5 ${d.active ? '' : 'opacity-60'}`} data-testid={`slab-doc-${d.category}`}>
-              <div className="flex items-center gap-2 mb-1">
-                <span className="text-sm font-medium text-slate-800">{d.category_label}</span>
+      {loading ? <div className="p-4"><Loader2 className="h-4 w-4 animate-spin" /></div> : (
+        <div className="divide-y divide-slate-100">
+          {docs.length === 0 && !editing && <p className="p-4 text-xs text-slate-400" data-testid="slab-empty">No slab rates yet. Add e.g. On-Grid: 1–3 kW ₹60,000/kW · 3–5 kW ₹55,000/kW · 5–10 kW ₹50,000/kW · 10+ kW ₹45,000/kW.</p>}
+          {editing && !editing.id && <SlabEditor doc={editing} cats={cats} isNew onClose={() => setEditing(null)} onSaved={() => { setEditing(null); load(); }} />}
+          {docs.map(d => editing?.id === d.id ? <SlabEditor key={d.id} doc={editing} cats={cats} isNew={false} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); load(); }} /> : (
+            <div key={d.id} className={`px-3 py-2.5 ${d.active ? '' : 'opacity-60'}`} data-testid={`slab-doc-${d.category}`}>
+              <div className="flex items-center gap-2 mb-1.5">
+                <span className="text-sm font-semibold text-slate-800">{d.category_label}</span>
                 <Badge variant="outline" className="text-[10px]">per {UNIT_LABEL[d.unit] || d.unit}</Badge>
                 {d.gst_pct !== null && d.gst_pct !== undefined ? <Badge variant="outline" className="text-[10px]">GST {d.gst_pct}%</Badge> : <Badge className="bg-amber-100 text-amber-800 text-[10px]">GST% not set</Badge>}
                 {!d.active && <Badge className="bg-slate-200 text-slate-700 text-[10px]">inactive</Badge>}
                 <span className="flex-1" />
-                <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => setEditing({ ...d, gst_pct: d.gst_pct ?? '', slabs: d.slabs.map(s => ({ ...s, _key: Math.random().toString(36).slice(2), to_value: s.to_value ?? '' })) })} data-testid={`slab-edit-${d.category}`}><Pencil className="h-3.5 w-3.5" /></Button>
+                <Button size="sm" variant="outline" className="h-7 gap-1 text-xs" onClick={() => setEditing({ ...d, gst_pct: d.gst_pct ?? '', slabs: d.slabs.map(s => ({ ...s, _key: Math.random().toString(36).slice(2), to_value: s.to_value ?? '' })) })} data-testid={`slab-edit-${d.category}`}><Pencil className="h-3 w-3" />Edit table</Button>
                 <Button size="icon" variant="ghost" className="h-7 w-7 text-red-500" onClick={() => remove(d)} data-testid={`slab-remove-${d.category}`}><Trash2 className="h-3.5 w-3.5" /></Button>
               </div>
-              <div className="flex flex-wrap gap-1.5">
-                {d.slabs.map((s, i) => <span key={i} className={`text-[11px] rounded-full border px-2 py-0.5 ${String(s.effective_from) > today() ? 'border-dashed border-slate-300 text-slate-400' : 'border-slate-200 text-slate-700 bg-slate-50'}`} title={`effective ${s.effective_from}`} data-testid={`slab-chip-${d.category}-${i}`}>{s.from_value}–{s.to_value ?? '∞'} {UNIT_LABEL[d.unit]} · {inr(s.rate_per_unit)}{String(s.effective_from) > today() ? ` · from ${s.effective_from}` : ''}</span>)}
-              </div>
-            </li>
+              <table className="w-full text-xs"><thead className="text-[10px] uppercase tracking-wider text-slate-400"><tr><th className="text-left py-1">From</th><th className="text-left py-1">To</th><th className="text-left py-1">₹ per {UNIT_LABEL[d.unit]}</th><th className="text-left py-1">Effective from</th></tr></thead>
+                <tbody>{d.slabs.map((s, i) => <tr key={i} className={`border-t border-slate-100 ${String(s.effective_from) > today() ? 'text-slate-400' : 'text-slate-700'}`} data-testid={`slab-chip-${d.category}-${i}`}><td className="py-1">{s.from_value}</td><td className="py-1">{s.to_value ?? '∞'}</td><td className="py-1 tabular-nums">{inr(s.rate_per_unit)}</td><td className="py-1">{s.effective_from}{String(s.effective_from) > today() ? ' (scheduled)' : ''}</td></tr>)}</tbody></table>
+            </div>
           ))}
-        </ul>
+        </div>
       )}
-      {editing && <SlabEditor doc={editing} cats={cats} isNew={!editing.id} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); load(); }} />}
     </div>
   );
 }
@@ -91,10 +88,9 @@ function SlabEditor({ doc, cats, isNew, onClose, onSaved }) {
   };
 
   return (
-    <Dialog open onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto" data-testid="slab-editor">
-        <DialogHeader><DialogTitle>{isNew ? 'New slab rates' : `Slab rates — ${doc.category_label}`}</DialogTitle>
-          <DialogDescription>Flat ₹/{UNIT_LABEL[form.unit]} for the whole system in each size band (not progressive). Leave "to" blank for the open-ended top band. Add a second row for the same band with a later "effective from" to schedule a price change.</DialogDescription></DialogHeader>
+    <div className="px-3 py-3 bg-emerald-50/40 space-y-3" data-testid="slab-editor">
+        <div><p className="text-sm font-semibold text-slate-800">{isNew ? 'New slab rates' : `Slab rates — ${doc.category_label}`}</p>
+          <p className="text-[11px] text-slate-500">Flat ₹/{UNIT_LABEL[form.unit]} for the whole system in each size band (not progressive). Leave "to" blank for the open-ended top band. A second row for the same band with a later date schedules a price change.</p></div>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <div className="space-y-1"><Label className="text-xs">Category</Label>
             {isNew ? (
@@ -126,11 +122,10 @@ function SlabEditor({ doc, cats, isNew, onClose, onSaved }) {
           <span className="text-slate-800" data-testid="slab-test-result">{testValue && preview ? `${preview.from_value}–${preview.to_value ?? '∞'} band · ${inr(preview.rate_per_unit)} × ${testValue} = ${inr(preview.total)}${preview.gst_pct !== null ? ` + GST ${inr(preview.gst_amount)}` : ''}` : testValue ? 'No band covers this size' : ''}</span>
         </div>
         <label className="flex items-center gap-2 text-xs text-slate-700"><input type="checkbox" checked={form.active !== false} onChange={e => setForm(f => ({ ...f, active: e.target.checked }))} data-testid="slab-active-checkbox" />Active (uncheck to hide from the calculator and kits without deleting)</label>
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose} disabled={saving}>Cancel</Button>
-          <Button onClick={save} disabled={saving || !form.category || form.slabs.length === 0} className="bg-emerald-600 hover:bg-emerald-700 text-white" data-testid="slab-save-btn">{saving ? <Loader2 className="h-4 w-4 animate-spin" /> : null}Save</Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        <div className="flex justify-end gap-2">
+          <Button size="sm" variant="outline" onClick={onClose} disabled={saving} className="h-8 gap-1" data-testid="slab-cancel-btn"><X className="h-3.5 w-3.5" />Cancel</Button>
+          <Button size="sm" onClick={save} disabled={saving || !form.category || form.slabs.length === 0} className="h-8 gap-1 bg-emerald-600 hover:bg-emerald-700 text-white" data-testid="slab-save-btn">{saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-3.5 w-3.5" />}Save table</Button>
+        </div>
+    </div>
   );
 }

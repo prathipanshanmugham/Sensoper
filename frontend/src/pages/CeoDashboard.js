@@ -17,6 +17,7 @@ import {
 } from 'recharts';
 import { toast } from 'sonner';
 import { generateCeoReportPDF } from '../utils/ceoReportPDF';
+import { DateRangePicker, rangeLabel } from '../components/DateRangePicker';
 
 const COLORS = ['#10b981', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
 const STATUS_COLORS = { draft: '#f59e0b', submitted: '#3b82f6', approved: '#10b981', rejected: '#ef4444', completed: '#059669', deletion_requested: '#f97316' };
@@ -49,10 +50,11 @@ export default function CeoDashboard() {
   const [sparkline, setSparkline] = useState([]);
 
   const [supportSnapshot, setSupportSnapshot] = useState(null);
+  const [range, setRange] = useState({ preset: 'all' });
   const fetchData = useCallback(async () => {
     try {
       const [dashRes, histRes, supRes] = await Promise.all([
-        dashboardAPI.getCeo(locScope.locationId ? { location_id: locScope.locationId } : {}),
+        dashboardAPI.getCeo({ ...(locScope.locationId ? { location_id: locScope.locationId } : {}), ...(range.from ? { date_from: range.from } : {}), ...(range.to ? { date_to: range.to } : {}) }),
         healthAPI.getHistory(6).catch(() => ({ data: [] })),
         supportAPI.dashboard().catch(() => ({ data: null }))
       ]);
@@ -64,7 +66,7 @@ export default function CeoDashboard() {
     } finally {
       setLoading(false);
     }
-  }, [locScope.locationId]);
+  }, [locScope.locationId, range.from, range.to]);
 
   const handleSnapshot = async () => {
     try {
@@ -80,7 +82,7 @@ export default function CeoDashboard() {
     setExporting(true);
     try {
       // Same state the cards render from — the PDF mirrors the screen, no re-aggregation.
-      await generateCeoReportPDF({ data, support: supportSnapshot, sparkline, locationLabel: locScope.locationLabel });
+      await generateCeoReportPDF({ data, support: supportSnapshot, sparkline, locationLabel: locScope.locationLabel, periodLabel: rangeLabel(range) });
       toast.success('CEO Report downloaded');
     } catch (err) {
       console.error(err);
@@ -115,6 +117,7 @@ export default function CeoDashboard() {
             <h1 className="text-2xl font-bold font-['Outfit'] text-slate-900" data-testid="ceo-title">CEO Dashboard</h1>
             <p className="text-sm text-slate-500">High-level business overview</p>
           </div>
+          <DateRangePicker value={range} onChange={setRange} />
           <div className="w-48"><LocationScopeSelect scope={locScope} testIdPrefix="ceo-location" /></div>
           <Button onClick={handleExportPdf} disabled={exporting} className="gap-2 bg-slate-900 hover:bg-slate-800 text-white" data-testid="ceo-report-download-btn">{exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}Download CEO Report</Button>
           <Button variant="outline" onClick={() => navigate('/dashboard/expansion')} className="gap-2" data-testid="goto-expansion-btn"><MapPin className="h-4 w-4" />Expansion</Button>

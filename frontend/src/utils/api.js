@@ -254,6 +254,13 @@ export const kitCategoriesAPI = {
   update: (id, data) => api.put(`/kit-categories/${id}`, data)
 };
 
+export const locationReviewAPI = {
+  list: () => api.get('/projects/location-review'),
+  count: () => api.get('/projects/location-review/count'),
+  autoResolve: () => api.post('/projects/location-review/auto-resolve'),
+  fix: (id, data) => api.put(`/projects/${id}/location-fix`, data)
+};
+
 export const pricingSlabsAPI = {
   list: (params = {}) => api.get('/pricing-slabs', { params }),
   lookup: (category, value, on_date) => api.get('/pricing-slabs/lookup', { params: { category, value, on_date } }),

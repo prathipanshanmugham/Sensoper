@@ -320,8 +320,8 @@ export default function AdvancedConfigSection({ only }) {
 
             {orgLocations.length > 0 && (
               <>
-                <p className="text-[11px] uppercase tracking-wider text-slate-500 font-semibold pt-2 border-t">Per-Location Monthly Revenue Targets</p>
-                <p className="text-[11px] text-slate-500">Used by the main dashboard's Monthly Target panel for users scoped to a location. Leave blank to fall back to the company-wide target above.</p>
+                <p id="location-targets-table" className="text-[11px] uppercase tracking-wider text-slate-500 font-semibold pt-2 border-t" data-testid="location-targets-table">Per-Location Monthly Revenue Targets</p>
+                <p className="text-[11px] text-slate-500">Overrides the company-wide target for that branch everywhere a target is shown — Monthly Target panel, CEO Dashboard and Health Score. Blank = use the company-wide target. Leave blank to fall back to the company-wide target above.</p>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3" data-testid="location-targets-grid">
                   {orgLocations.map(l => (
                     <NumberField key={l.id} label={l.name} step={10000} value={health.location_targets?.[l.id] ?? ''} onChange={(v) => setHealthField(`location_targets.${l.id}`, v === '' || v === null || Number.isNaN(v) ? null : v)} suffix="₹" />

@@ -43,7 +43,7 @@ function miniTable(doc, FONT, { x, y, width, head, body, fill }) {
   return doc.lastAutoTable.finalY + 3;
 }
 
-export async function generateCeoReportPDF({ data, support, sparkline = [], locationLabel = 'All Locations', companyName = 'Sensoper Controls & Renewables' }) {
+export async function generateCeoReportPDF({ data, support, sparkline = [], locationLabel = 'All Locations', periodLabel = 'All time', companyName = 'Sensoper Controls & Renewables' }) {
   const doc = new jsPDF({ unit: 'mm', format: 'a4' });
   const FONT = await loadUnicodeFont(doc);
   const { kpis = {}, status_distribution = [], sales_funnel = {}, top_staff = [], accounts_summary = {}, readings_summary = {}, health_score, credit_data, ecommerce, direct_sales } = data;
@@ -54,7 +54,7 @@ export async function generateCeoReportPDF({ data, support, sparkline = [], loca
   doc.text('CEO Report', M, 8);
   doc.setFont(FONT, 'normal'); doc.setFontSize(7); doc.setTextColor(203, 213, 225);
   doc.text(companyName, M, 13);
-  const meta = `${locationLabel}  ·  Generated ${new Date().toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })}`;
+  const meta = `Location: ${locationLabel}  ·  Period: ${periodLabel}  ·  Generated ${new Date().toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })}`;
   doc.text(meta, 210 - M, 13, { align: 'right' });
   doc.setFillColor(...BRAND); doc.rect(0, 17, 210, 0.8, 'F');
   let y = 23;
