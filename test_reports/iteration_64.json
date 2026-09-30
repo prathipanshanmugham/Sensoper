@@ -1,0 +1,16 @@
+{
+  "summary": "Iteration 59 slab-based package rates — FRONTEND end-to-end verified. Pricing & Config → Slab package rates card renders On-Grid seed doc with 4 correct chips (1–3 ₹60k / 3–5 ₹55k / 5–10 ₹50k / 10–∞ ₹45k · GST 13.8%). Editor test-input yields '1–3 band · ₹60,000 × 3 = ₹1,80,000 + GST ₹24,840' (3), '3–5 band … ₹2,75,000' (5), '10–∞ band … ₹5,40,000' (12), 'No band covers this size' (0.5). Adding solar-camera slab (1–4 @ 25,000; 4–∞ @ 22,000; GST 18%) auto-selects 'Units', saves with toast, shows 2 chips. Overlap edit (1–4 & 3–8) shows error toast containing 'overlap' and dialog stays open. Solution Kits: existing On-Grid kits show kit-slab-price like 'Slab price ₹1,80,000 (1–3 kw @ ₹60,000 · GST 13.8%)'; product kit 'TEST59 Cam Kit' (solar-camera, size 4, 1 Camera×4) saves and shows 'standalone bundle · 4 units' + 'Slab price ₹1,00,000 (1–4 unit @ ₹25,000 · GST 18%)'. New Project wizard reaches Proposed Solution; bill=3000 On-Grid → slab-rate-strip visible, slab-rate-total ₹1,80,000, initial itemised result-total-cost ₹1,65,000; pricing-mode-slab → cost ₹1,80,000, GST ₹24,840, slab-pricing-note shown, 'before GST · slab rate' label present; pricing-mode-itemised reverts to ₹1,65,000; override system-size to 12 in slab mode → ₹5,40,000 with strip '10–∞ kw @ ₹45,000'. Kit browser: TEST59 row shows '· slab ₹1,00,000'; +Add produces toast 'Added 2 line(s) from TEST59 Cam Kit' and lines include 'TEST59 Cam Kit — package (1–4 unit slab)' and 'Camera (included)'. No ResizeObserver console errors, no other functional errors. Cleanup done: TEST59 kit and solar-camera slab doc removed; on-grid slab doc preserved.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [],
+  "action_items": [],
+  "critical_code_review_comments": [],
+  "updated_files": [],
+  "success_rate": {"backend": "skipped", "frontend": "100%"},
+  "test_credentials": "admin@sensoper.com / Admin@123",
+  "seed_data_creation": "Created TEST59 Cam Kit and solar-camera slab doc during test, then deleted both. On-Grid slab doc left in place as intended seed.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Iter59 slab rates fully working. SlabRatesCard testids for rows are slab-from-{i}/slab-to-{i}/slab-rate-{i}/slab-eff-{i} (not slab-row-from). Bill field is <NumberField testid='bill'> but the data-testid isn't on the outer div; use input placeholder 'e.g. 3000' or the inner input. system-size input directly carries data-testid='system-size-input'.",
+  "rca of the issue": "N/A — all flows passed."
+}
