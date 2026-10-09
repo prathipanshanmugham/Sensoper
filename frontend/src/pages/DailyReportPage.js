@@ -220,15 +220,15 @@ function MyReport({ date, projects }) {
                 <div className="min-w-0 flex-1"><ProjectPicker projects={projects} value={w.project_id} onChange={(v) => setRow('site_work', i, { project_id: v })} testid={`dr-site-project-${i}`} /></div>
                 <button type="button" onClick={() => delRow('site_work', i)} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-slate-400 hover:bg-red-50 hover:text-red-600" aria-label="Remove this site"><Trash2 className="h-4 w-4" /></button>
               </div>
-              <Field label="What was done">
+              <Field group label="What was done">
                 <div className="mb-2 flex flex-wrap gap-1.5">{WORK_CHIPS.map((c) => <Chip key={c} active={w.work_done === c} onClick={() => setRow('site_work', i, { work_done: w.work_done === c ? '' : c })}>{c}</Chip>)}</div>
                 <input value={WORK_CHIPS.includes(w.work_done) ? '' : (w.work_done || '')} onChange={(e) => setRow('site_work', i, { work_done: e.target.value })} placeholder="…or describe it" className={inputCls} />
               </Field>
-              <Field label="Job progress">
+              <Field group label="Job progress">
                 <div className="flex flex-wrap gap-1.5">{PCT.map((p) => <Chip key={p} active={Number(w.progress_pct) === p} onClick={() => setRow('site_work', i, { progress_pct: Number(w.progress_pct) === p ? null : p })}>{p}%</Chip>)}</div>
               </Field>
               <div className="flex flex-wrap items-end gap-4">
-                <Field label="People on site"><Stepper value={w.crew_count} onChange={(v) => setRow('site_work', i, { crew_count: v })} label="people on site" /></Field>
+                <Field group label="People on site"><Stepper value={w.crew_count} onChange={(v) => setRow('site_work', i, { crew_count: v })} label="people on site" /></Field>
                 <Field label="Any problem?" className="min-w-[200px] flex-1"><input value={w.issues || ''} onChange={(e) => setRow('site_work', i, { issues: e.target.value })} placeholder="Optional" className={inputCls} /></Field>
               </div>
             </div>
@@ -278,7 +278,7 @@ function MyReport({ date, projects }) {
                 <button type="button" onClick={() => delRow('service', i)} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-slate-400 hover:bg-red-50 hover:text-red-600" aria-label="Remove this visit"><Trash2 className="h-4 w-4" /></button>
               </div>
               {!s.project_id && <input value={s.customer || ''} onChange={(e) => setRow('service', i, { customer: e.target.value })} placeholder="Customer name" className={inputCls} />}
-              <Field label="Problem">
+              <Field group label="Problem">
                 <div className="mb-2 flex flex-wrap gap-1.5">{SERVICE_CHIPS.map((c) => <Chip key={c} active={s.issue === c} onClick={() => setRow('service', i, { issue: s.issue === c ? '' : c })}>{c}</Chip>)}</div>
                 <input value={SERVICE_CHIPS.includes(s.issue) ? '' : (s.issue || '')} onChange={(e) => setRow('service', i, { issue: e.target.value })} placeholder="…or describe it" className={inputCls} />
               </Field>

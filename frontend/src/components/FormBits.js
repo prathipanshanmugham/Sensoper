@@ -61,7 +61,19 @@ export function Chip({ active, onClick, children, testid, done }) {
   );
 }
 
-export function Field({ label, children, hint, className = '' }) {
+/** Labelled form field. Use `group` when the field holds buttons/chips/steppers rather than one input:
+ *  a <label> around several buttons would name every button after the whole label and make a tap on the
+ *  title press the first button. */
+export function Field({ label, children, hint, className = '', group = false }) {
+  if (group) {
+    return (
+      <div role="group" aria-label={label} className={`block ${className}`}>
+        <span className="mb-1 block text-xs font-medium text-slate-600" aria-hidden="true">{label}</span>
+        {children}
+        {hint && <span className="mt-1 block text-[11px] text-slate-400">{hint}</span>}
+      </div>
+    );
+  }
   return (
     <label className={`block ${className}`}>
       <span className="mb-1 block text-xs font-medium text-slate-600">{label}</span>

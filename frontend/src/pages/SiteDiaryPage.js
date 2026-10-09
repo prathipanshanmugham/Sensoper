@@ -107,11 +107,11 @@ function DiaryForm({ projectId, date, projects, partners, items, onSaved }) {
 
       <Section n={1} title="Work done today" hint="Stages finished, progress and a short note" summary={form.stages_done.length || form.work_done ? `${form.stages_done.length} stage${form.stages_done.length === 1 ? '' : 's'}${form.progress_pct != null ? ` · ${form.progress_pct}%` : ''}` : ''} open={open.work} onToggle={() => setOpen((o) => ({ ...o, work: !o.work }))} testid="diary-section-work">
         <div className="space-y-4">
-          <Field label="Weather"><div className="flex flex-wrap gap-1.5">{WEATHER.map(([w, I]) => <Chip key={w} active={form.weather === w} onClick={() => set({ weather: form.weather === w ? '' : w })}><I className="h-4 w-4" />{w}</Chip>)}</div></Field>
-          <Field label="Stages finished today" hint={earlier.size ? 'Green = finished on an earlier day' : 'Tap every stage completed today'}>
+          <Field group label="Weather"><div className="flex flex-wrap gap-1.5">{WEATHER.map(([w, I]) => <Chip key={w} active={form.weather === w} onClick={() => set({ weather: form.weather === w ? '' : w })}><I className="h-4 w-4" />{w}</Chip>)}</div></Field>
+          <Field group label="Stages finished today" hint={earlier.size ? 'Green = finished on an earlier day' : 'Tap every stage completed today'}>
             <div className="flex flex-wrap gap-1.5">{STAGES.map((s) => <Chip key={s} active={form.stages_done.includes(s)} done={!form.stages_done.includes(s) && earlier.has(s)} onClick={() => toggleStage(s)} testid={`diary-stage-${s.replace(/\W+/g, '-')}`}>{s}</Chip>)}</div>
           </Field>
-          <Field label="Overall progress">
+          <Field group label="Overall progress">
             <div className="flex flex-wrap gap-1.5">{PCT.map((p) => <Chip key={p} active={Number(form.progress_pct) === p} onClick={() => set({ progress_pct: Number(form.progress_pct) === p ? null : p })} testid={`diary-pct-${p}`}>{p}%</Chip>)}</div>
           </Field>
           <Field label="What happened on site"><textarea value={form.work_done} onChange={(e) => set({ work_done: e.target.value })} placeholder="e.g. Structure fixed on east roof, 6 of 10 panels mounted" className={textareaCls} id="diary-work" data-testid="diary-work" /></Field>
@@ -228,7 +228,7 @@ export default function SiteDiaryPage() {
       </div>
 
       <div className="mb-4 space-y-3 rounded-xl border border-slate-200 bg-white p-4">
-        <Field label="Project"><ProjectPicker projects={projects} value={projectId} onChange={(v) => update({ project: v })} placeholder="Choose the site / project" testid="diary-project" /></Field>
+        <Field group label="Project"><ProjectPicker projects={projects} value={projectId} onChange={(v) => update({ project: v })} placeholder="Choose the site / project" testid="diary-project" /></Field>
         {project && (
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-slate-600">
             <StatusPill status={project.status} />
