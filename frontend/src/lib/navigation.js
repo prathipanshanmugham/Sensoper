@@ -82,14 +82,14 @@ export const NAV_SECTIONS = [
     id: 'sales', label: 'Sales & projects', items: [
       {
         href: '/dashboard/projects/new', label: 'New project', icon: FolderPlus, staff: true, module: 'module_projects',
-        keywords: 'site visit quotation estimate',
+        keywords: 'site visit quotation estimate photos what3words gps',
         help: {
           what: 'Record a site visit and build the quotation for a new customer, step by step.',
-          steps: ['Customer: name, phone and address.', 'Location: site address and district.',
+          steps: ['Customer: name, phone and address.', 'Location: at the site, tap "Use my location" — GPS and the What3words address fill in by themselves.',
             'Site & electrical: roof, load, monthly units and tariff.',
             'Proposed solution: system type and size, then choose panels, inverter and other materials.',
-            'Site docs: add photos and the Drive folder link, then save or submit for approval.'],
-          tip: 'You can save a draft and finish later from Projects.',
+            'Site photos: work down the checklist — each photo is copied to Google Drive automatically.'],
+          tip: 'The form saves a draft as you go. Missing photos can be added later from the project page.',
         },
       },
       {
@@ -187,10 +187,10 @@ export const NAV_SECTIONS = [
       },
       {
         href: '/dashboard/pricelist', label: 'Price list', icon: Tags, roles: ADMIN, module: 'module_settings',
-        keywords: 'pricelist margin selling price',
+        keywords: 'pricelist margin selling price slab package rate service rates installation structure cabling benchmark subsidy',
         help: {
-          what: 'Cost, margin and selling price for every item. Changes save instantly and update the calculator and PDFs.',
-          steps: ['Edit a margin % or selling price right in the table.', 'Use "Generate price list PDF" to share prices with dealers or customers.'],
+          what: 'Every rate quotes use: product prices, package slab rates and service rates. Changes save instantly and update the calculator and PDFs.',
+          steps: ['Products: edit a margin % or price right in the table.', 'Package slabs and Service rates: change a rate and save the row.', 'Use "Price List PDF" to share prices with dealers or customers.'],
         },
       },
     ],
@@ -238,7 +238,7 @@ export const NAV_SECTIONS = [
         keywords: 'leakage risk margin',
         help: {
           what: 'Projects that are losing money: low margins, material over-use, late payments or projects running too long.',
-          steps: ['Start with "High" risk projects.', 'Open a project to see exactly which alert fired and by how much.', 'Adjust the alert limits under Settings → Pricing & config.'],
+          steps: ['Start with "High" risk projects.', 'Open a project to see exactly which alert fired and by how much.', 'Change the alert limits with the Thresholds button at the top of this page.'],
         },
       },
       {
@@ -293,11 +293,12 @@ export const NAV_SECTIONS = [
         },
       },
       {
-        href: '/dashboard/pricing-config', label: 'Pricing & config', icon: SlidersHorizontal, roles: ADMIN, module: 'module_settings',
-        keywords: 'tariff rates calculator defaults thresholds',
+        href: '/dashboard/pricing-config', label: 'Settings', icon: SlidersHorizontal, roles: ADMIN, module: 'module_settings',
+        keywords: 'config pricing rounding cash round off interest target google drive what3words connect',
         help: {
-          what: 'The numbers behind the calculator and alerts: tariffs, service rates, subsidy slabs and alert limits.',
-          steps: ['Edit a value in place and save the row.', 'Changes apply to new calculations straight away.'],
+          what: 'A few company-wide basics: how totals are rounded, overdue interest, the monthly sales target, and the Google Drive / What3words connections.',
+          steps: ['Tap a value, change it and press the tick.', 'Connect Google Drive once so site photos are copied there automatically.'],
+          tip: 'Product prices, package slabs and service rates are in Price list.',
         },
       },
       {

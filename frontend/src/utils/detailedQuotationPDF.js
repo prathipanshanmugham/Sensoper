@@ -97,7 +97,7 @@ export async function generateDetailedQuotationPDF({ project, companyProfile, te
   const subhead = [n.kw ? `${n.kw} kW ${sysType} rooftop solar` : null, n.panels ? `${n.panels} panels${n.panelW ? ` × ${n.panelW} W` : ''}` : null, n.batteries ? `${n.batteries} battery bank` : null, n.payback ? `pays for itself in ${n.payback} years` : null].filter(Boolean).join('  ·  ');
   const boxes = hasSavings
     ? [{ label: 'You pay', value: inr(n.netPay), sub: n.subsidy > 0 ? `after ${inr(n.subsidy)} subsidy · incl. GST` : 'all-inclusive, incl. GST' },
-       { label: 'You save', value: `${inr(n.monthlySaving)}/mo`, sub: `${inr(n.annualSaving)} every year` },
+       { label: 'You save', value: `${inr(n.monthlySaving)}/mo`, sub: n.q.period_months === 2 ? `${inr(n.monthlySaving * 2)} on every 2-month bill` : `${inr(n.annualSaving)} every year` },
        { label: 'Payback', value: n.payback == null ? '—' : n.payback === 0 ? 'Day one' : `${n.payback} yrs`, sub: n.payback == null ? 'add the bill to compute' : n.payback === 0 ? 'fully covered by subsidy' : `then ${Math.max(25 - Math.ceil(n.payback), 0)} more years of near-free power` }]
     : [{ label: 'You pay', value: inr(n.netPay), sub: n.subsidy > 0 ? `after ${inr(n.subsidy)} subsidy` : 'incl. GST' },
        { label: 'System size', value: n.kw ? `${n.kw} kW` : '—', sub: sysType },
@@ -122,7 +122,9 @@ export async function generateDetailedQuotationPDF({ project, companyProfile, te
     ['Inverter', inventoryNames[n.ps.inverter_item_id] || (n.q.inverter_rated_kw ? `${n.q.inverter_rated_kw} kW` : null)],
     ['Battery', n.batteries ? `${n.batteries} nos${inventoryNames[n.ps.battery_item_id] ? ` — ${inventoryNames[n.ps.battery_item_id]}` : ''}${n.q.backup_hours ? ` · ${n.q.backup_hours} h backup` : ''}` : null],
     ['Estimated generation', n.annualGen ? `${Math.round(n.annualGen).toLocaleString('en-IN')} units/year (${Math.round(n.annualGen / 12).toLocaleString('en-IN')}/month)` : null],
-    ['Current consumption', n.q.monthly_eb_units ? `${n.q.monthly_eb_units} units/month at ₹${n.q.tariff_per_unit}/unit` : null],
+    ['Current consumption', n.q.monthly_eb_units ? (n.q.period_months === 2 ? `${n.q.bill_units} units per 2-month bill (${n.q.monthly_eb_units}/month) at ₹${n.q.tariff_per_unit}/unit` : `${n.q.monthly_eb_units} units/month at ₹${n.q.tariff_per_unit}/unit`) : null],
+    ['Surplus sold to the grid', n.q.export_income_monthly > 0 ? `${n.q.export_units_monthly} units/month at ₹${n.q.export_rate}/unit = ${inr(n.q.export_income_monthly)}/month` : null],
+    ['Network charge', n.q.network_charge_monthly > 0 ? `${inr(n.q.network_charge_monthly)}/month (₹${n.q.network_charge} ${n.q.network_charge_basis === 'per_kw_month' ? 'per kW per month' : 'per unit generated'}) — already taken off the saving` : null],
     ['Pump', n.ps.pump_hp ? `${n.ps.pump_hp} HP ${n.ps.pump_type || ''} · head ${n.ps.pump_head_m} m · ${n.ps.pump_discharge_lph} LPH` : null],
   ].filter(r => r[1]);
   const kv = (rows, startY) => { autoTable(doc, { startY, margin: { left: m, right: m }, theme: 'plain', styles: { font: FONT, fontSize: 9, cellPadding: 1.8, textColor: INK }, columnStyles: { 0: { fontStyle: 'bold', cellWidth: 52, textColor: MUTED } }, body: rows }); return doc.lastAutoTable.finalY + 6; };

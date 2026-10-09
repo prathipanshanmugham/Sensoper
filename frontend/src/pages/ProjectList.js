@@ -102,7 +102,7 @@ export default function ProjectList() {
                     {[p.reference_number, placeOf(p), p.customer?.phone].filter(Boolean).join(' · ')}
                   </span>
                   <span className="mt-0.5 block text-[11px] text-slate-400">
-                    {p.created_by_name ? `${p.created_by_name} · ` : ''}{new Date(p.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+                    {p.created_by_name ? `${p.created_by_name} · ` : ''}{new Date(p.project_date ? `${p.project_date}T00:00:00` : p.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
                   </span>
                 </span>
                 <span className="shrink-0 text-right">

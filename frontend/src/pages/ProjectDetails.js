@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { useAuth } from '../contexts/AuthContext';
-import { projectsAPI, termsAPI, companyAPI, marginAPI, uploadAPI, inventoryAPI } from '../utils/api';
+import { useAuth, formatApiErrorDetail } from '../contexts/AuthContext';
+import { projectsAPI, termsAPI, companyAPI, marginAPI, uploadAPI, inventoryAPI, w3wAPI } from '../utils/api';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
@@ -14,10 +14,12 @@ import {
   ArrowLeft, Loader2, User, MapPin, Zap, Sun, Clock, CheckCircle2, XCircle, 
   AlertCircle, Download, Share2, Trash2, Send, AlertTriangle, Package, Percent, 
   Video, Upload, Film, Pencil, Save, X, MessageSquare, QrCode, FolderOpen, Camera, Ruler,
-  ExternalLink, Copy, FileSpreadsheet, Lock, Eye, EyeOff, ChevronDown, FileText, NotebookPen
+  ExternalLink, Copy, FileSpreadsheet, Lock, Eye, EyeOff, ChevronDown, FileText, NotebookPen, LocateFixed
 } from 'lucide-react';
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator } from '../components/ui/dropdown-menu';
 import QRCode from 'qrcode';
+import SitePhotoChecklist from '../components/SitePhotoChecklist';
+import { w3wLink, mapsLink, getPosition } from '../lib/geo';
 import { toast } from 'sonner';
 import * as XLSX from 'xlsx';
 import { saveAs } from 'file-saver';
@@ -94,6 +96,7 @@ export default function ProjectDetails() {
   const [editingStatus, setEditingStatus] = useState(false);
   const [statusValue, setStatusValue] = useState('');
   const [linkCopied, setLinkCopied] = useState(false);
+  const [pinning, setPinning] = useState(false);
   const [showDriveQR, setShowDriveQR] = useState(false);
   // Project Notes (universal — editable at any status, history of appends)
   const [editingNotes, setEditingNotes] = useState(false);
@@ -140,6 +143,19 @@ export default function ProjectDetails() {
   }, [id, navigate]);
 
   useEffect(() => { fetchProject(); fetchCompanyProfile(); }, [fetchProject]);
+
+  // Standing at the site: save the phone's GPS + What3words to this project (any status, no re-approval)
+  const pinLocation = async () => {
+    setPinning(true);
+    try {
+      const pos = await getPosition();
+      const r = await w3wAPI.pinProject(id, pos);
+      toast.success(r.data.words_updated ? `Location saved · ///${r.data.site_location_words}` : `GPS saved${r.data.note ? ` — ${r.data.note}` : ''}`);
+      fetchProject();
+    } catch (e) {
+      toast.error(e.response ? (formatApiErrorDetail(e.response.data?.detail) || 'Could not save the location') : e.message);
+    } finally { setPinning(false); }
+  };
 
   const fetchCompanyProfile = async () => { try { const res = await companyAPI.getActive(); setCompanyProfile(res.data); } catch (e) { console.error('Failed to fetch company profile:', e); } };
 
@@ -245,6 +261,7 @@ export default function ProjectDetails() {
       ['Project Ref', project.reference_number || `SCR-${id.slice(0,8).toUpperCase()}`],
       ['Status', (project.status || 'draft').toUpperCase()],
       ['Created By', project.created_by_name || '-'],
+      ['Project Date', project.project_date || ''],
       ['Created At', new Date(project.created_at).toLocaleDateString('en-IN')],
       [],
       ['— Customer —'],
@@ -371,7 +388,7 @@ export default function ProjectDetails() {
                   <p className="text-slate-500">
                     <span className="font-mono text-xs">{project.reference_number || `SCR-${id.slice(0,6).toUpperCase()}`}</span>
                     {canEditRefStatus && <button onClick={() => setEditingRef(true)} className="ml-1.5 text-slate-400 hover:text-slate-600" data-testid="edit-ref-btn"><Pencil className="h-3 w-3 inline" /></button>}
-                    <span className="mx-2">&bull;</span>Created by {project.created_by_name} &bull; {new Date(project.created_at).toLocaleDateString('en-IN')}
+                    <span className="mx-2">&bull;</span><span data-testid="project-date">Project date {new Date(`${project.project_date || String(project.created_at).slice(0, 10)}T00:00:00`).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</span> &bull; Created by {project.created_by_name}
                   </p>
                 )}
               </div>
@@ -440,9 +457,16 @@ export default function ProjectDetails() {
 
             {/* Location */}
             <Card className="border-slate-200">
-              <CardHeader className="pb-3"><CardTitle className="text-lg font-['Outfit'] flex items-center gap-2"><MapPin className="h-5 w-5 text-emerald-600" />Site Location</CardTitle></CardHeader>
+              <CardHeader className="pb-3"><CardTitle className="text-lg font-['Outfit'] flex items-center gap-2"><MapPin className="h-5 w-5 text-emerald-600" />Site Location
+                {(isAdmin || isManager || project.created_by === user?.id) && (
+                  <Button type="button" variant="outline" size="sm" onClick={pinLocation} disabled={pinning} className="ml-auto h-9 gap-1.5 text-xs font-medium text-emerald-700" title="Save this phone's location and the What3words address to the project" data-testid="pin-location-btn">
+                    {pinning ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <LocateFixed className="h-3.5 w-3.5" />}{pinning ? 'Finding…' : 'Update location'}
+                  </Button>
+                )}
+              </CardTitle></CardHeader>
               <CardContent>
-                {project.location?.site_location_words && <div className="flex justify-between py-2 border-b border-slate-100"><span className="text-slate-500">What3Words</span><span className="font-mono font-medium text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded">{project.location.site_location_words}</span></div>}
+                {project.location?.site_location_words && <div className="flex justify-between gap-2 py-2 border-b border-slate-100"><span className="text-slate-500">What3Words</span><a href={w3wLink(project.location.site_location_words)} target="_blank" rel="noopener noreferrer" className="font-mono text-sm font-medium text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded hover:underline break-all text-right" data-testid="project-w3w">///{String(project.location.site_location_words).replace(/^\/+/, '')}</a></div>}
+                {(project.location?.latitude && project.location?.longitude) ? <div className="flex justify-between gap-2 py-2 border-b border-slate-100"><span className="text-slate-500">GPS</span><a href={mapsLink(project.location.latitude, project.location.longitude)} target="_blank" rel="noopener noreferrer" className="font-mono text-sm text-emerald-700 hover:underline" data-testid="project-gps">{Number(project.location.latitude).toFixed(5)}, {Number(project.location.longitude).toFixed(5)} ↗</a></div> : null}
                 <InfoRow label="Address" value={project.location?.address} /><InfoRow label="Roof Type" value={project.mounting?.roof_type?.toUpperCase()} />
                 <InfoRow label="Tilt Angle" value={`${project.mounting?.tilt_angle}\u00B0`} /><InfoRow label="Structure Type" value={project.mounting?.structure_type} />
               </CardContent>
@@ -626,10 +650,16 @@ export default function ProjectDetails() {
             {(isAdmin || isManager) && <ProjectPartnerCard projectId={id} canManage={isAdmin || isManager} />}
             <ProjectTeamsCard projectId={id} canManage={isAdmin || isManager} />
 
+            {/* Site photos checklist — adds go straight to the project (and on to Google Drive) */}
+            <div data-testid="project-site-photos">
+              <SitePhotoChecklist projectId={id} customerName={project.customer?.name} w3w={project.location?.site_location_words}
+                canEdit={isAdmin || isManager || project.created_by === user?.id} compact />
+            </div>
+
             {/* Site Documentation */}
             {project.drive_folder_link && (
               <Card className="border-slate-200">
-                <CardHeader className="pb-3"><CardTitle className="text-lg font-['Outfit'] flex items-center gap-2"><FolderOpen className="h-5 w-5 text-blue-600" />Site Documentation</CardTitle></CardHeader>
+                <CardHeader className="pb-3"><CardTitle className="text-lg font-['Outfit'] flex items-center gap-2"><FolderOpen className="h-5 w-5 text-blue-600" />Google Drive folder</CardTitle></CardHeader>
                 <CardContent className="space-y-4">
                   {project.drive_folder_name && (
                     <div className="flex items-center gap-2 text-sm">

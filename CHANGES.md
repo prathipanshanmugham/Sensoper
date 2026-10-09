@@ -1,4 +1,63 @@
-# Sensoper — October 2026 restructure
+# Sensoper — change log
+
+## October 2026 · follow-ups
+
+- **Solution kits:** removed "Seed Starter Kits" (the button, the empty-state button and `POST /api/material-kits/seed-starter`). Kits it already created stay in the library; delete them from Solution kits if you don't want them.
+- **What3words:**
+  - An admin can paste a new API key in **Settings → What3words**. It's checked with What3words, stored encrypted, and wins over `W3W_API_KEY`.
+  - The Location step has a refresh button inside the 3-words box. It gets the words for the current GPS coordinates.
+  - The project page has **Update location**, which saves the phone's GPS and the 3 words to a saved project in one tap (`PUT /api/projects/{id}/geo`). It works in any status and doesn't send the project back for approval.
+- **Google Drive:**
+  - The redirect now defaults to `https://quote.sensoper.in/auth/google/callback`.
+  - The OAuth client secret can be pasted in **Settings → Google Drive** instead of editing `.env`. It's stored encrypted.
+- **Project date:**
+  - New project asks for a **Project date** (today by default) and stores it as `project_date`.
+  - It shows on the project page, in the Projects list, the review dialog and the Excel export.
+  - Older projects show the day they were created (IST).
+- **Proposed solution (Step 4 calculator):**
+  - **EB bill comes every 1 month / 2 months.** With 2 months, the bill and units are entered per bill. The calculator works per month and also shows savings per 2-month bill.
+  - **Feed-in rate (₹/unit):** what the DISCOM pays for surplus units exported (on-grid and hybrid).
+  - **Network charge:** ₹ per unit of solar generated, or ₹ per kW per month. It's taken off the saving.
+  - A line under the result shows: units saved + surplus sold − network charge = saving. The quotation PDF lists the billing, surplus and network-charge figures.
+  - Old projects compute exactly as before; the new inputs default to monthly and 0.
+  - The engine change is mirrored in `backend/quick_calc.py` and `frontend/src/utils/solarCalc.js`. `backend/tests/test_calc_billing.py` checks both give the same numbers.
+
+## October 2026 · Site photos to Google Drive, What3words, simpler Settings
+
+### Site photos checklist (New project → Site photos)
+- The last step of New project is now a photo checklist in five sections — Site & access, Roof, Electrical, Documents, Proof of visit — 23 items, 19 required (sheet-roof details, existing earthing, UPS/DG and C&I panels are "if applicable"). "Full roof from all 4 corners" needs 4 shots and "EB bill — both sides" needs 2. The bill and consumption history accept PDFs.
+- Photos are shrunk on the phone before upload (about 1600 px, roughly 150–300 KB) and keep the phone's GPS when location is allowed.
+- **Proof of visit** asks for the location and stamps customer, date/time, GPS and the What3words address in a strip under the photo.
+- The project page has the same checklist, so missing photos can be added after the project is submitted, without sending it back for approval.
+- The old "Drive folder link" box is still there, folded away, for customers who already have a folder.
+
+### Google Drive
+- An admin connects the company Google account once in **Settings → Google Drive**. After that, every site photo is copied to Drive by itself: `Sensoper — Site photos / SCR-XXXXXX · Customer · District / 1 Site & access …`.
+- Copies happen right after each save, and a background job retries every 10 minutes. Each file carries the photo's id, so a retry never makes a duplicate. If the photo folder is the only Drive folder on the project, the project's Drive link points at it.
+- The app only gets the `drive.file` permission, so it can see only the folders and files it creates. The Google refresh token is stored encrypted with `VAULT_MASTER_KEY`.
+- Backend: `backend/site_photos.py` (checklist, upload, project photo endpoints), `backend/google_drive.py` (OAuth connect, sync). New collections: `site_photo_uploads`, `integrations`, `oauth_states`. New project fields: `site_photos`, `site_photos_pending`, `site_photos_drive`.
+
+### What3words
+- New project → Location has a **Use my location** button. It fills in latitude/longitude, then the What3words address and the nearest place. Typing coordinates fills in the words as well, and typing the words fills in empty coordinates (that needs a What3words plan that allows it). Words a person typed are never overwritten, except when they tap the button again.
+- The key stays on the server (`W3W_API_KEY`), is sent to What3words in a header (so it isn't written to logs), and results are cached in `w3w_cache`. Backend: `backend/geo_w3w.py`.
+- The project page shows the What3words address and GPS as links.
+
+### Settings (was "Pricing & config")
+- Only the basics are left: cash rounding (₹1 / ₹10 / ₹100, nearest / up / down), overdue interest, design temperature, the monthly sales target, and the Google Drive / What3words connections.
+- Package slab rates, calculator benchmarks and service rates moved to **Price list**, which now has three tabs: Products, Package slabs, Service rates.
+- Health-score weights, expansion weights and per-location targets are no longer on screen. Their stored values keep working.
+
+### Security
+- The What3words key used by an earlier version was committed to this public repo (`test_reports/iteration_24.json`, now redacted; it is still in git history). Create a new key and put it only in the server's `.env`.
+
+### Tests
+`backend/tests/test_site_photos_drive.py`, 12 tests. They use fake Google and What3words servers and an in-memory database, so no network or MongoDB is needed:
+
+    cd backend && pip install mongomock-motor pytest && pytest tests/test_site_photos_drive.py
+
+---
+
+# October 2026 restructure
 
 ## What changed
 

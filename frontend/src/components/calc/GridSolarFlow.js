@@ -39,6 +39,10 @@ export function GridSolarFlow({ data, r, set, config, panels, inverters, batteri
   const needsBattery = data.system_type === 'hybrid' || data.system_type === 'off-grid';
   const hasUnits = (r?.monthly_eb_units || 0) > 0;
   const configMissing = !config;
+  const cycle = data.billing_cycle === 'bimonthly' ? 'bimonthly' : 'monthly';
+  const bimonthly = cycle === 'bimonthly';
+  const gridTied = (data.system_type || 'on-grid') === 'on-grid' || data.system_type === 'hybrid';
+  const networkPerKw = data.network_charge_basis === 'per_kw_month';
 
   return (
     <div className="space-y-5">
@@ -46,14 +50,47 @@ export function GridSolarFlow({ data, r, set, config, panels, inverters, batteri
 
       {/* Step 1 — customer's bill */}
       <StepTitle n={1} title="Customer's electricity use" sub="enter the bill or the units" />
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        <NumberField label="Monthly EB bill" unit="₹" value={data.monthly_eb_bill} onChange={(v) => set({ monthly_eb_bill: v })} step={100} placeholder="e.g. 3000" testid="bill"
-          hint={r?.units_source === 'from_bill' ? `≈ ${r.monthly_eb_units} units/month at ₹${r.tariff_per_unit}/unit` : undefined} />
-        <NumberField label="Units per month" unit="kWh" value={data.monthly_eb_units_entered} onChange={(v) => set({ monthly_eb_units_entered: v })} step={10} placeholder="if known" testid="units" optional
-          hint={r?.units_source === 'entered' ? 'Units override the bill' : undefined} />
-        <OverridableNumber label="Tariff" unit="₹/unit" autoValue={config?.default_tariff_per_unit ?? 8} value={data.tariff_per_unit_manual} onChange={(v) => set({ tariff_per_unit_manual: v })} step={0.5} testid="tariff" />
+      <div className="flex flex-wrap items-center gap-2" role="group" aria-label="How often the EB bill comes" data-testid="billing-cycle">
+        <span className="text-xs text-slate-700">EB bill comes every</span>
+        <div className="grid grid-cols-2 rounded-md border border-slate-200 bg-white p-0.5 h-10 text-sm">
+          {[['monthly', '1 month'], ['bimonthly', '2 months']].map(([v, l]) => (
+            <button key={v} type="button" onClick={() => set({ billing_cycle: v })} aria-pressed={cycle === v} data-testid={`billing-cycle-${v}`}
+              className={`rounded px-4 font-medium transition-colors ${cycle === v ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-50'}`}>{l}</button>
+          ))}
+        </div>
+        {bimonthly && <span className="text-[11px] text-slate-500">Enter one bill (2 months) — we work out the monthly figures.</span>}
       </div>
-      {!hasUnits && <p className="text-xs text-slate-500 rounded-md bg-slate-50 border border-dashed border-slate-200 px-3 py-2" data-testid="calc-waiting-bill">Enter the customer's monthly bill (or units) to size the system.</p>}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <NumberField label={bimonthly ? 'EB bill (2 months)' : 'Monthly EB bill'} unit="₹" value={data.monthly_eb_bill} onChange={(v) => set({ monthly_eb_bill: v })} step={100} placeholder={bimonthly ? 'e.g. 6000' : 'e.g. 3000'} testid="bill"
+          hint={r?.units_source === 'from_bill' ? `≈ ${bimonthly ? `${r.bill_units} units per bill · ` : ''}${r.monthly_eb_units} units/month at ₹${r.tariff_per_unit}/unit` : undefined} />
+        <NumberField label={bimonthly ? 'Units per bill (2 months)' : 'Units per month'} unit="kWh" value={data.monthly_eb_units_entered} onChange={(v) => set({ monthly_eb_units_entered: v })} step={10} placeholder="if known" testid="units" optional
+          hint={r?.units_source === 'entered' ? (bimonthly ? `= ${r.monthly_eb_units} units/month · overrides the bill` : 'Units override the bill') : undefined} />
+        <OverridableNumber label="Tariff" unit="₹/unit" autoValue={config?.default_tariff_per_unit ?? 8} value={data.tariff_per_unit_manual} onChange={(v) => set({ tariff_per_unit_manual: v })} step={0.5} testid="tariff"
+          hint="What the customer pays the EB per unit" />
+      </div>
+      {gridTied && (
+        <div className="rounded-lg border border-slate-200 bg-slate-50/60 p-3 space-y-3" data-testid="grid-charges">
+          <p className="text-xs font-semibold text-slate-800">Grid payments <span className="font-normal text-slate-500">— leave 0 if they don't apply</span></p>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <NumberField label="Feed-in rate" unit="₹/unit" value={data.export_rate} onChange={(v) => set({ export_rate: v })} step={0.25} placeholder="0" testid="export-rate"
+              hint={r?.export_units_monthly > 0 && r?.export_rate > 0 ? `${r.export_units_monthly} surplus units/month → ${inr(r.export_income_monthly)}` : 'What the government / DISCOM pays for each surplus unit sent to the grid'} />
+            <NumberField label="Network charge" unit={networkPerKw ? '₹/kW/month' : '₹/unit'} value={data.network_charge} onChange={(v) => set({ network_charge: v })} step={networkPerKw ? 10 : 0.1} placeholder="0" testid="network-charge"
+              warnings={warnFor('network_charge')}
+              hint={r?.network_charge_monthly > 0 ? `${inr(r.network_charge_monthly)}/month taken off the saving` : 'Grid / network charge the DISCOM levies on solar'} />
+            <div className="space-y-1">
+              <Label className="text-xs text-slate-700">Network charge is</Label>
+              <Select value={networkPerKw ? 'per_kw_month' : 'per_unit'} onValueChange={(v) => set({ network_charge_basis: v })}>
+                <SelectTrigger className="h-11 bg-white text-base" data-testid="network-basis"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="per_unit">per unit of solar generated</SelectItem>
+                  <SelectItem value="per_kw_month">per kW, every month</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+        </div>
+      )}
+      {!hasUnits && <p className="text-xs text-slate-500 rounded-md bg-slate-50 border border-dashed border-slate-200 px-3 py-2" data-testid="calc-waiting-bill">Enter the customer's {bimonthly ? 'bill' : 'monthly bill'} (or units) to size the system.</p>}
 
       {/* Step 2 — system size & products */}
       <StepTitle n={2} title="System" sub={hasUnits ? `${r.daily_units} units/day ÷ ${r.specific_yield} sun-hours` : undefined} />

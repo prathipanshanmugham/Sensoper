@@ -19,7 +19,7 @@ const SYSTEM_TYPES = [
   { value: 'off-grid', label: 'Off-Grid (battery only)' },
   { value: 'solar-pump', label: 'Solar Pump' },
 ];
-const GRID_KEYS = ['monthly_eb_bill', 'monthly_eb_units_entered', 'tariff_per_unit_manual', 'roof_area_sqft', 'panel_item_id', 'inverter_item_id', 'battery_item_id', 'backup_hours', 'subsidy', 'overrides', 'customer_type', 'pricing_mode'];
+const GRID_KEYS = ['monthly_eb_bill', 'monthly_eb_units_entered', 'tariff_per_unit_manual', 'billing_cycle', 'export_rate', 'network_charge', 'network_charge_basis', 'roof_area_sqft', 'panel_item_id', 'inverter_item_id', 'battery_item_id', 'backup_hours', 'subsidy', 'overrides', 'customer_type', 'pricing_mode'];
 const PUMP_KEYS = ['pump_path', 'required_flow_lpm', 'static_water_level_m', 'bore_casing_diameter_mm', 'daily_operating_hours', 'controller_max_voltage', 'string_voltage_v', '_pump_result', '_pump_warnings', 'pump_hp', 'pump_head_m', 'pump_discharge_lph', 'pump_type'];
 const BATTERY_KEYS = ['battery_item_id', 'backup_hours'];
 const RESULT_KEYS = ['system_size_kw', 'panel_count', 'battery_count', 'monthly_eb_units', 'tariff_per_unit', 'total_cost', 'net_cost', '_derived', '_quick'];

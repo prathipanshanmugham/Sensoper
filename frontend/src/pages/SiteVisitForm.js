@@ -1,7 +1,10 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { projectsAPI, inventoryAPI, formTabsAPI, termsAPI, materialKitsAPI, catalogueAPI } from '../utils/api';
+import { projectsAPI, inventoryAPI, formTabsAPI, termsAPI, materialKitsAPI, catalogueAPI, w3wAPI } from '../utils/api';
+import SitePhotoChecklist from '../components/SitePhotoChecklist';
+import { getPosition, w3wLink, mapsLink } from '../lib/geo';
+import { localDate } from '../lib/format';
 import { pct, roundCash } from '../utils/solarCalc';
 import { formatApiErrorDetail } from '../contexts/AuthContext';
 import { toast } from 'sonner';
@@ -21,7 +24,7 @@ import {
   User, MapPin, Zap, ArrowRight, ArrowLeft, Loader2, CheckCircle2,
   Sparkles, Plus, Trash2, Package, FolderOpen, X, Percent, FolderPlus, ExternalLink, CheckCircle, Link2,
   Ruler, ChevronDown, ChevronRight, Home, Compass, Eye, PlugZap, Settings2, HardHat, Shield, Layers,
-  AlertCircle, FileText, Wand2, RefreshCw, Bolt
+  AlertCircle, FileText, Wand2, RefreshCw, Bolt, LocateFixed
 } from 'lucide-react';
 import { Badge } from '../components/ui/badge';
 
@@ -60,6 +63,10 @@ const CONNECTION_PHASE_OPTIONS = [
   { value: 'Three Phase', label: 'Three Phase' },
 ];
 
+// Site photos travel as ids only; the server keeps the trusted record (path, GPS, Drive copy state).
+const photoIds = (sp) => Object.fromEntries(Object.entries(sp || {}).map(([k, l]) => [k, (l || []).map((p) => p.id).filter(Boolean)]));
+const W3W_RE = /^[a-z]+\.[a-z]+\.[a-z]+$/i;
+
 // Length conversion — user enters in either unit, we store in metres.
 const toMetres = (val, unit) => {
   const n = parseFloat(val);
@@ -78,6 +85,12 @@ export default function SiteVisitForm() {
   const [loading, setLoading] = useState(false);
   const [loadingProject, setLoadingProject] = useState(!!editId);
   const [w3wFormatError, setW3wFormatError] = useState('');
+  const [locating, setLocating] = useState(false);
+  const [w3wBusy, setW3wBusy] = useState(false);
+  const [w3wNote, setW3wNote] = useState(null);      // { tone: 'ok' | 'warn', text }
+  const w3wAutoRef = useRef('');                       // words we filled in ourselves (safe to replace)
+  const w3wTimer = useRef(null);
+  const locationRef = useRef(null);                    // latest formData.location for async lookups
   const [aiLoading, setAiLoading] = useState(false);
   const [error, setError] = useState('');
   const [inventoryItems, setInventoryItems] = useState([]);
@@ -119,6 +132,8 @@ export default function SiteVisitForm() {
     manual_costs: [],
     drive_folder_name: '',
     drive_folder_link: '',
+    site_photos: {},
+    project_date: localDate(),
     site_measurements: {
       roof: { length: '', width: '', area: '', type: '', height: '' },
       orientation: { direction: '', tilt_angle: '' },
@@ -138,6 +153,8 @@ export default function SiteVisitForm() {
     commissioning_date: '',
     notes: ''
   });
+
+  locationRef.current = formData.location;
 
   const loadProject = useCallback(async () => {
     try {
@@ -174,6 +191,8 @@ export default function SiteVisitForm() {
         manual_costs: p.manual_costs || [],
         drive_folder_name: p.drive_folder_name || '',
         drive_folder_link: p.drive_folder_link || '',
+        site_photos: p.site_photos || {},
+        project_date: p.project_date || (p.created_at ? localDate(new Date(p.created_at)) : localDate()),
         site_measurements: {
           roof: { length: '', width: '', area: '', type: '', height: '', ...(p.site_measurements?.roof || {}) },
           orientation: { direction: '', tilt_angle: '', ...(p.site_measurements?.orientation || {}) },
@@ -425,6 +444,8 @@ export default function SiteVisitForm() {
           manual_costs: formData.manual_costs,
           drive_folder_name: formData.drive_folder_name,
           drive_folder_link: formData.drive_folder_link || null,
+          site_photos: photoIds(formData.site_photos),
+          project_date: formData.project_date || null,
           site_measurements: formData.site_measurements,
           custom_fields: formData.custom_fields,
           calculation_snapshot: formData.calculation_snapshot || null,
@@ -472,6 +493,69 @@ export default function SiteVisitForm() {
   };
 
   // ── What3Words: capture GPS → fetch w3w → autofill ───────────────────
+  const lookupWords = useCallback(async (lat, lng, { force = false } = {}) => {
+    const la = parseFloat(lat), ln = parseFloat(lng);
+    if (!Number.isFinite(la) || !Number.isFinite(ln) || Math.abs(la) > 90 || Math.abs(ln) > 180 || (la === 0 && ln === 0)) return;
+    setW3wBusy(true);
+    try {
+      const r = await w3wAPI.fromCoords(la, ln);
+      const words = r.data.words;
+      const cur = locationRef.current?.site_location_words || '';
+      if (!force && cur && cur !== w3wAutoRef.current) return; // the user typed their own words — leave them
+      w3wAutoRef.current = words;
+      setFormData(prev => ({ ...prev, location: { ...prev.location, site_location_words: words } }));
+      setW3wFormatError('');
+      setW3wNote({ tone: 'ok', text: r.data.nearest_place ? `Filled in from GPS · near ${r.data.nearest_place}` : 'Filled in from GPS' });
+    } catch (e) {
+      setW3wNote({ tone: 'warn', text: formatApiErrorDetail(e.response?.data?.detail) || 'What3words lookup failed — you can type the words yourself.' });
+    } finally { setW3wBusy(false); }
+  }, []);
+
+  const lookupCoords = useCallback(async (words) => {
+    try {
+      const r = await w3wAPI.toCoords(words);
+      if (r.data.lat == null) return;
+      setFormData(prev => (prev.location.latitude || prev.location.longitude) ? prev
+        : { ...prev, location: { ...prev.location, latitude: r.data.lat, longitude: r.data.lng } });
+      setW3wNote({ tone: 'ok', text: r.data.nearest_place ? `GPS filled in from the words · near ${r.data.nearest_place}` : 'GPS filled in from the words' });
+    } catch (e) {
+      if (e.response?.status === 400) setW3wNote({ tone: 'warn', text: formatApiErrorDetail(e.response?.data?.detail) });
+    }
+  }, []);
+
+  const onCoordChange = (field, value) => {
+    updateField('location', field, value);
+    clearTimeout(w3wTimer.current);
+    const lat = field === 'latitude' ? value : formData.location.latitude;
+    const lng = field === 'longitude' ? value : formData.location.longitude;
+    w3wTimer.current = setTimeout(() => lookupWords(lat, lng), 900);
+  };
+
+  const onWordsChange = (raw) => {
+    const cleaned = raw.replace(/^\/{1,3}/, '').trim().toLowerCase();
+    updateField('location', 'site_location_words', cleaned);
+    setW3wNote(null);
+    clearTimeout(w3wTimer.current);
+    if (!cleaned || W3W_RE.test(cleaned)) setW3wFormatError('');
+    else setW3wFormatError('Format should be word.word.word');
+    if (W3W_RE.test(cleaned) && !formData.location.latitude && !formData.location.longitude) {
+      w3wTimer.current = setTimeout(() => lookupCoords(cleaned), 900);
+    }
+  };
+
+  const useMyLocation = async () => {
+    setLocating(true);
+    setW3wNote(null);
+    try {
+      const pos = await getPosition();
+      setFormData(prev => ({ ...prev, location: { ...prev.location, latitude: pos.lat, longitude: pos.lng } }));
+      toast.success(`Location captured (accurate to about ${pos.accuracy} m)`);
+      await lookupWords(pos.lat, pos.lng, { force: true });
+    } catch (e) {
+      toast.error(e.message);
+    } finally { setLocating(false); }
+  };
+  useEffect(() => () => clearTimeout(w3wTimer.current), []);
 
   const updateMeasurement = (section, field, value) => {
     setFormData(prev => ({
@@ -623,7 +707,7 @@ export default function SiteVisitForm() {
       return true;
     };
     switch (slug) {
-      case 'customer': if (!formData.customer.name || !formData.customer.phone || !formData.customer.address) { setError('Please fill all required fields'); return false; } return validateExtraFields();
+      case 'customer': if (!formData.customer.name || !formData.customer.phone || !formData.customer.address || !formData.project_date) { setError('Please fill all required fields'); return false; } return validateExtraFields();
       case 'location': if (!formData.location.site_location_words && !formData.location.address) { setError('Enter What3Words or site address'); return false; } return validateExtraFields();
       case 'site_electrical': return validateExtraFields();
       case 'materials': {
@@ -699,6 +783,8 @@ export default function SiteVisitForm() {
         drive_folder_name: formData.drive_folder_name || null,
         drive_folder_link: formData.drive_folder_link || null,
         drive_folder_id: formData.drive_folder_link ? extractFolderId(formData.drive_folder_link) : null,
+        site_photos: photoIds(formData.site_photos),
+        project_date: formData.project_date || null,
         site_measurements: {
           roof: {
             length: parseFloat(formData.site_measurements.roof.length) || '',
@@ -831,7 +917,7 @@ export default function SiteVisitForm() {
                 if (slug === 'location') return 'Site location and roof details';
                 if (slug === 'site_electrical') return 'Site measurements, electrical & load information';
                 if (slug === 'materials') return 'Define the proposed solution, select materials & view live ROI / payback metrics';
-                if (slug === 'site_docs') return 'Link your Google Drive folder for site documentation';
+                if (slug === 'site_docs') return 'Take the site photos on the checklist — they are saved to Google Drive automatically';
                 return `Fill in ${STEPS[currentStep - 1]?.title || ''} details`;
               })()}
             </CardDescription>
@@ -842,6 +928,11 @@ export default function SiteVisitForm() {
             {/* Step: Customer */}
             {STEPS[currentStep - 1]?.slug === 'customer' && (
               <div className="space-y-4">
+                <div className="space-y-2 sm:max-w-xs">
+                  <Label>Project date *</Label>
+                  <Input type="date" value={formData.project_date || ''} max={localDate()} onChange={(e) => setFormData(prev => ({ ...prev, project_date: e.target.value }))} className="h-11" data-testid="project-date-input" />
+                  <p className="text-[11px] text-slate-500">The day this project was taken up — today unless you're entering an older visit.</p>
+                </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-2"><Label>Customer Name *</Label><Input value={formData.customer.name} onChange={(e) => updateField('customer', 'name', e.target.value)} placeholder="Customer name" className="h-11" data-testid="customer-name-input" /></div>
                   <div className="space-y-2"><Label>Phone *</Label><Input type="tel" value={formData.customer.phone} onChange={(e) => updateField('customer', 'phone', e.target.value)} placeholder="Phone number" className="h-11" data-testid="customer-phone-input" /></div>
@@ -855,41 +946,56 @@ export default function SiteVisitForm() {
             {/* Step: Location */}
             {STEPS[currentStep - 1]?.slug === 'location' && (
               <div className="space-y-4">
-                <div className="p-4 bg-emerald-50 rounded-lg border border-emerald-200">
-                  <div className="mb-2">
-                    <h3 className="font-semibold text-emerald-800 mb-1">What3Words Address</h3>
-                    <p className="text-sm text-emerald-600">Enter the 3-word location manually (optional). Use the What3Words app on your phone to look it up.</p>
+                <div className="p-4 bg-emerald-50 rounded-lg border border-emerald-200 space-y-3" data-testid="w3w-box">
+                  <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+                    <div>
+                      <h3 className="font-semibold text-emerald-800">Site location</h3>
+                      <p className="text-sm text-emerald-700">Standing at the site? Tap <strong>Use my location</strong> — GPS and the What3words address fill in by themselves.</p>
+                    </div>
+                    <Button type="button" onClick={useMyLocation} disabled={locating} className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white h-11 shrink-0" data-testid="use-my-location-btn">
+                      {locating ? <Loader2 className="h-4 w-4 animate-spin" /> : <LocateFixed className="h-4 w-4" />}{locating ? 'Finding location…' : 'Use my location'}
+                    </Button>
                   </div>
-                  <Input
-                    value={formData.location.site_location_words}
-                    onChange={(e) => {
-                      const raw = e.target.value;
-                      const cleaned = raw.replace(/^\/{1,3}/, '');
-                      updateField('location', 'site_location_words', cleaned);
-                      if (!cleaned || /^[a-z]+\.[a-z]+\.[a-z]+$/i.test(cleaned)) setW3wFormatError('');
-                      else setW3wFormatError('Format should be word.word.word (optional field — you can leave it blank).');
-                    }}
-                    placeholder="word.word.word"
-                    className="font-mono h-11"
-                    data-testid="what3words-input"
-                  />
-                  {(formData.location.latitude && formData.location.longitude) && (
-                    <p className="text-[11px] text-emerald-600 mt-1.5 flex items-center gap-1" data-testid="w3w-coords">
-                      <MapPin className="h-3 w-3" />
-                      {Number(formData.location.latitude).toFixed(5)}, {Number(formData.location.longitude).toFixed(5)}
-                    </p>
-                  )}
-                  {formData.location.site_location_words && (
-                    <a href={`https://what3words.com/${formData.location.site_location_words.replace(/^\/{1,3}/, '')}`} target="_blank" rel="noopener noreferrer" className="text-[11px] text-emerald-700 hover:underline inline-block mt-1.5" data-testid="w3w-open-link">Open in W3W ↗</a>
-                  )}
-                  {w3wFormatError && (
-                    <p className="text-[11px] text-amber-700 mt-1.5 flex items-center gap-1" data-testid="w3w-error"><AlertCircle className="h-3 w-3" />{w3wFormatError}</p>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs text-emerald-900">What3words address</Label>
+                    <div className="relative">
+                      <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 font-mono font-semibold text-red-500">///</span>
+                      <Input
+                        value={formData.location.site_location_words}
+                        onChange={(e) => onWordsChange(e.target.value)}
+                        placeholder="filled.in.automatically"
+                        autoCapitalize="none" autoCorrect="off" spellCheck={false}
+                        className="font-mono h-11 pl-11 pr-11 bg-white"
+                        data-testid="what3words-input"
+                      />
+                      <button type="button" onClick={() => lookupWords(formData.location.latitude, formData.location.longitude, { force: true })}
+                        disabled={w3wBusy || !(formData.location.latitude && formData.location.longitude)}
+                        title="Update the 3 words from the GPS coordinates" aria-label="Update the 3 words from the GPS coordinates"
+                        className="absolute right-1 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-md text-emerald-700 hover:bg-emerald-50 disabled:text-slate-300" data-testid="w3w-refresh-btn">
+                        {w3wBusy ? <Loader2 className="h-4 w-4 animate-spin" data-testid="w3w-busy" /> : <RefreshCw className="h-4 w-4" />}
+                      </button>
+                    </div>
+                    {w3wNote && <p className={`text-[11px] flex items-center gap-1 ${w3wNote.tone === 'ok' ? 'text-emerald-700' : 'text-amber-700'}`} data-testid="w3w-note">{w3wNote.tone === 'ok' ? <CheckCircle className="h-3 w-3" /> : <AlertCircle className="h-3 w-3" />}{w3wNote.text}</p>}
+                    {w3wFormatError && <p className="text-[11px] text-amber-700 flex items-center gap-1" data-testid="w3w-error"><AlertCircle className="h-3 w-3" />{w3wFormatError}</p>}
+                  </div>
+                  {((formData.location.latitude && formData.location.longitude) || formData.location.site_location_words) && (
+                    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px]">
+                      {(formData.location.latitude && formData.location.longitude) && (
+                        <span className="flex items-center gap-1 text-emerald-700" data-testid="w3w-coords"><MapPin className="h-3 w-3" />{Number(formData.location.latitude).toFixed(5)}, {Number(formData.location.longitude).toFixed(5)}</span>
+                      )}
+                      {formData.location.site_location_words && W3W_RE.test(formData.location.site_location_words) && (
+                        <a href={w3wLink(formData.location.site_location_words)} target="_blank" rel="noopener noreferrer" className="font-medium text-emerald-700 hover:underline" data-testid="w3w-open-link">Open in What3words ↗</a>
+                      )}
+                      {(formData.location.latitude && formData.location.longitude) && (
+                        <a href={mapsLink(formData.location.latitude, formData.location.longitude)} target="_blank" rel="noopener noreferrer" className="font-medium text-emerald-700 hover:underline" data-testid="maps-open-link">Google Maps ↗</a>
+                      )}
+                    </div>
                   )}
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div className="space-y-2"><Label className="text-xs">Latitude (optional)</Label><Input type="number" step="any" value={formData.location.latitude ?? ''} onChange={(e) => updateField('location', 'latitude', e.target.value)} placeholder="e.g., 13.0827" className="h-11 font-mono" data-testid="latitude-input" /></div>
-                  <div className="space-y-2"><Label className="text-xs">Longitude (optional)</Label><Input type="number" step="any" value={formData.location.longitude ?? ''} onChange={(e) => updateField('location', 'longitude', e.target.value)} placeholder="e.g., 80.2707" className="h-11 font-mono" data-testid="longitude-input" /></div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-2"><Label className="text-xs">Latitude</Label><Input type="number" step="any" inputMode="decimal" value={formData.location.latitude ?? ''} onChange={(e) => onCoordChange('latitude', e.target.value)} placeholder="e.g., 11.3410" className="h-11 font-mono" data-testid="latitude-input" /></div>
+                  <div className="space-y-2"><Label className="text-xs">Longitude</Label><Input type="number" step="any" inputMode="decimal" value={formData.location.longitude ?? ''} onChange={(e) => onCoordChange('longitude', e.target.value)} placeholder="e.g., 77.7172" className="h-11 font-mono" data-testid="longitude-input" /></div>
                 </div>
                 <div className="space-y-2"><Label>Site Address</Label><Textarea rows={2} value={formData.location.address} onChange={(e) => updateField('location', 'address', e.target.value)} placeholder="Site location description" data-testid="location-address-input" /></div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -1465,13 +1571,23 @@ export default function SiteVisitForm() {
             {/* Site Documentation */}
             {STEPS[currentStep - 1]?.slug === 'site_docs' && (
               <div className="space-y-5">
-                <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
-                  <p className="text-sm font-medium text-blue-800">Link your Google Drive folder containing site images and documentation for this project.</p>
-                </div>
+                <SitePhotoChecklist
+                  value={formData.site_photos}
+                  onChange={(fn) => setFormData(prev => ({ ...prev, site_photos: fn(prev.site_photos || {}) }))}
+                  customerName={formData.customer.name}
+                  w3w={formData.location.site_location_words}
+                />
 
+                <details className="group rounded-lg border border-slate-200 bg-white" open={!!formData.drive_folder_link} data-testid="manual-drive-folder">
+                  <summary className="cursor-pointer list-none px-4 py-3 text-sm font-medium text-slate-700 flex items-center justify-between gap-2">
+                    <span>Already have a Google Drive folder for this customer? <span className="font-normal text-slate-400">(optional)</span></span>
+                    <ChevronDown className="h-4 w-4 text-slate-400 transition-transform group-open:rotate-180" />
+                  </summary>
+                  <div className="space-y-4 border-t border-slate-100 p-4">
+                <p className="text-xs text-slate-500">Leave this empty and Sensoper makes a folder for the photos by itself. Paste a link only if the customer already has a folder.</p>
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
-                    <Label>Folder Name *</Label>
+                    <Label>Folder name</Label>
                     {formData.customer.name && !formData.drive_folder_name && (
                       <button
                         type="button"
@@ -1492,7 +1608,7 @@ export default function SiteVisitForm() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label>Google Drive Folder Link *</Label>
+                  <Label>Google Drive folder link</Label>
                   <div className="flex gap-2">
                     <Input
                       value={formData.drive_folder_link}
@@ -1533,6 +1649,8 @@ export default function SiteVisitForm() {
                     </a>
                   </div>
                 )}
+                  </div>
+                </details>
 
                 <div className="space-y-2">
                   <Label className="flex items-center gap-2"><FileText className="h-4 w-4 text-emerald-600" />Terms & Conditions Template</Label>
@@ -1697,6 +1815,7 @@ export default function SiteVisitForm() {
               <div className="rounded-lg border border-slate-200 p-3">
                 <p className="text-[10px] uppercase tracking-wider text-slate-500 font-semibold mb-1">Customer</p>
                 <p className="font-medium text-slate-900">{formData.customer.name || '—'}</p>
+                {formData.project_date && <p className="text-xs text-slate-500" data-testid="review-project-date">Project date: {new Date(`${formData.project_date}T00:00:00`).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</p>}
                 <p className="text-xs text-slate-500">{formData.customer.phone} · {formData.customer.email || 'no email'}</p>
                 <p className="text-xs text-slate-500 mt-0.5 truncate">{formData.customer.address}</p>
               </div>
@@ -1737,7 +1856,7 @@ export default function SiteVisitForm() {
               </div>
               <div className="rounded-lg border border-slate-200 p-3">
                 <p className="text-[10px] uppercase tracking-wider text-slate-500 font-semibold mb-1">Documentation</p>
-                <p className="text-xs text-slate-800">Drive: {formData.drive_folder_link ? '✓ linked' : '— not set'} · T&amp;C: {formData.terms_id ? '✓ selected' : '— default'} · Reference: {formData.reference_project_id ? '✓ attached' : '— none'}</p>
+                <p className="text-xs text-slate-800">Photos: {Object.values(formData.site_photos || {}).flat().length || '— none yet'} · Drive: {formData.drive_folder_link ? '✓ linked' : 'auto folder'} · T&amp;C: {formData.terms_id ? '✓ selected' : '— default'} · Reference: {formData.reference_project_id ? '✓ attached' : '— none'}</p>
               </div>
             </div>
             <DialogFooter>

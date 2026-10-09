@@ -1,97 +1,88 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Search, Package, Layers, Wrench, Building2, Target, ArrowRight } from 'lucide-react';
+import { toast } from 'sonner';
+import { ArrowRight, Check, Loader2, Pencil, Tags, X } from 'lucide-react';
+import { healthAPI } from '../utils/api';
+import { formatApiErrorDetail } from '../contexts/AuthContext';
+import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
-import PricelistPage from './PricelistPage';
-import { SlabRatesCard } from '../components/SlabRatesCard';
-import { ServiceRatesTable } from '../components/ServiceRatesTable';
 import { CompanyDefaultsCard } from '../components/CompanyDefaultsCard';
-import AdvancedConfigSection from '../components/AdvancedConfigSection';
+import { DriveConnectCard, W3wStatusRow } from '../components/DriveConnectCard';
 
-/** Iter 60 — Pricing & Config: exactly five tabs, one inline editing pattern, one global search.
- *  Orphans audited: "Pincode / DISCOM data tools" (utilities) moved out to Expansion → Needs Location Review (auto-resolve);
- *  calculator benchmarks + PM Surya Ghar reference live under Slabs (they are the fallback rates when no slab applies). */
-export const TABS = [
-  { id: 'products', label: 'Products', icon: Package, line: 'Every priced inventory item — cost, margin % and GST % per row. Edit a cell, press Enter.' },
-  { id: 'slabs', label: 'Slabs', icon: Layers, line: 'Package ₹ per kW / HP / unit by size band for each kit category; benchmarks below apply when no slab matches.' },
-  { id: 'services', label: 'Services', icon: Wrench, line: 'Structure, cabling and installation rates, each with its own margin % and GST %.' },
-  { id: 'company', label: 'Company Defaults', icon: Building2, line: 'Single company-wide numbers: rounding of totals, overdue interest, design temperature.' },
-  { id: 'targets', label: 'Targets', icon: Target, line: 'Revenue, margin, CAC and health-score targets, with a per-location revenue override table.' },
-];
-// Global search index — every setting on the page, one plain-language line each
-export const SEARCH_INDEX = [
-  { label: 'Panel / inverter / battery / camera price, margin %, GST %', tab: 'products', hint: 'search the product name in the Products table' },
-  { label: 'Inventory item HSN code', tab: 'products' },
-  { label: 'Slab package rate per kW (on-grid / off-grid / hybrid)', tab: 'slabs', anchor: 'slab-rates-card' },
-  { label: 'Slab package rate per HP (solar pump)', tab: 'slabs', anchor: 'slab-rates-card' },
-  { label: 'Slab package rate per unit (Solar Camera and other product kits)', tab: 'slabs', anchor: 'slab-rates-card' },
-  { label: 'Benchmark cost per kWp when no product / slab is picked', tab: 'slabs', anchor: 'calc-constants' },
-  { label: 'Specific yield, default tariff, system life, degradation', tab: 'slabs', anchor: 'calc-constants' },
-  { label: 'PM Surya Ghar subsidy reference slabs and cap', tab: 'slabs', anchor: 'calc-constants' },
-  { label: 'Battery benchmark price per kWh', tab: 'slabs', anchor: 'calc-constants' },
-  { label: 'Installation & commissioning rate (per kW)', tab: 'services', anchor: 'service-rates-table' },
-  { label: 'Structure / cabling / net-metering rate, margin %, GST %', tab: 'services', anchor: 'service-rates-table' },
-  { label: 'Rounding of final totals (₹1 / ₹10 / ₹100) and direction', tab: 'company', anchor: 'rounding-rule-card' },
-  { label: 'Overdue credit interest (% per month)', tab: 'company', anchor: 'rounding-rule-card' },
-  { label: 'Coldest design temperature for string voltage check', tab: 'company', anchor: 'rounding-rule-card' },
-  { label: 'Monthly revenue target (company-wide)', tab: 'targets', anchor: 'targets-health' },
-  { label: 'Per-location monthly revenue target override', tab: 'targets', anchor: 'location-targets-table' },
-  { label: 'Target margin %, minimum acceptable margin %', tab: 'targets', anchor: 'targets-health' },
-  { label: 'Collection days, overdue %, on-time delivery %, conversion %, CAC', tab: 'targets', anchor: 'targets-health' },
-  { label: 'Health score pillar weights and bands', tab: 'targets', anchor: 'targets-health' },
-  { label: 'Expansion ranking weights (demand, revenue share, growth, margin)', tab: 'targets', anchor: 'targets-expansion' },
-];
+/** Settings — only the few company-wide basics. Product prices, package slabs and service rates live in Price list. */
+
+function Group({ title, line, children }) {
+  return (
+    <section className="space-y-2">
+      <div><h2 className="font-['Outfit'] text-base font-semibold text-slate-900">{title}</h2>{line && <p className="text-xs text-slate-500">{line}</p>}</div>
+      {children}
+    </section>
+  );
+}
+
+function MonthlyTargetRow() {
+  const [value, setValue] = useState(null);
+  const [edit, setEdit] = useState(false);
+  const [val, setVal] = useState('');
+  const [saving, setSaving] = useState(false);
+  useEffect(() => { healthAPI.getConfig().then((r) => setValue(r.data?.targets?.monthly_revenue_target ?? 0)).catch(() => setValue(0)); }, []);
+  const save = async () => {
+    const n = Math.round(parseFloat(String(val).replace(/[^\d.]/g, '')) || 0);
+    setSaving(true);
+    try { await healthAPI.updateConfig({ 'targets.monthly_revenue_target': n }); setValue(n); setEdit(false); toast.success('Saved'); }
+    catch (e) { toast.error(formatApiErrorDetail(e.response?.data?.detail) || 'Save failed'); }
+    finally { setSaving(false); }
+  };
+  return (
+    <div className="flex flex-wrap items-center gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2.5" data-testid="monthly-target-row">
+      <div className="min-w-[240px] flex-1"><p className="text-sm font-medium text-slate-800">Monthly sales target</p><p className="text-[11px] text-slate-500">Home and Business health show progress against this every month.</p></div>
+      {value === null ? <Loader2 className="h-4 w-4 animate-spin text-slate-400" /> : edit ? (
+        <div className="flex items-center gap-1">
+          <span className="text-sm text-slate-500">₹</span>
+          <Input type="number" inputMode="numeric" min="0" step="10000" value={val} onChange={(e) => setVal(e.target.value)} className="h-8 w-36 text-sm" autoFocus
+            onKeyDown={(e) => { if (e.key === 'Enter') save(); if (e.key === 'Escape') setEdit(false); }} data-testid="monthly-target-input" />
+          <Button size="sm" onClick={save} disabled={saving} className="h-8 bg-emerald-600 px-2 text-white hover:bg-emerald-700" data-testid="monthly-target-save">{saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}</Button>
+          <Button size="sm" variant="ghost" onClick={() => setEdit(false)} className="h-8 px-2"><X className="h-3.5 w-3.5" /></Button>
+        </div>
+      ) : (
+        <button type="button" onClick={() => { setVal(String(value || '')); setEdit(true); }} className="flex h-8 items-center gap-2 rounded-md border border-slate-200 px-3 text-sm hover:border-emerald-400" data-testid="monthly-target-value">
+          <span className="font-semibold tabular-nums text-slate-900">₹{Number(value || 0).toLocaleString('en-IN')}</span><Pencil className="h-3 w-3 text-slate-400" />
+        </button>
+      )}
+    </div>
+  );
+}
 
 export default function PricingConfig() {
-  const [tab, setTab] = useState(() => new URLSearchParams(window.location.search).get('tab') || 'products');
-  const [q, setQ] = useState('');
-  const words = q.trim().toLowerCase().split(/\s+/).filter(Boolean);
-  const hits = q.trim().length > 1 ? SEARCH_INDEX.filter(s => words.every(w => s.label.toLowerCase().includes(w))).slice(0, 8) : [];
-  const jump = useCallback((s) => {
-    setTab(s.tab); setQ('');
-    setTimeout(() => { const el = s.anchor && document.getElementById(s.anchor); if (el) { el.scrollIntoView({ behavior: 'smooth', block: 'start' }); el.classList.add('ring-2', 'ring-emerald-400'); setTimeout(() => el.classList.remove('ring-2', 'ring-emerald-400'), 1800); } }, 150);
+  useEffect(() => {
+    if (!window.location.hash) return undefined;
+    const t = setTimeout(() => document.getElementById(window.location.hash.slice(1))?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 300);
+    return () => clearTimeout(t);
   }, []);
-  useEffect(() => { const u = new URL(window.location.href); u.searchParams.set('tab', tab); window.history.replaceState({}, '', u); }, [tab]);
-  const meta = TABS.find(t => t.id === tab);
-
   return (
-    <div className="p-4 sm:p-6 max-w-7xl mx-auto space-y-4" data-testid="pricing-config-page">
-      <div className="flex flex-col lg:flex-row lg:items-end gap-3">
-        <div className="flex-1"><h1 className="text-2xl font-bold font-['Outfit'] text-slate-900">Pricing &amp; Config</h1><p className="text-sm text-slate-500">Five tabs. Every number on this page is edited in place — change it, save the row.</p></div>
-        <div className="relative w-full lg:w-[420px]" data-testid="pc-search-wrap">
-          <Search className="h-4 w-4 absolute left-3 top-2.5 text-slate-400" />
-          <Input value={q} onChange={e => setQ(e.target.value)} placeholder="Find any setting or product… e.g. margin, slab, rounding, target" className="h-9 pl-9" data-testid="pc-search" />
-          {hits.length > 0 && (
-            <div className="absolute z-20 mt-1 w-full rounded-md border border-slate-200 bg-white shadow-lg" data-testid="pc-search-results">
-              {hits.map((s, i) => <button key={s.label} type="button" onClick={() => jump(s)} className="w-full text-left px-3 py-2 text-sm hover:bg-emerald-50 flex items-center justify-between" data-testid={`pc-search-result-${i}`}><span>{s.label}</span><span className="text-[10px] uppercase text-slate-400 flex items-center gap-1">{TABS.find(t => t.id === s.tab)?.label}<ArrowRight className="h-3 w-3" /></span></button>)}
-            </div>
-          )}
-        </div>
+    <div className="mx-auto max-w-3xl space-y-6 p-4 sm:p-6" data-testid="pricing-config-page">
+      <div>
+        <h1 className="font-['Outfit'] text-2xl font-bold text-slate-900">Settings</h1>
+        <p className="text-sm text-slate-500">A few company-wide basics. Tap a value to change it.</p>
       </div>
 
-      <div className="flex gap-1 rounded-lg bg-slate-100 p-1 overflow-x-auto" data-testid="pc-tabs">
-        {TABS.map(t => { const I = t.icon; return (
-          <button key={t.id} type="button" onClick={() => setTab(t.id)} className={`flex items-center gap-1.5 px-4 py-2 rounded-md text-sm font-medium whitespace-nowrap ${tab === t.id ? 'bg-white shadow text-slate-900' : 'text-slate-500 hover:text-slate-800'}`} data-testid={`pc-tab-${t.id}`}><I className="h-4 w-4" />{t.label}</button>); })}
-      </div>
-      <p className="text-xs text-slate-500" data-testid="pc-tab-line">{meta.line}</p>
+      <Group title="Money" line="How quote and invoice totals are rounded, and a few company defaults.">
+        <CompanyDefaultsCard />
+      </Group>
 
-      <div data-testid={`pc-panel-${tab}`}>
-        {tab === 'products' && <PricelistPage embedded />}
-        {tab === 'slabs' && (<div className="space-y-4">
-          <SlabRatesCard />
-          <div id="calc-constants" className="rounded-lg border border-slate-200 bg-white p-3 space-y-2" data-testid="calc-constants">
-            <p className="text-sm font-semibold text-slate-800">Benchmarks &amp; subsidy reference <span className="text-slate-400 font-normal text-xs">— used by the calculator only when no slab rate or inventory product applies</span></p>
-            <AdvancedConfigSection only={['calc']} />
-          </div>
-        </div>)}
-        {tab === 'services' && <div id="service-rates-table"><ServiceRatesTable /></div>}
-        {tab === 'company' && <CompanyDefaultsCard />}
-        {tab === 'targets' && (<div className="space-y-4">
-          <div id="targets-health" data-testid="targets-health"><AdvancedConfigSection only={['health']} /></div>
-          <div id="targets-expansion" className="rounded-lg border border-slate-200 bg-white p-3" data-testid="targets-expansion"><p className="text-sm font-semibold text-slate-800 mb-2">Expansion ranking weights <span className="text-slate-400 font-normal text-xs">— how districts are scored for opening a branch</span></p><AdvancedConfigSection only={['expansion']} /></div>
-        </div>)}
-      </div>
-      <p className="text-[11px] text-slate-400">Looking for the PIN-code / DISCOM data tool? It moved to <Link to="/dashboard/expansion" className="underline">Expansion → Needs Location Review</Link>, where unresolved projects are fixed.</p>
+      <Group title="Target">
+        <MonthlyTargetRow />
+      </Group>
+
+      <Group title="Connections" line="Where site photos go and how site locations are found.">
+        <DriveConnectCard />
+        <W3wStatusRow />
+      </Group>
+
+      <Link to="/dashboard/pricelist" className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white p-4 hover:border-emerald-300" data-testid="settings-pricelist-link">
+        <span className="flex items-center gap-3"><Tags className="h-5 w-5 text-emerald-600" /><span><span className="block text-sm font-medium text-slate-900">Looking for prices?</span><span className="block text-xs text-slate-500">Product prices, package slab rates and service rates are in Price list.</span></span></span>
+        <ArrowRight className="h-4 w-4 text-slate-400" />
+      </Link>
     </div>
   );
 }

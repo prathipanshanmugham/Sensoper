@@ -12,7 +12,7 @@ import { Badge } from '../components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '../components/ui/dialog';
 import {
-  ArrowLeft, Plus, Edit, Trash2, Loader2, Package, X, Wand2, Layers, Tags
+  ArrowLeft, Plus, Edit, Trash2, Loader2, Package, X, Layers, Tags
 } from 'lucide-react';
 
 const blankKit = {
@@ -34,7 +34,6 @@ export default function MaterialKitsPage() {
   const [form, setForm] = useState(blankKit);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
-  const [seeding, setSeeding] = useState(false);
 
   const fetchKits = useCallback(async () => {
     try {
@@ -128,16 +127,6 @@ export default function MaterialKitsPage() {
     catch (e) { alert(formatApiErrorDetail(e.response?.data?.detail) || 'Delete failed'); }
   };
 
-  const seed = async () => {
-    setSeeding(true);
-    try {
-      const r = await materialKitsAPI.seedStarter();
-      alert(`Seeded ${r.data.created} new kit(s). Total in library: ${r.data.total}`);
-      fetchKits();
-    } catch (e) { alert('Seed failed'); }
-    finally { setSeeding(false); }
-  };
-
   const shown = kits.filter(k => filterSystem === 'all' || (k.category || k.system_type) === filterSystem);
   const meta = (slug) => { const c = catOf(slug); return c ? { label: c.label, color: CATEGORY_COLORS[c.color] || CATEGORY_COLORS.slate } : { label: slug, color: CATEGORY_COLORS.slate }; };
 
@@ -158,9 +147,6 @@ export default function MaterialKitsPage() {
                 <Tags className="h-4 w-4 mr-1" /> Categories
               </Button>
             )}
-            <Button variant="outline" onClick={seed} disabled={seeding} className="h-11" data-testid="seed-kits-btn">
-              {seeding ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Wand2 className="h-4 w-4 mr-1" />} Seed Starter Kits
-            </Button>
             <Button onClick={() => openDialog()} className="bg-emerald-600 hover:bg-emerald-700 text-white h-11" data-testid="add-kit-btn">
               <Plus className="h-4 w-4 mr-1" /> New Kit
             </Button>
@@ -188,7 +174,7 @@ export default function MaterialKitsPage() {
           <Card className="border-slate-200"><CardContent className="py-12 text-center">
             <Layers className="h-12 w-12 mx-auto mb-4 text-slate-300" />
             <p className="text-slate-500 mb-3">No kits yet.</p>
-            <Button onClick={seed} variant="outline" disabled={seeding}><Wand2 className="h-4 w-4 mr-1" /> Seed 8 starter kits</Button>
+            <Button onClick={() => openDialog()} variant="outline"><Plus className="h-4 w-4 mr-1" /> Make your first kit</Button>
           </CardContent></Card>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3" data-testid="kits-grid">

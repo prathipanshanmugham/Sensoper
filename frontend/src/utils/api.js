@@ -353,8 +353,7 @@ export const materialKitsAPI = {
   match: (system_type, capacity_kw) => api.get('/material-kits/match', { params: { system_type, capacity_kw } }),
   create: (data) => api.post('/material-kits', data),
   update: (id, data) => api.put(`/material-kits/${id}`, data),
-  remove: (id) => api.delete(`/material-kits/${id}`),
-  seedStarter: () => api.post('/material-kits/seed-starter')
+  remove: (id) => api.delete(`/material-kits/${id}`)
 };
 
 // Solar Calculator API (server-side calculation engine + PIN/DISCOM lookup)
@@ -435,6 +434,48 @@ export const uploadAPI = {
     return api.post('/upload/site-image', formData, { headers: { 'Content-Type': undefined }, timeout: 120000 });
   },
   getFileUrl: (path) => `${API_URL}/api/files/${path}`
+};
+
+// Site photo checklist (New project → Site photos, project page). Copied to Google Drive by the server.
+export const sitePhotosAPI = {
+  checklist: () => api.get('/site-photos/checklist'),
+  /** meta = { lat, lng, accuracy, taken_at }; projectId attaches it straight to a saved project. */
+  upload: (file, slot, meta = {}, projectId = null, onProgress = null) => {
+    const fd = new FormData();
+    fd.append('file', file);
+    fd.append('slot', slot);
+    Object.entries(meta).forEach(([k, v]) => { if (v !== null && v !== undefined && v !== '') fd.append(k, String(v)); });
+    if (projectId) fd.append('project_id', projectId);
+    return api.post('/site-photos/upload', fd, {
+      headers: { 'Content-Type': undefined }, timeout: 180000,
+      onUploadProgress: onProgress ? (e) => e.total && onProgress(Math.round((e.loaded / e.total) * 100)) : undefined,
+    });
+  },
+  list: (projectId) => api.get(`/projects/${projectId}/site-photos`),
+  remove: (projectId, photoId) => api.delete(`/projects/${projectId}/site-photos/${photoId}`),
+  sync: (projectId) => api.post(`/projects/${projectId}/site-photos/sync`),
+};
+
+// Google Drive connection (admin) — status is readable by everyone so forms can say where photos go.
+export const driveAPI = {
+  status: () => api.get('/integrations/google-drive'),
+  connect: () => api.post('/integrations/google-drive/connect'),
+  callback: (body) => api.post('/integrations/google-drive/callback', body),
+  disconnect: () => api.delete('/integrations/google-drive'),
+  syncAll: () => api.post('/integrations/google-drive/sync'),
+  saveSecret: (client_secret) => api.put('/integrations/google-drive/client-secret', { client_secret }),
+  deleteSecret: () => api.delete('/integrations/google-drive/client-secret'),
+};
+
+// What3words — the key stays on the server
+export const w3wAPI = {
+  status: () => api.get('/geo/what3words/status'),
+  fromCoords: (lat, lng) => api.get('/geo/what3words', { params: { lat, lng } }),
+  toCoords: (words) => api.get('/geo/what3words/coordinates', { params: { words } }),
+  saveKey: (api_key) => api.put('/geo/what3words/key', { api_key }),
+  deleteKey: () => api.delete('/geo/what3words/key'),
+  /** Pin a saved project to the phone's location; the server adds the 3 words. */
+  pinProject: (projectId, { lat, lng, accuracy }) => api.put(`/projects/${projectId}/geo`, { lat, lng, accuracy }),
 };
 
 // Margin API

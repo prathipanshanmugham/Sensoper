@@ -238,7 +238,7 @@ Deferred (large refactors, out of scope for a review pass): splitting amc/assets
 Not stored in the repo (it is public). Admin login is set by ADMIN_EMAIL / ADMIN_PASSWORD in backend/.env on first boot; see backend/.env.example.
 
 ## Backlog (post Iter 49)
-- P1: Extend object-storage attachments (done for Assets in Iter 52) to Partner documents, Support ticket attachments, Project site photos, Ecommerce listing images; chunked upload for >25 MB.
+- P1: Extend object-storage attachments (done for Assets in Iter 52, project site photos in Iter 62) to Partner documents, Support ticket attachments, Ecommerce listing images; chunked upload for >25 MB.
 - P1: Bulk "set GST% / margin%" for the 7 pricelist items + 27 panels still missing wattage (data entry by user; UI already flags them).
 - P2: Amazon/Flipkart order auto-sync; legacy pytest cleanup (~80 stale tests); server.py extraction; Register page should say "ask an admin" now that self-signup is closed.
 - Iter 54 follow-ups: Sensobrain voice (Whisper STT + TTS — Tamil TTS quality must be flagged honestly); Vault master-key rotation utility; Sensobrain streaming through nginx in deployment needs `X-Accel-Buffering: no` honoured (already set on the response).
@@ -251,3 +251,14 @@ See CHANGES.md for the full list. Highlights for the next agent:
 - Frontend navigation lives in `src/lib/navigation.js` (sections, staff menu, per-page Help text) — add new pages there.
 - CEO dashboard is a tab on Home (`/dashboard?tab=health`); `/dashboard/ceo` redirects.
 - Admin password is no longer reset on startup (RESET_ADMIN_PASSWORD=true opt-in for recovery).
+
+## Iteration 62 — site photos → Google Drive, What3words, Settings basics (2026-10-09)
+- `backend/site_photos.py`: 23-item checklist (CHECKLIST/SLOTS — single source of truth, served at GET /api/site-photos/checklist),
+  upload, project photo endpoints. Projects store `site_photos {slot: [record]}`; the browser sends only photo ids on
+  create/update and `normalise_for_save` rebuilds trusted records (keeps Drive state of existing photos → no duplicates).
+- `backend/google_drive.py`: admin OAuth (drive.file scope, refresh token Fernet-encrypted with VAULT_MASTER_KEY,
+  single-use `oauth_states`), `DriveSync` copies pending photos (per-project lock, appProperties dedupe, 10-min retry loop).
+- `backend/geo_w3w.py`: server-side What3words proxy (W3W_API_KEY in env, sent as X-Api-Key header) with `w3w_cache`.
+- Frontend: `components/SitePhotoChecklist.js` (form + live modes), `lib/geo.js`, `pages/GoogleCallback.js` (/auth/google/callback),
+  `components/DriveConnectCard.js`. "Pricing & config" → **Settings** (basics only); slab/service rates moved to Price list tabs (`pages/PriceListHub.js`).
+- Tests: backend/tests/test_site_photos_drive.py (fake Google + mongomock, no network).
