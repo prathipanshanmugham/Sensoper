@@ -52,6 +52,7 @@ class FakeGoogle:
         self.revoked = set()
         self.calls = []
         self.secrets_seen = []
+        self.client_ids_seen = []
 
     def _id(self):
         self.n += 1
@@ -63,6 +64,7 @@ class FakeGoogle:
         if url.host == "oauth2.googleapis.com" and url.path == "/token":
             form = parse_qs(req.content.decode())
             self.secrets_seen.append(form.get("client_secret", [""])[0])
+            self.client_ids_seen.append(form.get("client_id", [""])[0])
             if form.get("grant_type") == ["refresh_token"]:
                 if form["refresh_token"][0] in self.revoked:
                     return httpx.Response(400, json={"error": "invalid_grant"})
@@ -505,3 +507,41 @@ def test_google_client_secret_pasted_in_settings(monkeypatch):
 def test_default_redirect_is_the_app_domain(monkeypatch):
     monkeypatch.delenv("GOOGLE_REDIRECT_URI")
     assert google_drive.redirect_uri() == "https://quote.sensoper.in/auth/google/callback"
+
+
+def test_google_json_file_pasted_in_settings(monkeypatch):
+    """Pasting the whole client_secret_….json sets both the client ID and the secret."""
+    async def go():
+        fake = FakeGoogle()
+        app, db, _, _ = build(fake)
+        monkeypatch.delenv("GOOGLE_CLIENT_SECRET")
+        good = {"web": {"client_id": "111-newclient.apps.googleusercontent.com", "client_secret": "GOCSPX-fromjsonfile123",
+                        "redirect_uris": ["https://quote.example.in/auth/google/callback"]}}
+        wrong_redirect = {"web": {**good["web"], "redirect_uris": ["https://elsewhere.example/cb"]}}
+        async with client(app) as c:
+            r = await c.put("/api/integrations/google-drive/client-secret", json={"client_secret": json.dumps(wrong_redirect)})
+            assert r.status_code == 400 and "redirect URI" in r.json()["detail"]
+            assert (await c.put("/api/integrations/google-drive/client-secret", json={"json_file": "{not json"})).status_code == 400
+            r = await c.put("/api/integrations/google-drive/client-secret", json={"client_secret": json.dumps(good)})
+            assert r.status_code == 200 and r.json()["client_id"] == "111-newclient.apps.googleusercontent.com"
+            s = (await c.get("/api/integrations/google-drive")).json()
+            assert s["client_id"] == "111-newclient.apps.googleusercontent.com" and s["configured"]
+            auth = (await c.post("/api/integrations/google-drive/connect")).json()["auth_url"]
+            assert "client_id=111-newclient.apps.googleusercontent.com" in auth
+        assert (await _connect(app, fake)).status_code == 200
+        assert fake.client_ids_seen[-1] == "111-newclient.apps.googleusercontent.com" and fake.secrets_seen[-1] == "GOCSPX-fromjsonfile123"
+        doc = await db.integrations.find_one({"key": "google_oauth_client"})
+        assert "GOCSPX-fromjsonfile123" not in str(doc)
+    run(go())
+
+
+def test_vault_key_is_created_once_when_env_is_missing(monkeypatch, tmp_path):
+    import vault
+    monkeypatch.delenv("VAULT_MASTER_KEY")
+    monkeypatch.setenv("STORAGE_ROOT", str(tmp_path))
+    monkeypatch.setattr(vault, "_master", {"key": "", "source": None})
+    token = vault.encrypt_secret("hello")
+    path = tmp_path / ".keys" / "vault_master.key"
+    assert path.exists() and (path.stat().st_mode & 0o777) == 0o600
+    monkeypatch.setattr(vault, "_master", {"key": "", "source": None})      # a restart reads the same file
+    assert vault.decrypt_secret(token) == "hello" and vault.master_key()[1] == "file"

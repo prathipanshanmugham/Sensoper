@@ -1,5 +1,10 @@
 # Sensoper — change log
 
+## October 2026 · go-live helpers
+- **No server editing needed for keys.** If `VAULT_MASTER_KEY` isn't set, the server creates one at `STORAGE_ROOT/.keys/vault_master.key` (mode 600) the first time it's needed. Settings can then store the Google and What3words keys straight away. Back that file up.
+- **Settings → Google Drive** accepts the whole `client_secret_….json` downloaded from Google Cloud Console. It saves the client ID and the secret together, and refuses a file whose redirect URIs don't include this app's callback. Settings also shows which OAuth client is in use.
+- Settings now tells you to **Publish** the OAuth consent screen. In "Testing" mode, Google ends the Drive connection every 7 days.
+
 ## October 2026 · follow-ups
 
 - **Solution kits:** removed "Seed Starter Kits" (the button, the empty-state button and `POST /api/material-kits/seed-starter`). Kits it already created stay in the library; delete them from Solution kits if you don't want them.
