@@ -3730,10 +3730,12 @@ async def get_projects(request: Request, status: Optional[str] = None, location_
             "location": p["location"],
             "status": p["status"],
             "cost_estimation": p.get("cost_estimation", {}),
+            "created_by": p.get("created_by"),
             "created_by_name": p.get("created_by_name", "Unknown"),
             "created_at": p["created_at"],
             "updated_at": p["updated_at"],
-            "location_id": p.get("location_id")
+            "location_id": p.get("location_id"),
+            "system_size_kw": ((p.get("custom_fields") or {}).get("proposed_solution") or {}).get("system_size_kw"),
         }
         for p in projects
     ]

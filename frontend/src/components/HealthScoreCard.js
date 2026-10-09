@@ -15,11 +15,11 @@ const BAND_COLORS = {
 };
 
 const PILLAR_META = {
-  sales_growth:     { label: 'Sales & Growth',    icon: TrendingUp,   linkTo: '/dashboard/ceo' },
+  sales_growth:     { label: 'Sales & Growth',    icon: TrendingUp,   linkTo: '/dashboard/reports?type=sales_revenue' },
   profitability:    { label: 'Profitability',     icon: TrendingDown, linkTo: '/dashboard/alerts' },
-  cash_collections: { label: 'Cash & Collections',icon: Activity,     linkTo: '/dashboard/accounts' },
+  cash_collections: { label: 'Cash & Collections',icon: Activity,     linkTo: '/dashboard/credits' },
   operations:       { label: 'Operations',        icon: Activity,     linkTo: '/dashboard/inventory' },
-  team_compliance:  { label: 'Team & Compliance', icon: Activity,     linkTo: '/dashboard/ceo' },
+  team_compliance:  { label: 'Team & Compliance', icon: Activity,     linkTo: '/dashboard/daily-report?tab=team' },
 };
 
 

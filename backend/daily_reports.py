@@ -193,6 +193,26 @@ def create_router(db, get_current_user, require_role, create_audit_log):
     async def _can_see_report(user, doc):
         return user["role"] in MANAGERS or doc.get("user_id") == user["id"]
 
+    # ═════════════ project list for the pickers ═════════════
+    @router.get("/daily-reports/projects")
+    async def reportable_projects(request: Request):
+        """Projects anyone can report on: every live (submitted / approved / completed) project in the user's
+        locations, plus their own drafts. Staff otherwise only see projects they created, which left installers
+        unable to pick the site they actually worked on."""
+        user = await get_current_user(request)
+        q: Dict[str, Any] = {"deleted_at": {"$exists": False},
+                             "$or": [{"status": {"$in": ["submitted", "approved", "completed"]}}, {"created_by": user["id"]}]}
+        scope = user.get("location_ids") or []
+        if user["role"] != "admin" and scope:
+            q = {"$and": [q, {"$or": [{"location_id": {"$in": scope}}, {"location_id": None}, {"location_id": {"$exists": False}}]}]}
+        docs = await db.projects.find(q, {"customer": 1, "reference_number": 1, "location": 1, "status": 1, "custom_fields.proposed_solution.system_size_kw": 1,
+                                          "created_by": 1, "created_at": 1}).sort("created_at", -1).to_list(2000)
+        return [{"id": str(p["_id"]), "customer": {"name": (p.get("customer") or {}).get("name"), "phone": (p.get("customer") or {}).get("phone")},
+                 "reference_number": p.get("reference_number") or f"SCR-{str(p['_id'])[-6:].upper()}",
+                 "location": {"district": (p.get("location") or {}).get("district")}, "status": p.get("status"),
+                 "system_size_kw": (((p.get("custom_fields") or {}).get("proposed_solution") or {}).get("system_size_kw")),
+                 "created_by": p.get("created_by")} for p in docs]
+
     # ═════════════ daily reports ═════════════
     @router.get("/daily-reports/options")
     async def report_options(request: Request):

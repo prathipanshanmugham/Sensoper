@@ -166,3 +166,13 @@ class TestLegacyDailyUpdatesOwnership:
         assert s2.delete(f"{API}/daily-updates/{r['id']}", timeout=30).status_code == 403
         assert s2.put(f"{API}/daily-updates/{r['id']}", json={"data": {"work_done": "y"}}, timeout=30).status_code == 403
         assert s1.delete(f"{API}/daily-updates/{r['id']}", timeout=30).status_code == 200
+
+
+class TestReportableProjects:
+    def test_staff_can_pick_live_projects_they_did_not_create(self, staff, admin, project_id):
+        s, _ = staff
+        admin.put(f"{API}/projects/{project_id}/status", json={"status": "submitted"}, timeout=30)
+        ids = [p["id"] for p in s.get(f"{API}/daily-reports/projects", timeout=30).json()]
+        assert project_id in ids
+        own = [p["id"] for p in s.get(f"{API}/projects", timeout=30).json()]
+        assert project_id not in own, "the normal project list stays limited to the staff member's own projects"
