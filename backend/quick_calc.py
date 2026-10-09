@@ -7,7 +7,8 @@ feedback; `backend/tests/test_iter48_calculator.py` pins three worked examples s
 cannot silently drift.
 
 Formulas (all shares are of the admin `cost_per_kwp` config):
-  units      = monthly_eb_units  or  round(monthly_eb_bill / tariff)
+  period     = 2 if billing_cycle == "bimonthly" else 1          # TN domestic bills come every 2 months
+  units      = monthly_eb_units / period  or  round(monthly_eb_bill / period / tariff)   # per MONTH (bill/units are per bill)
   kW (auto)  = ceil((units/30 / specific_yield) * 2) / 2      # up to nearest 0.5 kW, roof-capped at 100 sqft/kW
   panels     = ceil(kW*1000 / panel_wattage)
   sell price = unit_price * (1 + margin_pct/100)               # margin defaults to 15 like the Pricelist
@@ -17,6 +18,8 @@ Formulas (all shares are of the admin `cost_per_kwp` config):
   BOS+install= 40% * cost_per_kwp[on-grid] * kW
   gen/yr     = kW * specific_yield * 365
   saving/mo  = min(gen/12, units) * tariff    (gen/12 * tariff when units unknown)
+             + surplus * export_rate           (on-grid/hybrid: surplus = gen/12 − units, paid by the DISCOM)
+             − network charge                  (on-grid/hybrid: ₹/unit generated, or ₹/kW per month)
   payback    = net_cost / annual_saving
 """
 from __future__ import annotations
@@ -99,8 +102,14 @@ def compute_quick(inputs: Dict[str, Any], config: Dict[str, Any],
     tariff = _num(inputs.get("tariff_per_unit")) or _num(config.get("default_tariff_per_unit"), 8) or 8
 
     # ── Consumption ──────────────────────────────────────────────────
-    units = _num(inputs.get("monthly_eb_units"))
-    bill = _num(inputs.get("monthly_eb_bill"))
+    billing_cycle = "bimonthly" if inputs.get("billing_cycle") == "bimonthly" else "monthly"
+    period = 2 if billing_cycle == "bimonthly" else 1
+    grid_tied = system_type in ("on-grid", "hybrid")
+    export_rate = max(_num(inputs.get("export_rate")), 0) if grid_tied else 0
+    network_charge = max(_num(inputs.get("network_charge")), 0) if grid_tied else 0
+    network_basis = "per_kw_month" if inputs.get("network_charge_basis") == "per_kw_month" else "per_unit"
+    units = _num(inputs.get("monthly_eb_units")) / period      # entered per bill → per month
+    bill = _num(inputs.get("monthly_eb_bill")) / period        # entered per bill → per month
     units_source = "entered"
     if units <= 0 and bill > 0:
         units = round(bill / tariff)
@@ -229,7 +238,7 @@ def compute_quick(inputs: Dict[str, Any], config: Dict[str, Any],
         pricing_source = "slab"
         total_cost = slab["total"]
         total_gst = slab["gst_amount"] or 0
-        pricing_issues = [f"Slab rate for {slab['category']} has no GST% — set it in Pricing & Config → Slab rates."] if slab["gst_missing"] else []
+        pricing_issues = [f"Slab rate for {slab['category']} has no GST% — set it in Price list → Package slabs."] if slab["gst_missing"] else []
     subsidy = max(_num(inputs.get("subsidy")), 0)
     if subsidy > total_cost > 0:
         warn("subsidy", f"Subsidy ₹{subsidy:,.0f} is more than the system cost ₹{total_cost:,.0f} — check the amount.")
@@ -239,11 +248,20 @@ def compute_quick(inputs: Dict[str, Any], config: Dict[str, Any],
     annual_gen = kw * sy * 365
     monthly_gen = annual_gen / 12
     offset_units = min(monthly_gen, units) if units > 0 else monthly_gen
-    monthly_saving = offset_units * tariff
+    export_units = max(monthly_gen - units, 0) if (units > 0 and grid_tied) else 0
+    energy_saving = offset_units * tariff
+    export_income = export_units * export_rate
+    network_monthly = (kw * network_charge if network_basis == "per_kw_month" else monthly_gen * network_charge) if kw > 0 else 0
+    monthly_saving = energy_saving + export_income - network_monthly
     annual_saving = monthly_saving * 12
     payback_years = round(net_cost / annual_saving, 1) if (annual_saving > 0 and net_cost > 0) else (0 if net_cost == 0 and annual_saving > 0 else None)
     if units > 0 and monthly_gen > units * 1.25:
-        warn("system_size_kw", f"System makes ~{monthly_gen:,.0f} units/month but the customer uses {units:,.0f} — savings are capped at what they use.")
+        if export_rate > 0:
+            warn("system_size_kw", f"System makes ~{monthly_gen:,.0f} units/month but the customer uses {units:,.0f} — the extra ~{export_units:,.0f} units are sold to the grid at ₹{export_rate:g}/unit.")
+        else:
+            warn("system_size_kw", f"System makes ~{monthly_gen:,.0f} units/month but the customer uses {units:,.0f} — savings are capped at what they use.")
+    if kw > 0 and monthly_saving <= 0 < network_monthly:
+        warn("network_charge", f"The network charge (₹{network_monthly:,.0f}/month) wipes out the saving — check the rate.")
 
     life = int(_num(config.get("system_life_years"), 25)) or 25
     deg = _num(config.get("panel_degradation_pct_per_year"), 0.7) / 100
@@ -308,6 +326,18 @@ def compute_quick(inputs: Dict[str, Any], config: Dict[str, Any],
         "annual_generation_units": round(annual_gen),
         "monthly_generation_units": round(monthly_gen),
         "monthly_bill_now": round(monthly_bill_now),
+        "billing_cycle": billing_cycle,
+        "period_months": period,
+        "bill_units": round(units * period),
+        "bill_now_per_period": round(monthly_bill_now * period),
+        "saving_per_period": round(monthly_saving * period),
+        "energy_saving_monthly": round(energy_saving),
+        "export_units_monthly": round(export_units),
+        "export_rate": export_rate,
+        "export_income_monthly": round(export_income),
+        "network_charge": network_charge,
+        "network_charge_basis": network_basis,
+        "network_charge_monthly": round(network_monthly),
         "monthly_saving": round(monthly_saving),
         "annual_saving": round(annual_saving),
         "payback_years": payback_years,
@@ -324,6 +354,10 @@ class QuickCalcRequest(BaseModel):
     monthly_eb_bill: Optional[float] = None
     monthly_eb_units: Optional[float] = None
     tariff_per_unit: Optional[float] = None
+    billing_cycle: Optional[str] = "monthly"          # "monthly" | "bimonthly" — bill/units above are per bill
+    export_rate: Optional[float] = None               # ₹/unit the DISCOM pays for surplus units (feed-in)
+    network_charge: Optional[float] = None            # ₹ — see network_charge_basis
+    network_charge_basis: Optional[str] = "per_unit"  # "per_unit" (of solar generated) | "per_kw_month"
     roof_area_sqft: Optional[float] = None
     backup_hours: Optional[float] = None
     subsidy: Optional[float] = 0

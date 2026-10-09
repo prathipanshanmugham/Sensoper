@@ -4,6 +4,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { projectsAPI, inventoryAPI, formTabsAPI, termsAPI, materialKitsAPI, catalogueAPI, w3wAPI } from '../utils/api';
 import SitePhotoChecklist from '../components/SitePhotoChecklist';
 import { getPosition, w3wLink, mapsLink } from '../lib/geo';
+import { localDate } from '../lib/format';
 import { pct, roundCash } from '../utils/solarCalc';
 import { formatApiErrorDetail } from '../contexts/AuthContext';
 import { toast } from 'sonner';
@@ -132,6 +133,7 @@ export default function SiteVisitForm() {
     drive_folder_name: '',
     drive_folder_link: '',
     site_photos: {},
+    project_date: localDate(),
     site_measurements: {
       roof: { length: '', width: '', area: '', type: '', height: '' },
       orientation: { direction: '', tilt_angle: '' },
@@ -190,6 +192,7 @@ export default function SiteVisitForm() {
         drive_folder_name: p.drive_folder_name || '',
         drive_folder_link: p.drive_folder_link || '',
         site_photos: p.site_photos || {},
+        project_date: p.project_date || (p.created_at ? localDate(new Date(p.created_at)) : localDate()),
         site_measurements: {
           roof: { length: '', width: '', area: '', type: '', height: '', ...(p.site_measurements?.roof || {}) },
           orientation: { direction: '', tilt_angle: '', ...(p.site_measurements?.orientation || {}) },
@@ -442,6 +445,7 @@ export default function SiteVisitForm() {
           drive_folder_name: formData.drive_folder_name,
           drive_folder_link: formData.drive_folder_link || null,
           site_photos: photoIds(formData.site_photos),
+          project_date: formData.project_date || null,
           site_measurements: formData.site_measurements,
           custom_fields: formData.custom_fields,
           calculation_snapshot: formData.calculation_snapshot || null,
@@ -703,7 +707,7 @@ export default function SiteVisitForm() {
       return true;
     };
     switch (slug) {
-      case 'customer': if (!formData.customer.name || !formData.customer.phone || !formData.customer.address) { setError('Please fill all required fields'); return false; } return validateExtraFields();
+      case 'customer': if (!formData.customer.name || !formData.customer.phone || !formData.customer.address || !formData.project_date) { setError('Please fill all required fields'); return false; } return validateExtraFields();
       case 'location': if (!formData.location.site_location_words && !formData.location.address) { setError('Enter What3Words or site address'); return false; } return validateExtraFields();
       case 'site_electrical': return validateExtraFields();
       case 'materials': {
@@ -780,6 +784,7 @@ export default function SiteVisitForm() {
         drive_folder_link: formData.drive_folder_link || null,
         drive_folder_id: formData.drive_folder_link ? extractFolderId(formData.drive_folder_link) : null,
         site_photos: photoIds(formData.site_photos),
+        project_date: formData.project_date || null,
         site_measurements: {
           roof: {
             length: parseFloat(formData.site_measurements.roof.length) || '',
@@ -923,6 +928,11 @@ export default function SiteVisitForm() {
             {/* Step: Customer */}
             {STEPS[currentStep - 1]?.slug === 'customer' && (
               <div className="space-y-4">
+                <div className="space-y-2 sm:max-w-xs">
+                  <Label>Project date *</Label>
+                  <Input type="date" value={formData.project_date || ''} max={localDate()} onChange={(e) => setFormData(prev => ({ ...prev, project_date: e.target.value }))} className="h-11" data-testid="project-date-input" />
+                  <p className="text-[11px] text-slate-500">The day this project was taken up — today unless you're entering an older visit.</p>
+                </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-2"><Label>Customer Name *</Label><Input value={formData.customer.name} onChange={(e) => updateField('customer', 'name', e.target.value)} placeholder="Customer name" className="h-11" data-testid="customer-name-input" /></div>
                   <div className="space-y-2"><Label>Phone *</Label><Input type="tel" value={formData.customer.phone} onChange={(e) => updateField('customer', 'phone', e.target.value)} placeholder="Phone number" className="h-11" data-testid="customer-phone-input" /></div>
@@ -955,10 +965,15 @@ export default function SiteVisitForm() {
                         onChange={(e) => onWordsChange(e.target.value)}
                         placeholder="filled.in.automatically"
                         autoCapitalize="none" autoCorrect="off" spellCheck={false}
-                        className="font-mono h-11 pl-11 pr-9 bg-white"
+                        className="font-mono h-11 pl-11 pr-11 bg-white"
                         data-testid="what3words-input"
                       />
-                      {w3wBusy && <Loader2 className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-emerald-600" data-testid="w3w-busy" />}
+                      <button type="button" onClick={() => lookupWords(formData.location.latitude, formData.location.longitude, { force: true })}
+                        disabled={w3wBusy || !(formData.location.latitude && formData.location.longitude)}
+                        title="Update the 3 words from the GPS coordinates" aria-label="Update the 3 words from the GPS coordinates"
+                        className="absolute right-1 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-md text-emerald-700 hover:bg-emerald-50 disabled:text-slate-300" data-testid="w3w-refresh-btn">
+                        {w3wBusy ? <Loader2 className="h-4 w-4 animate-spin" data-testid="w3w-busy" /> : <RefreshCw className="h-4 w-4" />}
+                      </button>
                     </div>
                     {w3wNote && <p className={`text-[11px] flex items-center gap-1 ${w3wNote.tone === 'ok' ? 'text-emerald-700' : 'text-amber-700'}`} data-testid="w3w-note">{w3wNote.tone === 'ok' ? <CheckCircle className="h-3 w-3" /> : <AlertCircle className="h-3 w-3" />}{w3wNote.text}</p>}
                     {w3wFormatError && <p className="text-[11px] text-amber-700 flex items-center gap-1" data-testid="w3w-error"><AlertCircle className="h-3 w-3" />{w3wFormatError}</p>}
@@ -1800,6 +1815,7 @@ export default function SiteVisitForm() {
               <div className="rounded-lg border border-slate-200 p-3">
                 <p className="text-[10px] uppercase tracking-wider text-slate-500 font-semibold mb-1">Customer</p>
                 <p className="font-medium text-slate-900">{formData.customer.name || '—'}</p>
+                {formData.project_date && <p className="text-xs text-slate-500" data-testid="review-project-date">Project date: {new Date(`${formData.project_date}T00:00:00`).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</p>}
                 <p className="text-xs text-slate-500">{formData.customer.phone} · {formData.customer.email || 'no email'}</p>
                 <p className="text-xs text-slate-500 mt-0.5 truncate">{formData.customer.address}</p>
               </div>

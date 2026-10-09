@@ -41,15 +41,10 @@ class TestMaterialKits:
         for k in data:
             assert k["system_type"] == "solar-pump"
 
-    def test_seed_starter_idempotent(self, admin_client):
-        before = admin_client.get(f"{BASE_URL}/api/material-kits", timeout=30).json()
-        r1 = admin_client.post(f"{BASE_URL}/api/material-kits/seed-starter", timeout=30)
-        assert r1.status_code == 200
-        r2 = admin_client.post(f"{BASE_URL}/api/material-kits/seed-starter", timeout=30)
-        assert r2.status_code == 200
-        after = admin_client.get(f"{BASE_URL}/api/material-kits", timeout=30).json()
-        # Seed twice should not duplicate; count should stay the same
-        assert len(after) == len(before), f"seed not idempotent: before={len(before)} after={len(after)}"
+    def test_seed_starter_endpoint_removed(self, admin_client):
+        # Starter-kit seeding was removed (Oct 2026); kits are created by hand only.
+        r = admin_client.post(f"{BASE_URL}/api/material-kits/seed-starter", timeout=30)
+        assert r.status_code in (404, 405)
 
     def test_match_within_range(self, admin_client):
         # 3HP -> ~2.2 kW should match the "Solar Pump · 3 HP Submersible" (range 1.5-3)

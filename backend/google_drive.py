@@ -6,9 +6,10 @@ you use with this app" (scope drive.file — the app can only touch folders and 
 
 Environment (backend/.env):
     GOOGLE_CLIENT_ID       OAuth client ID (Web application) from Google Cloud Console
-    GOOGLE_CLIENT_SECRET   its secret — never commit it
+    GOOGLE_CLIENT_SECRET   its secret — never commit it. An admin can paste it in Settings → Google Drive
+                           instead (stored encrypted; the Settings value wins)
     GOOGLE_REDIRECT_URI    must exactly match an "Authorized redirect URI" on that client and point at
-                           this app's /auth/google/callback page
+                           this app's /auth/google/callback page (default https://quote.sensoper.in/auth/google/callback)
     VAULT_MASTER_KEY       used to encrypt the stored refresh token (same key as Company logins)
 
 Drive layout:
@@ -28,6 +29,7 @@ import logging
 import os
 import re
 import secrets
+import time
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Optional
@@ -53,7 +55,7 @@ SCOPES = f"openid email {SCOPE_DRIVE}"
 FOLDER_MIME = "application/vnd.google-apps.folder"
 ROOT_FOLDER_NAME = "Sensoper — Site photos"
 DEFAULT_CLIENT_ID = "712570910460-423uajd5qq8jr73dl0rmtqiv667img00.apps.googleusercontent.com"
-DEFAULT_REDIRECT_URI = "https://sensoper.in/auth/google/callback"
+DEFAULT_REDIRECT_URI = "https://quote.sensoper.in/auth/google/callback"
 MAX_ATTEMPTS = 5
 RETRY_EVERY_SECONDS = 600
 KEY = "google_drive"
@@ -63,8 +65,34 @@ def client_id() -> str:
     return (os.environ.get("GOOGLE_CLIENT_ID") or DEFAULT_CLIENT_ID).strip()
 
 
-def client_secret() -> str:
+def env_client_secret() -> str:
     return (os.environ.get("GOOGLE_CLIENT_SECRET") or "").strip()
+
+
+SECRET_KEY = "google_oauth_client"     # integrations row holding a secret pasted in Settings (encrypted)
+_secret_cache = {"value": None, "at": 0.0}
+
+
+def invalidate_secret_cache():
+    _secret_cache.update(value=None, at=0.0)
+
+
+async def client_secret_for(db) -> tuple:
+    """(secret, source): a secret an admin pasted in Settings wins; otherwise GOOGLE_CLIENT_SECRET from .env."""
+    now = time.monotonic()
+    if _secret_cache["value"] is None or now - _secret_cache["at"] > 60:
+        saved = ""
+        doc = await db.integrations.find_one({"key": SECRET_KEY})
+        if doc and doc.get("client_secret_enc"):
+            try:
+                saved = decrypt_secret(doc["client_secret_enc"])
+            except HTTPException:
+                saved = ""
+        _secret_cache.update(value=saved, at=now)
+    if _secret_cache["value"]:
+        return _secret_cache["value"], "settings"
+    env = env_client_secret()
+    return (env, "env") if env else ("", None)
 
 
 def redirect_uri() -> str:
@@ -129,14 +157,15 @@ class DriveSync:
             raise DriveError("Google Drive is not connected", reconnect=True)
         if self._token and self._token_for == doc.get("connected_at") and self._token_exp and self._token_exp > _now() + timedelta(seconds=60):
             return self._token
-        if not client_secret():
-            raise DriveError("GOOGLE_CLIENT_SECRET is missing on the server")
+        secret, _ = await client_secret_for(self.db)
+        if not secret:
+            raise DriveError("The Google client secret is missing — an admin can paste it in Settings → Google Drive.")
         try:
             refresh = decrypt_secret(doc["refresh_token_enc"])
         except HTTPException as e:
             raise DriveError(str(e.detail))
         async with self._client() as c:
-            r = await c.post(TOKEN_URL, data={"client_id": client_id(), "client_secret": client_secret(),
+            r = await c.post(TOKEN_URL, data={"client_id": client_id(), "client_secret": secret,
                                               "refresh_token": refresh, "grant_type": "refresh_token"})
         body = _json(r)
         if r.status_code >= 400 or "access_token" not in body:
@@ -399,6 +428,10 @@ def _id_token_email(id_token: str) -> str:
         return ""
 
 
+class SecretBody(BaseModel):
+    client_secret: str
+
+
 class CallbackBody(BaseModel):
     code: Optional[str] = None
     state: str
@@ -418,9 +451,11 @@ def create_router(db, get_current_user, require_role, create_audit_log, drive: D
             pending = 0
             async for p in db.projects.find({"site_photos_pending": {"$gt": 0}, "deleted_at": {"$exists": False}}, {"site_photos_pending": 1}):
                 pending += int(p.get("site_photos_pending") or 0)
+            secret, secret_source = await client_secret_for(db)
             out.update({
-                "configured": bool(client_id() and client_secret()),
-                "missing": [k for k, v in (("GOOGLE_CLIENT_SECRET", client_secret()), ("VAULT_MASTER_KEY", os.environ.get("VAULT_MASTER_KEY"))) if not v],
+                "configured": bool(client_id() and secret and os.environ.get("VAULT_MASTER_KEY")),
+                "secret_source": secret_source,
+                "missing": [k for k, v in (("GOOGLE_CLIENT_SECRET", secret), ("VAULT_MASTER_KEY", os.environ.get("VAULT_MASTER_KEY"))) if not v],
                 "client_id": client_id(), "redirect_uri": redirect_uri(),
                 "account_email": doc.get("account_email", ""), "connected_by": doc.get("connected_by_name", ""),
                 "connected_at": doc.get("connected_at"), "root_folder_link": doc.get("root_folder_link", ""),
@@ -431,8 +466,9 @@ def create_router(db, get_current_user, require_role, create_audit_log, drive: D
     @router.post("/integrations/google-drive/connect")
     async def connect(request: Request):
         user = await require_role("admin")(request)
-        if not client_secret():
-            raise HTTPException(status_code=503, detail="Add GOOGLE_CLIENT_SECRET to the backend .env file and restart, then try again.")
+        secret, _ = await client_secret_for(db)
+        if not secret:
+            raise HTTPException(status_code=503, detail="Paste the Google client secret in Settings → Google Drive first (or add GOOGLE_CLIENT_SECRET to the backend .env file).")
         if not os.environ.get("VAULT_MASTER_KEY"):
             raise HTTPException(status_code=503, detail="Add VAULT_MASTER_KEY to the backend .env file (it encrypts the Google token), restart, then try again.")
         state = secrets.token_urlsafe(32)
@@ -452,7 +488,7 @@ def create_router(db, get_current_user, require_role, create_audit_log, drive: D
         if body.error or not body.code:
             raise HTTPException(status_code=400, detail="Google sign-in was cancelled." if body.error == "access_denied" else f"Google sign-in failed ({body.error or 'no code'}).")
         async with drive._client() as c:
-            r = await c.post(TOKEN_URL, data={"code": body.code, "client_id": client_id(), "client_secret": client_secret(),
+            r = await c.post(TOKEN_URL, data={"code": body.code, "client_id": client_id(), "client_secret": (await client_secret_for(db))[0],
                                               "redirect_uri": redirect_uri(), "grant_type": "authorization_code"})
         tok = _json(r)
         if r.status_code >= 400 or "access_token" not in tok:
@@ -487,6 +523,30 @@ def create_router(db, get_current_user, require_role, create_audit_log, drive: D
         await create_audit_log(st.get("user_id"), st.get("user_name", ""), "connect", "google_drive", KEY, details=email)
         drive.spawn(drive.sync_all_pending(limit=500))
         return {"connected": True, "account_email": email}
+
+    @router.put("/integrations/google-drive/client-secret")
+    async def save_secret(body: SecretBody, request: Request):
+        """Lets an admin paste the OAuth client secret here instead of editing the server's .env file."""
+        user = await require_role("admin")(request)
+        secret = (body.client_secret or "").strip()
+        if not re.match(r"^[A-Za-z0-9_\-]{10,200}$", secret):
+            raise HTTPException(status_code=400, detail="That doesn't look like a Google client secret (it usually starts with GOCSPX-).")
+        await db.integrations.update_one({"key": SECRET_KEY}, {"$set": {
+            "key": SECRET_KEY, "client_secret_enc": encrypt_secret(secret), "updated_by": user.get("name", ""),
+            "updated_at": _now().isoformat()}}, upsert=True)
+        invalidate_secret_cache()
+        drive._token = None
+        await create_audit_log(user["id"], user.get("name", ""), "update", "google_client_secret", SECRET_KEY)
+        return {"saved": True, "secret_source": "settings"}
+
+    @router.delete("/integrations/google-drive/client-secret")
+    async def delete_secret(request: Request):
+        user = await require_role("admin")(request)
+        await db.integrations.update_one({"key": SECRET_KEY}, {"$unset": {"client_secret_enc": ""}})
+        invalidate_secret_cache()
+        await create_audit_log(user["id"], user.get("name", ""), "delete", "google_client_secret", SECRET_KEY)
+        _, source = await client_secret_for(db)
+        return {"secret_source": source}
 
     @router.delete("/integrations/google-drive")
     async def disconnect(request: Request):

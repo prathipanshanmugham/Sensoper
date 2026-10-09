@@ -353,8 +353,7 @@ export const materialKitsAPI = {
   match: (system_type, capacity_kw) => api.get('/material-kits/match', { params: { system_type, capacity_kw } }),
   create: (data) => api.post('/material-kits', data),
   update: (id, data) => api.put(`/material-kits/${id}`, data),
-  remove: (id) => api.delete(`/material-kits/${id}`),
-  seedStarter: () => api.post('/material-kits/seed-starter')
+  remove: (id) => api.delete(`/material-kits/${id}`)
 };
 
 // Solar Calculator API (server-side calculation engine + PIN/DISCOM lookup)
@@ -464,6 +463,8 @@ export const driveAPI = {
   callback: (body) => api.post('/integrations/google-drive/callback', body),
   disconnect: () => api.delete('/integrations/google-drive'),
   syncAll: () => api.post('/integrations/google-drive/sync'),
+  saveSecret: (client_secret) => api.put('/integrations/google-drive/client-secret', { client_secret }),
+  deleteSecret: () => api.delete('/integrations/google-drive/client-secret'),
 };
 
 // What3words — the key stays on the server
@@ -471,6 +472,10 @@ export const w3wAPI = {
   status: () => api.get('/geo/what3words/status'),
   fromCoords: (lat, lng) => api.get('/geo/what3words', { params: { lat, lng } }),
   toCoords: (words) => api.get('/geo/what3words/coordinates', { params: { words } }),
+  saveKey: (api_key) => api.put('/geo/what3words/key', { api_key }),
+  deleteKey: () => api.delete('/geo/what3words/key'),
+  /** Pin a saved project to the phone's location; the server adds the 3 words. */
+  pinProject: (projectId, { lat, lng, accuracy }) => api.put(`/projects/${projectId}/geo`, { lat, lng, accuracy }),
 };
 
 // Margin API

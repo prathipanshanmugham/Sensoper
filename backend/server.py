@@ -196,6 +196,7 @@ class ProjectCreate(BaseModel):
     drive_folder_link: Optional[str] = None
     drive_folder_id: Optional[str] = None
     site_photos: Optional[Dict[str, List[Any]]] = None   # checklist slot → photos (see site_photos.py)
+    project_date: Optional[str] = None   # YYYY-MM-DD — the day the project was taken up (defaults to today, IST)
     site_measurements: Optional[dict] = None
     custom_fields: Optional[dict] = None
     solar_report: Optional[dict] = None
@@ -221,6 +222,7 @@ class ProjectUpdate(BaseModel):
     drive_folder_link: Optional[str] = None
     drive_folder_id: Optional[str] = None
     site_photos: Optional[Dict[str, List[Any]]] = None   # checklist slot → photos (see site_photos.py)
+    project_date: Optional[str] = None   # YYYY-MM-DD — the day the project was taken up (defaults to today, IST)
     site_measurements: Optional[dict] = None
     custom_fields: Optional[dict] = None
     solar_report: Optional[dict] = None
@@ -2411,122 +2413,6 @@ async def delete_material_kit(kit_id: str, request: Request):
         raise HTTPException(status_code=404, detail="Kit not found")
     return {"message": "Kit deleted"}
 
-@api_router.post("/material-kits/seed-starter")
-async def seed_material_kits(request: Request):
-    """Idempotent seed of 8 starter kits — 2 per system type across common capacities."""
-    await require_role("admin", "manager")(request)
-    starter = [
-        # On-Grid
-        {"name": "On-Grid Starter · 3 kW", "system_type": "on-grid", "capacity_kw": 3,
-         "capacity_min_kw": 2, "capacity_max_kw": 4,
-         "description": "Residential on-grid rooftop with net-metering (2-4 kW).",
-         "lines": [
-             {"name": "540W Mono PERC panels", "category": "panels", "quantity": 6, "qty_formula": "1 per 0.5 kW"},
-             {"name": "3 kW String Inverter", "category": "inverter", "quantity": 1},
-             {"name": "DC/AC combiner box", "category": "combiner", "quantity": 1},
-             {"name": "4 sqmm DC cable", "category": "cables", "quantity": 60, "qty_formula": "10m per panel"},
-             {"name": "MC4 connectors (pair)", "category": "connectors", "quantity": 12},
-             {"name": "GI mounting structure", "category": "mounting", "quantity": 6},
-             {"name": "Earthing kit + LA", "category": "earthing", "quantity": 1},
-         ]},
-        {"name": "On-Grid Family · 5 kW", "system_type": "on-grid", "capacity_kw": 5,
-         "capacity_min_kw": 4, "capacity_max_kw": 7,
-         "description": "Family home on-grid (4-7 kW).",
-         "lines": [
-             {"name": "540W Mono PERC panels", "category": "panels", "quantity": 10},
-             {"name": "5 kW String Inverter", "category": "inverter", "quantity": 1},
-             {"name": "DC/AC combiner box", "category": "combiner", "quantity": 1},
-             {"name": "6 sqmm DC cable", "category": "cables", "quantity": 100},
-             {"name": "MC4 connectors (pair)", "category": "connectors", "quantity": 20},
-             {"name": "GI mounting structure", "category": "mounting", "quantity": 10},
-             {"name": "Earthing kit + LA", "category": "earthing", "quantity": 1},
-         ]},
-        # Off-Grid
-        {"name": "Off-Grid Cabin · 3 kW", "system_type": "off-grid", "capacity_kw": 3,
-         "capacity_min_kw": 2, "capacity_max_kw": 4,
-         "description": "Standalone off-grid with C10 batteries (2-4 kW).",
-         "lines": [
-             {"name": "540W Mono PERC panels", "category": "panels", "quantity": 6},
-             {"name": "3 kW Off-Grid Inverter", "category": "inverter", "quantity": 1},
-             {"name": "150Ah C10 Tubular battery", "category": "battery", "quantity": 4},
-             {"name": "MPPT charge controller 60A", "category": "charge_controller", "quantity": 1},
-             {"name": "4 sqmm DC cable", "category": "cables", "quantity": 60},
-             {"name": "MC4 connectors (pair)", "category": "connectors", "quantity": 12},
-             {"name": "GI mounting structure", "category": "mounting", "quantity": 6},
-             {"name": "Battery cables + lugs", "category": "cables", "quantity": 1},
-         ]},
-        {"name": "Off-Grid Farmhouse · 5 kW", "system_type": "off-grid", "capacity_kw": 5,
-         "capacity_min_kw": 4, "capacity_max_kw": 7,
-         "description": "Extended off-grid autonomy (4-7 kW).",
-         "lines": [
-             {"name": "540W Mono PERC panels", "category": "panels", "quantity": 10},
-             {"name": "5 kW Off-Grid Inverter", "category": "inverter", "quantity": 1},
-             {"name": "200Ah C10 Tubular battery", "category": "battery", "quantity": 6},
-             {"name": "MPPT charge controller 100A", "category": "charge_controller", "quantity": 1},
-             {"name": "6 sqmm DC cable", "category": "cables", "quantity": 100},
-             {"name": "GI mounting structure", "category": "mounting", "quantity": 10},
-         ]},
-        # Hybrid
-        {"name": "Hybrid Home · 5 kW", "system_type": "hybrid", "capacity_kw": 5,
-         "capacity_min_kw": 4, "capacity_max_kw": 7,
-         "description": "Grid-tied with battery backup (4-7 kW).",
-         "lines": [
-             {"name": "540W Mono PERC panels", "category": "panels", "quantity": 10},
-             {"name": "5 kW Hybrid Inverter", "category": "inverter", "quantity": 1},
-             {"name": "5 kWh LiFePO4 battery", "category": "battery", "quantity": 1},
-             {"name": "DC/AC combiner box", "category": "combiner", "quantity": 1},
-             {"name": "6 sqmm DC cable", "category": "cables", "quantity": 100},
-             {"name": "GI mounting structure", "category": "mounting", "quantity": 10},
-             {"name": "Earthing kit + LA", "category": "earthing", "quantity": 1},
-         ]},
-        {"name": "Hybrid Villa · 10 kW", "system_type": "hybrid", "capacity_kw": 10,
-         "capacity_min_kw": 7, "capacity_max_kw": 15,
-         "description": "Large hybrid with battery + net-metering (7-15 kW).",
-         "lines": [
-             {"name": "540W Mono PERC panels", "category": "panels", "quantity": 19},
-             {"name": "10 kW Hybrid Inverter", "category": "inverter", "quantity": 1},
-             {"name": "10 kWh LiFePO4 battery", "category": "battery", "quantity": 1},
-             {"name": "10 sqmm DC cable", "category": "cables", "quantity": 200},
-             {"name": "GI mounting structure", "category": "mounting", "quantity": 19},
-             {"name": "Earthing kit + LA", "category": "earthing", "quantity": 1},
-         ]},
-        # Solar Pump
-        {"name": "Solar Pump · 3 HP Submersible", "system_type": "solar-pump", "capacity_kw": 2.2,
-         "capacity_min_kw": 1.5, "capacity_max_kw": 3,
-         "description": "3 HP submersible pump kit (up to 50m head, ~10 kLPH).",
-         "lines": [
-             {"name": "330W Poly panels", "category": "panels", "quantity": 8},
-             {"name": "3 HP DC Solar Pump Controller", "category": "controller", "quantity": 1},
-             {"name": "3 HP Submersible Pump", "category": "pump", "quantity": 1},
-             {"name": "4 sqmm DC cable", "category": "cables", "quantity": 80},
-             {"name": "Delivery pipe (32mm)", "category": "pipe", "quantity": 50, "qty_formula": "per m of head"},
-             {"name": "GI mounting structure", "category": "mounting", "quantity": 8},
-         ]},
-        {"name": "Solar Pump · 5 HP Surface", "system_type": "solar-pump", "capacity_kw": 3.7,
-         "capacity_min_kw": 3, "capacity_max_kw": 5.5,
-         "description": "5 HP surface pump for open wells / canals.",
-         "lines": [
-             {"name": "540W Mono PERC panels", "category": "panels", "quantity": 8},
-             {"name": "5 HP AC Solar Pump Controller (VFD)", "category": "controller", "quantity": 1},
-             {"name": "5 HP Surface AC Pump", "category": "pump", "quantity": 1},
-             {"name": "6 sqmm DC cable", "category": "cables", "quantity": 80},
-             {"name": "Delivery pipe (50mm)", "category": "pipe", "quantity": 50},
-             {"name": "GI mounting structure", "category": "mounting", "quantity": 8},
-         ]},
-    ]
-    created = 0
-    for k in starter:
-        existing = await db.material_kits.find_one({"name": k["name"], "system_type": k["system_type"]})
-        if existing:
-            continue
-        k["active"] = True
-        k["created_at"] = datetime.now(timezone.utc).isoformat()
-        k["updated_at"] = k["created_at"]
-        await db.material_kits.insert_one(k)
-        created += 1
-    total = await db.material_kits.count_documents({})
-    return {"created": created, "total": total}
-
 # ================== SOLAR CALCULATION ENGINE ==================
 
 from calculators import (
@@ -2630,7 +2516,7 @@ from geo_w3w import create_router as _create_w3w_router  # noqa: E402
 _drive_sync = _DriveSync(db, get_object)
 api_router.include_router(_create_site_photos_router(db, get_current_user, require_role, create_audit_log, put_object, APP_NAME, drive=_drive_sync))
 api_router.include_router(_create_drive_router(db, get_current_user, require_role, create_audit_log, _drive_sync))
-api_router.include_router(_create_w3w_router(db, get_current_user))
+api_router.include_router(_create_w3w_router(db, get_current_user, require_role, create_audit_log))
 
 # ═══════════ ECOMMERCE MARKETPLACES (Iter 46 Change 2) ═══════════
 from ecommerce import create_router as _create_ecommerce_router  # noqa: E402
@@ -3495,6 +3381,30 @@ async def calc_bill_savings(payload: BillSavingsRequest, request: Request):
 
 # ================== PROJECTS ==================
 
+IST = timezone(timedelta(hours=5, minutes=30))
+
+
+def _project_date(value: Optional[str]) -> Optional[str]:
+    """A valid YYYY-MM-DD (not in the future by more than a day) or None."""
+    try:
+        d = datetime.strptime(str(value or "")[:10], "%Y-%m-%d").date()
+    except ValueError:
+        return None
+    if d > (datetime.now(IST) + timedelta(days=1)).date() or d.year < 2000:
+        return None
+    return d.isoformat()
+
+
+def _project_date_of(p: dict) -> str:
+    """Stored project date, or the IST day the project was created (older projects)."""
+    if p.get("project_date"):
+        return p["project_date"]
+    try:
+        return datetime.fromisoformat(str(p.get("created_at"))).astimezone(IST).date().isoformat()
+    except (TypeError, ValueError):
+        return str(p.get("created_at") or "")[:10]
+
+
 @api_router.post("/projects")
 async def create_project(project: ProjectCreate, request: Request):
     user = await get_current_user(request)
@@ -3527,6 +3437,7 @@ async def create_project(project: ProjectCreate, request: Request):
         "commissioning_date": project.commissioning_date or None,
         "notes": project.notes or "",
         "notes_history": [],
+        "project_date": _project_date(project.project_date) or datetime.now(IST).date().isoformat(),
         "status": "draft",
         "location_id": user.get("default_location_id"),
         "created_by": user["id"],
@@ -3752,6 +3663,7 @@ async def get_projects(request: Request, status: Optional[str] = None, location_
             "updated_at": p["updated_at"],
             "location_id": p.get("location_id"),
             "system_size_kw": ((p.get("custom_fields") or {}).get("proposed_solution") or {}).get("system_size_kw"),
+            "project_date": _project_date_of(p),
         }
         for p in projects
     ]
@@ -3796,6 +3708,7 @@ async def get_project(project_id: str, request: Request):
         "drive_folder_name": project.get("drive_folder_name", ""),
         "drive_folder_link": project.get("drive_folder_link", ""),
         "drive_folder_id": project.get("drive_folder_id", ""),
+        "project_date": _project_date_of(project),
         "site_photos": project.get("site_photos") or {},
         "site_photos_drive": project.get("site_photos_drive") or {},
         "site_photos_summary": _site_photos_summary(project.get("site_photos")),
@@ -3846,7 +3759,7 @@ async def update_project(project_id: str, updates: ProjectUpdate, request: Reque
             "customer", "location", "electrical", "solar_system", "mounting", "additional",
             "selected_items", "manual_costs", "site_images", "drive_folder_name", "drive_folder_link",
             "drive_folder_id", "site_photos", "site_measurements", "custom_fields", "solar_report", "terms_id", "invoice_terms_id",
-            "reference_project_id", "installation_date", "commissioning_date", "status"
+            "reference_project_id", "installation_date", "commissioning_date", "project_date", "status"
         ])
     )
     
@@ -3859,7 +3772,7 @@ async def update_project(project_id: str, updates: ProjectUpdate, request: Reque
             "customer", "location", "electrical", "solar_system", "mounting", "additional",
             "selected_items", "manual_costs", "site_images", "drive_folder_name", "drive_folder_link",
             "drive_folder_id", "site_photos", "site_measurements", "custom_fields", "solar_report", "notes",
-            "reference_project_id", "installation_date", "commissioning_date", "status"
+            "reference_project_id", "installation_date", "commissioning_date", "project_date", "status"
         ])
     )
     # Staff can only edit their own draft projects (notes are exception — see below)
@@ -3913,6 +3826,8 @@ async def update_project(project_id: str, updates: ProjectUpdate, request: Reque
         update_data["installation_date"] = updates.installation_date or None
     if updates.commissioning_date is not None:
         update_data["commissioning_date"] = updates.commissioning_date or None
+    if updates.project_date is not None and _project_date(updates.project_date):
+        update_data["project_date"] = _project_date(updates.project_date)
     if updates.notes is not None:
         update_data["notes"] = updates.notes
     if updates.selected_items is not None:

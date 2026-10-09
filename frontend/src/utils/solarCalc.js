@@ -75,8 +75,15 @@ export function computeQuick(inputs, config, panel, inverter, battery, slabDoc) 
   const sy = num(config?.default_specific_yield, 4.4) || 4.4;
   const tariff = num(inputs.tariff_per_unit) || num(config?.default_tariff_per_unit, 8) || 8;
 
-  let units = num(inputs.monthly_eb_units);
-  const bill = num(inputs.monthly_eb_bill);
+  // Bill / units are entered per bill; TN domestic bills come every 2 months.
+  const billingCycle = inputs.billing_cycle === 'bimonthly' ? 'bimonthly' : 'monthly';
+  const period = billingCycle === 'bimonthly' ? 2 : 1;
+  const gridTied = systemType === 'on-grid' || systemType === 'hybrid';
+  const exportRate = gridTied ? Math.max(num(inputs.export_rate), 0) : 0;
+  const networkCharge = gridTied ? Math.max(num(inputs.network_charge), 0) : 0;
+  const networkBasis = inputs.network_charge_basis === 'per_kw_month' ? 'per_kw_month' : 'per_unit';
+  let units = num(inputs.monthly_eb_units) / period;
+  const bill = num(inputs.monthly_eb_bill) / period;
   let unitsSource = 'entered';
   if (units <= 0 && bill > 0) { units = Math.round(bill / tariff); unitsSource = 'from_bill'; }
   if (units <= 0) unitsSource = 'none';
@@ -174,10 +181,18 @@ export function computeQuick(inputs, config, panel, inverter, battery, slabDoc) 
   const annualGen = kw * sy * 365;
   const monthlyGen = annualGen / 12;
   const offsetUnits = units > 0 ? Math.min(monthlyGen, units) : monthlyGen;
-  const monthlySaving = offsetUnits * tariff;
+  const exportUnits = units > 0 && gridTied ? Math.max(monthlyGen - units, 0) : 0;
+  const energySaving = offsetUnits * tariff;
+  const exportIncome = exportUnits * exportRate;
+  const networkMonthly = kw > 0 ? (networkBasis === 'per_kw_month' ? kw * networkCharge : monthlyGen * networkCharge) : 0;
+  const monthlySaving = energySaving + exportIncome - networkMonthly;
   const annualSaving = monthlySaving * 12;
   const paybackYears = annualSaving > 0 && netCost > 0 ? round(netCost / annualSaving, 1) : (netCost === 0 && annualSaving > 0 ? 0 : null);
-  if (units > 0 && monthlyGen > units * 1.25) warn('system_size_kw', `System makes ~${fmt(monthlyGen)} units/month but the customer uses ${fmt(units)} — savings are capped at what they use.`);
+  if (units > 0 && monthlyGen > units * 1.25) {
+    if (exportRate > 0) warn('system_size_kw', `System makes ~${fmt(monthlyGen)} units/month but the customer uses ${fmt(units)} — the extra ~${fmt(exportUnits)} units are sold to the grid at ₹${exportRate}/unit.`);
+    else warn('system_size_kw', `System makes ~${fmt(monthlyGen)} units/month but the customer uses ${fmt(units)} — savings are capped at what they use.`);
+  }
+  if (kw > 0 && monthlySaving <= 0 && networkMonthly > 0) warn('network_charge', `The network charge (₹${fmt(networkMonthly)}/month) wipes out the saving — check the rate.`);
 
   const life = Math.trunc(num(config?.system_life_years, 25)) || 25;
   const deg = num(config?.panel_degradation_pct_per_year, 0.7) / 100;
@@ -211,6 +226,11 @@ export function computeQuick(inputs, config, panel, inverter, battery, slabDoc) 
     total_cost: totalCost, total_gst: Math.round(totalGst), total_incl_gst: Math.round(totalCost + totalGst), pricing_issues: pricingIssuesOut, pricing_source: pricingSource, slab, itemised_total: itemisedTotal, itemised_gst: itemisedGst, subsidy: Math.round(subsidy), subsidy_reference: subsidyRef, net_cost: Math.round(netCost),
     annual_generation_units: Math.round(annualGen), monthly_generation_units: Math.round(monthlyGen),
     monthly_bill_now: Math.round(monthlyBillNow), monthly_saving: Math.round(monthlySaving), annual_saving: Math.round(annualSaving),
+    billing_cycle: billingCycle, period_months: period, bill_units: Math.round(units * period),
+    bill_now_per_period: Math.round(monthlyBillNow * period), saving_per_period: Math.round(monthlySaving * period),
+    energy_saving_monthly: Math.round(energySaving), export_units_monthly: Math.round(exportUnits), export_rate: exportRate,
+    export_income_monthly: Math.round(exportIncome), network_charge: networkCharge, network_charge_basis: networkBasis,
+    network_charge_monthly: Math.round(networkMonthly),
     payback_years: paybackYears, lifetime_savings: Math.round(lifetime),
     roi_pct: netCost > 0 ? round(annualSaving / netCost * 100, 1) : null,
     yearly, warnings,

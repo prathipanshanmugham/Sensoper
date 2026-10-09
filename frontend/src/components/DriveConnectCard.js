@@ -1,17 +1,46 @@
 /* Settings → Connections: Google Drive (site photos) and What3words. */
 import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
-import { AlertTriangle, CheckCircle2, CloudOff, ExternalLink, Loader2, MapPin, RefreshCw, Unplug } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, CloudOff, ExternalLink, KeyRound, Loader2, MapPin, RefreshCw, Unplug } from 'lucide-react';
 import { driveAPI, w3wAPI } from '../utils/api';
 import { formatApiErrorDetail } from '../contexts/AuthContext';
 import { Button } from './ui/button';
 
 const when = (iso) => (iso ? new Date(iso).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—');
 
+/** Paste-a-secret box: never shows the saved value, only replaces it. */
+function SecretField({ label, placeholder, onSave, testid, onCancel }) {
+  const [v, setV] = useState('');
+  const [saving, setSaving] = useState(false);
+  const save = async () => {
+    if (!v.trim()) return;
+    setSaving(true);
+    try { await onSave(v.trim()); setV(''); } finally { setSaving(false); }
+  };
+  return (
+    <div className="space-y-1.5" data-testid={testid}>
+      <label className="block text-xs font-medium text-slate-700" htmlFor={`${testid}-input`}>{label}</label>
+      <div className="flex gap-2">
+        <input id={`${testid}-input`} type="password" autoComplete="off" spellCheck={false} value={v} onChange={(e) => setV(e.target.value)} placeholder={placeholder}
+          onKeyDown={(e) => { if (e.key === 'Enter') save(); }}
+          className="h-10 min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-3 font-mono text-sm outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100" data-testid={`${testid}-input`} />
+        <Button onClick={save} disabled={saving || !v.trim()} className="h-10 bg-emerald-600 text-white hover:bg-emerald-700" data-testid={`${testid}-save`}>{saving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Save'}</Button>
+        {onCancel && <Button variant="ghost" onClick={onCancel} className="h-10 px-3 text-slate-500">Cancel</Button>}
+      </div>
+      <p className="text-[11px] text-slate-500">Stored encrypted on the server. It's never shown again — paste a new one to replace it.</p>
+    </div>
+  );
+}
+
 export function DriveConnectCard() {
   const [s, setS] = useState(null);
   const [busy, setBusy] = useState('');
+  const [editSecret, setEditSecret] = useState(false);
   const load = useCallback(() => driveAPI.status().then((r) => setS(r.data)).catch(() => setS({ connected: false, error: true })), []);
+  const saveSecret = async (secret) => {
+    try { await driveAPI.saveSecret(secret); toast.success('Client secret saved'); setEditSecret(false); await load(); }
+    catch (e) { toast.error(formatApiErrorDetail(e.response?.data?.detail) || 'Could not save the client secret'); }
+  };
   useEffect(() => { load(); }, [load]);
 
   const connect = async () => {
@@ -85,8 +114,15 @@ export function DriveConnectCard() {
       {s.connected && <p className="mt-3 text-[11px] text-slate-500">Tip: share the “Sensoper — Site photos” folder in Drive with your team once — every project folder inside it is shared too.</p>}
 
       {!s.connected && (
-        <div className="mt-3 space-y-2 rounded-lg bg-slate-50 p-3 text-xs text-slate-600" data-testid="drive-setup">
-          {s.configured === false && <p className="font-medium text-amber-800">Before connecting, the server needs {(s.missing || ['GOOGLE_CLIENT_SECRET']).join(' and ')} in its backend .env file (then restart the service).</p>}
+        <div className="mt-3 space-y-3 rounded-lg bg-slate-50 p-3 text-xs text-slate-600" data-testid="drive-setup">
+          {(s.missing || []).includes('GOOGLE_CLIENT_SECRET') || editSecret ? (
+            <SecretField label="Google OAuth client secret" placeholder="GOCSPX-…" onSave={saveSecret} testid="drive-secret" onCancel={editSecret ? () => setEditSecret(false) : null} />
+          ) : (
+            <p className="flex flex-wrap items-center gap-x-2 gap-y-1"><KeyRound className="h-3.5 w-3.5 text-emerald-700" />
+              Client secret {s.secret_source === 'settings' ? 'saved here' : 'set on the server'}.
+              <button type="button" onClick={() => setEditSecret(true)} className="font-medium text-emerald-700 hover:underline" data-testid="drive-secret-change">Change</button></p>
+          )}
+          {(s.missing || []).includes('VAULT_MASTER_KEY') && <p className="font-medium text-amber-800">The server also needs VAULT_MASTER_KEY in its backend .env file (it encrypts the Google token). Ask whoever manages the server, then restart it.</p>}
           <p>In Google Cloud Console → Credentials → this OAuth client, the <strong>Authorized redirect URI</strong> must be exactly:</p>
           <code className="block break-all rounded bg-white px-2 py-1 font-mono text-[11px] text-slate-800" data-testid="drive-redirect-uri">{s.redirect_uri}</code>
           {hostMismatch && <p className="text-amber-800">This app is open on <strong>{appHost}</strong> but Google will send you back to <strong>{redirectHost}</strong>. Unless that address also opens this app, add <code className="font-mono">https://{appHost}/auth/google/callback</code> to the OAuth client and set GOOGLE_REDIRECT_URI to it.</p>}
@@ -98,17 +134,42 @@ export function DriveConnectCard() {
 }
 
 export function W3wStatusRow() {
-  const [cfg, setCfg] = useState(null);
-  useEffect(() => { w3wAPI.status().then((r) => setCfg(r.data.configured)).catch(() => setCfg(false)); }, []);
+  const [st, setSt] = useState(null);
+  const [edit, setEdit] = useState(false);
+  const load = useCallback(() => w3wAPI.status().then((r) => setSt(r.data)).catch(() => setSt({ configured: false })), []);
+  useEffect(() => { load(); }, [load]);
+  const saveKey = async (key) => {
+    try {
+      const r = await w3wAPI.saveKey(key);
+      if (r.data.tested) toast.success(r.data.message || 'Key saved'); else toast.warning(r.data.message || 'Key saved');
+      setEdit(false); await load();
+    } catch (e) { toast.error(formatApiErrorDetail(e.response?.data?.detail) || 'Could not save the key'); }
+  };
+  const removeKey = async () => {
+    if (!window.confirm('Remove the What3words key saved here?')) return;
+    try { await w3wAPI.deleteKey(); toast.success('Key removed'); await load(); }
+    catch (e) { toast.error(formatApiErrorDetail(e.response?.data?.detail) || 'Could not remove the key'); }
+  };
   return (
-    <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white p-4" data-testid="w3w-status">
-      <div className="min-w-0">
-        <p className="flex items-center gap-2 font-['Outfit'] text-[15px] font-semibold text-slate-900"><MapPin className="h-4 w-4 text-red-500" />What3words</p>
-        <p className="text-xs text-slate-500">“Use my location” on New project fills in the GPS and the 3-word address by itself.</p>
+    <div className="space-y-3 rounded-xl border border-slate-200 bg-white p-4" data-testid="w3w-status">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="min-w-0">
+          <p className="flex items-center gap-2 font-['Outfit'] text-[15px] font-semibold text-slate-900"><MapPin className="h-4 w-4 text-red-500" />What3words
+            {st?.configured && <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700"><CheckCircle2 className="h-3.5 w-3.5" />Ready</span>}
+          </p>
+          <p className="text-xs text-slate-500">“Use my location” on New project, and “Update location” on a project, fill in the GPS and the 3-word address by themselves.</p>
+        </div>
+        {st === null && <Loader2 className="h-4 w-4 animate-spin text-slate-400" />}
       </div>
-      {cfg === null ? <Loader2 className="h-4 w-4 animate-spin text-slate-400" />
-        : cfg ? <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700"><CheckCircle2 className="h-3.5 w-3.5" />Ready</span>
-          : <span className="text-xs text-amber-800">Add <code className="font-mono">W3W_API_KEY</code> to the backend .env file and restart.</span>}
+      {st && (st.configured && !edit ? (
+        <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-600" data-testid="w3w-key-line">
+          <span className="flex items-center gap-1.5"><KeyRound className="h-3.5 w-3.5 text-emerald-700" />API key <span className="font-mono">{st.hint || ''}</span> · {st.source === 'settings' ? 'saved here' : 'set on the server'}</span>
+          <button type="button" onClick={() => setEdit(true)} className="font-medium text-emerald-700 hover:underline" data-testid="w3w-key-change">Change key</button>
+          {st.source === 'settings' && <button type="button" onClick={removeKey} className="font-medium text-slate-500 hover:text-red-600" data-testid="w3w-key-remove">Remove</button>}
+        </p>
+      ) : (
+        <SecretField label="What3words API key" placeholder="Paste the key from your What3words account" onSave={saveKey} testid="w3w-key" onCancel={st.configured ? () => setEdit(false) : null} />
+      ))}
     </div>
   );
 }

@@ -1,5 +1,27 @@
 # Sensoper — change log
 
+## October 2026 · follow-ups
+
+- **Solution kits:** removed "Seed Starter Kits" (the button, the empty-state button and `POST /api/material-kits/seed-starter`). Kits it already created stay in the library; delete them from Solution kits if you don't want them.
+- **What3words:**
+  - An admin can paste a new API key in **Settings → What3words**. It's checked with What3words, stored encrypted, and wins over `W3W_API_KEY`.
+  - The Location step has a refresh button inside the 3-words box. It gets the words for the current GPS coordinates.
+  - The project page has **Update location**, which saves the phone's GPS and the 3 words to a saved project in one tap (`PUT /api/projects/{id}/geo`). It works in any status and doesn't send the project back for approval.
+- **Google Drive:**
+  - The redirect now defaults to `https://quote.sensoper.in/auth/google/callback`.
+  - The OAuth client secret can be pasted in **Settings → Google Drive** instead of editing `.env`. It's stored encrypted.
+- **Project date:**
+  - New project asks for a **Project date** (today by default) and stores it as `project_date`.
+  - It shows on the project page, in the Projects list, the review dialog and the Excel export.
+  - Older projects show the day they were created (IST).
+- **Proposed solution (Step 4 calculator):**
+  - **EB bill comes every 1 month / 2 months.** With 2 months, the bill and units are entered per bill. The calculator works per month and also shows savings per 2-month bill.
+  - **Feed-in rate (₹/unit):** what the DISCOM pays for surplus units exported (on-grid and hybrid).
+  - **Network charge:** ₹ per unit of solar generated, or ₹ per kW per month. It's taken off the saving.
+  - A line under the result shows: units saved + surplus sold − network charge = saving. The quotation PDF lists the billing, surplus and network-charge figures.
+  - Old projects compute exactly as before; the new inputs default to monthly and 0.
+  - The engine change is mirrored in `backend/quick_calc.py` and `frontend/src/utils/solarCalc.js`. `backend/tests/test_calc_billing.py` checks both give the same numbers.
+
 ## October 2026 · Site photos to Google Drive, What3words, simpler Settings
 
 ### Site photos checklist (New project → Site photos)
