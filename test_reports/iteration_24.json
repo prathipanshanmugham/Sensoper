@@ -1,5 +1,5 @@
 {
-  "summary": "Iteration 24 — Tested Accounts refactor (meter_reading dropped, operational_expense + gst_input added), Expenses sub-tab, CEO Dashboard 4-card grid + Net Cash Flow, and What3Words GPS auto-fill. Backend pytest: 8/9 pass (1 real product bug). Frontend UI: sidebar 'Accounts' label, credits-title='Accounts', 3 tabs, default Customer Credits tab, CEO Dashboard all 7 data-testid cards render with correct amounts (Op Exp MTD=₹70,000, GST=₹36,000, Net Cash Flow=₹1,06,000 red tone), W3W GPS button fetches https://api.what3words.com/v3/convert-to-3wa with coordinates=51.521251,-0.203586&key=G4IVNNAW, auto-fills what3words-input='filled.count.soap', renders w3w-coords '51.52125, -0.20359' + 'Open in W3W ↗' link, and shows w3w-error 'Location permission denied...' when geolocation code:1.",
+  "summary": "Iteration 24 — Tested Accounts refactor (meter_reading dropped, operational_expense + gst_input added), Expenses sub-tab, CEO Dashboard 4-card grid + Net Cash Flow, and What3Words GPS auto-fill. Backend pytest: 8/9 pass (1 real product bug). Frontend UI: sidebar 'Accounts' label, credits-title='Accounts', 3 tabs, default Customer Credits tab, CEO Dashboard all 7 data-testid cards render with correct amounts (Op Exp MTD=₹70,000, GST=₹36,000, Net Cash Flow=₹1,06,000 red tone), W3W GPS button fetches https://api.what3words.com/v3/convert-to-3wa with coordinates=51.521251,-0.203586&key=<redacted>, auto-fills what3words-input='filled.count.soap', renders w3w-coords '51.52125, -0.20359' + 'Open in W3W ↗' link, and shows w3w-error 'Location permission denied...' when geolocation code:1.",
   "backend_issues": {
     "critical": [
       {
@@ -45,7 +45,7 @@
     "Playwright: Accounts tab shows Cash on Hand + Account Balance snapshots, NO 'Meter Reading' text anywhere",
     "Playwright: Expenses tab renders exp-snapshot-op/gst/total testids (values ₹0 due to backend bug)",
     "Playwright: CEO Dashboard — ceo-snapshot-grid, ceo-cash-card, ceo-opexp-card (₹70,000), ceo-gst-card (₹36,000), ceo-balance-card (₹9,99,999), ceo-netflow-card (₹1,06,000 red tone with 'Outflow exceeds cash inflow'), ceo-readings-card all render",
-    "Playwright: Site Visit /dashboard/projects/new Location step has w3w-gps-btn; click triggers fetch to api.what3words.com with coordinates=51.521251,-0.203586 and key=G4IVNNAW (verified via page.route interception)",
+    "Playwright: Site Visit /dashboard/projects/new Location step has w3w-gps-btn; click triggers fetch to api.what3words.com with coordinates=51.521251,-0.203586 and key=<redacted> (verified via page.route interception)",
     "Playwright: On success — what3words-input auto-filled with 'filled.count.soap', w3w-coords renders '51.52125, -0.20359' + 'Open in W3W ↗' link",
     "Playwright: On geolocation denied (code:1) — w3w-error testid renders 'Location permission denied. Enable it in your browser to use this feature.'"
   ],

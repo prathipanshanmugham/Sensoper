@@ -18,6 +18,8 @@ import {
 } from 'lucide-react';
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator } from '../components/ui/dropdown-menu';
 import QRCode from 'qrcode';
+import SitePhotoChecklist from '../components/SitePhotoChecklist';
+import { w3wLink, mapsLink } from '../lib/geo';
 import { toast } from 'sonner';
 import * as XLSX from 'xlsx';
 import { saveAs } from 'file-saver';
@@ -442,7 +444,8 @@ export default function ProjectDetails() {
             <Card className="border-slate-200">
               <CardHeader className="pb-3"><CardTitle className="text-lg font-['Outfit'] flex items-center gap-2"><MapPin className="h-5 w-5 text-emerald-600" />Site Location</CardTitle></CardHeader>
               <CardContent>
-                {project.location?.site_location_words && <div className="flex justify-between py-2 border-b border-slate-100"><span className="text-slate-500">What3Words</span><span className="font-mono font-medium text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded">{project.location.site_location_words}</span></div>}
+                {project.location?.site_location_words && <div className="flex justify-between gap-2 py-2 border-b border-slate-100"><span className="text-slate-500">What3Words</span><a href={w3wLink(project.location.site_location_words)} target="_blank" rel="noopener noreferrer" className="font-mono font-medium text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded hover:underline break-all" data-testid="project-w3w">///{String(project.location.site_location_words).replace(/^\/+/, '')}</a></div>}
+                {(project.location?.latitude && project.location?.longitude) ? <div className="flex justify-between gap-2 py-2 border-b border-slate-100"><span className="text-slate-500">GPS</span><a href={mapsLink(project.location.latitude, project.location.longitude)} target="_blank" rel="noopener noreferrer" className="font-mono text-sm text-emerald-700 hover:underline" data-testid="project-gps">{Number(project.location.latitude).toFixed(5)}, {Number(project.location.longitude).toFixed(5)} ↗</a></div> : null}
                 <InfoRow label="Address" value={project.location?.address} /><InfoRow label="Roof Type" value={project.mounting?.roof_type?.toUpperCase()} />
                 <InfoRow label="Tilt Angle" value={`${project.mounting?.tilt_angle}\u00B0`} /><InfoRow label="Structure Type" value={project.mounting?.structure_type} />
               </CardContent>
@@ -626,10 +629,16 @@ export default function ProjectDetails() {
             {(isAdmin || isManager) && <ProjectPartnerCard projectId={id} canManage={isAdmin || isManager} />}
             <ProjectTeamsCard projectId={id} canManage={isAdmin || isManager} />
 
+            {/* Site photos checklist — adds go straight to the project (and on to Google Drive) */}
+            <div data-testid="project-site-photos">
+              <SitePhotoChecklist projectId={id} customerName={project.customer?.name} w3w={project.location?.site_location_words}
+                canEdit={isAdmin || isManager || project.created_by === user?.id} compact />
+            </div>
+
             {/* Site Documentation */}
             {project.drive_folder_link && (
               <Card className="border-slate-200">
-                <CardHeader className="pb-3"><CardTitle className="text-lg font-['Outfit'] flex items-center gap-2"><FolderOpen className="h-5 w-5 text-blue-600" />Site Documentation</CardTitle></CardHeader>
+                <CardHeader className="pb-3"><CardTitle className="text-lg font-['Outfit'] flex items-center gap-2"><FolderOpen className="h-5 w-5 text-blue-600" />Google Drive folder</CardTitle></CardHeader>
                 <CardContent className="space-y-4">
                   {project.drive_folder_name && (
                     <div className="flex items-center gap-2 text-sm">

@@ -195,6 +195,7 @@ class ProjectCreate(BaseModel):
     drive_folder_name: Optional[str] = None
     drive_folder_link: Optional[str] = None
     drive_folder_id: Optional[str] = None
+    site_photos: Optional[Dict[str, List[Any]]] = None   # checklist slot → photos (see site_photos.py)
     site_measurements: Optional[dict] = None
     custom_fields: Optional[dict] = None
     solar_report: Optional[dict] = None
@@ -219,6 +220,7 @@ class ProjectUpdate(BaseModel):
     drive_folder_name: Optional[str] = None
     drive_folder_link: Optional[str] = None
     drive_folder_id: Optional[str] = None
+    site_photos: Optional[Dict[str, List[Any]]] = None   # checklist slot → photos (see site_photos.py)
     site_measurements: Optional[dict] = None
     custom_fields: Optional[dict] = None
     solar_report: Optional[dict] = None
@@ -2621,6 +2623,15 @@ api_router.include_router(_create_teams_router(db=db, get_current_user=get_curre
 from daily_reports import create_router as _create_daily_reports_router  # noqa: E402
 api_router.include_router(_create_daily_reports_router(db=db, get_current_user=get_current_user, require_role=require_role, create_audit_log=create_audit_log))
 
+# ================== SITE PHOTOS · GOOGLE DRIVE · WHAT3WORDS ==================
+from site_photos import create_router as _create_site_photos_router, normalise_for_save as _normalise_site_photos, summarise as _site_photos_summary  # noqa: E402
+from google_drive import DriveSync as _DriveSync, create_router as _create_drive_router  # noqa: E402
+from geo_w3w import create_router as _create_w3w_router  # noqa: E402
+_drive_sync = _DriveSync(db, get_object)
+api_router.include_router(_create_site_photos_router(db, get_current_user, require_role, create_audit_log, put_object, APP_NAME, drive=_drive_sync))
+api_router.include_router(_create_drive_router(db, get_current_user, require_role, create_audit_log, _drive_sync))
+api_router.include_router(_create_w3w_router(db, get_current_user))
+
 # ═══════════ ECOMMERCE MARKETPLACES (Iter 46 Change 2) ═══════════
 from ecommerce import create_router as _create_ecommerce_router  # noqa: E402
 _ecommerce_router = _create_ecommerce_router(
@@ -3524,6 +3535,9 @@ async def create_project(project: ProjectCreate, request: Request):
         "updated_at": datetime.now(timezone.utc).isoformat()
     }
     
+    if project.site_photos:
+        project_doc["site_photos"], project_doc["site_photos_pending"] = await _normalise_site_photos(db, project.site_photos, None)
+
     # Calculate cost estimation from selected items
     project_doc["cost_estimation"] = await build_cost_estimation(selected_items_data, manual_costs_data, project_doc.get("custom_fields"))
     
@@ -3545,6 +3559,8 @@ async def create_project(project: ProjectCreate, request: Request):
         user["id"], user["name"], "create", "project",
         str(result.inserted_id), None, {"customer": project.customer.name, "status": "draft"}
     )
+    if project_doc.get("site_photos_pending"):
+        _drive_sync.schedule(str(result.inserted_id))
     
     return {
         "id": str(result.inserted_id),
@@ -3780,6 +3796,9 @@ async def get_project(project_id: str, request: Request):
         "drive_folder_name": project.get("drive_folder_name", ""),
         "drive_folder_link": project.get("drive_folder_link", ""),
         "drive_folder_id": project.get("drive_folder_id", ""),
+        "site_photos": project.get("site_photos") or {},
+        "site_photos_drive": project.get("site_photos_drive") or {},
+        "site_photos_summary": _site_photos_summary(project.get("site_photos")),
         "site_measurements": project.get("site_measurements", {}),
         "custom_fields": project.get("custom_fields", {}),
         "solar_report": project.get("solar_report"),
@@ -3826,7 +3845,7 @@ async def update_project(project_id: str, updates: ProjectUpdate, request: Reque
         and all(getattr(updates, f) is None for f in [
             "customer", "location", "electrical", "solar_system", "mounting", "additional",
             "selected_items", "manual_costs", "site_images", "drive_folder_name", "drive_folder_link",
-            "drive_folder_id", "site_measurements", "custom_fields", "solar_report", "terms_id", "invoice_terms_id",
+            "drive_folder_id", "site_photos", "site_measurements", "custom_fields", "solar_report", "terms_id", "invoice_terms_id",
             "reference_project_id", "installation_date", "commissioning_date", "status"
         ])
     )
@@ -3839,7 +3858,7 @@ async def update_project(project_id: str, updates: ProjectUpdate, request: Reque
         and all(getattr(updates, f) is None for f in [
             "customer", "location", "electrical", "solar_system", "mounting", "additional",
             "selected_items", "manual_costs", "site_images", "drive_folder_name", "drive_folder_link",
-            "drive_folder_id", "site_measurements", "custom_fields", "solar_report", "notes",
+            "drive_folder_id", "site_photos", "site_measurements", "custom_fields", "solar_report", "notes",
             "reference_project_id", "installation_date", "commissioning_date", "status"
         ])
     )
@@ -3875,6 +3894,9 @@ async def update_project(project_id: str, updates: ProjectUpdate, request: Reque
         update_data["drive_folder_link"] = updates.drive_folder_link
     if updates.drive_folder_id is not None:
         update_data["drive_folder_id"] = updates.drive_folder_id
+    if updates.site_photos is not None:
+        # Keeps the stored record (incl. Drive copy state) for photos already on the project
+        update_data["site_photos"], update_data["site_photos_pending"] = await _normalise_site_photos(db, updates.site_photos, project.get("site_photos"))
     if updates.site_measurements is not None:
         update_data["site_measurements"] = updates.site_measurements
     if updates.custom_fields is not None:
@@ -3920,6 +3942,8 @@ async def update_project(project_id: str, updates: ProjectUpdate, request: Reque
     await create_audit_log(
         user["id"], user["name"], "update", "project", project_id
     )
+    if update_data.get("site_photos_pending"):
+        _drive_sync.schedule(project_id)
     
     return {"message": "Project updated successfully"}
 
@@ -6424,8 +6448,8 @@ async def get_project_completeness(project_id: str, request: Request):
     cost_ok = len(items) > 0
     checks["costing"] = cost_ok
     if cost_ok: score += 20
-    # Drive link (10%)
-    drive_ok = bool(project.get("drive_folder_link"))
+    # Site photos / Drive link (10%)
+    drive_ok = bool(project.get("drive_folder_link")) or _site_photos_summary(project.get("site_photos"))["photos"] > 0
     checks["site_docs"] = drive_ok
     if drive_ok: score += 10
     # Daily updates (15%)
@@ -7518,6 +7542,15 @@ async def health_check():
 @app.on_event("startup")
 async def startup_event():
     await _seed_kit_categories(db)
+    # Site photos / Google Drive / What3words
+    await db.site_photo_uploads.create_index("id", unique=True)
+    await db.w3w_cache.create_index([("kind", 1), ("key", 1)], unique=True)
+    await db.oauth_states.create_index("state", unique=True)
+    await db.integrations.create_index("key", unique=True)
+    await db.projects.create_index("site_photos_pending")
+    await db.form_tabs.update_one({"slug": "site_docs", "name": "Site Docs"}, {"$set": {"name": "Site photos"}})
+    if os.environ.get("DISABLE_DRIVE_SYNC_LOOP", "").lower() not in ("1", "true", "yes"):
+        _drive_sync.start()
     # Create indexes
     await db.users.create_index("email", unique=True)
     await db.login_attempts.create_index("identifier")
@@ -7662,7 +7695,7 @@ async def startup_event():
         {"name": "Location", "slug": "location", "system": True, "active": True, "icon": "MapPin", "fields": [], "roles_visible": ["admin", "manager", "staff"]},
         {"name": "Site & Electrical", "slug": "site_electrical", "system": True, "active": True, "icon": "Zap", "fields": [], "roles_visible": ["admin", "manager", "staff"]},
         {"name": "Materials", "slug": "materials", "system": True, "active": True, "icon": "Package", "fields": [], "roles_visible": ["admin", "manager", "staff"]},
-        {"name": "Site Docs", "slug": "site_docs", "system": True, "active": True, "icon": "FolderOpen", "fields": [], "roles_visible": ["admin", "manager", "staff"]},
+        {"name": "Site photos", "slug": "site_docs", "system": True, "active": True, "icon": "FolderOpen", "fields": [], "roles_visible": ["admin", "manager", "staff"]},
     ]
     for st in system_tabs:
         existing_tab = await db.form_tabs.find_one({"slug": st["slug"]})

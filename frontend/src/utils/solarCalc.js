@@ -165,7 +165,7 @@ export function computeQuick(inputs, config, panel, inverter, battery, slabDoc) 
   let pricingIssuesOut = pricingIssues;
   if (slab && inputs.pricing_mode === 'slab') {
     pricingSource = 'slab'; totalCost = slab.total; totalGst = slab.gst_amount || 0;
-    pricingIssuesOut = slab.gst_missing ? [`Slab rate for ${slab.category} has no GST% — set it in Pricing & Config → Slab rates.`] : [];
+    pricingIssuesOut = slab.gst_missing ? [`Slab rate for ${slab.category} has no GST% — set it in Price list → Package slabs.`] : [];
   }
   const subsidy = Math.max(num(inputs.subsidy), 0);
   if (totalCost > 0 && subsidy > totalCost) warn('subsidy', `Subsidy ₹${fmt(subsidy)} is more than the system cost ₹${fmt(totalCost)} — check the amount.`);
