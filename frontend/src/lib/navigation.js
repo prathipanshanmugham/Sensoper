@@ -82,10 +82,10 @@ export const NAV_SECTIONS = [
     id: 'sales', label: 'Sales & projects', items: [
       {
         href: '/dashboard/projects/new', label: 'New project', icon: FolderPlus, staff: true, module: 'module_projects',
-        keywords: 'site visit quotation estimate photos what3words gps',
+        keywords: 'site visit quotation estimate photos gps location coordinates',
         help: {
           what: 'Record a site visit and build the quotation for a new customer, step by step.',
-          steps: ['Customer: name, phone and address.', 'Location: at the site, tap "Use my location" — GPS and the What3words address fill in by themselves.',
+          steps: ['Customer: name, phone and address.', 'Location: at the site, tap "Use my location" — the GPS coordinates fill in by themselves.',
             'Site & electrical: roof, load, monthly units and tariff.',
             'Proposed solution: system type and size, then choose panels, inverter and other materials.',
             'Site photos: work down the checklist — each photo is copied to Google Drive automatically.'],
@@ -294,9 +294,9 @@ export const NAV_SECTIONS = [
       },
       {
         href: '/dashboard/pricing-config', label: 'Settings', icon: SlidersHorizontal, roles: ADMIN, module: 'module_settings',
-        keywords: 'config pricing rounding cash round off interest target google drive what3words connect',
+        keywords: 'config pricing rounding cash round off interest target google drive connect',
         help: {
-          what: 'A few company-wide basics: how totals are rounded, overdue interest, the monthly sales target, and the Google Drive / What3words connections.',
+          what: 'A few company-wide basics: how totals are rounded, overdue interest, the monthly sales target, and the Google Drive connection.',
           steps: ['Tap a value, change it and press the tick.', 'Connect Google Drive once so site photos are copied there automatically.'],
           tip: 'Product prices, package slabs and service rates are in Price list.',
         },

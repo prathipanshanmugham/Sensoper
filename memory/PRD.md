@@ -262,3 +262,8 @@ See CHANGES.md for the full list. Highlights for the next agent:
 - Frontend: `components/SitePhotoChecklist.js` (form + live modes), `lib/geo.js`, `pages/GoogleCallback.js` (/auth/google/callback),
   `components/DriveConnectCard.js`. "Pricing & config" → **Settings** (basics only); slab/service rates moved to Price list tabs (`pages/PriceListHub.js`).
 - Tests: backend/tests/test_site_photos_drive.py (fake Google + mongomock, no network).
+
+## Iteration 63 — What3words removed (2026-10-10)
+- Site location is GPS coordinates only: Location step "Use my location", project page "Update location" (`backend/geo_location.py`,
+  `PUT /api/projects/{id}/geo`). `geo_w3w.py`, the Settings key card, the `w3w_cache` collection and the stored key are gone.
+- Legacy `location.site_location_words` is kept in the model for old data but never shown; form saves clear it.

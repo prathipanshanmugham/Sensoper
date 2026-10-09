@@ -4,7 +4,7 @@ Your server already has `/root/Sensoper/deploy.sh`. It pulls the code, installs 
 copies the build to `/var/www/sensoper`, restarts the `sensoper` service and checks the live bundle. This release needs
 nothing new installed.
 
-## This release: site photos → Google Drive, What3words, simpler Settings
+## This release: site photos → Google Drive, site GPS, simpler Settings
 
 ### 1. Server settings
 Check `backend/.env` on the server (see `backend/.env.example`):
@@ -13,7 +13,6 @@ Check `backend/.env` on the server (see `backend/.env.example`):
 |---|---|
 | `VAULT_MASTER_KEY` | Optional now. If it's empty, the server creates `storage/.keys/vault_master.key` on first use. **Back that file up** (or set this variable): it unlocks the keys saved in Settings and the Company logins. |
 | `GOOGLE_REDIRECT_URI` | Leave unset. It defaults to `https://quote.sensoper.in/auth/google/callback`, which is already on the Google OAuth client. |
-| `W3W_API_KEY` | Optional. Easier: after deploying, paste the new key in **Settings → What3words**. The old key is in this public repo's history, so don't reuse it. |
 | `GOOGLE_CLIENT_SECRET` | Optional. Easier: paste it in **Settings → Google Drive**. |
 | `GOOGLE_CLIENT_ID` | Optional. It defaults to `712570910460-6bsesslamu2umt6sf7mbe7h4a3o82og1.apps.googleusercontent.com`. |
 
@@ -36,11 +35,10 @@ Nothing new to install (`httpx` is already in requirements). Check that nginx al
 
 ### 4. Connect Google Drive and check it
 1. Sign in as admin → **Settings**:
-   - What3words → paste the new API key → Save. It's checked with What3words straight away.
    - Google Drive → paste the whole JSON file you downloaded from Google Cloud Console (or just the client secret) → Save → **Connect Google Drive** → pick the company Google account → Allow.
    You land on a "Connected" page. A folder **Sensoper — Site photos** appears in that Drive.
 2. In Drive, share that folder with your team once. Every project folder inside it is shared too.
-3. Smoke test on a phone: New project → Location → **Use my location** (the words fill in) → … → Site photos → add a
+3. Smoke test on a phone: New project → Location → **Use my location** (the coordinates fill in) → … → Site photos → add a
    couple of photos → Create. Within a few seconds the project page shows a green tick on each photo and an
    **Open Drive folder** link.
 
@@ -86,14 +84,14 @@ Merge the pull request into `main` on GitHub, then on the server:
 
 ## Rolling back
 On GitHub, open the merged pull request and press **Revert**, merge the revert, then run `./deploy.sh` again.
-New collections (`daily_reports`, `site_diaries`, `site_photo_uploads`, `integrations`, `w3w_cache`) are only added to, so rolling back loses nothing. Photos already copied to Drive stay in Drive.
+New collections (`daily_reports`, `site_diaries`, `site_photo_uploads`, `integrations`) are only added to, so rolling back loses nothing. Photos already copied to Drive stay in Drive.
 
 ## Running the tests
 Against the live API, with an admin login:
 
     cd backend && REACT_APP_BACKEND_URL=https://quote.sensoper.in ADMIN_PASSWORD='…' pytest tests/test_daily_reports.py
 
-Site photos, Drive and What3words need no server or network (fake Google, in-memory database):
+Site photos, Drive and site GPS need no server or network (fake Google, in-memory database):
 
     cd backend && pip install mongomock-motor && pytest tests/test_site_photos_drive.py
 

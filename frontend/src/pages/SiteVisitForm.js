@@ -1,9 +1,9 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { projectsAPI, inventoryAPI, formTabsAPI, termsAPI, materialKitsAPI, catalogueAPI, w3wAPI } from '../utils/api';
+import { projectsAPI, inventoryAPI, formTabsAPI, termsAPI, materialKitsAPI, catalogueAPI } from '../utils/api';
 import SitePhotoChecklist from '../components/SitePhotoChecklist';
-import { getPosition, w3wLink, mapsLink } from '../lib/geo';
+import { getPosition, mapsLink } from '../lib/geo';
 import { localDate } from '../lib/format';
 import { pct, roundCash } from '../utils/solarCalc';
 import { formatApiErrorDetail } from '../contexts/AuthContext';
@@ -65,7 +65,6 @@ const CONNECTION_PHASE_OPTIONS = [
 
 // Site photos travel as ids only; the server keeps the trusted record (path, GPS, Drive copy state).
 const photoIds = (sp) => Object.fromEntries(Object.entries(sp || {}).map(([k, l]) => [k, (l || []).map((p) => p.id).filter(Boolean)]));
-const W3W_RE = /^[a-z]+\.[a-z]+\.[a-z]+$/i;
 
 // Length conversion — user enters in either unit, we store in metres.
 const toMetres = (val, unit) => {
@@ -84,13 +83,8 @@ export default function SiteVisitForm() {
   const [currentStep, setCurrentStep] = useState(1);
   const [loading, setLoading] = useState(false);
   const [loadingProject, setLoadingProject] = useState(!!editId);
-  const [w3wFormatError, setW3wFormatError] = useState('');
   const [locating, setLocating] = useState(false);
-  const [w3wBusy, setW3wBusy] = useState(false);
-  const [w3wNote, setW3wNote] = useState(null);      // { tone: 'ok' | 'warn', text }
-  const w3wAutoRef = useRef('');                       // words we filled in ourselves (safe to replace)
-  const w3wTimer = useRef(null);
-  const locationRef = useRef(null);                    // latest formData.location for async lookups
+  const [gpsAccuracy, setGpsAccuracy] = useState(null);
   const [aiLoading, setAiLoading] = useState(false);
   const [error, setError] = useState('');
   const [inventoryItems, setInventoryItems] = useState([]);
@@ -123,7 +117,7 @@ export default function SiteVisitForm() {
 
   const [formData, setFormData] = useState({
     customer: { name: '', phone: '', address: '', email: '' },
-    location: { latitude: null, longitude: null, address: '', site_location_words: '' },
+    location: { latitude: null, longitude: null, address: '' },
     electrical: { sanction_load_kw: '', connected_load_kw: '', monthly_consumption_units: '', eb_tariff: '', service_type: '', connection_phase: '', _prefilled: {} },
     solar_system: { system_type: 'on-grid', inverter_model: '', panel_wattage: 540, battery_required: false, battery_capacity_ah: '' },
     mounting: { roof_type: '', tilt_angle: 15, structure_type: '' },
@@ -154,15 +148,13 @@ export default function SiteVisitForm() {
     notes: ''
   });
 
-  locationRef.current = formData.location;
-
   const loadProject = useCallback(async () => {
     try {
       const res = await projectsAPI.getOne(editId);
       const p = res.data;
       setFormData({
         customer: p.customer || { name: '', phone: '', address: '', email: '' },
-        location: p.location || { latitude: null, longitude: null, address: '', site_location_words: '' },
+        location: p.location || { latitude: null, longitude: null, address: '' },
         electrical: {
           sanction_load_kw: p.electrical?.sanction_load_kw || '',
           connected_load_kw: p.electrical?.connected_load_kw || '',
@@ -492,70 +484,19 @@ export default function SiteVisitForm() {
     setFormData(prev => ({ ...prev, [section]: { ...prev[section], [field]: value } }));
   };
 
-  // ── What3Words: capture GPS → fetch w3w → autofill ───────────────────
-  const lookupWords = useCallback(async (lat, lng, { force = false } = {}) => {
-    const la = parseFloat(lat), ln = parseFloat(lng);
-    if (!Number.isFinite(la) || !Number.isFinite(ln) || Math.abs(la) > 90 || Math.abs(ln) > 180 || (la === 0 && ln === 0)) return;
-    setW3wBusy(true);
-    try {
-      const r = await w3wAPI.fromCoords(la, ln);
-      const words = r.data.words;
-      const cur = locationRef.current?.site_location_words || '';
-      if (!force && cur && cur !== w3wAutoRef.current) return; // the user typed their own words — leave them
-      w3wAutoRef.current = words;
-      setFormData(prev => ({ ...prev, location: { ...prev.location, site_location_words: words } }));
-      setW3wFormatError('');
-      setW3wNote({ tone: 'ok', text: r.data.nearest_place ? `Filled in from GPS · near ${r.data.nearest_place}` : 'Filled in from GPS' });
-    } catch (e) {
-      setW3wNote({ tone: 'warn', text: formatApiErrorDetail(e.response?.data?.detail) || 'What3words lookup failed — you can type the words yourself.' });
-    } finally { setW3wBusy(false); }
-  }, []);
-
-  const lookupCoords = useCallback(async (words) => {
-    try {
-      const r = await w3wAPI.toCoords(words);
-      if (r.data.lat == null) return;
-      setFormData(prev => (prev.location.latitude || prev.location.longitude) ? prev
-        : { ...prev, location: { ...prev.location, latitude: r.data.lat, longitude: r.data.lng } });
-      setW3wNote({ tone: 'ok', text: r.data.nearest_place ? `GPS filled in from the words · near ${r.data.nearest_place}` : 'GPS filled in from the words' });
-    } catch (e) {
-      if (e.response?.status === 400) setW3wNote({ tone: 'warn', text: formatApiErrorDetail(e.response?.data?.detail) });
-    }
-  }, []);
-
-  const onCoordChange = (field, value) => {
-    updateField('location', field, value);
-    clearTimeout(w3wTimer.current);
-    const lat = field === 'latitude' ? value : formData.location.latitude;
-    const lng = field === 'longitude' ? value : formData.location.longitude;
-    w3wTimer.current = setTimeout(() => lookupWords(lat, lng), 900);
-  };
-
-  const onWordsChange = (raw) => {
-    const cleaned = raw.replace(/^\/{1,3}/, '').trim().toLowerCase();
-    updateField('location', 'site_location_words', cleaned);
-    setW3wNote(null);
-    clearTimeout(w3wTimer.current);
-    if (!cleaned || W3W_RE.test(cleaned)) setW3wFormatError('');
-    else setW3wFormatError('Format should be word.word.word');
-    if (W3W_RE.test(cleaned) && !formData.location.latitude && !formData.location.longitude) {
-      w3wTimer.current = setTimeout(() => lookupCoords(cleaned), 900);
-    }
-  };
-
+  // ── Site GPS: one tap fills latitude / longitude ───────────────────
   const useMyLocation = async () => {
     setLocating(true);
-    setW3wNote(null);
     try {
       const pos = await getPosition();
       setFormData(prev => ({ ...prev, location: { ...prev.location, latitude: pos.lat, longitude: pos.lng } }));
+      setGpsAccuracy(pos.accuracy);
+      setError('');
       toast.success(`Location captured (accurate to about ${pos.accuracy} m)`);
-      await lookupWords(pos.lat, pos.lng, { force: true });
     } catch (e) {
       toast.error(e.message);
     } finally { setLocating(false); }
   };
-  useEffect(() => () => clearTimeout(w3wTimer.current), []);
 
   const updateMeasurement = (section, field, value) => {
     setFormData(prev => ({
@@ -708,7 +649,7 @@ export default function SiteVisitForm() {
     };
     switch (slug) {
       case 'customer': if (!formData.customer.name || !formData.customer.phone || !formData.customer.address || !formData.project_date) { setError('Please fill all required fields'); return false; } return validateExtraFields();
-      case 'location': if (!formData.location.site_location_words && !formData.location.address) { setError('Enter What3Words or site address'); return false; } return validateExtraFields();
+      case 'location': if (!formData.location.address && !(formData.location.latitude && formData.location.longitude)) { setError('Tap "Use my location" or enter the site address'); return false; } return validateExtraFields();
       case 'site_electrical': return validateExtraFields();
       case 'materials': {
         const ps = formData.custom_fields?.proposed_solution || {};
@@ -748,7 +689,12 @@ export default function SiteVisitForm() {
         location: {
           latitude: formData.location.latitude ? parseFloat(formData.location.latitude) : null,
           longitude: formData.location.longitude ? parseFloat(formData.location.longitude) : null,
-          address: formData.location.address, site_location_words: formData.location.site_location_words
+          address: formData.location.address,
+          // PIN / district / DISCOM come from the Proposed Solution step — keep them (they used to be dropped on save)
+          pincode: formData.location.pincode || null,
+          district: formData.location.district || null,
+          state: formData.location.state || null,
+          discom_id: formData.location.discom_id || null
         },
         electrical: {
           sanction_load_kw: parseFloat(formData.electrical.sanction_load_kw) || psSanctionLoad || 0,
@@ -946,57 +892,28 @@ export default function SiteVisitForm() {
             {/* Step: Location */}
             {STEPS[currentStep - 1]?.slug === 'location' && (
               <div className="space-y-4">
-                <div className="p-4 bg-emerald-50 rounded-lg border border-emerald-200 space-y-3" data-testid="w3w-box">
+                <div className="p-4 bg-emerald-50 rounded-lg border border-emerald-200 space-y-3" data-testid="gps-box">
                   <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
                     <div>
-                      <h3 className="font-semibold text-emerald-800">Site location</h3>
-                      <p className="text-sm text-emerald-700">Standing at the site? Tap <strong>Use my location</strong> — GPS and the What3words address fill in by themselves.</p>
+                      <h3 className="font-semibold text-emerald-800">Site location (GPS)</h3>
+                      <p className="text-sm text-emerald-700">Standing at the site? Tap <strong>Use my location</strong> and the coordinates fill in by themselves.</p>
                     </div>
                     <Button type="button" onClick={useMyLocation} disabled={locating} className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white h-11 shrink-0" data-testid="use-my-location-btn">
                       {locating ? <Loader2 className="h-4 w-4 animate-spin" /> : <LocateFixed className="h-4 w-4" />}{locating ? 'Finding location…' : 'Use my location'}
                     </Button>
                   </div>
-                  <div className="space-y-1.5">
-                    <Label className="text-xs text-emerald-900">What3words address</Label>
-                    <div className="relative">
-                      <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 font-mono font-semibold text-red-500">///</span>
-                      <Input
-                        value={formData.location.site_location_words}
-                        onChange={(e) => onWordsChange(e.target.value)}
-                        placeholder="filled.in.automatically"
-                        autoCapitalize="none" autoCorrect="off" spellCheck={false}
-                        className="font-mono h-11 pl-11 pr-11 bg-white"
-                        data-testid="what3words-input"
-                      />
-                      <button type="button" onClick={() => lookupWords(formData.location.latitude, formData.location.longitude, { force: true })}
-                        disabled={w3wBusy || !(formData.location.latitude && formData.location.longitude)}
-                        title="Update the 3 words from the GPS coordinates" aria-label="Update the 3 words from the GPS coordinates"
-                        className="absolute right-1 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-md text-emerald-700 hover:bg-emerald-50 disabled:text-slate-300" data-testid="w3w-refresh-btn">
-                        {w3wBusy ? <Loader2 className="h-4 w-4 animate-spin" data-testid="w3w-busy" /> : <RefreshCw className="h-4 w-4" />}
-                      </button>
-                    </div>
-                    {w3wNote && <p className={`text-[11px] flex items-center gap-1 ${w3wNote.tone === 'ok' ? 'text-emerald-700' : 'text-amber-700'}`} data-testid="w3w-note">{w3wNote.tone === 'ok' ? <CheckCircle className="h-3 w-3" /> : <AlertCircle className="h-3 w-3" />}{w3wNote.text}</p>}
-                    {w3wFormatError && <p className="text-[11px] text-amber-700 flex items-center gap-1" data-testid="w3w-error"><AlertCircle className="h-3 w-3" />{w3wFormatError}</p>}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1.5"><Label className="text-xs text-emerald-900">Latitude</Label><Input type="number" step="any" inputMode="decimal" value={formData.location.latitude ?? ''} onChange={(e) => { updateField('location', 'latitude', e.target.value); setGpsAccuracy(null); }} placeholder="e.g., 11.3410" className="h-11 font-mono bg-white" data-testid="latitude-input" /></div>
+                    <div className="space-y-1.5"><Label className="text-xs text-emerald-900">Longitude</Label><Input type="number" step="any" inputMode="decimal" value={formData.location.longitude ?? ''} onChange={(e) => { updateField('location', 'longitude', e.target.value); setGpsAccuracy(null); }} placeholder="e.g., 77.7172" className="h-11 font-mono bg-white" data-testid="longitude-input" /></div>
                   </div>
-                  {((formData.location.latitude && formData.location.longitude) || formData.location.site_location_words) && (
+                  {(formData.location.latitude && formData.location.longitude) ? (
                     <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px]">
-                      {(formData.location.latitude && formData.location.longitude) && (
-                        <span className="flex items-center gap-1 text-emerald-700" data-testid="w3w-coords"><MapPin className="h-3 w-3" />{Number(formData.location.latitude).toFixed(5)}, {Number(formData.location.longitude).toFixed(5)}</span>
-                      )}
-                      {formData.location.site_location_words && W3W_RE.test(formData.location.site_location_words) && (
-                        <a href={w3wLink(formData.location.site_location_words)} target="_blank" rel="noopener noreferrer" className="font-medium text-emerald-700 hover:underline" data-testid="w3w-open-link">Open in What3words ↗</a>
-                      )}
-                      {(formData.location.latitude && formData.location.longitude) && (
-                        <a href={mapsLink(formData.location.latitude, formData.location.longitude)} target="_blank" rel="noopener noreferrer" className="font-medium text-emerald-700 hover:underline" data-testid="maps-open-link">Google Maps ↗</a>
-                      )}
+                      <span className="flex items-center gap-1 text-emerald-700" data-testid="gps-coords"><MapPin className="h-3 w-3" />{Number(formData.location.latitude).toFixed(6)}, {Number(formData.location.longitude).toFixed(6)}{gpsAccuracy ? ` · ±${gpsAccuracy} m` : ''}</span>
+                      <a href={mapsLink(formData.location.latitude, formData.location.longitude)} target="_blank" rel="noopener noreferrer" className="font-medium text-emerald-700 hover:underline" data-testid="maps-open-link">Open in Google Maps ↗</a>
                     </div>
-                  )}
+                  ) : null}
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-2"><Label className="text-xs">Latitude</Label><Input type="number" step="any" inputMode="decimal" value={formData.location.latitude ?? ''} onChange={(e) => onCoordChange('latitude', e.target.value)} placeholder="e.g., 11.3410" className="h-11 font-mono" data-testid="latitude-input" /></div>
-                  <div className="space-y-2"><Label className="text-xs">Longitude</Label><Input type="number" step="any" inputMode="decimal" value={formData.location.longitude ?? ''} onChange={(e) => onCoordChange('longitude', e.target.value)} placeholder="e.g., 77.7172" className="h-11 font-mono" data-testid="longitude-input" /></div>
-                </div>
                 <div className="space-y-2"><Label>Site Address</Label><Textarea rows={2} value={formData.location.address} onChange={(e) => updateField('location', 'address', e.target.value)} placeholder="Site location description" data-testid="location-address-input" /></div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-2"><Label>Roof Type</Label><Input value={formData.mounting.roof_type} onChange={(e) => updateField('mounting', 'roof_type', e.target.value)} placeholder="e.g., RCC Flat Roof, Metal Sheet" className="h-11" data-testid="roof-type-input" /></div>
@@ -1575,7 +1492,6 @@ export default function SiteVisitForm() {
                   value={formData.site_photos}
                   onChange={(fn) => setFormData(prev => ({ ...prev, site_photos: fn(prev.site_photos || {}) }))}
                   customerName={formData.customer.name}
-                  w3w={formData.location.site_location_words}
                 />
 
                 <details className="group rounded-lg border border-slate-200 bg-white" open={!!formData.drive_folder_link} data-testid="manual-drive-folder">
@@ -1821,7 +1737,7 @@ export default function SiteVisitForm() {
               </div>
               <div className="rounded-lg border border-slate-200 p-3">
                 <p className="text-[10px] uppercase tracking-wider text-slate-500 font-semibold mb-1">Location</p>
-                <p className="text-xs text-slate-800 truncate">{formData.location.address || formData.location.site_location_words || '—'}</p>
+                <p className="text-xs text-slate-800 truncate">{formData.location.address || ((formData.location.latitude && formData.location.longitude) ? `GPS ${Number(formData.location.latitude).toFixed(5)}, ${Number(formData.location.longitude).toFixed(5)}` : '—')}</p>
                 {(formData.location.latitude && formData.location.longitude) && <p className="text-[11px] text-slate-500">{Number(formData.location.latitude).toFixed(4)}, {Number(formData.location.longitude).toFixed(4)}</p>}
                 {formData.location.pincode && formData.location.district ? (
                   <p className="text-[11px] text-emerald-700 mt-1 flex items-center gap-1" data-testid="review-location-verified">

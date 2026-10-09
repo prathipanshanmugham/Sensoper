@@ -1,6 +1,6 @@
-"""Site photo checklist, Google Drive copy and What3words — no network, no MongoDB server needed.
+"""Site photo checklist, Google Drive copy and site GPS — no network, no MongoDB server needed.
 
-Google and What3words are replaced by httpx.MockTransport fakes; MongoDB by mongomock-motor.
+Google is replaced by httpx.MockTransport fakes; MongoDB by mongomock-motor.
 
     pip install mongomock-motor pytest
     cd backend && pytest tests/test_site_photos_drive.py
@@ -21,7 +21,7 @@ from fastapi import APIRouter, FastAPI, HTTPException, Request
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 mongomock_motor = pytest.importorskip("mongomock_motor")
 
-import geo_w3w  # noqa: E402
+import geo_location  # noqa: E402
 import google_drive  # noqa: E402
 import site_photos  # noqa: E402
 from bson import ObjectId  # noqa: E402
@@ -39,7 +39,6 @@ def env(monkeypatch):
     monkeypatch.setenv("VAULT_MASTER_KEY", Fernet.generate_key().decode())
     monkeypatch.setenv("GOOGLE_CLIENT_SECRET", "test-secret")
     monkeypatch.setenv("GOOGLE_REDIRECT_URI", "https://quote.example.in/auth/google/callback")
-    monkeypatch.setenv("W3W_API_KEY", "TESTKEY")
 
 
 class FakeGoogle:
@@ -103,8 +102,7 @@ class FakeGoogle:
 
 
 def build(fake: FakeGoogle):
-    geo_w3w.invalidate_key_cache()          # caches are per process; every test gets a fresh DB
-    google_drive.invalidate_secret_cache()
+    google_drive.invalidate_secret_cache()   # cache is per process; every test gets a fresh DB
     db = mongomock_motor.AsyncMongoMockClient()["t"]
     store = {}
 
@@ -140,7 +138,7 @@ def build(fake: FakeGoogle):
     api = APIRouter(prefix="/api")
     api.include_router(site_photos.create_router(db, get_current_user, require_role, audit, put_object, "app", drive=drive))
     api.include_router(google_drive.create_router(db, get_current_user, require_role, audit, drive))
-    api.include_router(geo_w3w.create_router(db, get_current_user, require_role, audit))
+    api.include_router(geo_location.create_router(db, get_current_user, audit))
     app = FastAPI()
     app.include_router(api)
     return app, db, drive, store
@@ -360,125 +358,33 @@ def test_disconnect_revokes_token():
     run(go())
 
 
-# ───────────────────────── What3words ─────────────────────────
+# ───────────────────────── Site GPS (What3words removed — coordinates only) ─────────────────────────
 
-def test_what3words_lookup_is_cached_and_key_stays_server_side(monkeypatch):
-    seen = []
-
-    def w3w(req: httpx.Request):
-        seen.append(req.url)
-        assert req.headers.get("x-api-key") == "TESTKEY" and "key" not in req.url.params   # key never in the URL
-        if req.url.path.endswith("convert-to-3wa"):
-            return httpx.Response(200, json={"words": "index.home.raft", "nearestPlace": "Erode, Tamil Nadu", "country": "IN",
-                                             "coordinates": {"lat": 11.341036, "lng": 77.717163}, "map": "https://w3w.co/index.home.raft"})
-        return httpx.Response(402, json={"error": {"code": "Forbidden", "message": "plan"}})
-    monkeypatch.setattr(geo_w3w, "_transport", httpx.MockTransport(w3w))
-
-    async def go():
-        app, db, _, _ = build(FakeGoogle())
-        async with client(app, "staff") as c:
-            r = await c.get("/api/geo/what3words", params={"lat": 11.341036, "lng": 77.717163})
-            assert r.status_code == 200 and r.json()["words"] == "index.home.raft" and r.json()["nearest_place"].startswith("Erode")
-            assert "TESTKEY" not in r.text
-            r2 = await c.get("/api/geo/what3words", params={"lat": 11.341036, "lng": 77.717163})
-            assert r2.json()["source"] == "cache" and len(seen) == 1
-            assert (await c.get("/api/geo/what3words", params={"lat": 123, "lng": 0})).status_code == 400
-            r3 = await c.get("/api/geo/what3words/coordinates", params={"words": "///Index.Home.Raft"})
-            assert r3.status_code == 503 and "plan" in r3.json()["detail"]
-            assert seen[-1].params["words"] == "index.home.raft"
-            assert (await c.get("/api/geo/what3words/coordinates", params={"words": "not words"})).status_code == 400
-            assert (await c.get("/api/geo/what3words/status")).json() == {"configured": True, "source": "env"}   # no key hint for staff
-        monkeypatch.delenv("W3W_API_KEY")
-        async with client(app, "staff") as c:
-            r = await c.get("/api/geo/what3words", params={"lat": 10.0, "lng": 78.0})
-            assert r.status_code == 503 and "Settings" in r.json()["detail"]
-    run(go())
-
-
-def test_what3words_bad_key_message(monkeypatch):
-    monkeypatch.setattr(geo_w3w, "_transport", httpx.MockTransport(
-        lambda req: httpx.Response(401, json={"error": {"code": "InvalidKey", "message": "Authentication failed; invalid API key"}})))
-
-    async def go():
-        app, _, _, _ = build(FakeGoogle())
-        async with client(app, "staff") as c:
-            r = await c.get("/api/geo/what3words", params={"lat": 11.0, "lng": 77.0})
-            assert r.status_code == 503 and "not valid" in r.json()["detail"]
-    run(go())
-
-
-def _w3w_fake(valid=("TESTKEY", "NEWKEY123"), seen=None):
-    def handler(req: httpx.Request):
-        key = req.headers.get("x-api-key")
-        if seen is not None:
-            seen.append(key)
-        if key not in valid:
-            return httpx.Response(401, json={"error": {"code": "InvalidKey", "message": "Authentication failed; invalid API key"}})
-        return httpx.Response(200, json={"words": "filled.count.soap", "nearestPlace": "Erode, Tamil Nadu", "country": "IN",
-                                         "coordinates": {"lat": 11.341036, "lng": 77.717163}, "map": ""})
-    return httpx.MockTransport(handler)
-
-
-def test_what3words_key_pasted_in_settings_wins(monkeypatch):
-    seen = []
-    monkeypatch.setattr(geo_w3w, "_transport", _w3w_fake(seen=seen))
-
-    async def go():
-        app, db, _, _ = build(FakeGoogle())
-        async with client(app, "staff") as c:
-            assert (await c.put("/api/geo/what3words/key", json={"api_key": "NEWKEY123"})).status_code == 403
-        async with client(app) as c:
-            r = await c.put("/api/geo/what3words/key", json={"api_key": "BADKEY99"})
-            assert r.status_code == 400 and "not valid" in r.json()["detail"]
-            assert (await c.put("/api/geo/what3words/key", json={"api_key": "no spaces allowed"})).status_code == 400
-            r = await c.put("/api/geo/what3words/key", json={"api_key": "NEWKEY123"})
-            assert r.status_code == 200 and r.json()["tested"] is True and r.json()["hint"] == "…Y123"
-            doc = await db.integrations.find_one({"key": "what3words"})
-            assert doc["api_key_enc"] and "NEWKEY123" not in str(doc)            # encrypted at rest
-            assert (await c.get("/api/geo/what3words/status")).json() == {"configured": True, "source": "settings", "hint": "…Y123"}
-            seen.clear()
-            await c.get("/api/geo/what3words", params={"lat": 10.5, "lng": 78.1})
-            assert seen == ["NEWKEY123"]                                          # Settings key beats W3W_API_KEY=TESTKEY
-            r = await c.delete("/api/geo/what3words/key")
-            assert r.json() == {"configured": True, "source": "env"}
-    run(go())
-
-
-def test_what3words_key_saved_even_when_offline(monkeypatch):
-    def offline(req):
-        raise httpx.ConnectError("no network")
-    monkeypatch.setattr(geo_w3w, "_transport", httpx.MockTransport(offline))
-
-    async def go():
-        app, _, _, _ = build(FakeGoogle())
-        async with client(app) as c:
-            r = await c.put("/api/geo/what3words/key", json={"api_key": "NEWKEY123"})
-            assert r.status_code == 200 and r.json()["tested"] is False and "could not be checked" in r.json()["message"]
-    run(go())
-
-
-def test_update_location_on_a_saved_project(monkeypatch):
-    monkeypatch.setattr(geo_w3w, "_transport", _w3w_fake())
-
+def test_update_location_on_a_saved_project():
     async def go():
         app, db, _, _ = build(FakeGoogle())
         pid = await _project(db, status="approved")
         async with client(app, "staff2") as c:
             assert (await c.put(f"/api/projects/{pid}/geo", json={"lat": 11.34, "lng": 77.71})).status_code == 403
         async with client(app, "staff") as c:
-            r = await c.put(f"/api/projects/{pid}/geo", json={"lat": 11.341036, "lng": 77.717163, "accuracy": 6})
-            assert r.status_code == 200 and r.json()["words_updated"] and r.json()["site_location_words"] == "filled.count.soap"
+            r = await c.put(f"/api/projects/{pid}/geo", json={"lat": 11.3410364, "lng": 77.7171634, "accuracy": 6})
+            assert r.status_code == 200 and r.json() == {"latitude": 11.341036, "longitude": 77.717163, "accuracy": 6}
             p = await db.projects.find_one({"_id": ObjectId(pid)})
-            assert p["location"]["latitude"] == 11.341036 and p["location"]["site_location_words"] == "filled.count.soap"
+            assert p["location"]["latitude"] == 11.341036 and p["location"]["gps_updated_by"] == "Ravi"
             assert p["status"] == "approved"                                       # a map pin never sends it back for approval
             assert (await c.put(f"/api/projects/{pid}/geo", json={"lat": 95, "lng": 0})).status_code == 400
-        monkeypatch.delenv("W3W_API_KEY")
-        geo_w3w.invalidate_key_cache()
-        async with client(app, "staff") as c:
-            r = await c.put(f"/api/projects/{pid}/geo", json={"lat": 11.4, "lng": 77.8})
-            assert r.status_code == 200 and r.json()["words_updated"] is False and "Settings" in r.json()["note"]
-            p = await db.projects.find_one({"_id": ObjectId(pid)})
-            assert p["location"]["latitude"] == 11.4 and p["location"]["site_location_words"] == "filled.count.soap"   # old words kept
+            assert (await c.put(f"/api/projects/{pid}/geo", json={"lat": 0, "lng": 0})).status_code == 400
+        async with client(app, "nobody") as anon:
+            assert (await anon.put(f"/api/projects/{pid}/geo", json={"lat": 11.3, "lng": 77.7})).status_code == 401
+    run(go())
+
+
+def test_what3words_endpoints_are_gone():
+    async def go():
+        app, _, _, _ = build(FakeGoogle())
+        async with client(app) as c:
+            for path in ("/api/geo/what3words?lat=11&lng=77", "/api/geo/what3words/status"):
+                assert (await c.get(path)).status_code == 404
     run(go())
 
 

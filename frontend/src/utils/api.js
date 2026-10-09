@@ -467,15 +467,9 @@ export const driveAPI = {
   deleteSecret: () => api.delete('/integrations/google-drive/client-secret'),
 };
 
-// What3words — the key stays on the server
-export const w3wAPI = {
-  status: () => api.get('/geo/what3words/status'),
-  fromCoords: (lat, lng) => api.get('/geo/what3words', { params: { lat, lng } }),
-  toCoords: (words) => api.get('/geo/what3words/coordinates', { params: { words } }),
-  saveKey: (api_key) => api.put('/geo/what3words/key', { api_key }),
-  deleteKey: () => api.delete('/geo/what3words/key'),
-  /** Pin a saved project to the phone's location; the server adds the 3 words. */
-  pinProject: (projectId, { lat, lng, accuracy }) => api.put(`/projects/${projectId}/geo`, { lat, lng, accuracy }),
+// Site GPS for a saved project (one tap on the project page)
+export const siteGeoAPI = {
+  pin: (projectId, { lat, lng, accuracy }) => api.put(`/projects/${projectId}/geo`, { lat, lng, accuracy }),
 };
 
 // Margin API

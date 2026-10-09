@@ -118,7 +118,7 @@ class LocationDetails(BaseModel):
     latitude: Optional[float] = None
     longitude: Optional[float] = None
     address: Optional[str] = None
-    site_location_words: Optional[str] = None
+    site_location_words: Optional[str] = None   # legacy What3words address (no longer collected or shown)
     pincode: Optional[str] = None
     district: Optional[str] = None
     state: Optional[str] = None
@@ -2509,14 +2509,14 @@ api_router.include_router(_create_teams_router(db=db, get_current_user=get_curre
 from daily_reports import create_router as _create_daily_reports_router  # noqa: E402
 api_router.include_router(_create_daily_reports_router(db=db, get_current_user=get_current_user, require_role=require_role, create_audit_log=create_audit_log))
 
-# ================== SITE PHOTOS · GOOGLE DRIVE · WHAT3WORDS ==================
+# ================== SITE PHOTOS · GOOGLE DRIVE · SITE GPS ==================
 from site_photos import create_router as _create_site_photos_router, normalise_for_save as _normalise_site_photos, summarise as _site_photos_summary  # noqa: E402
 from google_drive import DriveSync as _DriveSync, create_router as _create_drive_router  # noqa: E402
-from geo_w3w import create_router as _create_w3w_router  # noqa: E402
+from geo_location import create_router as _create_geo_location_router  # noqa: E402
 _drive_sync = _DriveSync(db, get_object)
 api_router.include_router(_create_site_photos_router(db, get_current_user, require_role, create_audit_log, put_object, APP_NAME, drive=_drive_sync))
 api_router.include_router(_create_drive_router(db, get_current_user, require_role, create_audit_log, _drive_sync))
-api_router.include_router(_create_w3w_router(db, get_current_user, require_role, create_audit_log))
+api_router.include_router(_create_geo_location_router(db, get_current_user, create_audit_log))
 
 # ═══════════ ECOMMERCE MARKETPLACES (Iter 46 Change 2) ═══════════
 from ecommerce import create_router as _create_ecommerce_router  # noqa: E402
@@ -6350,7 +6350,7 @@ async def get_project_completeness(project_id: str, request: Request):
     if cust_ok: score += 20
     # Site data (20%)
     loc = project.get("location", {})
-    site_ok = bool(loc.get("site_location_words") or loc.get("address"))
+    site_ok = bool(loc.get("address") or (loc.get("latitude") and loc.get("longitude")))
     checks["site_data"] = site_ok
     if site_ok: score += 20
     # Electrical data (15%)
@@ -7457,9 +7457,11 @@ async def health_check():
 @app.on_event("startup")
 async def startup_event():
     await _seed_kit_categories(db)
-    # Site photos / Google Drive / What3words
+    # Site photos / Google Drive
     await db.site_photo_uploads.create_index("id", unique=True)
-    await db.w3w_cache.create_index([("kind", 1), ("key", 1)], unique=True)
+    # What3words was removed (Oct 2026): clear its cache and the saved (encrypted) API key
+    await db.w3w_cache.drop()
+    await db.integrations.delete_one({"key": "what3words"})
     await db.oauth_states.create_index("state", unique=True)
     await db.integrations.create_index("key", unique=True)
     await db.projects.create_index("site_photos_pending")

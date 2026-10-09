@@ -7,7 +7,7 @@ import { formatApiErrorDetail } from '../contexts/AuthContext';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { CompanyDefaultsCard } from '../components/CompanyDefaultsCard';
-import { DriveConnectCard, W3wStatusRow } from '../components/DriveConnectCard';
+import { DriveConnectCard } from '../components/DriveConnectCard';
 
 /** Settings — only the few company-wide basics. Product prices, package slabs and service rates live in Price list. */
 
@@ -74,9 +74,8 @@ export default function PricingConfig() {
         <MonthlyTargetRow />
       </Group>
 
-      <Group title="Connections" line="Where site photos go and how site locations are found.">
+      <Group title="Connections" line="Where site photos are saved.">
         <DriveConnectCard />
-        <W3wStatusRow />
       </Group>
 
       <Link to="/dashboard/pricelist" className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white p-4 hover:border-emerald-300" data-testid="settings-pricelist-link">
