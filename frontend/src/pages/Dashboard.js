@@ -9,7 +9,7 @@ import { NAV_SECTIONS, canSee } from '../lib/navigation';
 import { localDate, greeting, inrShort, inr } from '../lib/format';
 import {
   FolderPlus, CalendarCheck, NotebookPen, ClipboardCheck, FolderKanban, Package, Users, ChevronRight, CheckCircle2,
-  Clock, AlertCircle, XCircle, Trash2, Activity, IndianRupee, FileText,
+  Clock, AlertCircle, XCircle, Trash2, Activity, FileText,
 } from 'lucide-react';
 
 export const STATUS = {
