@@ -1,4 +1,4 @@
-"""Iter 54 — T&C dropdown category filtering · credit-interest leakage · permission-driven nav · vendor geo · vault · Sensobrain scoping."""
+"""Iter 54 — T&C dropdown category filtering · credit-interest leakage · permission-driven nav · vendor geo · vault."""
 import os
 import uuid
 from datetime import datetime, timezone, timedelta
@@ -120,11 +120,10 @@ class TestPermissionNav:
     def test_matrix_exposes_new_modules_and_staff_denied_where_expected(self, admin, staff):
         for role in ("admin", "manager", "staff"):
             perms = admin.get(f"{API}/permissions/{role}", timeout=60).json()["permissions"]
-            for m in ("module_vendors", "module_vault", "module_sensobrain", "module_projects", "module_daily_updates"):
+            for m in ("module_vendors", "module_vault", "module_projects", "module_daily_updates"):
                 assert m in perms, f"{role} missing {m}"
         staff_perms = staff.get(f"{API}/permissions/staff", timeout=60).json()["permissions"]
         assert staff_perms["module_vault"]["view"] is False and staff_perms["module_vendors"]["view"] is False
-        assert staff_perms["module_sensobrain"]["view"] is True
         assert admin.get(f"{API}/permissions/admin", timeout=60).json()["permissions"]["module_vault"]["view"] is True
 
 
@@ -194,39 +193,3 @@ class TestVendorGeo:
         assert r.status_code == 200 and f"{TAG} Taluk" in r.json()["Tamil Nadu"]
 
 
-# ── 6. Sensobrain ─────────────────────────────────────────────────────────────
-class TestSensobrain:
-    def test_settings_admin_only_and_key_masked(self, admin, staff):
-        assert staff.get(f"{API}/sensobrain/settings", timeout=60).status_code == 403
-        s = admin.get(f"{API}/sensobrain/settings", timeout=60).json()
-        assert "/api/vault" in s["hard_blocked"] and "openai_api_key" not in s and "openai_api_key_enc" not in s
-        assert admin.put(f"{API}/sensobrain/settings", json={"openai_api_key": "not-a-key"}, timeout=60).status_code == 400
-        r = admin.put(f"{API}/sensobrain/settings", json={"excluded_paths": ["/api/audit-logs", "javascript:bad", "/api/hard-delete"]}, timeout=60)
-        assert r.status_code == 200 and r.json()["excluded_paths"] == ["/api/audit-logs", "/api/hard-delete"]
-
-    def test_chat_requires_configuration_or_returns_503(self, staff):
-        st = staff.get(f"{API}/sensobrain/status", timeout=60).json()
-        if not st["configured"]:
-            assert staff.post(f"{API}/sensobrain/chat", json={"message": "hi"}, timeout=60).status_code == 503
-
-    def test_tool_dispatch_is_scoped_per_user_and_vault_blocked(self, admin, staff):
-        """Two users, same tool → results limited to what each can see; the vault can never be reached."""
-        import sys, asyncio
-        sys.path.insert(0, "/app/backend")
-        import sensobrain
-        # blocked prefix check (pure)
-        assert any("/api/vault".startswith(p) for p in sensobrain.HARD_BLOCKED_PREFIXES)
-        assert not any(t["function"]["name"] == "vault" for t in sensobrain.TOOLS)
-        # scoping through the real endpoints the tools call
-        admin_projects = admin.get(f"{API}/projects", timeout=60).json()
-        staff_projects = staff.get(f"{API}/projects", timeout=60).json()
-        assert len(staff_projects) <= len(admin_projects)
-        assert all(p.get("created_by_name") or True for p in staff_projects)
-        assert staff.get(f"{API}/reports/profit_leakage", timeout=60).status_code == 403
-        assert admin.get(f"{API}/reports/profit_leakage", timeout=60).status_code == 200
-
-    def test_conversation_visibility(self, admin, staff):
-        assert staff.get(f"{API}/sensobrain/admin/conversations", timeout=60).status_code == 403
-        assert staff.get(f"{API}/sensobrain/admin/usage", timeout=60).status_code == 403
-        assert admin.get(f"{API}/sensobrain/admin/usage", timeout=60).json()["all_time"]["requests"] >= 0
-        assert isinstance(staff.get(f"{API}/sensobrain/conversations", timeout=60).json(), list)

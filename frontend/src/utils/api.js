@@ -183,16 +183,6 @@ export const vaultAPI = {
   setConfig: (rotation_days) => api.put('/vault/config', { rotation_days })
 };
 
-// Iter 54 — Sensobrain (chat itself streams via fetch in the page)
-export const sensobrainAPI = {
-  status: () => api.get('/sensobrain/status'),
-  settings: () => api.get('/sensobrain/settings'),
-  saveSettings: (data) => api.put('/sensobrain/settings', data),
-  conversations: () => api.get('/sensobrain/conversations'),
-  conversation: (id) => api.get(`/sensobrain/conversations/${id}`),
-  adminConversations: (params = {}) => api.get('/sensobrain/admin/conversations', { params }),
-  usage: () => api.get('/sensobrain/admin/usage')
-};
 
 // Purchase Orders
 export const purchaseOrdersAPI = {
@@ -282,9 +272,6 @@ export const auditsAPI = {
 };
 
 // AI API
-export const aiAPI = {
-  getRecommendations: (data) => api.post('/ai/recommendations', data)
-};
 
 // Terms & Conditions API
 export const termsAPI = {

@@ -234,12 +234,6 @@ class ProjectUpdate(BaseModel):
 class ProjectNoteAppend(BaseModel):
     text: str
 
-class AIRecommendationRequest(BaseModel):
-    monthly_consumption_units: float
-    sanction_load_kw: float
-    roof_type: str
-    budget_range: Optional[str] = None
-
 # ================== NEW MODELS FOR ENTERPRISE FEATURES ==================
 
 class TermsConditionsCreate(BaseModel):
@@ -670,7 +664,6 @@ DEFAULT_PERMISSIONS = {
         "module_daily_updates": {"view": True, "create": True, "edit": True, "delete": True, "export": True},
         "module_vendors": {"view": True, "create": True, "edit": True, "delete": True, "export": True},
         "module_vault": {"view": True, "create": True, "edit": True, "delete": True, "export": False},
-        "module_sensobrain": {"view": True, "create": True, "edit": True, "delete": True, "export": True}
     },
     "manager": {
         "can_create_project": True, "can_edit_project": True, "can_delete_project": False,
@@ -708,7 +701,6 @@ DEFAULT_PERMISSIONS = {
         "module_daily_updates": {"view": True, "create": True, "edit": True, "delete": False, "export": True},
         "module_vendors": {"view": True, "create": True, "edit": True, "delete": False, "export": True},
         "module_vault": {"view": False, "create": False, "edit": False, "delete": False, "export": False},
-        "module_sensobrain": {"view": True, "create": True, "edit": False, "delete": False, "export": False}
     },
     "staff": {
         "can_create_project": True, "can_edit_project": True, "can_delete_project": False,
@@ -746,7 +738,6 @@ DEFAULT_PERMISSIONS = {
         "module_daily_updates": {"view": True, "create": True, "edit": True, "delete": False, "export": False},
         "module_vendors": {"view": False, "create": False, "edit": False, "delete": False, "export": False},
         "module_vault": {"view": False, "create": False, "edit": False, "delete": False, "export": False},
-        "module_sensobrain": {"view": True, "create": True, "edit": False, "delete": False, "export": False}
     }
 }
 
@@ -2929,14 +2920,12 @@ api_router.include_router(_log_archive_router)
 from quick_calc import create_router as _create_quick_calc_router  # noqa: E402
 api_router.include_router(_create_quick_calc_router(db=db, get_current_user=get_current_user, get_calc_config=_get_calc_config))
 
-# ═══════════ ITER 54: geo reference · credential vault · Sensobrain ═══════════
+# ═══════════ ITER 54: geo reference · credential vault ═══════════
 from geo_reference import create_router as _create_geo_router  # noqa: E402
 from vault import create_router as _create_vault_router  # noqa: E402
-from sensobrain import create_router as _create_sensobrain_router  # noqa: E402
 api_router.include_router(_create_geo_router(db=db, get_current_user=get_current_user, require_role=require_role, get_default_pincodes=get_default_pincodes))
 _vault_router = _create_vault_router(db=db, require_role=require_role, create_audit_log=create_audit_log)
 api_router.include_router(_vault_router)
-api_router.include_router(_create_sensobrain_router(db=db, app=app, get_current_user=get_current_user, require_role=require_role))
 from adhoc_promotion import create_router as _create_adhoc_router  # noqa: E402
 api_router.include_router(_create_adhoc_router(db=db, get_current_user=get_current_user, require_role=require_role, create_audit_log=create_audit_log, build_cost_estimation=build_cost_estimation))
 from kit_categories import create_router as _create_kit_cat_router, resolve_category as _resolve_kit_category, ensure_seed as _seed_kit_categories  # noqa: E402
@@ -5875,46 +5864,6 @@ async def update_thresholds(body: ThresholdUpdate, request: Request):
     if body.underpriced_margin_pct is not None: update["underpriced_margin_pct"] = body.underpriced_margin_pct
     await db.settings.update_one({"type": "thresholds"}, {"$set": {**update, "type": "thresholds"}}, upsert=True)
     return {"message": "Thresholds updated"}
-
-# ================== AI RECOMMENDATIONS ==================
-
-@api_router.post("/ai/recommendations")
-async def get_ai_recommendations(data: AIRecommendationRequest, request: Request):
-    """Legacy one-shot recommendation. Uses the OpenAI key stored in Sensobrain settings (openai SDK, no emergentintegrations)."""
-    await get_current_user(request)
-    fallback = f"""Based on your monthly consumption of {data.monthly_consumption_units} units:
-
-**Recommended System:**
-- Capacity: {max(1, data.monthly_consumption_units / 120):.1f} kW
-- Panels: {int(max(1, data.monthly_consumption_units / 120) * 1000 / 540) + 1} x 540W panels
-- Inverter: {max(1, data.monthly_consumption_units / 120):.1f} kW grid-tied
-
-**Estimated Benefits:**
-- Monthly Savings: Rs. {data.monthly_consumption_units * data.sanction_load_kw:.0f} approx
-- ROI: 4-5 years
-- System Life: 25+ years
-
-*For detailed AI-powered analysis, add the OpenAI API key under Sensobrain → Settings.*"""
-    settings_doc = await db.sensobrain_settings.find_one({"key": "defaults"}) or {}
-    if not settings_doc.get("openai_api_key_enc"):
-        return {"recommendation": fallback}
-    try:
-        from openai import AsyncOpenAI
-        from vault import decrypt_secret
-        from sensobrain import _client_kwargs
-        api_key = decrypt_secret(settings_doc["openai_api_key_enc"])
-        client = AsyncOpenAI(api_key=api_key, **_client_kwargs(api_key))
-        resp = await client.chat.completions.create(
-            model=settings_doc.get("model", "gpt-5.4-mini"),
-            messages=[
-                {"role": "system", "content": "You are a solar energy consultant for Sensoper Controls and Renewables. Provide concise, practical recommendations for solar system installations based on the user's energy consumption and site details. Focus on: recommended capacity (kW), panel type and count, inverter, estimated savings, ROI timeline. Under 300 words, bullet points."},
-                {"role": "user", "content": f"Monthly consumption: {data.monthly_consumption_units} units; sanctioned load: {data.sanction_load_kw} kW; roof type: {data.roof_type}; budget: {data.budget_range or 'Not specified'}. Recommend the optimal solar system configuration."},
-            ],
-        )
-        return {"recommendation": resp.choices[0].message.content}
-    except Exception as e:
-        logger.error(f"AI recommendation error: {e}")
-        return {"recommendation": f"Could not generate AI recommendation. Basic estimate: {max(1, data.monthly_consumption_units / 120):.1f} kW system recommended."}
 
 # ================== APPROVALS ==================
 

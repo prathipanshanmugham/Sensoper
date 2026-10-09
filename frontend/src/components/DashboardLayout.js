@@ -8,7 +8,7 @@ import {
   LayoutDashboard, FolderPlus, Users, LogOut, FileText, TrendingUp,
   Menu, X, Package, History, ScrollText, Building2, ClipboardCheck, Shield,
   Layers, BarChart3, CalendarDays, AlertTriangle, CreditCard, Truck, Undo2, ClipboardList, Bell, Activity, MapPin, Settings, ShoppingCart,
-  Wrench, RefreshCw, Map, Tags, Store, HardHat, ShoppingBag, Brain, KeyRound
+  Wrench, RefreshCw, Map, Tags, Store, HardHat, ShoppingBag, KeyRound
 } from 'lucide-react';
 
 const LOGO_URL = "https://customer-assets.emergentagent.com/job_solar-estimator-14/artifacts/2dpfr2zb_slg.png";
@@ -80,7 +80,6 @@ export default function DashboardLayout({ children }) {
     { icon: FileText, label: 'All Projects', href: '/dashboard/projects', show: true, module: 'module_projects' },
     { icon: ClipboardCheck, label: 'Approvals', href: '/dashboard/approvals', show: isAdmin || isManager, badge: stats?.pending_approvals, module: 'module_approvals' },
     { icon: BarChart3, label: 'Reports', href: '/dashboard/reports', show: isAdmin || isManager, module: 'module_reports' },
-    { icon: Brain, label: 'Sensobrain', href: '/dashboard/sensobrain', show: true, module: 'module_sensobrain' },
     { icon: ShoppingCart, label: 'Direct Sales', href: '/dashboard/sales', show: true, module: 'module_direct_sales' },
     { icon: MapPin, label: 'Expansion', href: '/dashboard/expansion', show: isAdmin || isManager, badge: stats?.location_review_count, module: 'module_expansion' },
     { icon: AlertTriangle, label: 'Profit Alerts', href: '/dashboard/alerts', show: isAdmin || isManager, module: 'module_alerts' },
