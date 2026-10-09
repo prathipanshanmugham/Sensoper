@@ -2617,6 +2617,10 @@ api_router.include_router(_partners_router)
 from internal_teams import create_router as _create_teams_router  # noqa: E402
 api_router.include_router(_create_teams_router(db=db, get_current_user=get_current_user, require_role=require_role, create_audit_log=create_audit_log))
 
+# ═══════════ DAILY REPORTS + SITE DIARY ═══════════
+from daily_reports import create_router as _create_daily_reports_router  # noqa: E402
+api_router.include_router(_create_daily_reports_router(db=db, get_current_user=get_current_user, require_role=require_role, create_audit_log=create_audit_log))
+
 # ═══════════ ECOMMERCE MARKETPLACES (Iter 46 Change 2) ═══════════
 from ecommerce import create_router as _create_ecommerce_router  # noqa: E402
 _ecommerce_router = _create_ecommerce_router(
@@ -6280,8 +6284,10 @@ async def create_daily_update(update: DailyUpdateCreate, request: Request):
 
 @api_router.get("/daily-updates")
 async def list_daily_updates(request: Request, project_id: str = None, update_type: str = None, date_from: str = None, date_to: str = None):
-    await get_current_user(request)
+    user = await get_current_user(request)
     query = {}
+    if user["role"] not in ("admin", "manager"):
+        query["created_by"] = user["id"]
     if project_id:
         query["project_id"] = project_id
     if update_type:
@@ -6306,9 +6312,11 @@ async def get_project_updates(project_id: str, request: Request):
 @api_router.put("/daily-updates/{update_id}")
 async def update_daily_update(update_id: str, body: DailyUpdateUpdate, request: Request):
     user = await get_current_user(request)
-    doc = await db.daily_updates.find_one({"_id": ObjectId(update_id)})
+    doc = await db.daily_updates.find_one({"_id": ObjectId(update_id)}) if ObjectId.is_valid(update_id) else None
     if not doc:
         raise HTTPException(status_code=404, detail="Update not found")
+    if user["role"] not in ("admin", "manager") and doc.get("created_by") != user["id"]:
+        raise HTTPException(status_code=403, detail="You can only change your own entries")
     update_data = {"updated_at": datetime.now(timezone.utc).isoformat()}
     if body.data is not None:
         update_data["data"] = body.data
@@ -6319,10 +6327,13 @@ async def update_daily_update(update_id: str, body: DailyUpdateUpdate, request: 
 
 @api_router.delete("/daily-updates/{update_id}")
 async def delete_daily_update(update_id: str, request: Request):
-    await get_current_user(request)
-    result = await db.daily_updates.delete_one({"_id": ObjectId(update_id)})
-    if result.deleted_count == 0:
+    user = await get_current_user(request)
+    doc = await db.daily_updates.find_one({"_id": ObjectId(update_id)}) if ObjectId.is_valid(update_id) else None
+    if not doc:
         raise HTTPException(status_code=404, detail="Update not found")
+    if user["role"] not in ("admin", "manager") and doc.get("created_by") != user["id"]:
+        raise HTTPException(status_code=403, detail="You can only delete your own entries")
+    await db.daily_updates.delete_one({"_id": doc["_id"]})
     return {"message": "Update deleted"}
 
 # ================== PAYMENTS ==================
@@ -7523,6 +7534,11 @@ async def startup_event():
     await db.form_tabs.create_index("slug", unique=True)
     await db.form_tabs.create_index("order")
     await db.daily_updates.create_index("project_id")
+    await db.daily_updates.create_index([("source", 1), ("source_id", 1)])
+    await db.daily_reports.create_index([("user_id", 1), ("date", 1)], unique=True)
+    await db.daily_reports.create_index("date")
+    await db.site_diaries.create_index([("project_id", 1), ("date", 1)], unique=True)
+    await db.site_diaries.create_index("date")
     await db.daily_updates.create_index("created_at")
     await db.payments.create_index("project_id")
     await db.material_usage_logs.create_index("project_id")

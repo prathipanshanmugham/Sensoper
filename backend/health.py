@@ -262,7 +262,7 @@ def compute_pillars(projects, credits, inv_items, approvals, health_cfg,
         key_person_risk = 0
     key_score = _score_ratio(key_person_risk, 60, inverse=True)   # >60% = key-person risk
     # Daily update compliance
-    updates_recent = len([d for d in (daily_updates or []) if d.get("date", "")[:7] >= last_month])
+    updates_recent = len([d for d in (daily_updates or []) if (d.get("date") or d.get("created_at") or "")[:7] >= last_month])
     updates_score = _score_ratio(updates_recent, 20)  # >=20/month = 100
     # Audits
     audits_done = len([a for a in (weekly_audits or []) if a.get("status") == "completed"])
