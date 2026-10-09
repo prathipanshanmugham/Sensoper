@@ -15,7 +15,7 @@ Check `backend/.env` on the server (see `backend/.env.example`):
 | `GOOGLE_REDIRECT_URI` | Leave unset. It defaults to `https://quote.sensoper.in/auth/google/callback`, which is already on the Google OAuth client. |
 | `W3W_API_KEY` | Optional. Easier: after deploying, paste the new key in **Settings → What3words**. The old key is in this public repo's history, so don't reuse it. |
 | `GOOGLE_CLIENT_SECRET` | Optional. Easier: paste it in **Settings → Google Drive**. |
-| `GOOGLE_CLIENT_ID` | Optional. It defaults to `712570910460-423uajd5qq8jr73dl0rmtqiv667img00.apps.googleusercontent.com`. |
+| `GOOGLE_CLIENT_ID` | Optional. It defaults to `712570910460-6bsesslamu2umt6sf7mbe7h4a3o82og1.apps.googleusercontent.com`. |
 
 ### 2. Google Cloud Console (once)
 In the Google Cloud project that owns the client ID:
