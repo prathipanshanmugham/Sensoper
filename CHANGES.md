@@ -1,5 +1,14 @@
 # Sensoper — change log
 
+## October 2026 · What3words removed (GPS coordinates only)
+- **Location step:** **Use my location** fills in latitude and longitude, with an "Open in Google Maps" link. The 3-word box and its refresh button are gone. The step needs either the GPS or a site address.
+- **Project page:** **Update location** saves the phone's GPS only (`PUT /api/projects/{id}/geo`). The What3words row is gone, and the Excel export shows GPS instead.
+- **Proof-of-visit photo:** the stamp shows customer, date/time and GPS.
+- **Settings:** the What3words card is gone. The server no longer has `/api/geo/what3words*` and ignores `W3W_API_KEY`. On startup it deletes the `w3w_cache` collection and the saved (encrypted) What3words key.
+- **Old projects:** a stored `site_location_words` stays in the database but isn't shown. Saving a project from the form clears it.
+- **Code:** `backend/geo_w3w.py` is replaced by `backend/geo_location.py`.
+- **Bug fix:** saving New project used to drop the PIN code, district, state and DISCOM that the Proposed Solution step had filled in. These now save with the project.
+
 ## October 2026 · go-live helpers
 - **No server editing needed for keys.** If `VAULT_MASTER_KEY` isn't set, the server creates one at `STORAGE_ROOT/.keys/vault_master.key` (mode 600) the first time it's needed. Settings can then store the Google and What3words keys straight away. Back that file up.
 - **Settings → Google Drive** accepts the whole `client_secret_….json` downloaded from Google Cloud Console. It saves the client ID and the secret together, and refuses a file whose redirect URIs don't include this app's callback. Settings also shows which OAuth client is in use.

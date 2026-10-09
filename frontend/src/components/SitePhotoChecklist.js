@@ -51,7 +51,7 @@ function Thumb({ photo, connected, onRemove, canEdit }) {
   );
 }
 
-export default function SitePhotoChecklist({ value, onChange, projectId = null, customerName = '', w3w = '', canEdit = true, compact = false }) {
+export default function SitePhotoChecklist({ value, onChange, projectId = null, customerName = '', canEdit = true, compact = false }) {
   const { isAdmin } = useAuth();
   const live = !!projectId;
   const [checklist, setChecklist] = useState(null);
@@ -126,7 +126,6 @@ export default function SitePhotoChecklist({ value, onChange, projectId = null, 
             `Site visit${customerName ? ` · ${customerName}` : ''}`,
             when,
             pos ? `GPS ${pos.lat}, ${pos.lng}  (±${pos.accuracy} m)` : 'GPS not available',
-            ...(w3w ? [`///${String(w3w).replace(/^\/+/, '')}`] : []),
           ]) : file;
         } else {
           [out, pos] = await Promise.all([isImage ? compressImage(file) : file, tryPosition()]);

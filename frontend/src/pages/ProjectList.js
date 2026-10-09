@@ -12,7 +12,7 @@ const FILTERS = [
 ];
 
 const sizeOf = (p) => p.system_size_kw || p.cost_estimation?.total_capacity_kw || null;
-const placeOf = (p) => p.location?.district || p.location?.site_location_words || p.location?.address || p.customer?.address || '';
+const placeOf = (p) => p.location?.district || p.location?.address || p.customer?.address || '';
 
 export default function ProjectList() {
   const navigate = useNavigate();

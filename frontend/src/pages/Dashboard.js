@@ -151,7 +151,7 @@ function Overview({ user, isMgr, can }) {
                 <button type="button" onClick={() => navigate(`/dashboard/projects/${p.id}`)} className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-slate-50" data-testid={`project-row-${p.id}`}>
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-sm font-medium text-slate-900">{p.customer?.name || 'Unnamed'}</span>
-                    <span className="block truncate text-xs text-slate-500">{[p.location?.district || p.location?.site_location_words || p.location?.address, p.reference_number].filter(Boolean).join(' · ') || p.customer?.phone}</span>
+                    <span className="block truncate text-xs text-slate-500">{[p.location?.district || p.location?.address, p.reference_number].filter(Boolean).join(' · ') || p.customer?.phone}</span>
                   </span>
                   <span className="hidden text-right text-sm font-semibold tabular-nums text-slate-900 sm:block">{inr(p.cost_estimation?.total_cost)}</span>
                   <StatusPill status={p.status} />

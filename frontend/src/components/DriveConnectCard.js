@@ -1,8 +1,8 @@
-/* Settings → Connections: Google Drive (site photos) and What3words. */
+/* Settings → Connections: Google Drive (site photos). */
 import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
-import { AlertTriangle, CheckCircle2, CloudOff, ExternalLink, KeyRound, Loader2, MapPin, RefreshCw, Unplug } from 'lucide-react';
-import { driveAPI, w3wAPI } from '../utils/api';
+import { AlertTriangle, CheckCircle2, CloudOff, ExternalLink, KeyRound, Loader2, RefreshCw, Unplug } from 'lucide-react';
+import { driveAPI } from '../utils/api';
 import { formatApiErrorDetail } from '../contexts/AuthContext';
 import { Button } from './ui/button';
 
@@ -130,47 +130,6 @@ export function DriveConnectCard() {
           <p>Also enable the <strong>Google Drive API</strong> for that Google Cloud project, and on the <strong>OAuth consent screen</strong> press <strong>Publish app</strong> — while it says “Testing”, Google signs the connection out every 7 days.</p>
         </div>
       )}
-    </div>
-  );
-}
-
-export function W3wStatusRow() {
-  const [st, setSt] = useState(null);
-  const [edit, setEdit] = useState(false);
-  const load = useCallback(() => w3wAPI.status().then((r) => setSt(r.data)).catch(() => setSt({ configured: false })), []);
-  useEffect(() => { load(); }, [load]);
-  const saveKey = async (key) => {
-    try {
-      const r = await w3wAPI.saveKey(key);
-      if (r.data.tested) toast.success(r.data.message || 'Key saved'); else toast.warning(r.data.message || 'Key saved');
-      setEdit(false); await load();
-    } catch (e) { toast.error(formatApiErrorDetail(e.response?.data?.detail) || 'Could not save the key'); }
-  };
-  const removeKey = async () => {
-    if (!window.confirm('Remove the What3words key saved here?')) return;
-    try { await w3wAPI.deleteKey(); toast.success('Key removed'); await load(); }
-    catch (e) { toast.error(formatApiErrorDetail(e.response?.data?.detail) || 'Could not remove the key'); }
-  };
-  return (
-    <div className="space-y-3 rounded-xl border border-slate-200 bg-white p-4" data-testid="w3w-status">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="min-w-0">
-          <p className="flex items-center gap-2 font-['Outfit'] text-[15px] font-semibold text-slate-900"><MapPin className="h-4 w-4 text-red-500" />What3words
-            {st?.configured && <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700"><CheckCircle2 className="h-3.5 w-3.5" />Ready</span>}
-          </p>
-          <p className="text-xs text-slate-500">“Use my location” on New project, and “Update location” on a project, fill in the GPS and the 3-word address by themselves.</p>
-        </div>
-        {st === null && <Loader2 className="h-4 w-4 animate-spin text-slate-400" />}
-      </div>
-      {st && (st.configured && !edit ? (
-        <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-600" data-testid="w3w-key-line">
-          <span className="flex items-center gap-1.5"><KeyRound className="h-3.5 w-3.5 text-emerald-700" />API key <span className="font-mono">{st.hint || ''}</span> · {st.source === 'settings' ? 'saved here' : 'set on the server'}</span>
-          <button type="button" onClick={() => setEdit(true)} className="font-medium text-emerald-700 hover:underline" data-testid="w3w-key-change">Change key</button>
-          {st.source === 'settings' && <button type="button" onClick={removeKey} className="font-medium text-slate-500 hover:text-red-600" data-testid="w3w-key-remove">Remove</button>}
-        </p>
-      ) : (
-        <SecretField label="What3words API key" placeholder="Paste the API key" onSave={saveKey} testid="w3w-key" onCancel={st.configured ? () => setEdit(false) : null} />
-      ))}
     </div>
   );
 }

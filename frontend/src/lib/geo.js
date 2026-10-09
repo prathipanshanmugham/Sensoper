@@ -1,4 +1,4 @@
-/* Phone location + photo stamping helpers (site photos, What3words). */
+/* Phone location + photo stamping helpers (site GPS, site photos). */
 
 /** Current GPS position → { lat, lng, accuracy } or throws an Error with a plain-language message. */
 export function getPosition({ timeout = 15000, maximumAge = 0, highAccuracy = true } = {}) {
@@ -24,7 +24,7 @@ export async function tryPosition() {
   } catch { return null; }
 }
 
-/** Draws a strip under the photo with the given lines (date, GPS, what3words …) and returns a JPEG File.
+/** Draws a strip under the photo with the given lines (customer, date, GPS …) and returns a JPEG File.
  *  The strip is added below the picture, so nothing in the photo is covered. */
 export async function stampImage(file, lines, maxSide = 1600) {
   try {
@@ -51,5 +51,4 @@ export async function stampImage(file, lines, maxSide = 1600) {
   }
 }
 
-export const w3wLink = (words) => `https://what3words.com/${String(words || '').replace(/^\/{1,3}/, '')}`;
 export const mapsLink = (lat, lng) => `https://www.google.com/maps?q=${lat},${lng}`;
