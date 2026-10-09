@@ -33,10 +33,18 @@
 - **Projects list**: status chips with counts, search by name / phone / ref / district, and a "Mine" filter.
 - **Project page**: one action row — Edit, a **Documents** menu (all PDFs, Excel, WhatsApp), Generate invoice and Site diary.
 
+### Production hardening
+- Auth cookies (login, refresh, 2FA) get the `Secure` flag automatically when the site is reached over HTTPS (`COOKIE_SECURE=auto`, the default).
+- A startup warning appears if `CORS_ORIGINS` is still `*`.
+- `backend/.env.example` and `frontend/.env.example` document every setting. Real `.env` files stay git-ignored.
+- `memory/PRD.md` no longer contains the admin password (the repo is public).
+- `frontend/yarn.lock` added, so every deploy installs the exact package versions this release was built and tested with.
+- Removed the `@emergentbase/visual-edits` dev package, which was downloaded from Emergent's server on every install. It only powered Emergent's in-editor visual editing.
+
 ## Deploying
-Nothing new to install. Run the usual `deploy.sh` (pull, install backend deps, build frontend, copy build, restart service). `openai` can be uninstalled from the server's virtualenv.
+See **DEPLOY.md** for the step-by-step checklist. Nothing new to install; your existing `deploy.sh` works as-is.
 
 ## Tests
-`backend/tests/test_daily_reports.py` (11 tests) covers daily reports, site diary, permissions and the legacy mirror:
+`backend/tests/test_daily_reports.py` (11 tests) covers daily reports, site diary, permissions and the legacy mirror. `backend/tests/test_secure_cookies.py` (2 tests) covers the cookie flag:
 
     REACT_APP_BACKEND_URL=https://quote.sensoper.in pytest backend/tests/test_daily_reports.py

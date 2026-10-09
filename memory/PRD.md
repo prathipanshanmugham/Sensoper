@@ -235,7 +235,7 @@ Verified false positives (no change): calculators circular import (base.py impor
 Deferred (large refactors, out of scope for a review pass): splitting amc/assets `create_router`, hybrid/offgrid `compute`, ProjectDetails/CompanyProfile/AdvancedConfigSection/DashboardLayout components.
 
 ## Credentials
-See `/app/memory/test_credentials.md`. Admin: admin@sensoper.com / Admin@123
+Not stored in the repo (it is public). Admin login is set by ADMIN_EMAIL / ADMIN_PASSWORD in backend/.env on first boot; see backend/.env.example.
 
 ## Backlog (post Iter 49)
 - P1: Extend object-storage attachments (done for Assets in Iter 52) to Partner documents, Support ticket attachments, Project site photos, Ecommerce listing images; chunked upload for >25 MB.

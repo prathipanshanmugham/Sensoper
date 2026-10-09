@@ -8409,9 +8409,49 @@ api_router.include_router(_create_inbox_router(db=db, get_current_user=get_curre
 
 app.include_router(api_router)
 
+
+# Auth cookies get the Secure flag whenever the request came in over HTTPS (directly, or via nginx's
+# X-Forwarded-Proto), so they are never sent over plain HTTP. COOKIE_SECURE=true forces it, =false disables it.
+_COOKIE_SECURE_MODE = os.environ.get("COOKIE_SECURE", "auto").strip().lower()
+
+
+def _request_is_https(scope) -> bool:
+    if scope.get("scheme") == "https":
+        return True
+    for k, v in scope.get("headers") or []:
+        if k == b"x-forwarded-proto":
+            return v.decode("latin-1").split(",")[0].strip().lower() == "https"
+    return False
+
+
+class SecureCookieMiddleware:
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http" or _COOKIE_SECURE_MODE in ("false", "0", "no") or (
+                _COOKIE_SECURE_MODE == "auto" and not _request_is_https(scope)):
+            return await self.app(scope, receive, send)
+
+        async def send_secure(message):
+            if message["type"] == "http.response.start":
+                message["headers"] = [
+                    (k, v + b"; Secure") if k.lower() == b"set-cookie" and b"secure" not in v.lower() else (k, v)
+                    for k, v in message.get("headers", [])
+                ]
+            await send(message)
+
+        return await self.app(scope, receive, send_secure)
+
+
+app.add_middleware(SecureCookieMiddleware)
+
 # CORS — origins come from CORS_ORIGINS (comma-separated). "*" is expressed as an origin regex so the
 # exact requesting origin is echoed back, which is what cookie-based (credentialed) auth requires.
 _cors_origins = [o.strip() for o in os.environ.get("CORS_ORIGINS", "*").split(",") if o.strip()]
+if "*" in _cors_origins:
+    logger.warning("CORS_ORIGINS is '*' — any website can make credentialed requests to this API. "
+                   "Set CORS_ORIGINS=https://quote.sensoper.in in backend/.env for production.")
 _cors_kwargs = {"allow_origin_regex": ".*"} if "*" in _cors_origins else {"allow_origins": _cors_origins}
 app.add_middleware(
     CORSMiddleware,
