@@ -177,9 +177,9 @@ export default function UserManagement() {
 
               return (
                 <Card key={user.id} className="border-slate-200" data-testid={`user-card-${user.id}`}>
-                  <CardContent className="p-6">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-4">
+                  <CardContent className="p-4 sm:p-6">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div className="flex min-w-0 items-center gap-4">
                         <div className="h-12 w-12 rounded-full bg-emerald-100 flex items-center justify-center">
                           {user.role === 'admin' ? (
                             <Shield className="h-6 w-6 text-[#4ADE40]" />

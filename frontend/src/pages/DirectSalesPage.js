@@ -276,11 +276,11 @@ export default function DirectSalesPage() {
               </div>
             )}
 
-            <div className="border-t pt-2 flex items-center justify-between gap-3">
+            <div className="border-t pt-2 flex flex-wrap items-center justify-between gap-3">
               <div className="text-xs text-slate-600">
                 Taxable ₹{totals.taxable.toLocaleString('en-IN')} · GST ₹{totals.gst.toLocaleString('en-IN')} · <strong className="text-emerald-700">Total ₹{totals.grand.toLocaleString('en-IN')}</strong>
               </div>
-              <div className="flex items-center gap-1.5">
+              <div className="flex flex-wrap items-center gap-1.5">
                 <Select value={paymentMode} onValueChange={setPaymentMode}>
                   <SelectTrigger className="h-9 w-24"><SelectValue /></SelectTrigger>
                   <SelectContent>{['cash','upi','card','bank','cheque'].map(v => <SelectItem key={v} value={v}>{v}</SelectItem>)}</SelectContent>

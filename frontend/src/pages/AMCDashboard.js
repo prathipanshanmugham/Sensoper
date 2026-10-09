@@ -115,8 +115,8 @@ export default function AMCDashboard() {
             <p className="text-sm text-slate-500">Recurring maintenance revenue — tracked separately from project revenue</p>
           </div>
           {canManage && (
-            <div className="flex gap-2 items-end">
-              <div className="w-44"><LocationScopeSelect scope={locScope} testIdPrefix="amc-location" /></div>
+            <div className="flex flex-wrap gap-2 items-end">
+              <div className="w-full sm:w-44"><LocationScopeSelect scope={locScope} testIdPrefix="amc-location" /></div>
               <Button variant="outline" onClick={openFromProject} className="gap-1.5" data-testid="create-amc-from-project-btn"><Sparkles className="h-4 w-4" />From Completed Project</Button>
               <Button onClick={() => setShowCreate(true)} className="bg-emerald-600 hover:bg-emerald-700 text-white gap-1.5" data-testid="add-amc-btn"><Plus className="h-4 w-4" />New Contract</Button>
             </div>

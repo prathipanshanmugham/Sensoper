@@ -56,7 +56,7 @@ export default function LogArchivesPanel({ isAdmin }) {
         )}
         {msg && <p className="text-xs text-slate-700" data-testid="log-archive-msg">{msg}</p>}
         {archives.length === 0 ? <p className="text-xs text-slate-400">No archives yet — the first one is created automatically after the current quarter ends.</p> : (
-          <table className="w-full text-sm" data-testid="log-archives-table">
+          <div className="overflow-x-auto"><table className="w-full min-w-[560px] text-sm" data-testid="log-archives-table">
             <thead><tr className="text-left text-slate-500 border-b"><th className="py-1.5">Quarter</th><th>Status</th><th>Rows</th><th>Deletion snapshots</th><th>Created</th><th>Purged</th><th className="text-right">Files</th></tr></thead>
             <tbody>{archives.map(a => (
               <tr key={a.id} className="border-b last:border-0" data-testid={`archive-row-${a.quarter}`}>
@@ -75,7 +75,7 @@ export default function LogArchivesPanel({ isAdmin }) {
                 </td>
               </tr>
             ))}</tbody>
-          </table>
+          </table></div>
         )}
       </CardContent>
     </Card>

@@ -36,7 +36,7 @@ export function LocationReviewPanel({ onChanged }) {
       <div className="flex flex-wrap items-center gap-3 px-4 py-3">
         <MapPinOff className={`h-5 w-5 ${data.count ? 'text-amber-600' : 'text-emerald-600'}`} />
         <div className="flex-1 min-w-[220px]">
-          <p className="text-sm font-semibold text-slate-900">Needs Location Review <Badge className={`ml-1 ${data.count ? 'bg-amber-500' : 'bg-emerald-600'} text-white`} data-testid="location-review-count">{data.count}</Badge></p>
+          <div className="text-sm font-semibold text-slate-900">Needs Location Review <Badge className={`ml-1 ${data.count ? 'bg-amber-500' : 'bg-emerald-600'} text-white`} data-testid="location-review-count">{data.count}</Badge></div>
           <p className="text-[11px] text-slate-600">Projects with no resolved district are invisible to every district chart and score below. Type the district and save — five seconds each.</p>
         </div>
         <Button size="sm" variant="outline" onClick={autoResolve} disabled={busy === 'auto' || !data.count} className="h-8 gap-1" data-testid="location-review-auto"><Wand2 className="h-3.5 w-3.5" />{busy === 'auto' ? 'Resolving…' : 'Auto-resolve all'}</Button>
