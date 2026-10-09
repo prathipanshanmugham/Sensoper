@@ -7542,27 +7542,31 @@ async def startup_event():
     await db.employee_scores.create_index("user_id")
     await db.employee_scores.create_index("period")
     
-    # Seed admin user
+    # Seed admin user — only when it doesn't exist yet. An existing admin's password is never overwritten on
+    # restart (previously every restart reset it to ADMIN_PASSWORD / "Admin@123", undoing any password change).
+    # Recovery: set RESET_ADMIN_PASSWORD=true together with ADMIN_PASSWORD for one restart.
     admin_email = os.environ.get("ADMIN_EMAIL", "admin@sensoper.com")
-    admin_password = os.environ.get("ADMIN_PASSWORD", "Admin@123")
-    
+    env_password = os.environ.get("ADMIN_PASSWORD")
+    admin_password = env_password or "Admin@123"
+
     existing = await db.users.find_one({"email": admin_email})
     if existing is None:
-        hashed = hash_password(admin_password)
         await db.users.insert_one({
             "email": admin_email,
-            "password_hash": hashed,
+            "password_hash": hash_password(admin_password),
             "name": "System Admin",
             "role": "admin",
+            # The built-in default password is public — make the first sign-in change it.
+            "must_reset_password": env_password is None,
             "created_at": datetime.now(timezone.utc).isoformat()
         })
         logger.info(f"Admin user created: {admin_email}")
-    elif not verify_password(admin_password, existing["password_hash"]):
+    elif env_password and os.environ.get("RESET_ADMIN_PASSWORD", "").lower() in ("1", "true", "yes"):
         await db.users.update_one(
             {"email": admin_email},
-            {"$set": {"password_hash": hash_password(admin_password)}}
+            {"$set": {"password_hash": hash_password(env_password), "password_changed_at": datetime.now(timezone.utc).isoformat()}}
         )
-        logger.info(f"Admin password updated: {admin_email}")
+        logger.warning(f"Admin password reset from ADMIN_PASSWORD (RESET_ADMIN_PASSWORD set): {admin_email}")
     
     # Update existing company profiles with new logo
     await db.company_profiles.update_many(
@@ -7687,27 +7691,6 @@ async def startup_event():
             logger.info(f"Ecommerce v2 migration applied: {_mig}")
     except Exception as e:
         logger.warning(f"Ecommerce v2 migration failed (non-critical): {e}")
-    
-    # Write test credentials
-    try:
-        os.makedirs("/app/memory", exist_ok=True)
-        with open("/app/memory/test_credentials.md", "w") as f:
-            f.write(f"""# Test Credentials
-
-## Admin Account
-- Email: {admin_email}
-- Password: {admin_password}
-- Role: admin
-
-## Auth Endpoints
-- POST /api/auth/login
-- POST /api/auth/register
-- POST /api/auth/logout
-- GET /api/auth/me
-- POST /api/auth/refresh
-""")
-    except Exception as e:
-        logger.warning(f"Could not write test credentials: {e}")
 
 @app.on_event("shutdown")
 async def shutdown_db_client():

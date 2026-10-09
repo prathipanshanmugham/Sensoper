@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { useAuth, formatApiErrorDetail } from '../contexts/AuthContext';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
@@ -7,7 +7,7 @@ import { Label } from '../components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import { Loader2, Sun, Eye, EyeOff } from 'lucide-react';
 
-const LOGO_URL = "https://customer-assets.emergentagent.com/job_solar-estimator-14/artifacts/2dpfr2zb_slg.png";
+const LOGO_URL = `${process.env.PUBLIC_URL}/logo.png`;
 
 export default function Login() {
   const [email, setEmail] = useState('');
@@ -128,10 +128,9 @@ export default function Login() {
               </Button>
             </form>
             )}
-            <div className="mt-6 text-center text-sm text-slate-500">
-              Don't have an account?{' '}
-              <Link to="/register" className="text-[#2D9BF0] hover:text-[#1a8ae0] font-medium" data-testid="register-link">Create account</Link>
-            </div>
+            <p className="mt-6 text-center text-sm text-slate-500" data-testid="login-account-help">
+              No account yet? Ask your admin to add you under Settings → Users.
+            </p>
           </CardContent>
         </Card>
       </div>
