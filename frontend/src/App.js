@@ -26,10 +26,10 @@ import ApprovalsPage from "./pages/ApprovalsPage";
 import PermissionsPage from "./pages/PermissionsPage";
 import ReadingsPage from "./pages/ReadingsPage";
 import FormTabsManager from "./pages/FormTabsManager";
-import CeoDashboard from "./pages/CeoDashboard";
 import ReportsPage from "./pages/ReportsPage";
 import DashboardLayout from "./components/DashboardLayout";
-import DailyUpdatesPage from "./pages/DailyUpdatesPage";
+import DailyReportPage from "./pages/DailyReportPage";
+import SiteDiaryPage from "./pages/SiteDiaryPage";
 import AlertsDashboard from "./pages/AlertsDashboard";
 import CustomerCreditsPage from "./pages/CustomerCreditsPage";
 import PurchaseInboundPage from "./pages/PurchaseInboundPage";
@@ -43,7 +43,6 @@ import PartnersPage from "./pages/PartnersPage";
 import TeamsPage from "./pages/TeamsPage";
 import CredentialsPage from "./pages/CredentialsPage";
 import VaultPage from "./pages/VaultPage";
-import SensobrainPage from "./pages/SensobrainPage";
 import PartnerDetail from "./pages/PartnerDetail";
 import EcommercePage from "./pages/EcommercePage";
 
@@ -121,9 +120,11 @@ function AppRoutes() {
       <Route path="/dashboard/company-profile" element={<ProtectedRoute allowedRoles={["admin"]}><DashboardLayout><CompanyProfile /></DashboardLayout></ProtectedRoute>} />
       <Route path="/dashboard/permissions" element={<ProtectedRoute allowedRoles={["admin"]}><DashboardLayout><PermissionsPage /></DashboardLayout></ProtectedRoute>} />
       <Route path="/dashboard/form-tabs" element={<ProtectedRoute allowedRoles={["admin"]}><DashboardLayout><FormTabsManager /></DashboardLayout></ProtectedRoute>} />
-      <Route path="/dashboard/ceo" element={<ProtectedRoute allowedRoles={["admin", "manager"]}><DashboardLayout><CeoDashboard /></DashboardLayout></ProtectedRoute>} />
+      <Route path="/dashboard/ceo" element={<Navigate to="/dashboard?tab=health" replace />} />
       <Route path="/dashboard/reports" element={<ProtectedRoute allowedRoles={["admin", "manager"]}><DashboardLayout><ReportsPage /></DashboardLayout></ProtectedRoute>} />
-      <Route path="/dashboard/daily-updates" element={<ProtectedRoute><DashboardLayout><DailyUpdatesPage /></DashboardLayout></ProtectedRoute>} />
+      <Route path="/dashboard/daily-report" element={<ProtectedRoute><DashboardLayout><DailyReportPage /></DashboardLayout></ProtectedRoute>} />
+      <Route path="/dashboard/site-diary" element={<ProtectedRoute><DashboardLayout><SiteDiaryPage /></DashboardLayout></ProtectedRoute>} />
+      <Route path="/dashboard/daily-updates" element={<Navigate to="/dashboard/daily-report" replace />} />
       <Route path="/dashboard/alerts" element={<ProtectedRoute allowedRoles={["admin", "manager"]}><DashboardLayout><AlertsDashboard /></DashboardLayout></ProtectedRoute>} />
       <Route path="/dashboard/credits" element={<ProtectedRoute allowedRoles={["admin", "manager"]}><DashboardLayout><CustomerCreditsPage /></DashboardLayout></ProtectedRoute>} />
       <Route path="/dashboard/purchase-inbound" element={<ProtectedRoute allowedRoles={["admin", "manager"]}><DashboardLayout><PurchaseInboundPage /></DashboardLayout></ProtectedRoute>} />
@@ -148,7 +149,6 @@ function AppRoutes() {
       <Route path="/dashboard/teams" element={<ProtectedRoute><DashboardLayout><TeamsPage /></DashboardLayout></ProtectedRoute>} />
       <Route path="/dashboard/security" element={<ProtectedRoute><DashboardLayout><CredentialsPage /></DashboardLayout></ProtectedRoute>} />
       <Route path="/dashboard/vault" element={<ProtectedRoute allowedRoles={["admin"]}><DashboardLayout><VaultPage /></DashboardLayout></ProtectedRoute>} />
-      <Route path="/dashboard/sensobrain" element={<ProtectedRoute><DashboardLayout><SensobrainPage /></DashboardLayout></ProtectedRoute>} />
       <Route path="/dashboard/ecommerce" element={<ProtectedRoute><DashboardLayout><EcommercePage /></DashboardLayout></ProtectedRoute>} />
       {/* Default Redirect */}
       <Route path="/" element={<Navigate to="/dashboard" replace />} />

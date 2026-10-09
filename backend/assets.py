@@ -365,11 +365,12 @@ def create_router(db, get_current_user, require_role, create_audit_log, check_mo
     @router.delete("/assets/{asset_id}/documents/{doc_id}")
     async def delete_asset_document(asset_id: str, doc_id: str, request: Request):
         user = await require_role("admin", "manager")(request)
-        a = await db.assets.find_one({"_id": ObjectId(asset_id), "documents.doc_id": doc_id}, {"documents.$": 1})
-        if not a:
+        a = await db.assets.find_one({"_id": ObjectId(asset_id), "documents.doc_id": doc_id}, {"documents": 1})
+        doc = next((d for d in (a or {}).get("documents", []) if d.get("doc_id") == doc_id), None)
+        if not doc:
             raise HTTPException(status_code=404, detail="Document not found")
         await db.assets.update_one({"_id": ObjectId(asset_id)}, {"$pull": {"documents": {"doc_id": doc_id}}})
-        await create_audit_log(user["id"], user["name"], "asset_document_deleted", "asset", asset_id, old_data=a["documents"][0])
+        await create_audit_log(user["id"], user["name"], "asset_document_deleted", "asset", asset_id, old_data=doc)
         return {"message": "Document removed"}
 
     @router.get("/assets/reports/{report_type}")

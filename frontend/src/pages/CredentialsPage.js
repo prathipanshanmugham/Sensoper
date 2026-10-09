@@ -73,7 +73,7 @@ export default function CredentialsPage() {
               <Stat label="Stale passwords" value={data.summary.stale_passwords} warn={data.summary.stale_passwords > 0} testid="cred-summary-stale" />
               <Stat label="Reset pending" value={data.summary.reset_pending} testid="cred-summary-reset" />
             </div>
-            <table className="w-full text-sm">
+            <div className="overflow-x-auto"><table className="w-full min-w-[640px] text-sm">
               <thead className="bg-slate-50 border-y border-slate-200 text-[10px] uppercase text-slate-500">
                 <tr><th className="text-left px-3 py-2">User</th><th className="text-left px-3 py-2">Role</th><th className="text-left px-3 py-2">Password changed</th><th className="text-left px-3 py-2">Age</th><th className="text-left px-3 py-2">2FA</th><th className="text-left px-3 py-2">Last login</th><th className="text-right px-3 py-2">Actions</th></tr>
               </thead>
@@ -94,7 +94,7 @@ export default function CredentialsPage() {
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </table></div>
           </CardContent>
         </Card>
       ))}

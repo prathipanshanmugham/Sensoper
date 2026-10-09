@@ -262,24 +262,6 @@ class SolarEstimatorAPITester:
         except Exception as e:
             return self.log_test("Create User", False, str(e))
 
-    def test_ai_recommendations(self):
-        """Test AI recommendations endpoint"""
-        try:
-            ai_data = {
-                "monthly_consumption_units": 500.0,
-                "sanction_load_kw": 5.0,
-                "roof_type": "rcc",
-                "budget_range": "3-5 lakhs"
-            }
-            
-            response = self.session.post(f"{self.base_url}/api/ai/recommendations", json=ai_data)
-            if response.status_code == 200:
-                data = response.json()
-                return self.log_test("AI Recommendations", "recommendation" in data)
-            else:
-                return self.log_test("AI Recommendations", False, f"Status: {response.status_code}")
-        except Exception as e:
-            return self.log_test("AI Recommendations", False, str(e))
 
     # ================== ENTERPRISE FEATURES TESTS ==================
 
@@ -489,7 +471,6 @@ class SolarEstimatorAPITester:
         self.test_create_user()
         
         # AI features
-        self.test_ai_recommendations()
         
         # ================== ENTERPRISE FEATURES ==================
         print("\n🏢 Testing Enterprise Features:")

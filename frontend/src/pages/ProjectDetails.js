@@ -14,9 +14,11 @@ import {
   ArrowLeft, Loader2, User, MapPin, Zap, Sun, Clock, CheckCircle2, XCircle, 
   AlertCircle, Download, Share2, Trash2, Send, AlertTriangle, Package, Percent, 
   Video, Upload, Film, Pencil, Save, X, MessageSquare, QrCode, FolderOpen, Camera, Ruler,
-  ExternalLink, Copy, FileSpreadsheet, Lock, Eye, EyeOff
+  ExternalLink, Copy, FileSpreadsheet, Lock, Eye, EyeOff, ChevronDown, FileText, NotebookPen
 } from 'lucide-react';
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator } from '../components/ui/dropdown-menu';
 import QRCode from 'qrcode';
+import { toast } from 'sonner';
 import * as XLSX from 'xlsx';
 import { saveAs } from 'file-saver';
 
@@ -68,8 +70,8 @@ export default function ProjectDetails() {
   const { user, isAdmin, isManager, isStaff } = useAuth();
   const [project, setProject] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [quoteLayout, setQuoteLayoutState] = useState(() => localStorage.getItem('sensoper.detailedQuoteLayout') || 'list');
-  const setQuoteLayout = (v) => { localStorage.setItem('sensoper.detailedQuoteLayout', v); setQuoteLayoutState(v); };
+  const [quoteLayout, setQuoteLayoutState] = useState(() => { try { return localStorage.getItem('sensoper.detailedQuoteLayout') || 'list'; } catch { return 'list'; } });
+  const setQuoteLayout = (v) => { try { localStorage.setItem('sensoper.detailedQuoteLayout', v); } catch { /* optional */ } setQuoteLayoutState(v); };
   const [actionLoading, setActionLoading] = useState(false);
   const [showRejectDialog, setShowRejectDialog] = useState(false);
   const [rejectReason, setRejectReason] = useState('');
@@ -224,12 +226,14 @@ export default function ProjectDetails() {
     img.onerror = () => resolve(null); img.src = url;
   });
 
-  const generatePDF = async () => {
+  const generatePDF = async (layoutChoice) => {
+    const layout = layoutChoice === 'list' || layoutChoice === 'combined' ? layoutChoice : quoteLayout;
+    if (layout !== quoteLayout) setQuoteLayout(layout);
     let refSummary = null, stats = null, inventoryNames = {};
     if (project.reference_project_id) { try { refSummary = (await projectsAPI.getReferenceSummary(project.reference_project_id)).data; } catch (e) { console.warn('Reference summary unavailable', e); } }
     try { stats = (await companyAPI.salesStats()).data; } catch (e) { console.warn('Sales stats unavailable', e); }
     try { (await inventoryAPI.getItems({})).data.forEach(i => { inventoryNames[i.id] = i.name; }); } catch (e) { console.warn('Inventory names unavailable', e); }
-    await generateDetailedQuotationPDF({ project: { ...project, id }, companyProfile, terms, refSummary, stats, categoryLabels: CATEGORY_LABELS, apiUrl: API_URL, inventoryNames, layout: quoteLayout });
+    await generateDetailedQuotationPDF({ project: { ...project, id }, companyProfile, terms, refSummary, stats, categoryLabels: CATEGORY_LABELS, apiUrl: API_URL, inventoryNames, layout });
   };
 
   const generateExcel = () => {
@@ -331,15 +335,14 @@ export default function ProjectDetails() {
   const ce = project.cost_estimation || {};
 
   return (
-    <div className="min-h-screen bg-slate-50 py-8 px-4">
+    <div className="min-h-screen bg-slate-50 px-4 py-5 sm:py-6">
       <div className="max-w-5xl mx-auto">
-        {/* Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
-          <div className="flex items-center gap-4">
-            <Link to="/dashboard/projects"><Button variant="ghost" size="icon" className="text-slate-600" data-testid="back-btn"><ArrowLeft className="h-5 w-5" /></Button></Link>
-            <div>
-              <div className="flex items-center gap-3 flex-wrap">
-                <h1 className="text-2xl font-bold font-['Outfit'] text-slate-900">{project.customer?.name}</h1>
+        {/* Header: who / status / reference, then one tidy row of actions */}
+        <div className="mb-6 space-y-4">
+          <Link to="/dashboard/projects" className="inline-flex items-center gap-1 text-sm font-medium text-slate-500 hover:text-slate-800" data-testid="back-btn"><ArrowLeft className="h-4 w-4" />Projects</Link>
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+              <h1 className="min-w-0 break-words text-2xl font-bold font-['Outfit'] text-slate-900">{project.customer?.name}</h1>
                 {/* Editable Status */}
                 {canEditRefStatus && !editingStatus ? (
                   <Badge className={`${config.color} gap-1 cursor-pointer hover:ring-2 hover:ring-slate-300`} onClick={() => setEditingStatus(true)} data-testid="status-badge"><StatusIcon className="h-3 w-3" />{config.label}<Pencil className="h-2.5 w-2.5 ml-1" /></Badge>
@@ -355,7 +358,7 @@ export default function ProjectDetails() {
                 ) : (
                   <Badge className={`${config.color} gap-1`}><StatusIcon className="h-3 w-3" />{config.label}</Badge>
                 )}
-              </div>
+            </div>
               {/* Editable Reference */}
               <div className="flex items-center gap-2 mt-0.5">
                 {editingRef ? (
@@ -372,44 +375,49 @@ export default function ProjectDetails() {
                   </p>
                 )}
               </div>
-            </div>
           </div>
-          <div className="flex gap-2 flex-wrap">
+          <div className="flex flex-wrap gap-2" data-testid="project-actions">
             {canEdit && (
               <Link to={`/dashboard/projects/${id}/edit`}><Button variant="outline" className="gap-2" data-testid="edit-project-btn"><Pencil className="h-4 w-4" />Edit</Button></Link>
             )}
-            <Button variant="outline" onClick={generateExcel} className="gap-2" data-testid="download-excel-btn"><FileSpreadsheet className="h-4 w-4" />Excel</Button>
-            <div className="flex rounded-md border border-slate-200 overflow-hidden text-xs" title="Detailed PDF layout — remembered as your default" data-testid="quote-layout-toggle">
-              <button type="button" onClick={() => setQuoteLayout('list')} className={`px-2.5 py-1.5 ${quoteLayout === 'list' ? 'bg-slate-900 text-white' : 'bg-white text-slate-600'}`} data-testid="quote-layout-list">List</button>
-              <button type="button" onClick={() => setQuoteLayout('combined')} className={`px-2.5 py-1.5 ${quoteLayout === 'combined' ? 'bg-slate-900 text-white' : 'bg-white text-slate-600'}`} data-testid="quote-layout-combined">Combined</button>
-            </div>
-            <Button variant="outline" onClick={generatePDF} className="gap-2" data-testid="download-pdf-btn"><Download className="h-4 w-4" />Detailed PDF</Button>
-            <Button variant="outline" onClick={async () => {
-              try {
-                const [cfg, groups, stats] = await Promise.all([
-                  catalogueAPI.getConfig(),
-                  catalogueAPI.addonGroups(),
-                  companyAPI.salesStats().catch(() => ({ data: null })),
-                ]);
-                await generateKitQuotationPDF({ ...project, id }, companyProfile, cfg.data, groups.data, terms, { stats: stats.data, apiUrl: API_URL });
-              } catch (e) { alert('Kit PDF failed: ' + (e.message || 'unknown')); }
-            }} className="gap-2 border-emerald-300 text-emerald-700 hover:bg-emerald-50" data-testid="download-kit-pdf-btn"><Download className="h-4 w-4" />Kit Quotation</Button>
-            <Button variant="ghost" onClick={() => setShowKitExplainer(true)} className="gap-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100" data-testid="explain-kit-price-btn" title="Sales-side breakdown vs customer-side lump sum"><FileSpreadsheet className="h-4 w-4" />Explain</Button>
-            {(isAdmin || isManager) && (
-              <Button variant="outline" onClick={async () => {
-                try {
-                  const [cfg, groups] = await Promise.all([catalogueAPI.getConfig(), catalogueAPI.addonGroups()]);
-                  await generateKitExplainerPDF({ ...project, id }, companyProfile, cfg.data, groups.data, { apiUrl: API_URL, preparedBy: user?.name });
-                } catch (e) { alert('Kit Explainer failed: ' + (e.message || 'unknown')); }
-              }} className="gap-2 border-rose-300 text-rose-700 hover:bg-rose-50" data-testid="download-kit-explainer-btn" title="Internal cost/margin/GST breakdown — not for customers"><FileSpreadsheet className="h-4 w-4" />Kit Explainer (Internal)</Button>
-            )}
-            {(project.status === 'approved' || project.status === 'completed') && (
-              <Button variant="outline" onClick={shareViaWhatsApp} className="gap-2" data-testid="share-whatsapp-btn"><Share2 className="h-4 w-4" />WhatsApp</Button>
-            )}
-            <AdhocLinesCard projectId={id} canManage={isAdmin || isManager} onChanged={fetchProject} />
-            {(isAdmin || isManager) && <ProjectTermsCard projectId={id} project={project} canManage={isAdmin || isManager} onSaved={fetchProject} />}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button className="gap-2 bg-emerald-600 text-white hover:bg-emerald-700" data-testid="documents-menu-btn"><Download className="h-4 w-4" />Documents<ChevronDown className="h-4 w-4 opacity-80" /></Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="w-72">
+                <DropdownMenuLabel className="text-xs font-semibold uppercase tracking-wider text-slate-400">For the customer</DropdownMenuLabel>
+                <DropdownMenuItem onSelect={() => generatePDF('list')} data-testid="download-pdf-btn"><FileText className="mr-2 h-4 w-4" /><span className="flex-1">Detailed quotation — itemised</span>{quoteLayout === 'list' && <span className="text-[10px] text-slate-400">default</span>}</DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => generatePDF('combined')} data-testid="download-pdf-combined-btn"><FileText className="mr-2 h-4 w-4" /><span className="flex-1">Detailed quotation — grouped</span>{quoteLayout === 'combined' && <span className="text-[10px] text-slate-400">default</span>}</DropdownMenuItem>
+                <DropdownMenuItem onSelect={async () => {
+                  try {
+                    const [cfg, groups, stats] = await Promise.all([catalogueAPI.getConfig(), catalogueAPI.addonGroups(), companyAPI.salesStats().catch(() => ({ data: null }))]);
+                    await generateKitQuotationPDF({ ...project, id }, companyProfile, cfg.data, groups.data, terms, { stats: stats.data, apiUrl: API_URL });
+                  } catch (e) { toast.error('Kit quotation failed: ' + (e.message || 'unknown error')); }
+                }} data-testid="download-kit-pdf-btn"><Package className="mr-2 h-4 w-4" />Kit quotation (one price)</DropdownMenuItem>
+                {(project.status === 'approved' || project.status === 'completed') && (
+                  <DropdownMenuItem onSelect={shareViaWhatsApp} data-testid="share-whatsapp-btn"><Share2 className="mr-2 h-4 w-4" />Share on WhatsApp</DropdownMenuItem>
+                )}
+                <DropdownMenuSeparator />
+                <DropdownMenuLabel className="text-xs font-semibold uppercase tracking-wider text-slate-400">Internal</DropdownMenuLabel>
+                <DropdownMenuItem onSelect={generateExcel} data-testid="download-excel-btn"><FileSpreadsheet className="mr-2 h-4 w-4" />Cost sheet (Excel)</DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => setShowKitExplainer(true)} data-testid="explain-kit-price-btn"><Eye className="mr-2 h-4 w-4" />Explain the kit price</DropdownMenuItem>
+                {(isAdmin || isManager) && (
+                  <DropdownMenuItem onSelect={async () => {
+                    try {
+                      const [cfg, groups] = await Promise.all([catalogueAPI.getConfig(), catalogueAPI.addonGroups()]);
+                      await generateKitExplainerPDF({ ...project, id }, companyProfile, cfg.data, groups.data, { apiUrl: API_URL, preparedBy: user?.name });
+                    } catch (e) { toast.error('Kit explainer failed: ' + (e.message || 'unknown error')); }
+                  }} data-testid="download-kit-explainer-btn"><Lock className="mr-2 h-4 w-4" />Kit explainer PDF (cost & margin)</DropdownMenuItem>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
             {(isAdmin || isManager) && <ProjectInvoiceCard projectId={id} companyProfile={companyProfile} terms={invoiceTerms || terms} />}
+            {['approved', 'completed', 'submitted'].includes(project.status) && (
+              <Link to={`/dashboard/site-diary?project=${id}`}><Button variant="outline" className="gap-2" data-testid="open-site-diary-btn"><NotebookPen className="h-4 w-4" />Site diary</Button></Link>
+            )}
           </div>
+          {(isAdmin || isManager) && <ProjectTermsCard projectId={id} project={project} canManage={isAdmin || isManager} onSaved={fetchProject} />}
+          <AdhocLinesCard projectId={id} canManage={isAdmin || isManager} onChanged={fetchProject} />
         </div>
 
         {isDeletionPending && project.deletion_request && (

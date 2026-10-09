@@ -152,7 +152,7 @@ export default function MaterialKitsPage() {
               <p className="text-sm text-slate-500">{kits.length} kits across {activeCats.length} categories · system kits auto-match by capacity, product kits (e.g. Solar Camera) are quoted standalone</p>
             </div>
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             {isAdmin && (
               <Button variant="outline" onClick={() => setShowCats(true)} className="h-11" data-testid="manage-kit-categories-btn">
                 <Tags className="h-4 w-4 mr-1" /> Categories

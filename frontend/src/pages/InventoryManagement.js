@@ -421,7 +421,7 @@ export default function InventoryManagement() {
                       )}
                       <div className="flex-1 min-w-0">
                         <div className="flex items-start justify-between">
-                          <div>
+                          <div className="min-w-0">
                             <div className="font-medium text-slate-900 truncate flex items-center gap-1.5">
                               <span className="truncate">{item.name}</span>
                               {Array.isArray(item.qc_checklist) && item.qc_checklist.length > 0 && (

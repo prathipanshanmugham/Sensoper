@@ -79,7 +79,6 @@ export default function SiteVisitForm() {
   const [loadingProject, setLoadingProject] = useState(!!editId);
   const [w3wFormatError, setW3wFormatError] = useState('');
   const [aiLoading, setAiLoading] = useState(false);
-  const [aiRecommendation, setAiRecommendation] = useState('');
   const [error, setError] = useState('');
   const [inventoryItems, setInventoryItems] = useState([]);
   const [categories, setCategories] = useState([]);

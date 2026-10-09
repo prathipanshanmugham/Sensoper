@@ -91,7 +91,7 @@ export default function PricelistPage({ embedded = false }) {
             {data?.missing_pricing_count > 0 && <p className="text-xs text-amber-700 font-medium mt-1" data-testid="pricelist-missing-banner">{data.missing_pricing_count} item{data.missing_pricing_count === 1 ? '' : 's'} missing margin% or GST% — these price at cost and are flagged in quotes until fixed.</p>}
           </div>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <Button variant="outline" onClick={() => setHistoryItem({})} className="gap-1.5" data-testid="pricelist-history-btn"><History className="h-4 w-4" />History</Button>
           <Button variant="outline" onClick={() => setShowBulk(true)} disabled={selected.size === 0} className="gap-1.5" data-testid="pricelist-bulk-btn"><SlidersHorizontal className="h-4 w-4" />Bulk adjust{selected.size ? ` (${selected.size})` : ''}</Button>
           <Button onClick={() => setShowPdf(true)} disabled={!data || items.length === 0} className="bg-emerald-600 hover:bg-emerald-700 text-white gap-1.5" data-testid="pricelist-generate-pdf-btn"><FileDown className="h-4 w-4" />Price List PDF</Button>

@@ -137,3 +137,8 @@ frontend/node_modules/.cache/default-development/39.pack
 frontend/node_modules/.cache/default-development/18.pack
 frontend/node_modules/.cache/default-development/11.pack_
 frontend/node_modules/.cache/default-development/15.pack
+
+# Example env files are documentation, not secrets
+!.env.example
+!backend/.env.example
+!frontend/.env.example

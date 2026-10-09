@@ -1,194 +1,204 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { dashboardAPI, projectsAPI } from '../utils/api';
-import { Button } from '../components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
-import { Badge } from '../components/ui/badge';
+import { dashboardAPI, projectsAPI, dailyReportsAPI, permissionsAPI } from '../utils/api';
 import { MonthlyTargetPanel } from '../components/MonthlyTargetPanel';
-import { 
-  FileText, Clock, CheckCircle2, AlertCircle, TrendingUp, IndianRupee,
-  Package, ClipboardCheck, XCircle, Trash2
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '../components/ui/tabs';
+import CeoDashboard from './CeoDashboard';
+import { NAV_SECTIONS, canSee } from '../lib/navigation';
+import { localDate, greeting, inrShort, inr } from '../lib/format';
+import {
+  FolderPlus, CalendarCheck, NotebookPen, ClipboardCheck, FolderKanban, Package, Users, ChevronRight, CheckCircle2,
+  Clock, AlertCircle, XCircle, Trash2, Activity, FileText,
 } from 'lucide-react';
 
-const statusConfig = {
-  draft: { label: 'Draft', color: 'bg-amber-100 text-amber-800', icon: Clock },
-  submitted: { label: 'Submitted', color: 'bg-blue-100 text-blue-800', icon: AlertCircle },
-  approved: { label: 'Approved', color: 'bg-green-100 text-green-800', icon: CheckCircle2 },
-  rejected: { label: 'Rejected', color: 'bg-red-100 text-red-800', icon: XCircle },
-  completed: { label: 'Completed', color: 'bg-emerald-100 text-emerald-800', icon: CheckCircle2 },
-  deletion_requested: { label: 'Deletion Requested', color: 'bg-orange-100 text-orange-800', icon: Trash2 }
+export const STATUS = {
+  draft: { label: 'Draft', cls: 'bg-amber-50 text-amber-800 ring-amber-200', icon: Clock },
+  submitted: { label: 'Waiting approval', cls: 'bg-sky-50 text-sky-800 ring-sky-200', icon: AlertCircle },
+  approved: { label: 'Approved', cls: 'bg-emerald-50 text-emerald-800 ring-emerald-200', icon: CheckCircle2 },
+  rejected: { label: 'Rejected', cls: 'bg-red-50 text-red-800 ring-red-200', icon: XCircle },
+  completed: { label: 'Completed', cls: 'bg-slate-100 text-slate-700 ring-slate-200', icon: CheckCircle2 },
+  deletion_requested: { label: 'Deletion requested', cls: 'bg-orange-50 text-orange-800 ring-orange-200', icon: Trash2 },
 };
 
-function StatCard({ title, value, icon: Icon, trend, color = "emerald", alert = false }) {
+export function StatusPill({ status }) {
+  const s = STATUS[status] || STATUS.draft;
+  const I = s.icon;
+  return <span className={`inline-flex items-center gap-1 whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset ${s.cls}`}><I className="h-3 w-3" />{s.label}</span>;
+}
+
+const REPORT_STATE = {
+  not_started: { text: 'Not started', cls: 'text-amber-700' },
+  draft: { text: 'Draft saved — not submitted', cls: 'text-amber-700' },
+  submitted: { text: 'Submitted', cls: 'text-emerald-700' },
+};
+
+function ActionTile({ to, icon: Icon, title, note, noteCls = 'text-slate-500', tone = 'slate', testid }) {
+  const tones = {
+    green: 'bg-emerald-600 text-white hover:bg-emerald-700 border-emerald-600',
+    slate: 'bg-white text-slate-900 hover:border-slate-300 hover:shadow-sm border-slate-200',
+  };
+  const isGreen = tone === 'green';
   return (
-    <Card className={`border-slate-200 card-hover ${alert ? 'border-amber-300 bg-amber-50' : ''}`}>
-      <CardContent className="p-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-sm font-medium text-slate-500">{title}</p>
-            <p className={`text-3xl font-bold font-['Outfit'] text-${color}-600 mt-1`}>{value}</p>
-            {trend && (
-              <p className="text-xs text-slate-400 mt-1 flex items-center gap-1">
-                <TrendingUp className="h-3 w-3" /> {trend}
-              </p>
-            )}
-          </div>
-          <div className={`p-3 bg-${color}-100 rounded-xl`}>
-            <Icon className={`h-6 w-6 text-${color}-600`} />
-          </div>
-        </div>
-      </CardContent>
-    </Card>
+    <Link to={to} className={`flex min-h-[92px] flex-col justify-between rounded-xl border p-4 transition ${tones[tone]}`} data-testid={testid}>
+      <Icon className={`h-6 w-6 ${isGreen ? 'text-white' : 'text-emerald-600'}`} />
+      <div>
+        <p className="font-['Outfit'] text-[15px] font-semibold leading-tight">{title}</p>
+        {note && <p className={`mt-0.5 text-xs ${isGreen ? 'text-emerald-50' : noteCls}`}>{note}</p>}
+      </div>
+    </Link>
   );
 }
 
-function ProjectRow({ project, onClick }) {
-  const config = statusConfig[project.status] || statusConfig.draft;
-  const StatusIcon = config.icon;
+function AttentionRow({ to, icon: Icon, tone, title, detail, testid }) {
+  const tones = { red: 'bg-red-50 text-red-600', amber: 'bg-amber-50 text-amber-600', sky: 'bg-sky-50 text-sky-600', green: 'bg-emerald-50 text-emerald-600' };
+  return (
+    <Link to={to} className="flex items-center gap-3 px-4 py-3 transition-colors hover:bg-slate-50" data-testid={testid}>
+      <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${tones[tone]}`}><Icon className="h-[18px] w-[18px]" /></span>
+      <span className="min-w-0 flex-1"><span className="block text-sm font-medium text-slate-900">{title}</span><span className="block truncate text-xs text-slate-500">{detail}</span></span>
+      <ChevronRight className="h-4 w-4 shrink-0 text-slate-300" />
+    </Link>
+  );
+}
+
+function Stat({ label, value, sub, to }) {
+  const body = (
+    <div className="h-full rounded-xl border border-slate-200 bg-white p-4 transition hover:border-slate-300">
+      <p className="text-xs font-medium text-slate-500">{label}</p>
+      <p className="mt-1 font-['Outfit'] text-2xl font-semibold tabular-nums text-slate-900">{value}</p>
+      {sub && <p className="mt-0.5 text-xs text-slate-400">{sub}</p>}
+    </div>
+  );
+  return to ? <Link to={to}>{body}</Link> : body;
+}
+
+function Overview({ user, isMgr, can }) {
+  const navigate = useNavigate();
+  const [stats, setStats] = useState(null);
+  const [projects, setProjects] = useState([]);
+  const [myReport, setMyReport] = useState(null);
+  const [team, setTeam] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const today = localDate();
+
+  const load = useCallback(async () => {
+    const jobs = [dashboardAPI.getStats(), projectsAPI.getAll(), dailyReportsAPI.mine(today)];
+    if (isMgr) jobs.push(dailyReportsAPI.team(today));
+    const [s, p, r, t] = await Promise.allSettled(jobs);
+    if (s.status === 'fulfilled') setStats(s.value.data);
+    if (p.status === 'fulfilled') setProjects(p.value.data || []);
+    if (r.status === 'fulfilled') setMyReport(r.value.data);
+    if (t?.status === 'fulfilled') setTeam(t.value.data);
+    setLoading(false);
+  }, [today, isMgr]);
+  useEffect(() => { load(); }, [load]);
+
+  const reportState = REPORT_STATE[myReport?.status || 'not_started'] || REPORT_STATE.not_started;
+  const mine = projects.filter((p) => p.created_by === user?.id);
+  const myDrafts = mine.filter((p) => p.status === 'draft');
+  const recent = projects.slice(0, 6);
+  const attention = [];
+  if (isMgr && stats?.pending_approvals > 0) attention.push({ to: '/dashboard/approvals', icon: ClipboardCheck, tone: 'sky', title: `${stats.pending_approvals} waiting for your approval`, detail: 'Project reviews, deletions and purchase orders', testid: 'pending-approvals-alert' });
+  if (isMgr && team && team.counts.missing + team.counts.draft > 0) attention.push({ to: '/dashboard/daily-report?tab=team', icon: Users, tone: 'amber', title: `${team.counts.submitted} of ${team.rows.length} daily reports in today`, detail: `${team.counts.missing} not started · ${team.counts.draft} in draft`, testid: 'team-reports-alert' });
+  if (isMgr && stats?.low_stock_alerts > 0) attention.push({ to: '/dashboard/inventory', icon: Package, tone: 'red', title: `${stats.low_stock_alerts} item${stats.low_stock_alerts > 1 ? 's' : ''} low on stock`, detail: 'Reorder before the next installation', testid: 'low-stock-alert' });
+  if (myReport && myReport.status !== 'submitted' && can('/dashboard/daily-report')) attention.push({ to: '/dashboard/daily-report', icon: CalendarCheck, tone: 'amber', title: "Your daily report isn't submitted yet", detail: reportState.text, testid: 'my-report-alert' });
+  if (myDrafts.length > 0) attention.push({ to: '/dashboard/projects?status=draft', icon: FileText, tone: 'amber', title: `${myDrafts.length} draft project${myDrafts.length > 1 ? 's' : ''} to finish`, detail: myDrafts.slice(0, 3).map((p) => p.customer?.name).join(', '), testid: 'my-drafts-alert' });
 
   return (
-    <tr 
-      className="border-b border-slate-100 hover:bg-slate-50 cursor-pointer transition-colors"
-      onClick={onClick}
-      data-testid={`project-row-${project.id}`}
-    >
-      <td className="py-4 px-4">
-        <div>
-          <p className="font-medium text-slate-900">{project.customer?.name || 'N/A'}</p>
-          <p className="text-sm text-slate-500">{project.customer?.phone || 'N/A'}</p>
+    <div className="space-y-6">
+      <section aria-label="Quick actions" className="grid grid-cols-2 gap-3 md:grid-cols-4">
+        {can('/dashboard/projects/new') && <ActionTile to="/dashboard/projects/new" icon={FolderPlus} title="New project" note="Site visit & quotation" tone="green" testid="qa-new-project" />}
+        {can('/dashboard/daily-report') && <ActionTile to="/dashboard/daily-report" icon={CalendarCheck} title="Daily report" note={reportState.text} noteCls={reportState.cls} testid="qa-daily-report" />}
+        {can('/dashboard/site-diary') && <ActionTile to="/dashboard/site-diary" icon={NotebookPen} title="Site diary" note="Log today's site work" testid="qa-site-diary" />}
+        {isMgr && can('/dashboard/approvals')
+          ? <ActionTile to="/dashboard/approvals" icon={ClipboardCheck} title="Approvals" note={stats?.pending_approvals ? `${stats.pending_approvals} waiting` : 'Nothing waiting'} noteCls={stats?.pending_approvals ? 'text-sky-700' : 'text-slate-500'} testid="qa-approvals" />
+          : can('/dashboard/readings') && <ActionTile to="/dashboard/readings" icon={Activity} title="Readings" note="Generation checks" testid="qa-readings" />}
+      </section>
+
+      {attention.length > 0 && (
+        <section className="overflow-hidden rounded-xl border border-slate-200 bg-white" aria-labelledby="attention-h">
+          <h2 id="attention-h" className="border-b border-slate-100 px-4 py-3 text-sm font-semibold text-slate-900">Needs attention</h2>
+          <div className="divide-y divide-slate-100">{attention.map((a) => <AttentionRow key={a.title} {...a} />)}</div>
+        </section>
+      )}
+
+      {isMgr && <MonthlyTargetPanel />}
+
+      <section aria-label="Project numbers" className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <Stat label={isMgr ? 'All projects' : 'Projects'} value={loading ? '–' : stats?.total ?? 0} sub={`${stats?.draft || 0} in draft`} to="/dashboard/projects" />
+        <Stat label="Waiting approval" value={loading ? '–' : stats?.submitted ?? 0} to="/dashboard/projects?status=submitted" />
+        <Stat label="Approved · in progress" value={loading ? '–' : stats?.approved ?? 0} sub={`${stats?.completed || 0} completed`} to="/dashboard/projects?status=approved" />
+        {isMgr
+          ? <Stat label="Revenue (approved + done)" value={loading ? '–' : inrShort(stats?.total_revenue)} sub={`${stats?.conversion_rate || 0}% of quotes won`} />
+          : <Stat label="My projects" value={loading ? '–' : mine.length} sub={`${myDrafts.length} draft`} />}
+      </section>
+
+      <section className="overflow-hidden rounded-xl border border-slate-200 bg-white" aria-labelledby="recent-h">
+        <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
+          <h2 id="recent-h" className="text-sm font-semibold text-slate-900">Latest projects</h2>
+          <Link to="/dashboard/projects" className="text-sm font-medium text-emerald-700 hover:text-emerald-800" data-testid="view-all-projects-btn">See all</Link>
         </div>
-      </td>
-      <td className="py-4 px-4">
-        <p className="text-sm text-slate-600 truncate max-w-[200px]">
-          {project.location?.site_location_words || project.location?.address || '-'}
-        </p>
-      </td>
-      <td className="py-4 px-4">
-        <p className="font-semibold text-slate-900">
-          ₹{(project.cost_estimation?.total_cost || 0).toLocaleString('en-IN')}
-        </p>
-      </td>
-      <td className="py-4 px-4">
-        <Badge className={`${config.color} gap-1`}>
-          <StatusIcon className="h-3 w-3" />
-          {config.label}
-        </Badge>
-      </td>
-      <td className="py-4 px-4 text-sm text-slate-500">
-        {new Date(project.created_at).toLocaleDateString('en-IN')}
-      </td>
-    </tr>
+        {recent.length === 0 ? (
+          <div className="px-4 py-12 text-center">
+            <FolderKanban className="mx-auto mb-3 h-10 w-10 text-slate-300" />
+            <p className="text-sm text-slate-500">{loading ? 'Loading projects…' : 'No projects yet.'}</p>
+            {!loading && can('/dashboard/projects/new') && <Link to="/dashboard/projects/new" className="mt-3 inline-block rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700">Create the first project</Link>}
+          </div>
+        ) : (
+          <ul className="divide-y divide-slate-100">
+            {recent.map((p) => (
+              <li key={p.id}>
+                <button type="button" onClick={() => navigate(`/dashboard/projects/${p.id}`)} className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-slate-50" data-testid={`project-row-${p.id}`}>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-medium text-slate-900">{p.customer?.name || 'Unnamed'}</span>
+                    <span className="block truncate text-xs text-slate-500">{[p.location?.district || p.location?.site_location_words || p.location?.address, p.reference_number].filter(Boolean).join(' · ') || p.customer?.phone}</span>
+                  </span>
+                  <span className="hidden text-right text-sm font-semibold tabular-nums text-slate-900 sm:block">{inr(p.cost_estimation?.total_cost)}</span>
+                  <StatusPill status={p.status} />
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+    </div>
   );
 }
 
 export default function Dashboard() {
   const { user, isAdmin, isManager } = useAuth();
-  const navigate = useNavigate();
-  const [stats, setStats] = useState(null);
-  const [recentProjects, setRecentProjects] = useState([]);
-  const [loading, setLoading] = useState(true);
-
-  const fetchData = useCallback(async () => {
-    try {
-      const [statsRes, projectsRes] = await Promise.all([
-        dashboardAPI.getStats(),
-        projectsAPI.getAll()
-      ]);
-      setStats(statsRes.data);
-      setRecentProjects(projectsRes.data.slice(0, 5));
-    } catch (error) {
-      console.error('Failed to fetch dashboard data:', error);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const isMgr = isAdmin || isManager;
+  const [params, setParams] = useSearchParams();
+  const [perms, setPerms] = useState(null);
+  const tab = isMgr && params.get('tab') === 'health' ? 'health' : 'overview';
 
   useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+    if (!user?.role) return;
+    permissionsAPI.getRole(user.role).then((r) => setPerms(r.data?.permissions || {})).catch(() => setPerms({}));
+  }, [user?.role]);
+  const visible = NAV_SECTIONS.flatMap((s) => s.items).filter((i) => canSee(i, user?.role, perms || {}));
+  const can = (href) => visible.some((i) => i.href === href);
+  const ceoAllowed = isMgr && (!perms || perms.module_ceo_dashboard?.view !== false);
+
+  const day = new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long' });
 
   return (
-    <div className="p-6">
-      {loading ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          {[...Array(4)].map((_, i) => (
-            <Card key={`skeleton-${i}`} className="animate-pulse"><CardContent className="p-6"><div className="h-20 bg-slate-200 rounded" /></CardContent></Card>
-          ))}
-        </div>
+    <div className="mx-auto max-w-6xl px-4 py-5 sm:px-6 sm:py-6">
+      <div className="mb-5">
+        <p className="text-sm text-slate-500">{day}</p>
+        <h1 className="font-['Outfit'] text-2xl font-semibold text-slate-900" data-testid="home-greeting">{greeting()}, {user?.name?.split(' ')[0]}</h1>
+      </div>
+      {ceoAllowed ? (
+        <Tabs value={tab} onValueChange={(v) => setParams(v === 'health' ? { tab: 'health' } : {}, { replace: true })}>
+          <TabsList className="mb-5 grid w-full grid-cols-2 sm:inline-flex sm:w-auto">
+            <TabsTrigger value="overview" data-testid="home-tab-overview">Today</TabsTrigger>
+            <TabsTrigger value="health" data-testid="home-tab-health">Business health</TabsTrigger>
+          </TabsList>
+          <TabsContent value="overview"><Overview user={user} isMgr={isMgr} can={can} /></TabsContent>
+          <TabsContent value="health">{tab === 'health' && <CeoDashboard embedded />}</TabsContent>
+        </Tabs>
       ) : (
-        <>
-          <h1 className="text-xl font-semibold font-['Outfit'] text-slate-900 mb-6">Welcome back, {user?.name?.split(' ')[0]}!</h1>
-
-          <MonthlyTargetPanel />
-
-          {(stats?.low_stock_alerts > 0 || stats?.pending_approvals > 0) && (isAdmin || isManager) && (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-              {stats?.pending_approvals > 0 && (
-                <Link to="/dashboard/approvals">
-                  <Card className="border-blue-300 bg-blue-50 hover:bg-blue-100 transition-colors cursor-pointer">
-                    <CardContent className="p-4 flex items-center gap-3">
-                      <ClipboardCheck className="h-5 w-5 text-blue-600" />
-                      <div>
-                        <p className="font-medium text-blue-800" data-testid="pending-approvals-alert">{stats.pending_approvals} Approval{stats.pending_approvals > 1 ? 's' : ''} Pending</p>
-                        <p className="text-sm text-blue-600">Click to review</p>
-                      </div>
-                    </CardContent>
-                  </Card>
-                </Link>
-              )}
-              {stats?.low_stock_alerts > 0 && (
-                <Link to="/dashboard/inventory">
-                  <Card className="border-red-300 bg-red-50 hover:bg-red-100 transition-colors cursor-pointer">
-                    <CardContent className="p-4 flex items-center gap-3">
-                      <Package className="h-5 w-5 text-red-600" />
-                      <div>
-                        <p className="font-medium text-red-800">{stats.low_stock_alerts} Item{stats.low_stock_alerts > 1 ? 's' : ''} Low on Stock</p>
-                        <p className="text-sm text-red-600">Click to manage inventory</p>
-                      </div>
-                    </CardContent>
-                  </Card>
-                </Link>
-              )}
-            </div>
-          )}
-
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-            <StatCard title="Total Projects" value={stats?.total || 0} icon={FileText} color="emerald" />
-            <StatCard title="Pending Review" value={stats?.submitted || 0} icon={AlertCircle} color="blue" />
-            <StatCard title="Approved" value={stats?.approved || 0} icon={CheckCircle2} color="green" />
-            <StatCard title="Total Revenue" value={`₹${((stats?.total_revenue || 0) / 100000).toFixed(1)}L`} icon={IndianRupee} trend={`${stats?.conversion_rate || 0}% conversion`} color="amber" />
-          </div>
-
-          <Card className="border-slate-200">
-            <CardHeader className="flex flex-row items-center justify-between py-4 px-6 border-b border-slate-200">
-              <CardTitle className="text-lg font-['Outfit'] text-slate-900">Recent Projects</CardTitle>
-              <Link to="/dashboard/projects"><Button variant="ghost" size="sm" className="text-emerald-600 hover:text-emerald-700" data-testid="view-all-projects-btn">View all</Button></Link>
-            </CardHeader>
-            <CardContent className="p-0">
-              {recentProjects.length > 0 ? (
-                <div className="overflow-x-auto">
-                  <table className="w-full">
-                    <thead><tr className="border-b border-slate-200 bg-slate-50">
-                      <th className="text-left py-3 px-4 text-xs font-semibold uppercase tracking-wider text-slate-500">Customer</th>
-                      <th className="text-left py-3 px-4 text-xs font-semibold uppercase tracking-wider text-slate-500">Location</th>
-                      <th className="text-left py-3 px-4 text-xs font-semibold uppercase tracking-wider text-slate-500">Est. Cost</th>
-                      <th className="text-left py-3 px-4 text-xs font-semibold uppercase tracking-wider text-slate-500">Status</th>
-                      <th className="text-left py-3 px-4 text-xs font-semibold uppercase tracking-wider text-slate-500">Date</th>
-                    </tr></thead>
-                    <tbody>{recentProjects.map((project) => (<ProjectRow key={project.id} project={project} onClick={() => navigate(`/dashboard/projects/${project.id}`)} />))}</tbody>
-                  </table>
-                </div>
-              ) : (
-                <div className="py-12 text-center text-slate-500">
-                  <FileText className="h-12 w-12 mx-auto mb-4 text-slate-300" />
-                  <p>No projects yet</p>
-                  <Link to="/dashboard/projects/new"><Button className="mt-4 bg-emerald-600 hover:bg-emerald-700 text-white">Create your first project</Button></Link>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </>
+        <Overview user={user} isMgr={isMgr} can={can} />
       )}
     </div>
   );

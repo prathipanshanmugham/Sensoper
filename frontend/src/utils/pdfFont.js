@@ -4,15 +4,25 @@
  * natively in generated PDFs. jsPDF's built-in helvetica/times/courier fonts
  * use WinAnsi encoding which does NOT include ₹.
  *
- * Strategy: fetch Roboto-Regular & Roboto-Bold TTF from jsDelivr's google/fonts
- * mirror, base64-encode, register via addFileToVFS + addFont. Cached at module
- * level so it's a one-time cost per page session.
+ * Strategy: load Roboto-Regular & Roboto-Bold TTF from the app's own /fonts folder
+ * (shipped in public/fonts, so PDFs work offline and don't depend on a CDN), falling
+ * back to jsDelivr's google/fonts mirror. Base64-encode, register via addFileToVFS +
+ * addFont. Cached at module level so it's a one-time cost per page session.
  */
 
+const PUBLIC = process.env.PUBLIC_URL || '';
 const FONT_URLS = {
-  regular: 'https://cdn.jsdelivr.net/gh/googlefonts/roboto-2@main/src/hinted/Roboto-Regular.ttf',
-  bold: 'https://cdn.jsdelivr.net/gh/googlefonts/roboto-2@main/src/hinted/Roboto-Bold.ttf'
+  regular: [`${PUBLIC}/fonts/Roboto-Regular.ttf`, 'https://cdn.jsdelivr.net/gh/googlefonts/roboto-2@main/src/hinted/Roboto-Regular.ttf'],
+  bold: [`${PUBLIC}/fonts/Roboto-Bold.ttf`, 'https://cdn.jsdelivr.net/gh/googlefonts/roboto-2@main/src/hinted/Roboto-Bold.ttf']
 };
+
+async function fetchFirst(urls) {
+  let lastErr;
+  for (const u of urls) {
+    try { return await fetchAsBase64(u); } catch (e) { lastErr = e; }
+  }
+  throw lastErr;
+}
 
 export const PDF_UNICODE_FONT = 'Roboto';
 
@@ -20,7 +30,7 @@ let cachedFonts = null;
 let inflight = null;
 
 async function fetchAsBase64(url) {
-  const resp = await fetch(url, { mode: 'cors' });
+  const resp = await fetch(url, url.startsWith('http') ? { mode: 'cors' } : {});
   if (!resp.ok) throw new Error(`Font fetch failed (${resp.status}): ${url}`);
   const buf = await resp.arrayBuffer();
   const bytes = new Uint8Array(buf);
@@ -38,8 +48,8 @@ async function fetchAllFonts() {
   if (inflight) return inflight;
   inflight = (async () => {
     const [regular, bold] = await Promise.all([
-      fetchAsBase64(FONT_URLS.regular),
-      fetchAsBase64(FONT_URLS.bold)
+      fetchFirst(FONT_URLS.regular),
+      fetchFirst(FONT_URLS.bold)
     ]);
     cachedFonts = { regular, bold };
     return cachedFonts;

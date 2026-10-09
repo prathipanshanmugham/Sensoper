@@ -234,12 +234,6 @@ class ProjectUpdate(BaseModel):
 class ProjectNoteAppend(BaseModel):
     text: str
 
-class AIRecommendationRequest(BaseModel):
-    monthly_consumption_units: float
-    sanction_load_kw: float
-    roof_type: str
-    budget_range: Optional[str] = None
-
 # ================== NEW MODELS FOR ENTERPRISE FEATURES ==================
 
 class TermsConditionsCreate(BaseModel):
@@ -670,7 +664,6 @@ DEFAULT_PERMISSIONS = {
         "module_daily_updates": {"view": True, "create": True, "edit": True, "delete": True, "export": True},
         "module_vendors": {"view": True, "create": True, "edit": True, "delete": True, "export": True},
         "module_vault": {"view": True, "create": True, "edit": True, "delete": True, "export": False},
-        "module_sensobrain": {"view": True, "create": True, "edit": True, "delete": True, "export": True}
     },
     "manager": {
         "can_create_project": True, "can_edit_project": True, "can_delete_project": False,
@@ -708,7 +701,6 @@ DEFAULT_PERMISSIONS = {
         "module_daily_updates": {"view": True, "create": True, "edit": True, "delete": False, "export": True},
         "module_vendors": {"view": True, "create": True, "edit": True, "delete": False, "export": True},
         "module_vault": {"view": False, "create": False, "edit": False, "delete": False, "export": False},
-        "module_sensobrain": {"view": True, "create": True, "edit": False, "delete": False, "export": False}
     },
     "staff": {
         "can_create_project": True, "can_edit_project": True, "can_delete_project": False,
@@ -746,7 +738,6 @@ DEFAULT_PERMISSIONS = {
         "module_daily_updates": {"view": True, "create": True, "edit": True, "delete": False, "export": False},
         "module_vendors": {"view": False, "create": False, "edit": False, "delete": False, "export": False},
         "module_vault": {"view": False, "create": False, "edit": False, "delete": False, "export": False},
-        "module_sensobrain": {"view": True, "create": True, "edit": False, "delete": False, "export": False}
     }
 }
 
@@ -2626,6 +2617,10 @@ api_router.include_router(_partners_router)
 from internal_teams import create_router as _create_teams_router  # noqa: E402
 api_router.include_router(_create_teams_router(db=db, get_current_user=get_current_user, require_role=require_role, create_audit_log=create_audit_log))
 
+# ═══════════ DAILY REPORTS + SITE DIARY ═══════════
+from daily_reports import create_router as _create_daily_reports_router  # noqa: E402
+api_router.include_router(_create_daily_reports_router(db=db, get_current_user=get_current_user, require_role=require_role, create_audit_log=create_audit_log))
+
 # ═══════════ ECOMMERCE MARKETPLACES (Iter 46 Change 2) ═══════════
 from ecommerce import create_router as _create_ecommerce_router  # noqa: E402
 _ecommerce_router = _create_ecommerce_router(
@@ -2929,14 +2924,12 @@ api_router.include_router(_log_archive_router)
 from quick_calc import create_router as _create_quick_calc_router  # noqa: E402
 api_router.include_router(_create_quick_calc_router(db=db, get_current_user=get_current_user, get_calc_config=_get_calc_config))
 
-# ═══════════ ITER 54: geo reference · credential vault · Sensobrain ═══════════
+# ═══════════ ITER 54: geo reference · credential vault ═══════════
 from geo_reference import create_router as _create_geo_router  # noqa: E402
 from vault import create_router as _create_vault_router  # noqa: E402
-from sensobrain import create_router as _create_sensobrain_router  # noqa: E402
 api_router.include_router(_create_geo_router(db=db, get_current_user=get_current_user, require_role=require_role, get_default_pincodes=get_default_pincodes))
 _vault_router = _create_vault_router(db=db, require_role=require_role, create_audit_log=create_audit_log)
 api_router.include_router(_vault_router)
-api_router.include_router(_create_sensobrain_router(db=db, app=app, get_current_user=get_current_user, require_role=require_role))
 from adhoc_promotion import create_router as _create_adhoc_router  # noqa: E402
 api_router.include_router(_create_adhoc_router(db=db, get_current_user=get_current_user, require_role=require_role, create_audit_log=create_audit_log, build_cost_estimation=build_cost_estimation))
 from kit_categories import create_router as _create_kit_cat_router, resolve_category as _resolve_kit_category, ensure_seed as _seed_kit_categories  # noqa: E402
@@ -3737,10 +3730,12 @@ async def get_projects(request: Request, status: Optional[str] = None, location_
             "location": p["location"],
             "status": p["status"],
             "cost_estimation": p.get("cost_estimation", {}),
+            "created_by": p.get("created_by"),
             "created_by_name": p.get("created_by_name", "Unknown"),
             "created_at": p["created_at"],
             "updated_at": p["updated_at"],
-            "location_id": p.get("location_id")
+            "location_id": p.get("location_id"),
+            "system_size_kw": ((p.get("custom_fields") or {}).get("proposed_solution") or {}).get("system_size_kw"),
         }
         for p in projects
     ]
@@ -5876,46 +5871,6 @@ async def update_thresholds(body: ThresholdUpdate, request: Request):
     await db.settings.update_one({"type": "thresholds"}, {"$set": {**update, "type": "thresholds"}}, upsert=True)
     return {"message": "Thresholds updated"}
 
-# ================== AI RECOMMENDATIONS ==================
-
-@api_router.post("/ai/recommendations")
-async def get_ai_recommendations(data: AIRecommendationRequest, request: Request):
-    """Legacy one-shot recommendation. Uses the OpenAI key stored in Sensobrain settings (openai SDK, no emergentintegrations)."""
-    await get_current_user(request)
-    fallback = f"""Based on your monthly consumption of {data.monthly_consumption_units} units:
-
-**Recommended System:**
-- Capacity: {max(1, data.monthly_consumption_units / 120):.1f} kW
-- Panels: {int(max(1, data.monthly_consumption_units / 120) * 1000 / 540) + 1} x 540W panels
-- Inverter: {max(1, data.monthly_consumption_units / 120):.1f} kW grid-tied
-
-**Estimated Benefits:**
-- Monthly Savings: Rs. {data.monthly_consumption_units * data.sanction_load_kw:.0f} approx
-- ROI: 4-5 years
-- System Life: 25+ years
-
-*For detailed AI-powered analysis, add the OpenAI API key under Sensobrain → Settings.*"""
-    settings_doc = await db.sensobrain_settings.find_one({"key": "defaults"}) or {}
-    if not settings_doc.get("openai_api_key_enc"):
-        return {"recommendation": fallback}
-    try:
-        from openai import AsyncOpenAI
-        from vault import decrypt_secret
-        from sensobrain import _client_kwargs
-        api_key = decrypt_secret(settings_doc["openai_api_key_enc"])
-        client = AsyncOpenAI(api_key=api_key, **_client_kwargs(api_key))
-        resp = await client.chat.completions.create(
-            model=settings_doc.get("model", "gpt-5.4-mini"),
-            messages=[
-                {"role": "system", "content": "You are a solar energy consultant for Sensoper Controls and Renewables. Provide concise, practical recommendations for solar system installations based on the user's energy consumption and site details. Focus on: recommended capacity (kW), panel type and count, inverter, estimated savings, ROI timeline. Under 300 words, bullet points."},
-                {"role": "user", "content": f"Monthly consumption: {data.monthly_consumption_units} units; sanctioned load: {data.sanction_load_kw} kW; roof type: {data.roof_type}; budget: {data.budget_range or 'Not specified'}. Recommend the optimal solar system configuration."},
-            ],
-        )
-        return {"recommendation": resp.choices[0].message.content}
-    except Exception as e:
-        logger.error(f"AI recommendation error: {e}")
-        return {"recommendation": f"Could not generate AI recommendation. Basic estimate: {max(1, data.monthly_consumption_units / 120):.1f} kW system recommended."}
-
 # ================== APPROVALS ==================
 
 APPROVAL_TYPES = ["deletion", "margin_change", "quotation_approval", "inventory_edit", "user_access_change"]
@@ -6331,8 +6286,10 @@ async def create_daily_update(update: DailyUpdateCreate, request: Request):
 
 @api_router.get("/daily-updates")
 async def list_daily_updates(request: Request, project_id: str = None, update_type: str = None, date_from: str = None, date_to: str = None):
-    await get_current_user(request)
+    user = await get_current_user(request)
     query = {}
+    if user["role"] not in ("admin", "manager"):
+        query["created_by"] = user["id"]
     if project_id:
         query["project_id"] = project_id
     if update_type:
@@ -6357,9 +6314,11 @@ async def get_project_updates(project_id: str, request: Request):
 @api_router.put("/daily-updates/{update_id}")
 async def update_daily_update(update_id: str, body: DailyUpdateUpdate, request: Request):
     user = await get_current_user(request)
-    doc = await db.daily_updates.find_one({"_id": ObjectId(update_id)})
+    doc = await db.daily_updates.find_one({"_id": ObjectId(update_id)}) if ObjectId.is_valid(update_id) else None
     if not doc:
         raise HTTPException(status_code=404, detail="Update not found")
+    if user["role"] not in ("admin", "manager") and doc.get("created_by") != user["id"]:
+        raise HTTPException(status_code=403, detail="You can only change your own entries")
     update_data = {"updated_at": datetime.now(timezone.utc).isoformat()}
     if body.data is not None:
         update_data["data"] = body.data
@@ -6370,10 +6329,13 @@ async def update_daily_update(update_id: str, body: DailyUpdateUpdate, request: 
 
 @api_router.delete("/daily-updates/{update_id}")
 async def delete_daily_update(update_id: str, request: Request):
-    await get_current_user(request)
-    result = await db.daily_updates.delete_one({"_id": ObjectId(update_id)})
-    if result.deleted_count == 0:
+    user = await get_current_user(request)
+    doc = await db.daily_updates.find_one({"_id": ObjectId(update_id)}) if ObjectId.is_valid(update_id) else None
+    if not doc:
         raise HTTPException(status_code=404, detail="Update not found")
+    if user["role"] not in ("admin", "manager") and doc.get("created_by") != user["id"]:
+        raise HTTPException(status_code=403, detail="You can only delete your own entries")
+    await db.daily_updates.delete_one({"_id": doc["_id"]})
     return {"message": "Update deleted"}
 
 # ================== PAYMENTS ==================
@@ -7574,6 +7536,11 @@ async def startup_event():
     await db.form_tabs.create_index("slug", unique=True)
     await db.form_tabs.create_index("order")
     await db.daily_updates.create_index("project_id")
+    await db.daily_updates.create_index([("source", 1), ("source_id", 1)])
+    await db.daily_reports.create_index([("user_id", 1), ("date", 1)], unique=True)
+    await db.daily_reports.create_index("date")
+    await db.site_diaries.create_index([("project_id", 1), ("date", 1)], unique=True)
+    await db.site_diaries.create_index("date")
     await db.daily_updates.create_index("created_at")
     await db.payments.create_index("project_id")
     await db.material_usage_logs.create_index("project_id")
@@ -7593,27 +7560,31 @@ async def startup_event():
     await db.employee_scores.create_index("user_id")
     await db.employee_scores.create_index("period")
     
-    # Seed admin user
+    # Seed admin user — only when it doesn't exist yet. An existing admin's password is never overwritten on
+    # restart (previously every restart reset it to ADMIN_PASSWORD / "Admin@123", undoing any password change).
+    # Recovery: set RESET_ADMIN_PASSWORD=true together with ADMIN_PASSWORD for one restart.
     admin_email = os.environ.get("ADMIN_EMAIL", "admin@sensoper.com")
-    admin_password = os.environ.get("ADMIN_PASSWORD", "Admin@123")
-    
+    env_password = os.environ.get("ADMIN_PASSWORD")
+    admin_password = env_password or "Admin@123"
+
     existing = await db.users.find_one({"email": admin_email})
     if existing is None:
-        hashed = hash_password(admin_password)
         await db.users.insert_one({
             "email": admin_email,
-            "password_hash": hashed,
+            "password_hash": hash_password(admin_password),
             "name": "System Admin",
             "role": "admin",
+            # The built-in default password is public — make the first sign-in change it.
+            "must_reset_password": env_password is None,
             "created_at": datetime.now(timezone.utc).isoformat()
         })
         logger.info(f"Admin user created: {admin_email}")
-    elif not verify_password(admin_password, existing["password_hash"]):
+    elif env_password and os.environ.get("RESET_ADMIN_PASSWORD", "").lower() in ("1", "true", "yes"):
         await db.users.update_one(
             {"email": admin_email},
-            {"$set": {"password_hash": hash_password(admin_password)}}
+            {"$set": {"password_hash": hash_password(env_password), "password_changed_at": datetime.now(timezone.utc).isoformat()}}
         )
-        logger.info(f"Admin password updated: {admin_email}")
+        logger.warning(f"Admin password reset from ADMIN_PASSWORD (RESET_ADMIN_PASSWORD set): {admin_email}")
     
     # Update existing company profiles with new logo
     await db.company_profiles.update_many(
@@ -7738,27 +7709,6 @@ async def startup_event():
             logger.info(f"Ecommerce v2 migration applied: {_mig}")
     except Exception as e:
         logger.warning(f"Ecommerce v2 migration failed (non-critical): {e}")
-    
-    # Write test credentials
-    try:
-        os.makedirs("/app/memory", exist_ok=True)
-        with open("/app/memory/test_credentials.md", "w") as f:
-            f.write(f"""# Test Credentials
-
-## Admin Account
-- Email: {admin_email}
-- Password: {admin_password}
-- Role: admin
-
-## Auth Endpoints
-- POST /api/auth/login
-- POST /api/auth/register
-- POST /api/auth/logout
-- GET /api/auth/me
-- POST /api/auth/refresh
-""")
-    except Exception as e:
-        logger.warning(f"Could not write test credentials: {e}")
 
 @app.on_event("shutdown")
 async def shutdown_db_client():
@@ -8459,9 +8409,49 @@ api_router.include_router(_create_inbox_router(db=db, get_current_user=get_curre
 
 app.include_router(api_router)
 
+
+# Auth cookies get the Secure flag whenever the request came in over HTTPS (directly, or via nginx's
+# X-Forwarded-Proto), so they are never sent over plain HTTP. COOKIE_SECURE=true forces it, =false disables it.
+_COOKIE_SECURE_MODE = os.environ.get("COOKIE_SECURE", "auto").strip().lower()
+
+
+def _request_is_https(scope) -> bool:
+    if scope.get("scheme") == "https":
+        return True
+    for k, v in scope.get("headers") or []:
+        if k == b"x-forwarded-proto":
+            return v.decode("latin-1").split(",")[0].strip().lower() == "https"
+    return False
+
+
+class SecureCookieMiddleware:
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http" or _COOKIE_SECURE_MODE in ("false", "0", "no") or (
+                _COOKIE_SECURE_MODE == "auto" and not _request_is_https(scope)):
+            return await self.app(scope, receive, send)
+
+        async def send_secure(message):
+            if message["type"] == "http.response.start":
+                message["headers"] = [
+                    (k, v + b"; Secure") if k.lower() == b"set-cookie" and b"secure" not in v.lower() else (k, v)
+                    for k, v in message.get("headers", [])
+                ]
+            await send(message)
+
+        return await self.app(scope, receive, send_secure)
+
+
+app.add_middleware(SecureCookieMiddleware)
+
 # CORS — origins come from CORS_ORIGINS (comma-separated). "*" is expressed as an origin regex so the
 # exact requesting origin is echoed back, which is what cookie-based (credentialed) auth requires.
 _cors_origins = [o.strip() for o in os.environ.get("CORS_ORIGINS", "*").split(",") if o.strip()]
+if "*" in _cors_origins:
+    logger.warning("CORS_ORIGINS is '*' — any website can make credentialed requests to this API. "
+                   "Set CORS_ORIGINS=https://quote.sensoper.in in backend/.env for production.")
 _cors_kwargs = {"allow_origin_regex": ".*"} if "*" in _cors_origins else {"allow_origins": _cors_origins}
 app.add_middleware(
     CORSMiddleware,

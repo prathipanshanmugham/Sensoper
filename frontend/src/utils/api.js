@@ -100,6 +100,27 @@ export const pricelistAPI = {
 };
 
 // Daily Updates API
+// Daily report (one per person per day) and site diary (one per project per day)
+export const dailyReportsAPI = {
+  options: () => api.get('/daily-reports/options'),
+  projects: () => api.get('/daily-reports/projects'),
+  mine: (date) => api.get('/daily-reports/me', { params: { date } }),
+  saveMine: (date, data) => api.put('/daily-reports/me', data, { params: { date } }),
+  list: (params = {}) => api.get('/daily-reports', { params }),
+  team: (date) => api.get('/daily-reports/team', { params: { date } }),
+  get: (id) => api.get(`/daily-reports/${id}`),
+  review: (id, comment = '') => api.put(`/daily-reports/${id}/review`, { comment }),
+  remove: (id) => api.delete(`/daily-reports/${id}`),
+};
+
+export const siteDiaryAPI = {
+  list: (params = {}) => api.get('/site-diaries', { params }),
+  get: (projectId, date) => api.get(`/site-diaries/${projectId}/${date}`),
+  save: (projectId, date, data) => api.put(`/site-diaries/${projectId}/${date}`, data),
+  book: (projectId, params = {}) => api.get(`/site-diaries/project/${projectId}`, { params }),
+  remove: (id) => api.delete(`/site-diaries/${id}`),
+};
+
 export const dailyUpdatesAPI = {
   create: (data) => api.post('/daily-updates', data),
   list: (params = {}) => api.get('/daily-updates', { params }),
@@ -183,16 +204,6 @@ export const vaultAPI = {
   setConfig: (rotation_days) => api.put('/vault/config', { rotation_days })
 };
 
-// Iter 54 — Sensobrain (chat itself streams via fetch in the page)
-export const sensobrainAPI = {
-  status: () => api.get('/sensobrain/status'),
-  settings: () => api.get('/sensobrain/settings'),
-  saveSettings: (data) => api.put('/sensobrain/settings', data),
-  conversations: () => api.get('/sensobrain/conversations'),
-  conversation: (id) => api.get(`/sensobrain/conversations/${id}`),
-  adminConversations: (params = {}) => api.get('/sensobrain/admin/conversations', { params }),
-  usage: () => api.get('/sensobrain/admin/usage')
-};
 
 // Purchase Orders
 export const purchaseOrdersAPI = {
@@ -282,9 +293,6 @@ export const auditsAPI = {
 };
 
 // AI API
-export const aiAPI = {
-  getRecommendations: (data) => api.post('/ai/recommendations', data)
-};
 
 // Terms & Conditions API
 export const termsAPI = {
@@ -420,6 +428,11 @@ export const uploadAPI = {
     const formData = new FormData();
     formData.append('file', file);
     return api.post('/upload/media', formData, { headers: { 'Content-Type': undefined }, timeout: 120000 });
+  },
+  uploadSiteImage: (file) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return api.post('/upload/site-image', formData, { headers: { 'Content-Type': undefined }, timeout: 120000 });
   },
   getFileUrl: (path) => `${API_URL}/api/files/${path}`
 };

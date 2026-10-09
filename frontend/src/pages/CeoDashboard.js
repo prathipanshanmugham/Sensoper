@@ -42,7 +42,7 @@ function KpiCard({ title, value, icon: Icon, color = 'emerald', subtitle, onClic
   );
 }
 
-export default function CeoDashboard() {
+export default function CeoDashboard({ embedded = false }) {
   const navigate = useNavigate();
   const locScope = useLocationScope('ceo_location_scope');
   const [data, setData] = useState(null);
@@ -92,8 +92,8 @@ export default function CeoDashboard() {
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
-  if (loading) return <div className="min-h-screen bg-slate-50 flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-emerald-600" /></div>;
-  if (!data) return <div className="min-h-screen bg-slate-50 flex items-center justify-center"><p className="text-slate-500">Failed to load dashboard</p></div>;
+  if (loading) return <div className={`${embedded ? 'py-24' : 'min-h-screen'} bg-slate-50 flex items-center justify-center`}><Loader2 className="h-8 w-8 animate-spin text-emerald-600" /></div>;
+  if (!data) return <div className={`${embedded ? 'py-24' : 'min-h-screen'} bg-slate-50 flex flex-col items-center justify-center gap-3`}><p className="text-slate-500">Couldn't load the business numbers.</p><Button variant="outline" size="sm" onClick={fetchData}>Try again</Button></div>;
 
   const { kpis, status_distribution, revenue_trend, sales_funnel, top_staff, accounts_summary, readings_summary } = data;
   const cash = accounts_summary?.cash_on_hand;
@@ -110,18 +110,19 @@ export default function CeoDashboard() {
   ];
 
   return (
-    <div className="min-h-screen bg-slate-50 py-6 px-4">
+    <div className={embedded ? '' : 'min-h-screen bg-slate-50 py-6 px-4'}>
       <div className="max-w-7xl mx-auto">
-        <div className="flex items-center gap-4 mb-6 flex-wrap">
-          <div className="flex-1">
-            <h1 className="text-2xl font-bold font-['Outfit'] text-slate-900" data-testid="ceo-title">CEO Dashboard</h1>
-            <p className="text-sm text-slate-500">High-level business overview</p>
+        <div className="flex items-center gap-2 sm:gap-3 mb-6 flex-wrap">
+          <div className={embedded ? 'w-full sm:w-auto sm:flex-1' : 'flex-1'}>
+            {embedded
+              ? <p className="text-sm text-slate-500">Revenue, profit, cash and the Company Health Score for the period you pick.</p>
+              : <><h1 className="text-2xl font-bold font-['Outfit'] text-slate-900" data-testid="ceo-title">Business health</h1>
+                <p className="text-sm text-slate-500">High-level business overview</p></>}
           </div>
           <DateRangePicker value={range} onChange={setRange} />
-          <div className="w-48"><LocationScopeSelect scope={locScope} testIdPrefix="ceo-location" /></div>
-          <Button onClick={handleExportPdf} disabled={exporting} className="gap-2 bg-slate-900 hover:bg-slate-800 text-white" data-testid="ceo-report-download-btn">{exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}Download CEO Report</Button>
-          <Button variant="outline" onClick={() => navigate('/dashboard/expansion')} className="gap-2" data-testid="goto-expansion-btn"><MapPin className="h-4 w-4" />Expansion</Button>
-          <Button variant="outline" onClick={() => navigate('/dashboard/reports')} className="gap-2" data-testid="goto-reports-btn"><BarChart3 className="h-4 w-4" />Reports</Button>
+          <div className="w-full sm:w-48"><LocationScopeSelect scope={locScope} testIdPrefix="ceo-location" /></div>
+          <Button onClick={handleExportPdf} disabled={exporting} className="gap-2 bg-slate-900 hover:bg-slate-800 text-white" data-testid="ceo-report-download-btn">{exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}Download report PDF</Button>
+          <Button variant="outline" onClick={() => navigate('/dashboard/reports')} className="gap-2" data-testid="goto-reports-btn"><BarChart3 className="h-4 w-4" />All reports</Button>
         </div>
 
         {/* Company Health Score — hero */}
@@ -132,8 +133,8 @@ export default function CeoDashboard() {
               sparkline={sparkline}
               onSnapshot={handleSnapshot}
               onPillarClick={(key) => {
-                const map = { profitability: '/dashboard/alerts', cash_collections: '/dashboard/accounts',
-                              operations: '/dashboard/inventory', sales_growth: '/dashboard/reports?type=sales' };
+                const map = { profitability: '/dashboard/alerts', cash_collections: '/dashboard/credits',
+                              operations: '/dashboard/inventory', sales_growth: '/dashboard/reports?type=sales_revenue' };
                 if (map[key]) navigate(map[key]);
               }}
             />
@@ -142,13 +143,13 @@ export default function CeoDashboard() {
 
         {/* KPI Grid — symmetric 4×2 */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6" data-testid="kpi-grid">
-          <KpiCard title="Total Revenue" value={`₹${(kpis.total_revenue || 0).toLocaleString('en-IN')}`} icon={IndianRupee} color="emerald" subtitle="Approved + Completed" onClick={() => navigate('/dashboard/reports?type=sales')} />
-          <KpiCard title="Total Profit" value={`₹${(kpis.total_profit || 0).toLocaleString('en-IN')}`} icon={TrendingUp} color="blue" subtitle="Internal margins" onClick={() => navigate('/dashboard/reports?type=profit')} />
+          <KpiCard title="Total Revenue" value={`₹${(kpis.total_revenue || 0).toLocaleString('en-IN')}`} icon={IndianRupee} color="emerald" subtitle="Approved + Completed" onClick={() => navigate('/dashboard/reports?type=sales_revenue')} />
+          <KpiCard title="Total Profit" value={`₹${(kpis.total_profit || 0).toLocaleString('en-IN')}`} icon={TrendingUp} color="blue" subtitle="Internal margins" onClick={() => navigate('/dashboard/reports?type=profit_leakage')} />
           <KpiCard title="Conversion Rate" value={`${kpis.conversion_rate}%`} icon={BarChart3} color="violet" subtitle={`${kpis.wins || 0} won of ${kpis.total_projects} leads`} />
           <KpiCard title="Active Projects" value={kpis.active_projects} icon={Clock} color="amber" onClick={() => navigate('/dashboard/projects')} />
-          <KpiCard title="Completed" value={kpis.completed_projects} icon={CheckCircle2} color="emerald" onClick={() => navigate('/dashboard/reports?type=execution')} />
+          <KpiCard title="Completed" value={kpis.completed_projects} icon={CheckCircle2} color="emerald" onClick={() => navigate('/dashboard/reports?type=project_execution')} />
           <KpiCard title="Pending Approvals" value={kpis.pending_approvals} icon={ClipboardCheck} color="red" onClick={() => navigate('/dashboard/approvals')} />
-          <KpiCard title="Inventory Value" value={`₹${(kpis.inventory_value || 0).toLocaleString('en-IN')}`} icon={Package} color="slate" onClick={() => navigate('/dashboard/reports?type=inventory')} />
+          <KpiCard title="Inventory Value" value={`₹${(kpis.inventory_value || 0).toLocaleString('en-IN')}`} icon={Package} color="slate" onClick={() => navigate('/dashboard/reports?type=inventory_material')} />
           <KpiCard title="Low Stock Alerts" value={kpis.low_stock_alerts} icon={AlertTriangle} color="amber" onClick={() => navigate('/dashboard/inventory')} />
         </div>
 

@@ -235,10 +235,19 @@ Verified false positives (no change): calculators circular import (base.py impor
 Deferred (large refactors, out of scope for a review pass): splitting amc/assets `create_router`, hybrid/offgrid `compute`, ProjectDetails/CompanyProfile/AdvancedConfigSection/DashboardLayout components.
 
 ## Credentials
-See `/app/memory/test_credentials.md`. Admin: admin@sensoper.com / Admin@123
+Not stored in the repo (it is public). Admin login is set by ADMIN_EMAIL / ADMIN_PASSWORD in backend/.env on first boot; see backend/.env.example.
 
 ## Backlog (post Iter 49)
 - P1: Extend object-storage attachments (done for Assets in Iter 52) to Partner documents, Support ticket attachments, Project site photos, Ecommerce listing images; chunked upload for >25 MB.
 - P1: Bulk "set GST% / margin%" for the 7 pricelist items + 27 panels still missing wattage (data entry by user; UI already flags them).
 - P2: Amazon/Flipkart order auto-sync; legacy pytest cleanup (~80 stale tests); server.py extraction; Register page should say "ask an admin" now that self-signup is closed.
 - Iter 54 follow-ups: Sensobrain voice (Whisper STT + TTS — Tamil TTS quality must be flagged honestly); Vault master-key rotation utility; Sensobrain streaming through nginx in deployment needs `X-Accel-Buffering: no` honoured (already set on the response).
+
+## Iteration 61 — restructure (2026-10-09, done outside Emergent)
+See CHANGES.md for the full list. Highlights for the next agent:
+- Sensobrain removed entirely (module, routes, permission key, openai dependency).
+- New `backend/daily_reports.py`: `daily_reports` (per person per day) + `site_diaries` (per project per day); submitted
+  entries mirror into `daily_updates` with `source`/`source_id` so legacy reports still read them. Tests: tests/test_daily_reports.py.
+- Frontend navigation lives in `src/lib/navigation.js` (sections, staff menu, per-page Help text) — add new pages there.
+- CEO dashboard is a tab on Home (`/dashboard?tab=health`); `/dashboard/ceo` redirects.
+- Admin password is no longer reset on startup (RESET_ADMIN_PASSWORD=true opt-in for recovery).

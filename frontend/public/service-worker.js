@@ -6,7 +6,7 @@
  *  - Background-sync queue for failed POST/PUT to /api/readings & /api/accounts so field staff can work offline.
  */
 
-const VERSION = 'v1.1.0';
+const VERSION = 'v1.2.0';
 const STATIC_CACHE = `sensoper-static-${VERSION}`;
 const RUNTIME_CACHE = `sensoper-runtime-${VERSION}`;
 const OFFLINE_URL = '/offline.html';
@@ -110,7 +110,6 @@ self.addEventListener('sync', (event) => {
 self.addEventListener('fetch', (event) => {
   const req = event.request;
   const url = new URL(req.url);
-  // Skip cross-origin and non-GET except for queueable mutations
   const isApi = url.pathname.startsWith('/api/');
   const isMutation = ['POST', 'PUT', 'DELETE', 'PATCH'].includes(req.method);
 
@@ -133,6 +132,11 @@ self.addEventListener('fetch', (event) => {
     return; // browser default
   }
 
+  // Static files from other sites (fonts, CDNs…) are left to the browser.
+  // v1.2.0 fix — previously a failed third-party script got offline.html served in its
+  // place, which crashed the page with "Unexpected token '<'".
+  if (url.origin !== self.location.origin) return;
+
   // 3) Navigation (HTML) → network first, fallback to offline page
   if (req.mode === 'navigate') {
     event.respondWith(
@@ -154,7 +158,7 @@ self.addEventListener('fetch', (event) => {
           caches.open(RUNTIME_CACHE).then((c) => c.put(req, copy)).catch(() => {});
         }
         return resp;
-      }).catch(() => caches.match(req).then((hit) => hit || caches.match(OFFLINE_URL)))
+      }).catch(() => caches.match(req).then((hit) => hit || Response.error()))
     );
   }
 });
