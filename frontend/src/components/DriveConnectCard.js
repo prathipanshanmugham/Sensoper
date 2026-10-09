@@ -38,7 +38,7 @@ export function DriveConnectCard() {
   const [editSecret, setEditSecret] = useState(false);
   const load = useCallback(() => driveAPI.status().then((r) => setS(r.data)).catch(() => setS({ connected: false, error: true })), []);
   const saveSecret = async (secret) => {
-    try { await driveAPI.saveSecret(secret); toast.success('Client secret saved'); setEditSecret(false); await load(); }
+    try { await driveAPI.saveSecret(secret); toast.success(secret.startsWith('{') ? 'Google client details saved' : 'Client secret saved'); setEditSecret(false); await load(); }
     catch (e) { toast.error(formatApiErrorDetail(e.response?.data?.detail) || 'Could not save the client secret'); }
   };
   useEffect(() => { load(); }, [load]);
@@ -116,17 +116,18 @@ export function DriveConnectCard() {
       {!s.connected && (
         <div className="mt-3 space-y-3 rounded-lg bg-slate-50 p-3 text-xs text-slate-600" data-testid="drive-setup">
           {(s.missing || []).includes('GOOGLE_CLIENT_SECRET') || editSecret ? (
-            <SecretField label="Google OAuth client secret" placeholder="GOCSPX-…" onSave={saveSecret} testid="drive-secret" onCancel={editSecret ? () => setEditSecret(false) : null} />
+            <SecretField label="Google client secret — or paste the whole JSON file you downloaded" placeholder="GOCSPX-…  or  {&quot;web&quot;:{…}}" onSave={saveSecret} testid="drive-secret" onCancel={editSecret ? () => setEditSecret(false) : null} />
           ) : (
             <p className="flex flex-wrap items-center gap-x-2 gap-y-1"><KeyRound className="h-3.5 w-3.5 text-emerald-700" />
               Client secret {s.secret_source === 'settings' ? 'saved here' : 'set on the server'}.
               <button type="button" onClick={() => setEditSecret(true)} className="font-medium text-emerald-700 hover:underline" data-testid="drive-secret-change">Change</button></p>
           )}
           {(s.missing || []).includes('VAULT_MASTER_KEY') && <p className="font-medium text-amber-800">The server also needs VAULT_MASTER_KEY in its backend .env file (it encrypts the Google token). Ask whoever manages the server, then restart it.</p>}
+          {s.client_id && <p className="break-all">OAuth client: <span className="font-mono text-[11px] text-slate-800" data-testid="drive-client-id">{s.client_id}</span></p>}
           <p>In Google Cloud Console → Credentials → this OAuth client, the <strong>Authorized redirect URI</strong> must be exactly:</p>
           <code className="block break-all rounded bg-white px-2 py-1 font-mono text-[11px] text-slate-800" data-testid="drive-redirect-uri">{s.redirect_uri}</code>
           {hostMismatch && <p className="text-amber-800">This app is open on <strong>{appHost}</strong> but Google will send you back to <strong>{redirectHost}</strong>. Unless that address also opens this app, add <code className="font-mono">https://{appHost}/auth/google/callback</code> to the OAuth client and set GOOGLE_REDIRECT_URI to it.</p>}
-          <p>Also enable the <strong>Google Drive API</strong> for that Google Cloud project.</p>
+          <p>Also enable the <strong>Google Drive API</strong> for that Google Cloud project, and on the <strong>OAuth consent screen</strong> press <strong>Publish app</strong> — while it says “Testing”, Google signs the connection out every 7 days.</p>
         </div>
       )}
     </div>
@@ -168,7 +169,7 @@ export function W3wStatusRow() {
           {st.source === 'settings' && <button type="button" onClick={removeKey} className="font-medium text-slate-500 hover:text-red-600" data-testid="w3w-key-remove">Remove</button>}
         </p>
       ) : (
-        <SecretField label="What3words API key" placeholder="Paste the key from your What3words account" onSave={saveKey} testid="w3w-key" onCancel={st.configured ? () => setEdit(false) : null} />
+        <SecretField label="What3words API key" placeholder="Paste the API key" onSave={saveKey} testid="w3w-key" onCancel={st.configured ? () => setEdit(false) : null} />
       ))}
     </div>
   );

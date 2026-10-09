@@ -11,7 +11,7 @@ Check `backend/.env` on the server (see `backend/.env.example`):
 
 | Setting | Value |
 |---|---|
-| `VAULT_MASTER_KEY` | **Must be set.** It encrypts the Google token and the keys you paste in Settings. |
+| `VAULT_MASTER_KEY` | Optional now. If it's empty, the server creates `storage/.keys/vault_master.key` on first use. **Back that file up** (or set this variable): it unlocks the keys saved in Settings and the Company logins. |
 | `GOOGLE_REDIRECT_URI` | Leave unset. It defaults to `https://quote.sensoper.in/auth/google/callback`, which is already on the Google OAuth client. |
 | `W3W_API_KEY` | Optional. Easier: after deploying, paste the new key in **Settings → What3words**. The old key is in this public repo's history, so don't reuse it. |
 | `GOOGLE_CLIENT_SECRET` | Optional. Easier: paste it in **Settings → Google Drive**. |
@@ -21,7 +21,10 @@ Check `backend/.env` on the server (see `backend/.env.example`):
 In the Google Cloud project that owns the client ID:
 1. **APIs & Services → Library → Google Drive API → Enable.**
 2. **Credentials → the OAuth client → Authorized redirect URIs**: `https://quote.sensoper.in/auth/google/callback` (already added). Under **Authorized JavaScript origins**, add `https://quote.sensoper.in`.
-3. **OAuth consent screen**: add the scope `.../auth/drive.file`. If the app is in "Testing", add the Google account you'll connect as a test user. For a Workspace account, choose "Internal" so the sign-in never expires.
+3. **OAuth consent screen**:
+   - Add the scope `.../auth/drive.file`.
+   - Press **Publish app**. While it says "Testing", Google ends the connection every 7 days. `drive.file` is a non-sensitive scope, so publishing needs no Google review.
+   - Or, for a Google Workspace account, choose "Internal".
 
 ### 3. Deploy
 Merge the pull request on GitHub, then on the server:
@@ -34,7 +37,7 @@ Nothing new to install (`httpx` is already in requirements). Check that nginx al
 ### 4. Connect Google Drive and check it
 1. Sign in as admin → **Settings**:
    - What3words → paste the new API key → Save. It's checked with What3words straight away.
-   - Google Drive → paste the client secret (if you didn't put it in `.env`) → **Connect Google Drive** → pick the company Google account → Allow.
+   - Google Drive → paste the whole JSON file you downloaded from Google Cloud Console (or just the client secret) → Save → **Connect Google Drive** → pick the company Google account → Allow.
    You land on a "Connected" page. A folder **Sensoper — Site photos** appears in that Drive.
 2. In Drive, share that folder with your team once. Every project folder inside it is shared too.
 3. Smoke test on a phone: New project → Location → **Use my location** (the words fill in) → … → Site photos → add a

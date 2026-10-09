@@ -7,7 +7,9 @@ Entirely separate from this app's user accounts. Highest-sensitivity data in the
   * list/detail responses never include the password; it is only returned by the explicit /reveal action.
 """
 from __future__ import annotations
+import logging
 import os
+import pathlib
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
@@ -21,8 +23,51 @@ TWO_FA_METHODS = ["authenticator_app", "sms", "backup_codes", "none"]
 DEFAULT_ROTATION_DAYS = 90
 
 
+logger = logging.getLogger("vault")
+_master = {"key": "", "source": None}
+
+
+def key_file() -> pathlib.Path:
+    """Where an auto-generated master key lives when VAULT_MASTER_KEY isn't set: next to the uploads
+    (STORAGE_ROOT/.keys/vault_master.key, mode 600) — on the server's disk, never in MongoDB or git."""
+    custom = os.environ.get("VAULT_KEY_FILE")
+    if custom:
+        return pathlib.Path(custom)
+    return pathlib.Path(os.environ.get("STORAGE_ROOT", "/root/Sensoper/storage")) / ".keys" / "vault_master.key"
+
+
+def master_key() -> tuple:
+    """(key, source). VAULT_MASTER_KEY from the environment wins. Without it, the key file is used — and created
+    once (a fresh Fernet key) the first time it's needed, so Settings can store secrets with no server editing."""
+    env = (os.environ.get("VAULT_MASTER_KEY") or "").strip()
+    if env:
+        return env, "env"
+    if _master["key"]:
+        return _master["key"], _master["source"]
+    path = key_file()
+    try:
+        if path.exists():
+            key = path.read_text().strip()
+        else:
+            path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+            key = Fernet.generate_key().decode()
+            try:
+                fd = os.open(str(path), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+                with os.fdopen(fd, "w") as f:
+                    f.write(key + "\n")
+                logger.warning("VAULT_MASTER_KEY is not set — generated a new master key at %s. Back this file up: "
+                               "without it, secrets saved in Settings and Company logins can't be read.", path)
+            except FileExistsError:            # another worker created it first
+                key = path.read_text().strip()
+    except OSError as e:
+        logger.error("Could not read or create the vault key file %s: %s", path, e)
+        return "", None
+    _master.update(key=key, source="file")
+    return key, "file"
+
+
 def _fernet() -> Fernet:
-    key = os.environ.get("VAULT_MASTER_KEY")
+    key, _ = master_key()
     if not key:
         raise HTTPException(status_code=503, detail="Credential Vault is not configured: add VAULT_MASTER_KEY to the backend environment (.env) and restart. "
                                                     "Generate one with: python3 -c \"from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())\"")
@@ -196,8 +241,9 @@ def create_router(db, require_role, create_audit_log):
             "rotation_upcoming": sorted([i for i in items if not i["rotation_stale"] and i["days_since_rotation"] is not None and i["rotation_days"] - i["days_since_rotation"] <= 14],
                                         key=lambda i: i["rotation_days"] - i["days_since_rotation"]),
             "by_category": {c: sum(1 for i in items if i["category"] == c) for c in CATEGORIES},
-            "encryption": {"scheme": "Fernet (AES-128-CBC + HMAC-SHA256)", "key_source": "VAULT_MASTER_KEY env",
-                           "configured": bool(os.environ.get("VAULT_MASTER_KEY")),
+            "encryption": {"scheme": "Fernet (AES-128-CBC + HMAC-SHA256)",
+                           "key_source": {"env": "VAULT_MASTER_KEY env", "file": f"key file {key_file()}"}.get(master_key()[1], "not set"),
+                           "configured": bool(master_key()[0]),
                            "limitations": "No envelope encryption, no automatic key rotation, no HSM — rotate VAULT_MASTER_KEY manually by re-encrypting all records."},
         }
 
