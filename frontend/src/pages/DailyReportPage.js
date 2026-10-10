@@ -2,14 +2,16 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
 import { toast } from 'sonner';
 import { useAuth } from '../contexts/AuthContext';
-import { dailyReportsAPI, companyAPI } from '../utils/api';
+import { dailyReportsAPI, companyAPI, usersAPI } from '../utils/api';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../components/ui/tabs';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '../components/ui/sheet';
 import { Button } from '../components/ui/button';
 import { DateNav, Section, Stepper, Chip, Field, ProjectPicker, inputCls, textareaCls } from '../components/FormBits';
 import { localDate, shiftDate, dayLabel, fullDate, inr, timeOf } from '../lib/format';
 import { generateDailyReportPDF } from '../utils/dailyReportPDF';
-import { Plus, Trash2, Loader2, Download, Send, Save, CheckCircle2, Clock, CircleDashed, Eye, MessageSquare, CalendarRange, Lightbulb } from 'lucide-react';
+import { Plus, Trash2, Loader2, Download, Send, Save, CheckCircle2, Clock, CircleDashed, Eye, MessageSquare, CalendarRange, Lightbulb, UserMinus } from 'lucide-react';
+import { Switch } from '../components/ui/switch';
+import Can from '../components/Can';
 
 const WORK_CHIPS = ['Site survey', 'Material delivered', 'Structure erected', 'Panels mounted', 'DC wiring done', 'Inverter installed', 'AC wiring & earthing', 'Testing & commissioning', 'Net-meter applied', 'Handover done'];
 const PCT = [10, 25, 50, 75, 90, 100];
@@ -118,7 +120,7 @@ function ReportSheet({ open, onOpenChange, reportId, onReviewed, canReview }) {
                   <Button onClick={review} disabled={busy} className="w-full gap-2 bg-emerald-600 text-white hover:bg-emerald-700" data-testid="review-btn">{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Eye className="h-4 w-4" />}Mark as reviewed</Button>
                 </div>
               )}
-              <Button variant="outline" onClick={pdf} className="w-full gap-2" data-testid="sheet-pdf-btn"><Download className="h-4 w-4" />Download PDF</Button>
+              <Can module="module_daily_updates" action="export"><Button variant="outline" onClick={pdf} className="w-full gap-2" data-testid="sheet-pdf-btn"><Download className="h-4 w-4" />Download PDF</Button></Can>
             </div>
           </>
         )}
@@ -306,7 +308,7 @@ function MyReport({ date, projects }) {
         <div className="flex gap-2">
           <Button variant="outline" onClick={() => save(false)} disabled={saving || (!dirty && status !== 'not_started')} className="h-12 flex-1 gap-2" data-testid="dr-save-draft">{saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}Save draft</Button>
           <Button onClick={() => save(true)} disabled={saving || (status === 'submitted' && !dirty)} className="h-12 flex-[1.4] gap-2 bg-emerald-600 text-white hover:bg-emerald-700" data-testid="dr-submit">{saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}{status === 'submitted' ? (dirty ? 'Update report' : 'Submitted') : 'Submit report'}</Button>
-          {meta?.exists && <Button variant="outline" onClick={pdf} className="h-12 w-12 shrink-0 p-0" aria-label="Download PDF" title="Download PDF" data-testid="dr-pdf"><Download className="h-4 w-4" /></Button>}
+          {meta?.exists && <Can module="module_daily_updates" action="export"><Button variant="outline" onClick={pdf} className="h-12 w-12 shrink-0 p-0" aria-label="Download PDF" title="Download PDF" data-testid="dr-pdf"><Download className="h-4 w-4" /></Button></Can>}
         </div>
       </div>
     </div>
@@ -324,13 +326,55 @@ function RangeDownload({ onDownload, label = 'Download a date range' }) {
       <div className="flex flex-wrap items-end gap-2">
         <Field label="From"><input type="date" value={from} max={to} onChange={(e) => setFrom(e.target.value)} className={inputCls} id="range-from" /></Field>
         <Field label="To"><input type="date" value={to} min={from} max={localDate()} onChange={(e) => setTo(e.target.value)} className={inputCls} id="range-to" /></Field>
-        <Button variant="outline" disabled={busy} onClick={async () => { setBusy(true); try { await onDownload(from, to); } finally { setBusy(false); } }} className="h-11 gap-2" data-testid="range-pdf-btn">{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}PDF</Button>
+        <Can module="module_daily_updates" action="export"><Button variant="outline" disabled={busy} onClick={async () => { setBusy(true); try { await onDownload(from, to); } finally { setBusy(false); } }} className="h-11 gap-2" data-testid="range-pdf-btn">{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}PDF</Button></Can>
       </div>
     </div>
   );
 }
 
+function PersonRow({ r, onOpen }) {
+  return (
+    <button type="button" disabled={!r.report_id} onClick={() => onOpen(r.report_id)} className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors enabled:hover:bg-slate-50 disabled:cursor-default" data-testid={`team-row-${r.user_id}`}>
+      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-slate-100 text-sm font-semibold text-slate-600">{(r.name || '?').charAt(0).toUpperCase()}</span>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-sm font-medium text-slate-900">{r.name} {r.reviewed && <span className="ml-1 text-xs font-normal text-emerald-700">· reviewed</span>}</span>
+        <span className="block truncate text-xs text-slate-500">{r.totals ? `${r.totals.projects} site${r.totals.projects === 1 ? '' : 's'} · ${r.totals.leads} leads · ${inr(r.totals.payments)} collected` : <span className="capitalize">{r.role}</span>}{r.submitted_at ? ` · ${timeOf(r.submitted_at)}` : ''}</span>
+      </span>
+      <ReportStatus status={r.status} />
+    </button>
+  );
+}
+
+/** Admins choose who must send a daily report. People switched off don't count as "not started". */
+function WhoReports({ rows, onChanged }) {
+  const [saving, setSaving] = useState(null);
+  const toggle = async (r) => {
+    setSaving(r.user_id);
+    try {
+      await usersAPI.update(r.user_id, { daily_report_required: !r.required });
+      toast.success(r.required ? `${r.name} no longer needs to send a daily report` : `${r.name} now sends a daily report`);
+      onChanged();
+    } catch (e) { toast.error(e.response?.data?.detail || 'Could not change this'); } finally { setSaving(null); }
+  };
+  return (
+    <details className="rounded-xl border border-slate-200 bg-white" data-testid="who-reports">
+      <summary className="cursor-pointer select-none px-4 py-3 text-sm font-semibold text-slate-900">Who must send a daily report <span className="font-normal text-slate-500">· {rows.filter((r) => r.required).length} of {rows.length}</span></summary>
+      <ul className="divide-y divide-slate-100 border-t border-slate-100">
+        {rows.map((r) => (
+          <li key={r.user_id} className="flex items-center gap-3 px-4 py-2.5">
+            <span className="min-w-0 flex-1"><span className="block truncate text-sm text-slate-800">{r.name}</span><span className="block text-[11px] capitalize text-slate-500">{r.role}</span></span>
+            {saving === r.user_id && <Loader2 className="h-4 w-4 animate-spin text-slate-400" />}
+            <Switch checked={!!r.required} onCheckedChange={() => toggle(r)} disabled={saving === r.user_id} aria-label={`${r.name} must send a daily report`} data-testid={`must-report-${r.user_id}`} />
+          </li>
+        ))}
+      </ul>
+      <p className="border-t border-slate-100 px-4 py-2 text-[11px] text-slate-500">Also in Settings → Users. People switched off can still send a report if they want.</p>
+    </details>
+  );
+}
+
 function TeamView({ date }) {
+  const { isAdmin } = useAuth();
   const [data, setData] = useState(null);
   const [openId, setOpenId] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -341,7 +385,7 @@ function TeamView({ date }) {
     setBusy(true);
     try {
       const r = (await dailyReportsAPI.list({ date_from: date, date_to: date })).data;
-      const missing = data.rows.filter((x) => x.status === 'missing').map((x) => x.name);
+      const missing = data.rows.filter((x) => x.status === 'missing' && x.required !== false).map((x) => x.name);
       await generateDailyReportPDF({ reports: r.reports, projectInfo: r.project_info, companyProfile: await company(), title: `Team daily report — ${fullDate(date)}`, filename: `Team-daily-report-${date}.pdf`, missing });
     } catch (e) { console.error(e); toast.error('Could not create the PDF'); } finally { setBusy(false); }
   };
@@ -352,6 +396,8 @@ function TeamView({ date }) {
 
   if (!data) return <div className="flex justify-center py-20"><Loader2 className="h-6 w-6 animate-spin text-emerald-600" /></div>;
   const { counts, rows } = data;
+  const expected = rows.filter((r) => r.required !== false || r.status !== 'missing');
+  const optional = rows.filter((r) => r.required === false && r.status === 'missing');
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-3 gap-2">
@@ -360,20 +406,17 @@ function TeamView({ date }) {
         ))}
       </div>
       <ul className="overflow-hidden rounded-xl border border-slate-200 bg-white divide-y divide-slate-100" data-testid="team-list">
-        {rows.map((r) => (
-          <li key={r.user_id}>
-            <button type="button" disabled={!r.report_id} onClick={() => setOpenId(r.report_id)} className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors enabled:hover:bg-slate-50 disabled:cursor-default" data-testid={`team-row-${r.user_id}`}>
-              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-slate-100 text-sm font-semibold text-slate-600">{(r.name || '?').charAt(0).toUpperCase()}</span>
-              <span className="min-w-0 flex-1">
-                <span className="block truncate text-sm font-medium text-slate-900">{r.name} {r.reviewed && <span className="ml-1 text-xs font-normal text-emerald-700">· reviewed</span>}</span>
-                <span className="block truncate text-xs text-slate-500">{r.totals ? `${r.totals.projects} site${r.totals.projects === 1 ? '' : 's'} · ${r.totals.leads} leads · ${inr(r.totals.payments)} collected` : <span className="capitalize">{r.role}</span>}{r.submitted_at ? ` · ${timeOf(r.submitted_at)}` : ''}</span>
-              </span>
-              <ReportStatus status={r.status} />
-            </button>
-          </li>
-        ))}
+        {expected.map((r) => <li key={r.user_id}><PersonRow r={r} onOpen={setOpenId} /></li>)}
+        {expected.length === 0 && <li className="px-4 py-5 text-center text-sm text-slate-400">Nobody needs to send a report today.</li>}
       </ul>
-      <Button onClick={dayPdf} disabled={busy} className="w-full gap-2 bg-slate-900 text-white hover:bg-slate-800 sm:w-auto" data-testid="team-pdf-btn">{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}Download {dayLabel(date).toLowerCase() === 'today' ? "today's" : 'this day’s'} team PDF</Button>
+      {optional.length > 0 && (
+        <div data-testid="team-optional">
+          <p className="mb-1 flex items-center gap-1.5 px-1 text-[11px] font-semibold uppercase tracking-wider text-slate-500"><UserMinus className="h-3.5 w-3.5" />Don’t need to report · {optional.length}</p>
+          <p className="px-1 text-xs text-slate-500">{optional.map((r) => r.name).join(', ')}</p>
+        </div>
+      )}
+      {isAdmin && <WhoReports rows={rows} onChanged={load} />}
+      <Can module="module_daily_updates" action="export"><Button onClick={dayPdf} disabled={busy} className="w-full gap-2 bg-slate-900 text-white hover:bg-slate-800 sm:w-auto" data-testid="team-pdf-btn">{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}Download {dayLabel(date).toLowerCase() === 'today' ? "today's" : 'this day’s'} team PDF</Button></Can>
       <RangeDownload onDownload={rangePdf} label="Team PDF for a date range" />
       <ReportSheet open={!!openId} onOpenChange={(o) => !o && setOpenId(null)} reportId={openId} canReview onReviewed={load} />
     </div>
@@ -426,8 +469,8 @@ function HistoryView({ isMgr }) {
 
 // ───────────────────────────── page ─────────────────────────────
 export default function DailyReportPage() {
-  const { isAdmin, isManager } = useAuth();
-  const isMgr = isAdmin || isManager;
+  const { can } = useAuth();
+  const isMgr = can('can_review_daily_reports');
   const [params, setParams] = useSearchParams();
   const [projects, setProjects] = useState([]);
   const today = localDate();

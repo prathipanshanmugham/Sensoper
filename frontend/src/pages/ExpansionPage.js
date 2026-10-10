@@ -25,6 +25,7 @@ import autoTable from 'jspdf-autotable';
 import * as XLSX from 'xlsx';
 import { saveAs } from 'file-saver';
 import { LocationReviewPanel } from '../components/LocationReviewPanel';
+import Can from '../components/Can';
 
 const BAND_STYLES = {
   strong:   { color: 'text-emerald-700', bg: 'bg-emerald-100 border-emerald-200', label: 'Strong Case' },
@@ -446,8 +447,8 @@ export default function ExpansionPage() {
               <CardHeader className="pb-3 flex-row items-center justify-between">
                 <CardTitle className="text-base font-['Outfit']">Ranked Opportunities</CardTitle>
                 <div className="flex gap-2">
-                  <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={exportDistrictsPDF} disabled={!filteredDistricts.length} data-testid="expansion-export-pdf-btn"><FileText className="h-3 w-3" />PDF</Button>
-                  <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={exportDistrictsExcel} disabled={!filteredDistricts.length} data-testid="expansion-export-excel-btn"><FileSpreadsheet className="h-3 w-3" />Excel</Button>
+                  <Can module="module_expansion" action="export"><Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={exportDistrictsPDF} disabled={!filteredDistricts.length} data-testid="expansion-export-pdf-btn"><FileText className="h-3 w-3" />PDF</Button></Can>
+                  <Can module="module_expansion" action="export"><Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={exportDistrictsExcel} disabled={!filteredDistricts.length} data-testid="expansion-export-excel-btn"><FileSpreadsheet className="h-3 w-3" />Excel</Button></Can>
                 </div>
               </CardHeader>
               <CardContent className="p-0 overflow-x-auto">
@@ -600,7 +601,7 @@ export default function ExpansionPage() {
               <Input placeholder="Latitude" type="number" step="0.001" value={newBranch.latitude} onChange={e => setNewBranch(b => ({ ...b, latitude: e.target.value }))} className="h-9 text-xs" data-testid="new-branch-lat" />
               <Input placeholder="Longitude" type="number" step="0.001" value={newBranch.longitude} onChange={e => setNewBranch(b => ({ ...b, longitude: e.target.value }))} className="h-9 text-xs" data-testid="new-branch-lon" />
             </div>
-            <Button onClick={addBranch} size="sm" className="w-full bg-emerald-600 hover:bg-emerald-700 text-white" data-testid="add-branch-btn"><Plus className="h-3.5 w-3.5 mr-1" />Add Branch</Button>
+            <Can module="module_expansion" action="create"><Button onClick={addBranch} size="sm" className="w-full bg-emerald-600 hover:bg-emerald-700 text-white" data-testid="add-branch-btn"><Plus className="h-3.5 w-3.5 mr-1" />Add Branch</Button></Can>
           </div>
         </DialogContent>
       </Dialog>

@@ -44,6 +44,8 @@ if not JWT_SECRET or not JWT_SECRET.strip():
     )
 JWT_ALGORITHM = "HS256"
 
+import access_policy  # noqa: E402  — who may do what (Permissions page ↔ menu ↔ API)
+
 # Object Storage Configuration — local filesystem (Emergent's hosted object store is not
 # provisioned for this deployment; store files on local disk instead).
 import pathlib
@@ -95,6 +97,7 @@ class UserCreate(BaseModel):
     name: str
     role: Literal["admin", "manager", "staff"] = "staff"
     phone: Optional[str] = None
+    daily_report_required: Optional[bool] = None
 
 class UserLogin(BaseModel):
     email: EmailStr
@@ -574,9 +577,9 @@ async def get_current_user(request: Request) -> dict:
         if payload.get("type") != "access":
             raise HTTPException(status_code=401, detail="Invalid token type")
         user = await db.users.find_one({"_id": ObjectId(payload["sub"])})
-        if not user:
+        if not user or user.get("active") is False:
             raise HTTPException(status_code=401, detail="User not found")
-        return {
+        out = {
             "id": str(user["_id"]),
             "email": user["email"],
             "name": user["name"],
@@ -586,17 +589,50 @@ async def get_current_user(request: Request) -> dict:
             "location_ids": user.get("location_ids", []),
             "default_location_id": user.get("default_location_id"),
             "must_reset_password": bool(user.get("must_reset_password")),
-            "totp_enabled": bool(user.get("totp_enabled"))
+            "totp_enabled": bool(user.get("totp_enabled")),
+            "daily_report_required": daily_report_required(user),
         }
     except jwt.ExpiredSignatureError:
         raise HTTPException(status_code=401, detail="Token expired")
     except jwt.InvalidTokenError:
         raise HTTPException(status_code=401, detail="Invalid token")
+    await _policy_gate(request, out)
+    return out
+
+
+def daily_report_required(user: dict) -> bool:
+    """Admins choose per person who must send a daily report; by default everyone except admins."""
+    v = user.get("daily_report_required")
+    return bool(v) if v is not None else user.get("role") != "admin"
+
+
+_PERM_CACHE = access_policy.PermCache()
+
+
+async def _policy_gate(request: Request, user: dict) -> None:
+    """Apply the Permissions page to this request: refuse what the role's matrix switches off, and remember
+    when it switches on something the route's own role list wouldn't allow (see require_role / role_ok)."""
+    if user.get("role") == "admin":
+        request.state.policy_grant = True
+        return
+    route = request.scope.get("route")
+    path = getattr(route, "path", None) or request.url.path
+    perms = await get_permissions(user["role"])
+    ok, reason, grantable = access_policy.decide(perms, request.method, path)
+    if ok is False:
+        raise HTTPException(status_code=403, detail=reason)
+    request.state.policy_grant = bool(ok and grantable)
+
+
+def role_ok(request: Request, user: dict, *roles) -> bool:
+    """A role check that also honours the Permissions page (an admin can give a page or option to another role)."""
+    return user["role"] in roles or bool(getattr(request.state, "policy_grant", False))
+
 
 def require_role(*roles):
     async def role_checker(request: Request):
         user = await get_current_user(request)
-        if user["role"] not in roles:
+        if not role_ok(request, user, *roles):
             raise HTTPException(status_code=403, detail="Insufficient permissions")
         return user
     return role_checker
@@ -630,127 +666,20 @@ async def create_audit_log(user_id: str, user_name: str, action_type: str, entit
 
 # ================== DYNAMIC PERMISSIONS ==================
 
-DEFAULT_PERMISSIONS = {
-    "admin": {
-        "can_create_project": True, "can_edit_project": True, "can_delete_project": True,
-        "can_request_delete": True, "can_approve_deletion": True,
-        "can_approve_quotation": True, "can_set_margin": True, "can_approve_margin": True,
-        "can_edit_inventory": True, "can_approve_inventory": True,
-        "can_manage_users": True, "can_change_user_access": True,
-        "can_view_reports": True, "can_view_audit_logs": True,
-        "can_manage_company": True, "can_manage_terms": True,
-        # Module-level (added Feb 2026 for Accounts, Readings, refreshed UI)
-        "module_dashboard": {"view": True, "create": True, "edit": True, "delete": True, "export": True},
-        "module_ceo_dashboard": {"view": True, "create": True, "edit": True, "delete": True, "export": True},
-        "module_expansion": {"view": True, "create": True, "edit": True, "delete": True, "export": True},
-        "module_direct_sales": {"view": True, "create": True, "edit": True, "delete": True, "export": True},
-        "module_accounts": {"view": True, "create": True, "edit": True, "delete": True, "export": True},
-        "module_readings": {"view": True, "create": True, "edit": True, "delete": True, "export": True},
-        "module_inventory": {"view": True, "create": True, "edit": True, "delete": True, "export": True},
-        "module_purchase_inbound": {"view": True, "create": True, "edit": True, "delete": True, "export": True},
-        "module_delivery_outbound": {"view": True, "create": True, "edit": True, "delete": True, "export": True},
-        "module_credits": {"view": True, "create": True, "edit": True, "delete": True, "export": True},
-        "module_returns": {"view": True, "create": True, "edit": True, "delete": True, "export": True},
-        "module_audits": {"view": True, "create": True, "edit": True, "delete": True, "export": True},
-        "module_reports": {"view": True, "create": True, "edit": True, "delete": True, "export": True},
-        "module_alerts": {"view": True, "create": True, "edit": True, "delete": True, "export": True},
-        "module_approvals": {"view": True, "create": True, "edit": True, "delete": True, "export": True},
-        "module_users": {"view": True, "create": True, "edit": True, "delete": True, "export": True},
-        "module_permissions": {"view": True, "create": True, "edit": True, "delete": True, "export": True},
-        "module_settings": {"view": True, "create": True, "edit": True, "delete": True, "export": True},
-        "module_assets": {"view": True, "create": True, "edit": True, "delete": True, "export": True},
-        "module_amc": {"view": True, "create": True, "edit": True, "delete": True, "export": True},
-        "module_locations": {"view": True, "create": True, "edit": True, "delete": True, "export": True},
-        "module_partners": {"view": True, "create": True, "edit": True, "delete": True, "export": True},
-        "module_ecommerce": {"view": True, "create": True, "edit": True, "delete": True, "export": True},
-        "module_teams": {"view": True, "create": True, "edit": True, "delete": True, "export": True},
-        "module_projects": {"view": True, "create": True, "edit": True, "delete": True, "export": True},
-        "module_daily_updates": {"view": True, "create": True, "edit": True, "delete": True, "export": True},
-        "module_vendors": {"view": True, "create": True, "edit": True, "delete": True, "export": True},
-        "module_vault": {"view": True, "create": True, "edit": True, "delete": True, "export": False},
-    },
-    "manager": {
-        "can_create_project": True, "can_edit_project": True, "can_delete_project": False,
-        "can_request_delete": True, "can_approve_deletion": True,
-        "can_approve_quotation": True, "can_set_margin": True, "can_approve_margin": True,
-        "can_edit_inventory": True, "can_approve_inventory": True,
-        "can_manage_users": False, "can_change_user_access": False,
-        "can_view_reports": True, "can_view_audit_logs": True,
-        "can_manage_company": False, "can_manage_terms": True,
-        "module_dashboard": {"view": True, "create": True, "edit": True, "delete": False, "export": True},
-        "module_ceo_dashboard": {"view": True, "create": False, "edit": False, "delete": False, "export": True},
-        "module_expansion": {"view": True, "create": False, "edit": False, "delete": False, "export": True},
-        "module_direct_sales": {"view": True, "create": True, "edit": True, "delete": False, "export": True},
-        "module_accounts": {"view": True, "create": True, "edit": True, "delete": False, "export": True},
-        "module_readings": {"view": True, "create": True, "edit": True, "delete": True, "export": True},
-        "module_inventory": {"view": True, "create": True, "edit": True, "delete": False, "export": True},
-        "module_purchase_inbound": {"view": True, "create": True, "edit": True, "delete": False, "export": True},
-        "module_delivery_outbound": {"view": True, "create": True, "edit": True, "delete": False, "export": True},
-        "module_credits": {"view": True, "create": True, "edit": True, "delete": False, "export": True},
-        "module_returns": {"view": True, "create": True, "edit": True, "delete": False, "export": True},
-        "module_audits": {"view": True, "create": True, "edit": True, "delete": False, "export": True},
-        "module_reports": {"view": True, "create": False, "edit": False, "delete": False, "export": True},
-        "module_alerts": {"view": True, "create": False, "edit": True, "delete": False, "export": True},
-        "module_approvals": {"view": True, "create": False, "edit": True, "delete": False, "export": False},
-        "module_users": {"view": False, "create": False, "edit": False, "delete": False, "export": False},
-        "module_permissions": {"view": False, "create": False, "edit": False, "delete": False, "export": False},
-        "module_settings": {"view": True, "create": False, "edit": False, "delete": False, "export": False},
-        "module_assets": {"view": True, "create": True, "edit": True, "delete": False, "export": True},
-        "module_amc": {"view": True, "create": True, "edit": True, "delete": False, "export": True},
-        "module_locations": {"view": True, "create": False, "edit": False, "delete": False, "export": False},
-        "module_partners": {"view": True, "create": True, "edit": True, "delete": False, "export": True},
-        "module_ecommerce": {"view": True, "create": True, "edit": True, "delete": False, "export": True},
-        "module_teams": {"view": True, "create": True, "edit": True, "delete": False, "export": True},
-        "module_projects": {"view": True, "create": True, "edit": True, "delete": False, "export": True},
-        "module_daily_updates": {"view": True, "create": True, "edit": True, "delete": False, "export": True},
-        "module_vendors": {"view": True, "create": True, "edit": True, "delete": False, "export": True},
-        "module_vault": {"view": False, "create": False, "edit": False, "delete": False, "export": False},
-    },
-    "staff": {
-        "can_create_project": True, "can_edit_project": True, "can_delete_project": False,
-        "can_request_delete": True, "can_approve_deletion": False,
-        "can_approve_quotation": False, "can_set_margin": False, "can_approve_margin": False,
-        "can_edit_inventory": False, "can_approve_inventory": False,
-        "can_manage_users": False, "can_change_user_access": False,
-        "can_view_reports": False, "can_view_audit_logs": False,
-        "can_manage_company": False, "can_manage_terms": False,
-        "module_dashboard": {"view": True, "create": True, "edit": True, "delete": False, "export": False},
-        "module_ceo_dashboard": {"view": False, "create": False, "edit": False, "delete": False, "export": False},
-        "module_expansion": {"view": False, "create": False, "edit": False, "delete": False, "export": False},
-        "module_direct_sales": {"view": True, "create": True, "edit": False, "delete": False, "export": False},
-        "module_accounts": {"view": True, "create": True, "edit": False, "delete": False, "export": False},
-        "module_readings": {"view": True, "create": True, "edit": True, "delete": False, "export": False},
-        "module_inventory": {"view": True, "create": False, "edit": False, "delete": False, "export": False},
-        "module_purchase_inbound": {"view": True, "create": False, "edit": False, "delete": False, "export": False},
-        "module_delivery_outbound": {"view": True, "create": False, "edit": False, "delete": False, "export": False},
-        "module_credits": {"view": True, "create": False, "edit": False, "delete": False, "export": False},
-        "module_returns": {"view": True, "create": True, "edit": False, "delete": False, "export": False},
-        "module_audits": {"view": False, "create": False, "edit": False, "delete": False, "export": False},
-        "module_reports": {"view": False, "create": False, "edit": False, "delete": False, "export": False},
-        "module_alerts": {"view": False, "create": False, "edit": False, "delete": False, "export": False},
-        "module_approvals": {"view": False, "create": False, "edit": False, "delete": False, "export": False},
-        "module_users": {"view": False, "create": False, "edit": False, "delete": False, "export": False},
-        "module_permissions": {"view": False, "create": False, "edit": False, "delete": False, "export": False},
-        "module_settings": {"view": False, "create": False, "edit": False, "delete": False, "export": False},
-        "module_assets": {"view": True, "create": False, "edit": False, "delete": False, "export": False},
-        "module_amc": {"view": True, "create": False, "edit": False, "delete": False, "export": False},
-        "module_locations": {"view": True, "create": False, "edit": False, "delete": False, "export": False},
-        "module_partners": {"view": True, "create": False, "edit": False, "delete": False, "export": False},
-        "module_ecommerce": {"view": True, "create": False, "edit": False, "delete": False, "export": False},
-        "module_teams": {"view": True, "create": False, "edit": False, "delete": False, "export": False},
-        "module_projects": {"view": True, "create": True, "edit": True, "delete": False, "export": False},
-        "module_daily_updates": {"view": True, "create": True, "edit": True, "delete": False, "export": False},
-        "module_vendors": {"view": False, "create": False, "edit": False, "delete": False, "export": False},
-        "module_vault": {"view": False, "create": False, "edit": False, "delete": False, "export": False},
-    }
-}
+# The role matrix now lives in access_policy.py (one map for the Permissions page, the menu and the API).
+DEFAULT_PERMISSIONS = {r: access_policy.default_permissions(r) for r in ("admin", "manager", "staff")}
 
 async def get_permissions(role: str) -> dict:
-    """Get permissions for a role from DB, falling back to defaults"""
+    """A role's matrix from the DB, with anything missing filled from the recommended defaults (cached briefly)."""
+    if role not in ("admin", "manager", "staff"):
+        return {}
+    hit = _PERM_CACHE.get(role)
+    if hit is not None:
+        return hit
     perm = await db.role_permissions.find_one({"role_name": role})
-    if perm:
-        return perm.get("permissions", DEFAULT_PERMISSIONS.get(role, {}))
-    return DEFAULT_PERMISSIONS.get(role, {})
+    perms = access_policy.merge_with_defaults(role, (perm or {}).get("permissions"))
+    _PERM_CACHE.put(role, perms)
+    return perms
 
 async def check_permission(user: dict, permission: str) -> bool:
     """Check if a user has a specific permission"""
@@ -759,6 +688,16 @@ async def check_permission(user: dict, permission: str) -> bool:
         return admin_perms.get(permission, True)
     perms = await get_permissions(user["role"])
     return perms.get(permission, False)
+
+async def has_option(user: dict, key: str) -> bool:
+    """An option switch on the Permissions page (and its page must be open for the role). Admins always."""
+    if user.get("role") == "admin":
+        return True
+    perms = await get_permissions(user["role"])
+    opt = access_policy.OPTIONS.get(key)
+    page_ok = bool((perms.get(opt["page"]) or {}).get("view")) if opt else True
+    return bool(perms.get(key)) and page_ok
+
 
 async def require_permission(request: Request, permission: str) -> dict:
     """Middleware-like function to check permission"""
@@ -939,7 +878,7 @@ async def register(user_data: UserCreate, response: Response, request: Request):
     if user_data.role not in DEFAULT_PERMISSIONS:
         raise HTTPException(status_code=400, detail=f"Unknown role '{user_data.role}'")
     existing = await db.users.find_one({"email": email})
-    if existing:
+    if existing or await db.investors.find_one({"email": email}):
         raise HTTPException(status_code=400, detail="Email already registered")
     
     hashed = hash_password(user_data.password)
@@ -951,6 +890,8 @@ async def register(user_data: UserCreate, response: Response, request: Request):
         "phone": user_data.phone,
         "created_at": datetime.now(timezone.utc).isoformat()
     }
+    if user_data.daily_report_required is not None:
+        user_doc["daily_report_required"] = bool(user_data.daily_report_required)
     
     result = await db.users.insert_one(user_doc)
     user_id = str(result.inserted_id)
@@ -986,6 +927,9 @@ async def login(credentials: UserLogin, response: Response, request: Request):
             await db.login_attempts.delete_one({"identifier": identifier})
     
     user = await db.users.find_one({"email": email})
+    if not user and await db.investors.find_one({"email": email}, {"_id": 1}):
+        # an investor signing in on the shared page — the app then tries /api/investor/auth/login (which counts its own tries)
+        raise HTTPException(status_code=401, detail="Invalid email or password")
     if not user or not verify_password(credentials.password, user["password_hash"]):
         # Increment failed attempts
         await db.login_attempts.update_one(
@@ -1077,7 +1021,8 @@ async def get_users(request: Request):
             "phone": u.get("phone"),
             "created_at": u["created_at"],
             "location_ids": u.get("location_ids", []),
-            "default_location_id": u.get("default_location_id")
+            "default_location_id": u.get("default_location_id"),
+            "daily_report_required": daily_report_required(u),
         }
         for u in users
     ]
@@ -1088,7 +1033,7 @@ async def create_user(user_data: UserCreate, request: Request):
     
     email = user_data.email.lower()
     existing = await db.users.find_one({"email": email})
-    if existing:
+    if existing or await db.investors.find_one({"email": email}):
         raise HTTPException(status_code=400, detail="Email already registered")
     
     hashed = hash_password(user_data.password)
@@ -1100,6 +1045,8 @@ async def create_user(user_data: UserCreate, request: Request):
         "phone": user_data.phone,
         "created_at": datetime.now(timezone.utc).isoformat()
     }
+    if user_data.daily_report_required is not None:
+        user_doc["daily_report_required"] = bool(user_data.daily_report_required)
     
     result = await db.users.insert_one(user_doc)
     
@@ -1127,9 +1074,13 @@ async def update_user(user_id: str, request: Request):
     if "name" in body:
         update_data["name"] = body["name"]
     if "role" in body:
+        if body["role"] not in ("admin", "manager", "staff"):
+            raise HTTPException(status_code=400, detail="Role must be admin, manager or staff")
         update_data["role"] = body["role"]
     if "phone" in body:
         update_data["phone"] = body["phone"]
+    if "daily_report_required" in body:
+        update_data["daily_report_required"] = bool(body["daily_report_required"])
     if "password" in body and body["password"]:
         update_data["password_hash"] = hash_password(body["password"])
         update_data["password_changed_at"] = datetime.now(timezone.utc).isoformat()
@@ -1151,8 +1102,8 @@ async def update_user(user_id: str, request: Request):
         raise HTTPException(status_code=404, detail="User not found")
     
     await create_audit_log(
-        current_user["id"], current_user["name"], "update", "user", 
-        user_id, None, update_data
+        current_user["id"], current_user["name"], "update", "user",
+        user_id, None, {k: v for k, v in update_data.items() if k != "password_hash"} | ({"password": "changed"} if "password_hash" in update_data else {})
     )
     
     return {"message": "User updated successfully"}
@@ -2507,7 +2458,11 @@ api_router.include_router(_create_teams_router(db=db, get_current_user=get_curre
 
 # ═══════════ DAILY REPORTS + SITE DIARY ═══════════
 from daily_reports import create_router as _create_daily_reports_router  # noqa: E402
-api_router.include_router(_create_daily_reports_router(db=db, get_current_user=get_current_user, require_role=require_role, create_audit_log=create_audit_log))
+from investors import create_router as _create_investors_router  # noqa: E402
+api_router.include_router(_create_investors_router(db=db, get_current_user=get_current_user, require_role=require_role, create_audit_log=create_audit_log,
+                                                   jwt_secret=JWT_SECRET, hash_password=hash_password, verify_password=verify_password))
+api_router.include_router(_create_daily_reports_router(db=db, get_current_user=get_current_user, require_role=require_role, create_audit_log=create_audit_log,
+                                                      has_option=has_option, report_required=daily_report_required))
 
 # ================== SITE PHOTOS · GOOGLE DRIVE · SITE GPS ==================
 from site_photos import create_router as _create_site_photos_router, normalise_for_save as _normalise_site_photos, summarise as _site_photos_summary  # noqa: E402
@@ -2598,7 +2553,7 @@ async def upsert_subsidy_tracking(payload: SubsidyTracking, request: Request):
 @api_router.get("/subsidy/analytics")
 async def subsidy_analytics(request: Request):
     user = await get_current_user(request)
-    if user["role"] not in ("admin", "manager"):
+    if not role_ok(request, user, "admin", "manager"):
         raise HTTPException(403, "Forbidden")
     docs = await db.subsidy_tracking.find({}).to_list(5000)
     total_eligible = sum(d.get("eligible_amount", 0) for d in docs)
@@ -2680,7 +2635,7 @@ async def marketing_summary(request: Request, start: Optional[str] = None, end: 
 async def cac_report(request: Request, start: Optional[str] = None, end: Optional[str] = None,
                      attribution_window_days: int = 90):
     user = await get_current_user(request)
-    if user["role"] not in ("admin", "manager"):
+    if not role_ok(request, user, "admin", "manager"):
         raise HTTPException(403, "Forbidden")
     now = datetime.now(timezone.utc)
     if not start: start = (now - timedelta(days=365)).date().isoformat()
@@ -4315,7 +4270,7 @@ async def get_audit_logs(
     """Get audit logs (Admin only, Manager limited)"""
     user = await get_current_user(request)
     
-    if user["role"] not in ["admin", "manager"]:
+    if not role_ok(request, user, "admin","manager"):
         raise HTTPException(status_code=403, detail="Access denied")
     
     query = {}
@@ -4424,7 +4379,7 @@ async def get_dashboard_stats(request: Request):
 @api_router.get("/dashboard/ceo")
 async def get_ceo_dashboard(request: Request, location_id: Optional[str] = None, date_from: Optional[str] = None, date_to: Optional[str] = None):
     user = await get_current_user(request)
-    if user["role"] not in ["admin", "manager"]:
+    if not role_ok(request, user, "admin","manager"):
         raise HTTPException(status_code=403, detail="CEO dashboard is admin/manager only")
     
     loc_filter = location_scope_filter(user, location_id)
@@ -4735,7 +4690,7 @@ async def _get_expansion_config():
 @api_router.get("/expansion/overview")
 async def expansion_overview(request: Request, state: Optional[str] = None):
     user = await get_current_user(request)
-    if user["role"] not in ("admin", "manager"):
+    if not role_ok(request, user, "admin","manager"):
         raise HTTPException(status_code=403, detail="Expansion module is admin/manager only")
     cfg = await _get_expansion_config()
     projects = await db.projects.find({"deleted_at": {"$exists": False}}).to_list(5000)
@@ -4751,7 +4706,7 @@ async def expansion_overview(request: Request, state: Optional[str] = None):
 @api_router.get("/expansion/district/{district}")
 async def expansion_district(district: str, request: Request):
     user = await get_current_user(request)
-    if user["role"] not in ("admin", "manager"):
+    if not role_ok(request, user, "admin","manager"):
         raise HTTPException(status_code=403, detail="Forbidden")
     cfg = await _get_expansion_config()
     projects = await db.projects.find({"deleted_at": {"$exists": False}}).to_list(5000)
@@ -4778,7 +4733,7 @@ class BreakEvenSimRequest(BaseModel):
 @api_router.post("/expansion/simulate")
 async def expansion_simulate(payload: BreakEvenSimRequest, request: Request):
     user = await get_current_user(request)
-    if user["role"] not in ("admin", "manager"):
+    if not role_ok(request, user, "admin","manager"):
         raise HTTPException(status_code=403, detail="Forbidden")
     return _simulate_be(
         monthly_run_rate=payload.monthly_run_rate,
@@ -4928,7 +4883,7 @@ async def _get_filtered_projects(query_base, date_from, date_to, system_type, st
 @api_router.get("/reports/{report_type}")
 async def get_report(report_type: str, request: Request, date_from: str = None, date_to: str = None, system_type: str = None, status: str = None, project_id: str = None, tab: str = None, movement_type: str = None, location_id: str = None, district: str = None, speciality: str = None, platform_id: str = None, category: str = None, supplier: str = None):
     user = await get_current_user(request)
-    if user["role"] not in ["admin", "manager"]:
+    if not role_ok(request, user, "admin","manager"):
         raise HTTPException(status_code=403, detail="Reports are admin/manager only")
     loc_filter = location_scope_filter(user, location_id)
     if report_type == "brand_returns":
@@ -5738,7 +5693,7 @@ def _calc_risk_score(alerts):
 @api_router.get("/alerts/dashboard")
 async def get_alerts_dashboard(request: Request):
     user = await get_current_user(request)
-    if user["role"] not in ["admin", "manager"]:
+    if not role_ok(request, user, "admin","manager"):
         raise HTTPException(status_code=403, detail="Alerts dashboard requires admin/manager")
     thresholds = await _get_thresholds()
     projects = await db.projects.find({"deleted_at": {"$exists": False}, "status": {"$nin": ["draft"]}}).to_list(5000)
@@ -6071,34 +6026,54 @@ async def execute_approval_action(approval: dict, request: Optional[Request] = N
 
 @api_router.get("/permissions")
 async def get_all_permissions(request: Request):
-    user = await require_role("admin")(request)
-    roles = ["admin", "manager", "staff"]
-    result = {}
-    for role in roles:
-        result[role] = await get_permissions(role)
-    return result
+    await require_role("admin")(request)
+    return {role: await get_permissions(role) for role in ("admin", "manager", "staff")}
+
+
+@api_router.get("/permissions/catalog")
+async def permissions_catalog(request: Request):
+    """Every page and option, grouped like the menu — the Permissions page is drawn from this."""
+    await get_current_user(request)
+    return access_policy.catalog()
+
+
+@api_router.get("/permissions/me")
+async def my_permissions(request: Request):
+    """The caller's switches, with each option already off when its page is off (what the screens should follow)."""
+    user = await get_current_user(request)
+    perms = dict(await get_permissions(user["role"]))
+    if user["role"] != "admin":
+        for key, opt in access_policy.OPTIONS.items():
+            perms[key] = bool(perms.get(key)) and bool((perms.get(opt["page"]) or {}).get("view"))
+    return {"role": user["role"], "permissions": perms}
+
 
 @api_router.get("/permissions/{role_name}")
 async def get_role_permissions(role_name: str, request: Request):
     user = await get_current_user(request)
-    perms = await get_permissions(role_name)
-    return {"role": role_name, "permissions": perms}
+    if role_name != user["role"] and user["role"] != "admin":
+        raise HTTPException(status_code=403, detail="You can only read your own role’s permissions")
+    return {"role": role_name, "permissions": await get_permissions(role_name)}
+
 
 @api_router.put("/permissions/{role_name}")
 async def update_role_permissions(role_name: str, request: Request):
     user = await require_role("admin")(request)
+    if role_name not in ("manager", "staff"):
+        raise HTTPException(status_code=400, detail="Admins always have every permission — only Manager and Staff can be changed")
     body = await request.json()
-    permissions = body.get("permissions", {})
-    
-    if role_name not in ["admin", "manager", "staff"]:
-        raise HTTPException(status_code=400, detail="Invalid role")
-    
+    before = await get_permissions(role_name)
+    permissions = access_policy.sanitize(role_name, body.get("permissions") or {}, before)
     await db.role_permissions.update_one(
         {"role_name": role_name},
-        {"$set": {"role_name": role_name, "permissions": permissions, "updated_at": datetime.now(timezone.utc).isoformat(), "updated_by": user["name"]}},
+        {"$set": {"role_name": role_name, "permissions": permissions, "policy_version": access_policy.POLICY_VERSION,
+                  "updated_at": datetime.now(timezone.utc).isoformat(), "updated_by": user["name"]}},
         upsert=True
     )
-    await create_audit_log(user["id"], user["name"], "update", "permissions", role_name, None, permissions)
+    _PERM_CACHE.clear()
+    changed = sorted(k for k in permissions if permissions.get(k) != before.get(k))
+    await create_audit_log(user["id"], user["name"], "update", "permissions", role_name, None, None,
+                           details=f"{role_name}: changed {', '.join(changed) or 'nothing'}")
     return {"message": f"Permissions for {role_name} updated", "permissions": permissions}
 
 @api_router.get("/company/logo-base64")
@@ -6618,7 +6593,7 @@ async def delete_po(po_id: str, request: Request):
 
 @api_router.put("/purchase-orders/{po_id}/approve")
 async def approve_po(po_id: str, request: Request):
-    user = await require_permission(request, "can_manage_company")
+    user = await require_permission(request, "can_approve_purchase")
     po = await db.purchase_orders.find_one({"_id": ObjectId(po_id)})
     if not po:
         raise HTTPException(status_code=404, detail="Purchase order not found")
@@ -6642,7 +6617,7 @@ async def storage_location_options(request: Request, location_id: Optional[str] 
 @api_router.put("/purchase-orders/{po_id}/reject")
 async def reject_po(po_id: str, request: Request):
     """Iter 53: a pending PO can be rejected (kept for history, never received)."""
-    user = await require_permission(request, "can_manage_company")
+    user = await require_permission(request, "can_approve_purchase")
     body = await request.json() if (await request.body()) else {}
     po = await db.purchase_orders.find_one({"_id": ObjectId(po_id)})
     if not po:
@@ -7504,6 +7479,10 @@ async def startup_event():
     await db.daily_updates.create_index([("source", 1), ("source_id", 1)])
     await db.daily_reports.create_index([("user_id", 1), ("date", 1)], unique=True)
     await db.daily_reports.create_index("date")
+    await db.investors.create_index("email", unique=True)
+    await db.investor_ledger.create_index([("investor_id", 1), ("date", -1)])
+    await db.investor_logins.create_index([("investor_id", 1), ("at", -1)])
+    await db.investor_login_attempts.create_index("at", expireAfterSeconds=24 * 3600)
     await db.site_diaries.create_index([("project_id", 1), ("date", 1)], unique=True)
     await db.site_diaries.create_index("date")
     await db.daily_updates.create_index("created_at")
@@ -7601,25 +7580,21 @@ async def startup_event():
             await db.inventory_categories.insert_one({**cat, "created_at": datetime.now(timezone.utc).isoformat()})
     logger.info("Inventory categories seeded")
     
-    # Seed default permissions (and merge in any newly added module keys to existing roles)
-    for role_name, perms in DEFAULT_PERMISSIONS.items():
+    # Seed role permissions; once, move older matrices to the connected version (never wider than before)
+    for role_name in ("admin", "manager", "staff"):
         existing_perm = await db.role_permissions.find_one({"role_name": role_name})
+        now_iso = datetime.now(timezone.utc).isoformat()
         if not existing_perm:
-            await db.role_permissions.insert_one({
-                "role_name": role_name,
-                "permissions": perms,
-                "created_at": datetime.now(timezone.utc).isoformat()
-            })
-        else:
-            existing_keys = set((existing_perm.get("permissions") or {}).keys())
-            missing = {k: v for k, v in perms.items() if k not in existing_keys}
-            if missing:
-                merged = {**(existing_perm.get("permissions") or {}), **missing}
-                await db.role_permissions.update_one(
-                    {"role_name": role_name},
-                    {"$set": {"permissions": merged, "updated_at": datetime.now(timezone.utc).isoformat()}}
-                )
-    logger.info("Default permissions seeded")
+            await db.role_permissions.insert_one({"role_name": role_name, "permissions": access_policy.default_permissions(role_name),
+                                                  "policy_version": access_policy.POLICY_VERSION, "created_at": now_iso})
+        elif (existing_perm.get("policy_version") or 1) < access_policy.POLICY_VERSION:
+            migrated = access_policy.migrate_v2(role_name, existing_perm.get("permissions") or {})
+            await db.role_permissions.update_one({"role_name": role_name}, {"$set": {
+                "permissions": migrated, "policy_version": access_policy.POLICY_VERSION, "updated_at": now_iso,
+                "previous_permissions": existing_perm.get("permissions") or {}}})
+            logger.info("Permissions for %s moved to policy v%s", role_name, access_policy.POLICY_VERSION)
+    _PERM_CACHE.clear()
+    logger.info("Role permissions ready")
     
     # Seed system form tabs
     system_tabs = [
@@ -7706,7 +7681,7 @@ ACCOUNT_TYPES = {"cash_on_hand", "account_balance", "operational_expense", "mark
 @api_router.get("/accounts")
 async def list_accounts(request: Request, entry_type: Optional[str] = None, date_from: Optional[str] = None, date_to: Optional[str] = None):
     user = await get_current_user(request)
-    if user["role"] not in ["admin", "manager", "staff"]:
+    if not role_ok(request, user, "admin","manager","staff"):
         raise HTTPException(status_code=403, detail="Forbidden")
     q = {}
     if entry_type:
@@ -7776,7 +7751,7 @@ async def delete_account_entry(entry_id: str, request: Request):
     existing = await db.account_entries.find_one({"_id": ObjectId(entry_id)})
     if not existing:
         raise HTTPException(status_code=404, detail="Entry not found")
-    if user["role"] not in ["admin", "manager"]:
+    if not role_ok(request, user, "admin","manager"):
         raise HTTPException(status_code=403, detail="Only admin/manager can delete account entries")
     await db.account_entries.delete_one({"_id": ObjectId(entry_id)})
     await create_audit_log(user["id"], user.get("name",""), "delete", "account_entry", entry_id, existing, None)
@@ -7894,7 +7869,7 @@ def _serialise_reading(d: dict) -> dict:
 @api_router.get("/readings")
 async def list_readings(request: Request, status: Optional[str] = None, date_from: Optional[str] = None, date_to: Optional[str] = None):
     user = await get_current_user(request)
-    if user["role"] not in ["admin", "manager", "staff"]:
+    if not role_ok(request, user, "admin","manager","staff"):
         raise HTTPException(status_code=403, detail="Forbidden")
     q = {}
     if date_from or date_to:
@@ -7953,7 +7928,7 @@ async def update_reading(reading_id: str, updates: ReadingUpdate, request: Reque
 @api_router.delete("/readings/{reading_id}")
 async def delete_reading(reading_id: str, request: Request):
     user = await get_current_user(request)
-    if user["role"] not in ["admin", "manager"]:
+    if not role_ok(request, user, "admin","manager"):
         raise HTTPException(status_code=403, detail="Only admin/manager can delete readings")
     existing = await db.readings.find_one({"_id": ObjectId(reading_id)})
     if not existing:

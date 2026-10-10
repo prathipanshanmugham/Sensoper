@@ -19,6 +19,7 @@ import * as XLSX from 'xlsx';
 import { saveAs } from 'file-saver';
 import { loadUnicodeFont } from '../utils/pdfFont';
 import { useLocationScope, LocationScopeSelect } from '../components/LocationScope';
+import Can from '../components/Can';
 
 const PIE_COLORS = ['#10b981', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#84cc16'];
 const PARTNER_SPECIALITIES = ['on-grid', 'off-grid', 'hybrid', 'pump', 'electrical', 'civil'];
@@ -304,8 +305,8 @@ export default function ReportsPage() {
                   <p className="text-[11px] text-slate-400 flex items-center gap-1 mt-0.5" data-testid="report-location-label"><MapPin className="h-3 w-3" />{locScope.locationLabel}</p>
                 </div>
                 <div className="flex gap-2">
-                  <Button variant="outline" size="sm" onClick={exportPDF} className="gap-1.5 h-8 text-xs" data-testid="export-pdf-btn"><FileText className="h-3.5 w-3.5" />PDF</Button>
-                  <Button variant="outline" size="sm" onClick={exportExcel} className="gap-1.5 h-8 text-xs" data-testid="export-excel-btn"><FileSpreadsheet className="h-3.5 w-3.5" />Excel</Button>
+                  <Can module="module_reports" action="export"><Button variant="outline" size="sm" onClick={exportPDF} className="gap-1.5 h-8 text-xs" data-testid="export-pdf-btn"><FileText className="h-3.5 w-3.5" />PDF</Button></Can>
+                  <Can module="module_reports" action="export"><Button variant="outline" size="sm" onClick={exportExcel} className="gap-1.5 h-8 text-xs" data-testid="export-excel-btn"><FileSpreadsheet className="h-3.5 w-3.5" />Excel</Button></Can>
                 </div>
               </div>
               {/* Tab Navigation */}

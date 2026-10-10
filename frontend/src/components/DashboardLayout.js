@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { dashboardAPI, alertsAPI, permissionsAPI, notificationsAPI } from '../utils/api';
+import { dashboardAPI, alertsAPI, notificationsAPI } from '../utils/api';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from './ui/sheet';
@@ -220,26 +220,21 @@ function NotificationBell({ alertInfo, onRefresh }) {
 }
 
 export default function DashboardLayout({ children }) {
-  const { user, logout, isAdmin, isManager } = useAuth();
+  const { user, logout, perms, can: allowed } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   const [stats, setStats] = useState(null);
   const [alertInfo, setAlertInfo] = useState(null);
-  const [perms, setPerms] = useState(null);
   const [nudge, setNudge] = useState(() => !readStore(HELP_SEEN_KEY, false));
-
-  useEffect(() => {
-    if (!user?.role) return;
-    permissionsAPI.getRole(user.role).then((r) => setPerms(r.data?.permissions || {})).catch(() => setPerms({}));
-  }, [user?.role]);
+  const seesAlerts = allowed('module_alerts');
 
   const fetchStats = useCallback(async () => { try { setStats((await dashboardAPI.getStats()).data); } catch { /* the menu works without counts */ } }, []);
   const fetchAlerts = useCallback(async () => {
-    if (!(isAdmin || isManager)) return;
+    if (!seesAlerts) return;
     try { setAlertInfo((await alertsAPI.getDashboard()).data); } catch { /* optional */ }
-  }, [isAdmin, isManager]);
+  }, [seesAlerts]);
   useEffect(() => { fetchStats(); fetchAlerts(); }, [fetchStats, fetchAlerts]);
   useEffect(() => { setDrawerOpen(false); window.scrollTo?.(0, 0); }, [location.pathname]);
 
@@ -300,7 +295,7 @@ export default function DashboardLayout({ children }) {
                 </div>
               )}
             </div>
-            {(isAdmin || isManager) && <NotificationBell alertInfo={alertInfo} onRefresh={fetchAlerts} />}
+            {seesAlerts && <NotificationBell alertInfo={alertInfo} onRefresh={fetchAlerts} />}
             {can('/dashboard/projects/new') && (
               <Link to="/dashboard/projects/new" className="hidden sm:block">
                 <Button size="sm" className="gap-1.5 bg-emerald-600 font-medium text-white hover:bg-emerald-700" data-testid="new-project-btn"><Plus className="h-4 w-4" />New project</Button>

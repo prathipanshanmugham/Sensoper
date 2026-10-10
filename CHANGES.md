@@ -1,5 +1,32 @@
 # Sensoper — change log
 
+## October 2026 · Connected permissions, investor logins, daily-report switch
+
+### Settings → Permissions (rebuilt)
+- One row for **every page in the menu** (39), grouped like the menu, with Add / Edit / Delete / Download and the extra
+  options that belong to that page (approve quotations, mark completed, GST invoices, margins, force delete, approve
+  deletions, approve purchase orders, team attendance, review daily reports).
+- **Connected for real:** a page switched off leaves that role's menu, its address stops opening, and the server refuses
+  the request; switched on, it works even where the old code only allowed admins/managers. One list in
+  `backend/access_policy.py` drives the page, the menu and the API.
+- Users, Permissions, Company logins and Investors stay **admins only**; Home and My login are always on; admins always have everything.
+- Download (export) and Add buttons hide when the role isn't allowed.
+- **Upgrade:** on first start, saved permissions move to the new layout once. Nobody gets more than they could do before,
+  and every “no” an admin set is kept (the old values are kept in `previous_permissions`).
+
+### Daily report: who must send one
+- Admins switch it per person (Users → edit, or Daily report → Team → *Who must send a daily report*). By default
+  everyone except admins. People switched off aren't counted as “not started” and get no reminder; they can still send one.
+
+### Investors (Money & insights → Investors, admins only)
+- **Business** tab: charts of the whole business — revenue and margin, monthly value won vs collected, kW installed,
+  pipeline by stage, branches, cash collected vs to collect, AMC income. Totals only.
+- **Investors** tab: add an investor with a temporary password and tick what they may see; record money in, payouts and
+  capital returned; see sign-ins; **preview exactly what they see**.
+- Investors sign in on the normal sign-in page and land on their own dashboard (`/investor`): the sections you shared plus
+  their own money. Separate session (cookie only valid under `/api/investor`) — they can never open a staff page or
+  see customer names/phones. First sign-in asks them to choose their own password; switching an investor off signs them out.
+
 ## October 2026 · Customer dashboard, attendance, organisation chart
 
 ### Customer dashboard (`/my/<link>`)

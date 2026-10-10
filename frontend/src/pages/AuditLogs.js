@@ -26,6 +26,7 @@ import {
   X,
   Send
 } from 'lucide-react';
+import Can from '../components/Can';
 
 const actionConfig = {
   create: { label: 'Created', icon: Plus, color: 'bg-green-100 text-green-800' },
@@ -118,8 +119,8 @@ export default function AuditLogs() {
             </div>
           </div>
           <div className="flex gap-2">
-            <Button variant="outline" size="sm" onClick={exportPDF} disabled={logs.length === 0} data-testid="logs-export-pdf-btn">Download PDF</Button>
-            <Button variant="outline" size="sm" onClick={exportExcel} disabled={logs.length === 0} data-testid="logs-export-excel-btn">Download Excel</Button>
+            <Can module="module_audit_logs" action="export"><Button variant="outline" size="sm" onClick={exportPDF} disabled={logs.length === 0} data-testid="logs-export-pdf-btn">Download PDF</Button></Can>
+            <Can module="module_audit_logs" action="export"><Button variant="outline" size="sm" onClick={exportExcel} disabled={logs.length === 0} data-testid="logs-export-excel-btn">Download Excel</Button></Can>
           </div>
         </div>
 

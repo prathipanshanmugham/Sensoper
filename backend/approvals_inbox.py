@@ -30,6 +30,15 @@ def create_router(db, get_current_user, require_role, handlers: Dict[str, Callab
         assigned = user.get("assigned_location_ids") or ([user["default_location_id"]] if user.get("default_location_id") else [])
         return not assigned or location_id in assigned
 
+    def _size_kw(p: Dict[str, Any]) -> str:
+        """System size for the review card — the proposed solution first, then older fields."""
+        ps = ((p.get("custom_fields") or {}).get("proposed_solution") or {})
+        kw = ps.get("system_size_kw") or (p.get("solar_system") or {}).get("capacity_kw") or ((p.get("solar_report") or {}).get("sizing") or {}).get("kwp_recommended")
+        try:
+            return f"{float(kw):g} kW" if kw and float(kw) > 0 else ""
+        except (TypeError, ValueError):
+            return ""
+
     async def _pending_items(user: Dict[str, Any]) -> List[Dict[str, Any]]:
         items: List[Dict[str, Any]] = []
         async for a in db.approvals.find({"status": "pending"}).sort("timestamp", -1):
@@ -40,7 +49,7 @@ def create_router(db, get_current_user, require_role, handlers: Dict[str, Callab
         async for p in db.projects.find({"status": "submitted", "deleted_at": {"$exists": False}}).sort("submitted_at", -1):
             total = ((p.get("cost_estimation") or {}).get("total_cost")) or 0
             items.append({"source": "project_submission", "id": _sid(p), "kind": "project_review", "title": f"Project review — {(p.get('customer') or {}).get('name', '')}",
-                          "description": f"{p.get('reference_number') or ''} · {(p.get('solar_system') or {}).get('capacity_kw') or ''} kW · ₹{round(float(total)):,}",
+                          "description": " · ".join(x for x in [p.get('reference_number') or '', _size_kw(p), f"₹{round(float(total)):,}"] if x),
                           "entity_type": "project", "entity_id": _sid(p), "requested_by_name": p.get("created_by_name"), "requested_at": p.get("submitted_at"),
                           "data": {"total_cost": total, "pricing_issues": (p.get("cost_estimation") or {}).get("pricing_issues") or []}, "approver_roles": ["admin", "manager"]})
         async for d in db.deletion_requests.find({"status": "pending"}).sort("requested_at", -1):

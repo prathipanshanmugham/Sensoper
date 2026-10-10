@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../components/ui/dialog';
 import { Loader2, Plus, MapPin, Trash2, Pencil, Users as UsersIcon } from 'lucide-react';
+import Can from '../components/Can';
 
 const TYPES = ['branch', 'warehouse', 'business_unit', 'head_office'];
 
@@ -61,7 +62,7 @@ export default function LocationsPage() {
             <h1 className="text-2xl font-bold font-['Outfit'] text-slate-900" data-testid="locations-title"><MapPin className="inline h-6 w-6 mr-2 text-emerald-600" />Locations</h1>
             <p className="text-sm text-slate-500">Branches, warehouses and business units — assign users to scope their data</p>
           </div>
-          <Button onClick={() => setShowCreate(true)} className="bg-emerald-600 hover:bg-emerald-700 text-white gap-1.5" data-testid="add-location-btn"><Plus className="h-4 w-4" />Add Location</Button>
+          <Can module="module_locations" action="create"><Button onClick={() => setShowCreate(true)} className="bg-emerald-600 hover:bg-emerald-700 text-white gap-1.5" data-testid="add-location-btn"><Plus className="h-4 w-4" />Add Location</Button></Can>
         </div>
 
         <Card className="border-slate-200">

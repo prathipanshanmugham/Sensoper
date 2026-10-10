@@ -11,6 +11,7 @@ import { Badge } from '../components/ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '../components/ui/dialog';
 import { Textarea } from '../components/ui/textarea';
 import { Loader2, Plus, X, Save, CheckCircle2, Undo2, Trash2, Clock } from 'lucide-react';
+import Can from '../components/Can';
 
 export default function BrandReturnsPage() {
   const { isAdmin } = useAuth();
@@ -57,7 +58,7 @@ export default function BrandReturnsPage() {
       <div className="max-w-5xl mx-auto">
         <div className="flex items-center justify-between mb-6">
           <div><h1 className="text-2xl font-bold font-['Outfit'] text-slate-900" data-testid="returns-title">Brand Returns</h1><p className="text-sm text-slate-500">Track returned materials (damaged/unused/defective)</p></div>
-          <Button onClick={() => setShowForm(true)} className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white" data-testid="new-return-btn"><Plus className="h-4 w-4" />New Return</Button>
+          <Can module="module_returns" action="create"><Button onClick={() => setShowForm(true)} className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white" data-testid="new-return-btn"><Plus className="h-4 w-4" />New Return</Button></Can>
         </div>
 
         <div className="grid grid-cols-2 gap-4 mb-6">

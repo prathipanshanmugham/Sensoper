@@ -20,6 +20,7 @@ import {
   FileText,
   Eye
 } from 'lucide-react';
+import Can from '../components/Can';
 
 export default function TermsConditions() {
   const [terms, setTerms] = useState([]);
@@ -153,14 +154,14 @@ export default function TermsConditions() {
               <p className="text-slate-500">Manage quotation terms with version control</p>
             </div>
           </div>
-          <Button 
+          <Can module="module_terms" action="create"><Button 
             onClick={openCreateDialog}
             className="bg-[#4ADE40] hover:bg-[#3dba35] text-black text-white"
             data-testid="add-terms-btn"
           >
             <Plus className="h-4 w-4 mr-2" />
             New Version
-          </Button>
+          </Button></Can>
         </div>
 
         {/* Info Card */}

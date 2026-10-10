@@ -276,3 +276,18 @@ See CHANGES.md for the full list. Highlights for the next agent:
 - Frontend: `pages/CustomerPortal.js` (public), `pages/AttendancePage.js`, `pages/OrgStructurePage.js`, `pages/CustomerOffersPage.js`,
   `components/CustomerDashboardCard.js` (project page), `components/PhotoSourceButtons.js` (Camera / Gallery).
 - Tests: backend/tests/test_attendance_org_portal.py (live-server style).
+
+## Iteration 65 — connected permissions, investors, daily-report switch (2026-10-11)
+- `backend/access_policy.py`: page/option catalog (sections like the menu), recommended matrices, RULES (route template →
+  page action or option), `decide()`; `get_current_user` gates every request (`_policy_gate`), `require_role`/`role_ok`
+  honour a grant. One-time `migrate_v2` (policy_version 2) never widens access and keeps admin-set "no"s.
+- New endpoints: `GET /permissions/catalog`, `GET /permissions/me`; `PUT /permissions/{manager|staff}` sanitises (locked pages forced off).
+- `users.daily_report_required` (default: everyone except admins); `/daily-reports/team` rows carry `required`, counts
+  `expected` / `not_required`.
+- `backend/investors.py`: investors + investor_ledger + investor_logins; admin API under `/investors*` (locked page);
+  investor session `sp_investor` cookie on `/api/investor` (JWT type "investor", password_version), login rate limit;
+  `business_snapshot()` totals only.
+- Frontend: `pages/PermissionsPage.js` (rewrite), `components/Can.js`, AuthContext `perms`/`can()`, routes guarded by module,
+  `pages/InvestorsPage.js`, `pages/InvestorPortal.js`, `components/investor/BusinessView.js` (recharts).
+- Tests: backend/tests/test_permissions_investors.py (in-process, mongomock): no default escalation, locked pages, migration,
+  live grant/deny, daily-report switch, investor isolation and rate limit.

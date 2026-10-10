@@ -12,12 +12,13 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import { Loader2, Plus, Truck, CheckCircle2, ClipboardCheck, Package, X, Save, Trash2, Pencil, Undo2, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
 import HardDeleteButton from '../components/HardDeleteButton';
+import Can from '../components/Can';
 
 const STATUS_COLORS = { pending: 'bg-amber-100 text-amber-700', approved: 'bg-blue-100 text-blue-700', arrived: 'bg-violet-100 text-violet-700', qc_done: 'bg-teal-100 text-teal-700', completed: 'bg-emerald-100 text-emerald-700' };
 const STATUS_LABELS = { pending: 'Pending Approval', approved: 'Approved', arrived: 'Material Arrived', qc_done: 'QC Passed', completed: 'Completed' };
 
 export default function PurchaseInboundPage() {
-  const { user, isAdmin, isManager } = useAuth();
+  const { user, isAdmin, isManager, can } = useAuth();
   const [orders, setOrders] = useState([]);
   const [inventoryItems, setInventoryItems] = useState([]);
   const [pendingApprovals, setPendingApprovals] = useState([]);
@@ -138,7 +139,7 @@ export default function PurchaseInboundPage() {
       <div className="max-w-6xl mx-auto">
         <div className="flex items-center justify-between mb-6">
           <div><h1 className="text-2xl font-bold font-['Outfit'] text-slate-900" data-testid="po-title">Purchase Inbound</h1><p className="text-sm text-slate-500">Procurement lifecycle: PO → Approve → Arrival → QC → Inventory</p></div>
-          <Button onClick={() => setShowCreate(true)} className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white" data-testid="new-po-btn"><Plus className="h-4 w-4" />New PO</Button>
+          <Can module="module_purchase_inbound" action="create"><Button onClick={() => setShowCreate(true)} className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white" data-testid="new-po-btn"><Plus className="h-4 w-4" />New PO</Button></Can>
         </div>
 
         {/* Filter */}
@@ -279,7 +280,7 @@ export default function PurchaseInboundPage() {
                     )}
                   </div>
                   <div className="flex gap-1 shrink-0">
-                    {po.status === 'pending' && <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => { setActiveAction({ poId: po.id, type: 'approve' }); handleAction(); }} data-testid={`approve-${po.id}`}>Approve</Button>}
+                    {po.status === 'pending' && can('can_approve_purchase') && <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => { setActiveAction({ poId: po.id, type: 'approve' }); handleAction(); }} data-testid={`approve-${po.id}`}>Approve</Button>}
                     {po.status === 'pending' && <Button size="sm" variant="outline" className="h-7 text-xs gap-1 text-rose-600 border-rose-200" onClick={() => handleDeletePo(po)} data-testid={`delete-po-${po.id}`}><Trash2 className="h-3 w-3" />Delete</Button>}
                     {po.status === 'approved' && <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => setActiveAction({ poId: po.id, type: 'arrival' })} data-testid={`arrival-${po.id}`}>Record Arrival</Button>}
                     {po.status === 'arrived' && <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => setActiveAction({ poId: po.id, type: 'qc' })} data-testid={`qc-${po.id}`}>QC Check</Button>}

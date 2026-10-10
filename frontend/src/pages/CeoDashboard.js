@@ -18,6 +18,7 @@ import {
 import { toast } from 'sonner';
 import { generateCeoReportPDF } from '../utils/ceoReportPDF';
 import { DateRangePicker, rangeLabel } from '../components/DateRangePicker';
+import Can from '../components/Can';
 
 const COLORS = ['#10b981', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
 const STATUS_COLORS = { draft: '#f59e0b', submitted: '#3b82f6', approved: '#10b981', rejected: '#ef4444', completed: '#059669', deletion_requested: '#f97316' };
@@ -121,7 +122,7 @@ export default function CeoDashboard({ embedded = false }) {
           </div>
           <DateRangePicker value={range} onChange={setRange} />
           <div className="w-full sm:w-48"><LocationScopeSelect scope={locScope} testIdPrefix="ceo-location" /></div>
-          <Button onClick={handleExportPdf} disabled={exporting} className="gap-2 bg-slate-900 hover:bg-slate-800 text-white" data-testid="ceo-report-download-btn">{exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}Download report PDF</Button>
+          <Can module="module_ceo_dashboard" action="export"><Button onClick={handleExportPdf} disabled={exporting} className="gap-2 bg-slate-900 hover:bg-slate-800 text-white" data-testid="ceo-report-download-btn">{exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}Download report PDF</Button></Can>
           <Button variant="outline" onClick={() => navigate('/dashboard/reports')} className="gap-2" data-testid="goto-reports-btn"><BarChart3 className="h-4 w-4" />All reports</Button>
         </div>
 

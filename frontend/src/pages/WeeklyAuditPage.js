@@ -6,6 +6,7 @@ import { Input } from '../components/ui/input';
 import { Badge } from '../components/ui/badge';
 import { toast } from 'sonner';
 import { Loader2, Plus, CheckCircle2, AlertTriangle, Clock, FileDown, Undo2, X } from 'lucide-react';
+import Can from '../components/Can';
 
 /** Iter 57 — Weekly Audit rebuilt around the walk-through: one status board (open / overdue / resolved), a 4-field quick
  *  point entry (what · severity · owner · by when), reusable templates, PDF export in place. */
@@ -67,7 +68,7 @@ export default function WeeklyAuditPage() {
     <div className="p-3 sm:p-6 max-w-4xl mx-auto space-y-4" data-testid="weekly-audit-page">
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div><h1 className="text-2xl font-bold font-['Outfit']">Weekly Audit</h1><p className="text-sm text-slate-500">{week?.title} · auditor {week?.auditor_name}</p></div>
-        <Button variant="outline" size="sm" onClick={exportPdf} className="gap-1" data-testid="audit-export-pdf"><FileDown className="h-4 w-4" />Export PDF</Button>
+        <Can module="module_audits" action="export"><Button variant="outline" size="sm" onClick={exportPdf} className="gap-1" data-testid="audit-export-pdf"><FileDown className="h-4 w-4" />Export PDF</Button></Can>
       </div>
 
       <div className="rounded-xl border-2 border-emerald-200 bg-emerald-50/40 p-3 space-y-2" data-testid="audit-quick-entry">

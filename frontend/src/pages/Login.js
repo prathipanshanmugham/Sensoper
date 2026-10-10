@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth, formatApiErrorDetail } from '../contexts/AuthContext';
+import { investorPortalAPI } from '../utils/api';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
@@ -42,6 +43,16 @@ export default function Login() {
       if (res?.requires_2fa) { setNeeds2fa(true); return; }
       navigate('/dashboard');
     } catch (err) {
+      // Investors use the same page; their account lives apart from staff logins.
+      if (err.response?.status === 401) {
+        try {
+          await investorPortalAPI.login(email, password);
+          navigate('/investor');
+          return;
+        } catch (invErr) {
+          if (invErr.response?.status === 429) { setError(formatApiErrorDetail(invErr.response.data?.detail)); return; }
+        }
+      }
       setError(formatApiErrorDetail(err.response?.data?.detail) || 'Login failed');
     } finally {
       setLoading(false);

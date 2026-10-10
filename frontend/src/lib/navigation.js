@@ -1,11 +1,9 @@
 /**
- * One map of the whole app: menu sections, who sees each item, and the plain-language
- * help shown by the "Help" button on every screen.
+ * One map of the whole app: menu sections and the plain-language help shown by the "Help" button on every screen.
  *
- *  roles   — which roles see the item in the menu (default: everyone)
- *  staff   — true = shown in the short staff menu (staff only see items marked staff)
- *  module  — permission-matrix key; the item hides if the role's matrix says view:false
- *  flag    — boolean permission flag; hides when false
+ *  module  — the page's key in Settings → Permissions (backend/access_policy.py); the item shows when the
+ *            role may "view" it (admins see everything)
+ *  action  — an extra action the item needs (New project needs "create")
  *  badge   — key in /dashboard/stats used for the red count bubble
  *  help    — { what, steps[], tip }  shown in the Help panel
  */
@@ -13,17 +11,14 @@ import {
   Home, CalendarCheck, NotebookPen, Activity, ClipboardList, FolderPlus, FolderKanban, ClipboardCheck, ShoppingCart,
   ShoppingBag, RefreshCw, Package, Boxes, PackageOpen, Truck, Undo2, Store, Tags, HardHat, Users, Wrench,
   CreditCard, AlertTriangle, BarChart3, MapPin, Building2, UserCog, Shield, Map, SlidersHorizontal, ScrollText,
-  Layers, History, KeyRound, LockKeyhole, FileText, UserRound, Clock, Network, Gift,
+  Layers, History, KeyRound, LockKeyhole, FileText, UserRound, Clock, Network, Gift, Landmark,
 } from 'lucide-react';
-
-const MGR = ['admin', 'manager'];
-const ADMIN = ['admin'];
 
 export const NAV_SECTIONS = [
   {
     id: 'home', label: 'Home', items: [
       {
-        href: '/dashboard', label: 'Home', icon: Home, staff: true, module: 'module_dashboard',
+        href: '/dashboard', label: 'Home', icon: Home, module: 'module_dashboard',
         help: {
           what: 'Your starting point: what needs doing today, quick buttons for common jobs, and how the business is doing.',
           steps: ['Use the big buttons at the top for everyday jobs (new project, daily report, site diary).',
@@ -37,7 +32,7 @@ export const NAV_SECTIONS = [
   {
     id: 'daily', label: 'Daily work', items: [
       {
-        href: '/dashboard/attendance', label: 'Attendance', icon: Clock, staff: true,
+        href: '/dashboard/attendance', label: 'Attendance', icon: Clock, module: 'module_attendance',
         keywords: 'check in check out punch time gps present absent register',
         help: {
           what: 'Check in when you start work and check out when you finish. The time and your phone’s location are saved.',
@@ -48,7 +43,7 @@ export const NAV_SECTIONS = [
         },
       },
       {
-        href: '/dashboard/daily-report', label: 'Daily report', icon: CalendarCheck, staff: true, module: 'module_daily_updates',
+        href: '/dashboard/daily-report', label: 'Daily report', icon: CalendarCheck, module: 'module_daily_updates',
         keywords: 'end of day update eod',
         help: {
           what: 'One short report per person per day: the sites you worked on, leads, payments collected, service visits, problems and tomorrow’s plan.',
@@ -60,7 +55,7 @@ export const NAV_SECTIONS = [
         },
       },
       {
-        href: '/dashboard/site-diary', label: 'Site diary', icon: NotebookPen, staff: true, module: 'module_daily_updates',
+        href: '/dashboard/site-diary', label: 'Site diary', icon: NotebookPen, module: 'module_site_diary',
         keywords: 'installation log progress crew',
         help: {
           what: 'A day-by-day log for each project site: who was on site, which stages were finished, progress %, materials used, safety, photos and next steps.',
@@ -71,7 +66,7 @@ export const NAV_SECTIONS = [
         },
       },
       {
-        href: '/dashboard/readings', label: 'Readings', icon: Activity, staff: true, module: 'module_readings',
+        href: '/dashboard/readings', label: 'Readings', icon: Activity, module: 'module_readings',
         keywords: 'generation meter',
         help: {
           what: 'Tracks finished sites during their reading period — expected vs actual generation.',
@@ -80,7 +75,7 @@ export const NAV_SECTIONS = [
         },
       },
       {
-        href: '/dashboard/audits', label: 'Weekly audits', icon: ClipboardList, roles: MGR, module: 'module_audits',
+        href: '/dashboard/audits', label: 'Weekly audits', icon: ClipboardList, module: 'module_audits',
         help: {
           what: 'A weekly checklist audit of operations, with issues, owners and deadlines.',
           steps: ['Start this week’s audit and go through the checklist.', 'Log each issue with an owner and a deadline.',
@@ -92,7 +87,7 @@ export const NAV_SECTIONS = [
   {
     id: 'sales', label: 'Sales & projects', items: [
       {
-        href: '/dashboard/projects/new', label: 'New project', icon: FolderPlus, staff: true, module: 'module_projects',
+        href: '/dashboard/projects/new', label: 'New project', icon: FolderPlus, module: 'module_projects', action: 'create',
         keywords: 'site visit quotation estimate photos gps location coordinates',
         help: {
           what: 'Record a site visit and build the quotation for a new customer, step by step.',
@@ -104,7 +99,7 @@ export const NAV_SECTIONS = [
         },
       },
       {
-        href: '/dashboard/projects', label: 'Projects', icon: FolderKanban, staff: true, module: 'module_projects',
+        href: '/dashboard/projects', label: 'Projects', icon: FolderKanban, module: 'module_projects',
         keywords: 'all projects customers quotation',
         help: {
           what: 'Every project and quotation, with its status from draft to completed.',
@@ -113,14 +108,14 @@ export const NAV_SECTIONS = [
         },
       },
       {
-        href: '/dashboard/approvals', label: 'Approvals', icon: ClipboardCheck, roles: MGR, module: 'module_approvals', badge: 'pending_approvals',
+        href: '/dashboard/approvals', label: 'Approvals', icon: ClipboardCheck, module: 'module_approvals', badge: 'pending_approvals',
         help: {
           what: 'Everything waiting for a manager’s decision: project reviews, deletions, stock reversals and purchase orders.',
           steps: ['Open a request to see what changes.', 'Approve or reject it; the person who asked is updated straight away.'],
         },
       },
       {
-        href: '/dashboard/customer-offers', label: 'Customer offers', icon: Gift, roles: MGR,
+        href: '/dashboard/customer-offers', label: 'Customer offers', icon: Gift, module: 'module_customer_offers',
         keywords: 'customer dashboard portal offers promotion amc battery referral interested',
         help: {
           what: 'Offers shown on customers’ own dashboards, and the customers who tapped “I’m interested”.',
@@ -130,7 +125,7 @@ export const NAV_SECTIONS = [
         },
       },
       {
-        href: '/dashboard/sales', label: 'Direct sales', icon: ShoppingCart, staff: true, module: 'module_direct_sales',
+        href: '/dashboard/sales', label: 'Direct sales', icon: ShoppingCart, module: 'module_direct_sales',
         keywords: 'counter sale b2b invoice',
         help: {
           what: 'Counter, B2B and walk-in sales of materials, with GST invoices. Stock is reduced automatically.',
@@ -138,7 +133,7 @@ export const NAV_SECTIONS = [
         },
       },
       {
-        href: '/dashboard/ecommerce', label: 'Online orders', icon: ShoppingBag, roles: MGR, module: 'module_ecommerce',
+        href: '/dashboard/ecommerce', label: 'Online orders', icon: ShoppingBag, module: 'module_ecommerce',
         keywords: 'ecommerce amazon flipkart marketplace',
         help: {
           what: 'Products listed on Amazon, Flipkart and other marketplaces, and the orders they bring in.',
@@ -146,7 +141,7 @@ export const NAV_SECTIONS = [
         },
       },
       {
-        href: '/dashboard/amc', label: 'AMC & service', icon: RefreshCw, roles: MGR, module: 'module_amc',
+        href: '/dashboard/amc', label: 'AMC & service', icon: RefreshCw, module: 'module_amc',
         keywords: 'maintenance contract support ticket complaint',
         help: {
           what: 'Annual maintenance contracts and customer support tickets for installed systems.',
@@ -159,7 +154,7 @@ export const NAV_SECTIONS = [
   {
     id: 'stock', label: 'Stock & purchase', items: [
       {
-        href: '/dashboard/inventory', label: 'Inventory', icon: Package, roles: MGR, module: 'module_inventory', badge: 'low_stock_alerts',
+        href: '/dashboard/inventory', label: 'Inventory', icon: Package, module: 'module_inventory', badge: 'low_stock_alerts',
         keywords: 'stock items materials sku',
         help: {
           what: 'All materials in stock: quantity, price, GST, location and reorder level.',
@@ -167,7 +162,7 @@ export const NAV_SECTIONS = [
         },
       },
       {
-        href: '/dashboard/inventory/kits', label: 'Solution kits', icon: Boxes, roles: MGR, module: 'module_inventory',
+        href: '/dashboard/inventory/kits', label: 'Solution kits', icon: Boxes, module: 'module_kits',
         keywords: 'bundle package material kit',
         help: {
           what: 'Ready-made material bundles (for example a 3 kW on-grid kit) that fill a project’s material list in one tap.',
@@ -175,7 +170,7 @@ export const NAV_SECTIONS = [
         },
       },
       {
-        href: '/dashboard/purchase-inbound', label: 'Purchases', icon: PackageOpen, roles: MGR, module: 'module_purchase_inbound',
+        href: '/dashboard/purchase-inbound', label: 'Purchases', icon: PackageOpen, module: 'module_purchase_inbound',
         keywords: 'purchase order po inbound grn',
         help: {
           what: 'Purchase orders from order to arrival: create PO → approve → receive → quality check → into stock.',
@@ -183,7 +178,7 @@ export const NAV_SECTIONS = [
         },
       },
       {
-        href: '/dashboard/delivery-outbound', label: 'Deliveries', icon: Truck, roles: MGR, module: 'module_delivery_outbound',
+        href: '/dashboard/delivery-outbound', label: 'Deliveries', icon: Truck, module: 'module_delivery_outbound',
         keywords: 'dispatch outbound',
         help: {
           what: 'Material dispatched from the store to a project or customer.',
@@ -191,7 +186,7 @@ export const NAV_SECTIONS = [
         },
       },
       {
-        href: '/dashboard/returns', label: 'Brand returns', icon: Undo2, roles: MGR, module: 'module_returns',
+        href: '/dashboard/returns', label: 'Brand returns', icon: Undo2, module: 'module_returns',
         keywords: 'damaged defective return warranty',
         help: {
           what: 'Damaged, unused or defective material being returned to the brand or supplier.',
@@ -199,7 +194,7 @@ export const NAV_SECTIONS = [
         },
       },
       {
-        href: '/dashboard/vendors', label: 'Vendors', icon: Store, roles: MGR, module: 'module_vendors',
+        href: '/dashboard/vendors', label: 'Vendors', icon: Store, module: 'module_vendors',
         keywords: 'supplier',
         help: {
           what: 'Your suppliers with GSTIN, contacts, payment terms and purchase history.',
@@ -207,7 +202,7 @@ export const NAV_SECTIONS = [
         },
       },
       {
-        href: '/dashboard/pricelist', label: 'Price list', icon: Tags, roles: ADMIN, module: 'module_settings',
+        href: '/dashboard/pricelist', label: 'Price list', icon: Tags, module: 'module_pricelist',
         keywords: 'pricelist margin selling price slab package rate service rates installation structure cabling benchmark subsidy',
         help: {
           what: 'Every rate quotes use: product prices, package slab rates and service rates. Changes save instantly and update the calculator and PDFs.',
@@ -219,7 +214,7 @@ export const NAV_SECTIONS = [
   {
     id: 'people', label: 'People & field', items: [
       {
-        href: '/dashboard/org-structure', label: 'Organisation', icon: Network, roles: ADMIN,
+        href: '/dashboard/org-structure', label: 'Organisation', icon: Network, module: 'module_org',
         keywords: 'org chart structure hierarchy branch location managers staff team',
         help: {
           what: 'Who works where: every location with its managers, staff and field teams, and who has checked in today. Admins only.',
@@ -228,7 +223,7 @@ export const NAV_SECTIONS = [
         },
       },
       {
-        href: '/dashboard/partners', label: 'Subcontractors', icon: HardHat, roles: MGR, module: 'module_partners',
+        href: '/dashboard/partners', label: 'Subcontractors', icon: HardHat, module: 'module_partners',
         keywords: 'partners labour crew rate card retention',
         help: {
           what: 'Installation crews and subcontractors: rate cards, project assignments, retention and payments.',
@@ -237,14 +232,14 @@ export const NAV_SECTIONS = [
         },
       },
       {
-        href: '/dashboard/teams', label: 'Internal teams', icon: Users, roles: MGR, module: 'module_teams',
+        href: '/dashboard/teams', label: 'Internal teams', icon: Users, module: 'module_teams',
         help: {
           what: 'Your own staff grouped into teams (Alpha, Beta…) that can be assigned to projects.',
           steps: ['Create a team and add members.', 'Assign teams on a project page to track how each team performs.'],
         },
       },
       {
-        href: '/dashboard/assets', label: 'Assets & tools', icon: Wrench, staff: true, module: 'module_assets',
+        href: '/dashboard/assets', label: 'Assets & tools', icon: Wrench, module: 'module_assets',
         keywords: 'vehicle equipment safety gear',
         help: {
           what: 'Company vehicles, tools, test equipment and safety gear: who has what, condition and service dates.',
@@ -256,7 +251,7 @@ export const NAV_SECTIONS = [
   {
     id: 'money', label: 'Money & insights', items: [
       {
-        href: '/dashboard/credits', label: 'Accounts', icon: CreditCard, roles: MGR, module: 'module_credits',
+        href: '/dashboard/credits', label: 'Accounts', icon: CreditCard, module: 'module_credits',
         keywords: 'credits receivables payments expenses',
         help: {
           what: 'Money owed to you, payments received and business expenses.',
@@ -264,7 +259,7 @@ export const NAV_SECTIONS = [
         },
       },
       {
-        href: '/dashboard/alerts', label: 'Profit alerts', icon: AlertTriangle, roles: MGR, module: 'module_alerts',
+        href: '/dashboard/alerts', label: 'Profit alerts', icon: AlertTriangle, module: 'module_alerts',
         keywords: 'leakage risk margin',
         help: {
           what: 'Projects that are losing money: low margins, material over-use, late payments or projects running too long.',
@@ -272,7 +267,7 @@ export const NAV_SECTIONS = [
         },
       },
       {
-        href: '/dashboard/reports', label: 'Reports', icon: BarChart3, roles: MGR, module: 'module_reports',
+        href: '/dashboard/reports', label: 'Reports', icon: BarChart3, module: 'module_reports',
         keywords: 'export excel pdf analysis',
         help: {
           what: 'Ready-made reports on sales, profit, stock, service, staff and more, downloadable as PDF or Excel.',
@@ -280,7 +275,18 @@ export const NAV_SECTIONS = [
         },
       },
       {
-        href: '/dashboard/expansion', label: 'Expansion', icon: MapPin, roles: MGR, module: 'module_expansion', badge: 'location_review_count',
+        href: '/dashboard/investors', label: 'Investors', icon: Landmark, module: 'module_investors',
+        keywords: 'investor investors capital payout share dashboard charts business',
+        help: {
+          what: 'Charts of the whole business, and the investors’ own logins: what each one sees, the money they put in and the payouts made.',
+          steps: ['Business tab: pick a period to see revenue, capacity, pipeline, branches, cash and service income.',
+            'Investors tab: add an investor with a temporary password and tick what they may see.',
+            'Record money in and payouts on their card; use “Preview” to see exactly what they see.'],
+          tip: 'Investors sign in on the normal sign-in page. They see totals only — never customer names or phone numbers.',
+        },
+      },
+      {
+        href: '/dashboard/expansion', label: 'Expansion', icon: MapPin, module: 'module_expansion', badge: 'location_review_count',
         keywords: 'branch district market',
         help: {
           what: 'Which district to open the next branch in, ranked by demand, competition and distance from your crews.',
@@ -292,14 +298,14 @@ export const NAV_SECTIONS = [
   {
     id: 'settings', label: 'Settings', items: [
       {
-        href: '/dashboard/company-profile', label: 'Company profile', icon: Building2, roles: ADMIN, flag: 'can_manage_company',
+        href: '/dashboard/company-profile', label: 'Company profile', icon: Building2, module: 'module_company',
         help: {
           what: 'Your company name, logo, address, GSTIN, bank details and invoice numbering — used on every PDF.',
           steps: ['Fill in every field once and save.', 'Upload a clear logo; it appears on quotations and invoices.'],
         },
       },
       {
-        href: '/dashboard/users', label: 'Users', icon: UserCog, roles: ADMIN, module: 'module_users',
+        href: '/dashboard/users', label: 'Users', icon: UserCog, module: 'module_users',
         keywords: 'staff accounts employees',
         help: {
           what: 'Everyone who can sign in: add people, set their role (admin, manager, staff) and branch.',
@@ -308,14 +314,14 @@ export const NAV_SECTIONS = [
         },
       },
       {
-        href: '/dashboard/permissions', label: 'Permissions', icon: Shield, roles: ADMIN, module: 'module_permissions',
+        href: '/dashboard/permissions', label: 'Permissions', icon: Shield, module: 'module_permissions',
         help: {
           what: 'Fine control over what each role can view, create, edit, delete and export.',
           steps: ['Choose a role.', 'Switch modules and actions on or off, then save.'],
         },
       },
       {
-        href: '/dashboard/locations', label: 'Locations', icon: Map, roles: ADMIN, module: 'module_locations',
+        href: '/dashboard/locations', label: 'Locations', icon: Map, module: 'module_locations',
         keywords: 'branch warehouse',
         help: {
           what: 'Branches and warehouses. Users assigned to a location only see that location’s data.',
@@ -323,7 +329,7 @@ export const NAV_SECTIONS = [
         },
       },
       {
-        href: '/dashboard/pricing-config', label: 'Settings', icon: SlidersHorizontal, roles: ADMIN, module: 'module_settings',
+        href: '/dashboard/pricing-config', label: 'Settings', icon: SlidersHorizontal, module: 'module_settings',
         keywords: 'config pricing rounding cash round off interest target google drive connect',
         help: {
           what: 'A few company-wide basics: how totals are rounded, overdue interest, the monthly sales target, and the Google Drive connection.',
@@ -332,21 +338,21 @@ export const NAV_SECTIONS = [
         },
       },
       {
-        href: '/dashboard/terms', label: 'Terms & conditions', icon: ScrollText, roles: MGR, flag: 'can_manage_terms',
+        href: '/dashboard/terms', label: 'Terms & conditions', icon: ScrollText, module: 'module_terms',
         help: {
           what: 'The terms printed on quotations, invoices and AMC documents, with version history.',
           steps: ['Edit a template and save — a new version is kept.', 'Mark one template active per document type.'],
         },
       },
       {
-        href: '/dashboard/form-tabs', label: 'Form builder', icon: Layers, roles: ADMIN, module: 'module_settings',
+        href: '/dashboard/form-tabs', label: 'Form builder', icon: Layers, module: 'module_form_builder',
         help: {
           what: 'Add your own tabs and fields to the New project form (for example "Finance details").',
           steps: ['Create a tab, add fields and choose which are required.', 'Choose which roles can see the tab.'],
         },
       },
       {
-        href: '/dashboard/audit-logs', label: 'Activity log', icon: History, roles: ADMIN, flag: 'can_view_audit_logs',
+        href: '/dashboard/audit-logs', label: 'Activity log', icon: History, module: 'module_audit_logs',
         keywords: 'audit logs history changes',
         help: {
           what: 'Who changed what and when, across the whole app.',
@@ -354,7 +360,7 @@ export const NAV_SECTIONS = [
         },
       },
       {
-        href: '/dashboard/vault', label: 'Company logins', icon: KeyRound, roles: ADMIN, module: 'module_vault',
+        href: '/dashboard/vault', label: 'Company logins', icon: KeyRound, module: 'module_vault',
         keywords: 'vault passwords credentials account security',
         help: {
           what: 'A safe for the company’s logins to outside services (Google Workspace, hosting, domain, software).',
@@ -362,7 +368,7 @@ export const NAV_SECTIONS = [
         },
       },
       {
-        href: '/dashboard/security', label: 'My login & 2FA', icon: LockKeyhole, staff: true,
+        href: '/dashboard/security', label: 'My login & 2FA', icon: LockKeyhole, module: 'module_security',
         keywords: 'password two factor',
         help: {
           what: 'Change your password and turn on two-step sign-in for your own account.',
@@ -396,14 +402,13 @@ const EXTRA_ROUTES = [
 
 export const ALL_ITEMS = NAV_SECTIONS.flatMap((s) => s.items.map((i) => ({ ...i, section: s.label, sectionId: s.id })));
 
-/** Is this menu item visible to this user, given their role and permission matrix? */
+/** Is this menu item visible? Settings → Permissions decides (admins see everything). */
 export function canSee(item, role, perms) {
-  if (role === 'staff' && !item.staff) return false;
-  if (item.roles && !item.roles.includes(role)) return false;
+  if (role === 'admin') return true;
   if (!perms) return false;
-  if (item.module) { const m = perms[item.module]; if (m && typeof m === 'object' && m.view === false) return false; }
-  if (item.flag && perms[item.flag] === false) return false;
-  return true;
+  if (!item.module) return true;
+  const m = perms[item.module];
+  return !!(m && typeof m === 'object' && m.view && (!item.action || m[item.action]));
 }
 
 /** Title, section and help for the current path (most specific match wins). */

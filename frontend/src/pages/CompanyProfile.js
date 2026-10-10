@@ -25,6 +25,7 @@ import {
   Globe,
   Upload
 } from 'lucide-react';
+import Can from '../components/Can';
 
 export default function CompanyProfile() {
   const [profiles, setProfiles] = useState([]);
@@ -242,14 +243,14 @@ export default function CompanyProfile() {
               <p className="text-slate-500">Manage company branding and details for quotations</p>
             </div>
           </div>
-          <Button 
+          <Can module="module_company" action="create"><Button 
             onClick={openCreateDialog}
             className="bg-[#4ADE40] hover:bg-[#3dba35] text-black"
             data-testid="add-profile-btn"
           >
             <Plus className="h-4 w-4 mr-2" />
             New Profile
-          </Button>
+          </Button></Can>
         </div>
 
         {/* Info Card */}

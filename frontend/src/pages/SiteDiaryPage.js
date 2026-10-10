@@ -9,6 +9,7 @@ import { localDate, dayLabel, fullDate, compressImage } from '../lib/format';
 import { generateSiteDiaryPDF } from '../utils/siteDiaryPDF';
 import { StatusPill } from './Dashboard';
 import { Plus, Trash2, Loader2, Download, Save, Sun, Cloud, CloudRain, CloudDrizzle, ShieldCheck, ShieldAlert, ArrowRight, NotebookPen, BookOpen, X } from 'lucide-react';
+import Can from '../components/Can';
 
 export const STAGES = ['Site survey', 'Material delivered', 'Structure erected', 'Panels mounted', 'DC wiring done', 'Inverter installed', 'AC wiring & earthing', 'Testing & commissioning', 'Net-meter applied', 'Handover done'];
 const WEATHER = [['Sunny', Sun], ['Cloudy', Cloud], ['Light rain', CloudDrizzle], ['Heavy rain', CloudRain]];
@@ -185,8 +186,8 @@ function DiaryForm({ projectId, date, projects, partners, items, onSaved }) {
       <div className="sticky bottom-[calc(64px+env(safe-area-inset-bottom,0px))] z-20 -mx-4 border-t border-slate-200 bg-white/95 px-4 py-3 backdrop-blur sm:mx-0 sm:rounded-xl sm:border lg:bottom-4">
         <div className="flex gap-2">
           <Button onClick={save} disabled={saving || (!dirty && data.exists)} className="h-12 flex-1 gap-2 bg-emerald-600 text-white hover:bg-emerald-700" data-testid="diary-save">{saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}{data.exists && !dirty ? 'Saved' : 'Save diary'}</Button>
-          <Button variant="outline" onClick={() => pdf(false)} disabled={!data.exists} className="h-12 gap-2 px-3" title="PDF of this day" data-testid="diary-pdf-day"><Download className="h-4 w-4" /><span className="hidden sm:inline">This day</span></Button>
-          <Button variant="outline" onClick={() => pdf(true)} className="h-12 gap-2 px-3" title="PDF of the whole diary" data-testid="diary-pdf-all"><BookOpen className="h-4 w-4" /><span className="hidden sm:inline">Whole diary</span></Button>
+          <Can module="module_site_diary" action="export"><Button variant="outline" onClick={() => pdf(false)} disabled={!data.exists} className="h-12 gap-2 px-3" title="PDF of this day" data-testid="diary-pdf-day"><Download className="h-4 w-4" /><span className="hidden sm:inline">This day</span></Button></Can>
+          <Can module="module_site_diary" action="export"><Button variant="outline" onClick={() => pdf(true)} className="h-12 gap-2 px-3" title="PDF of the whole diary" data-testid="diary-pdf-all"><BookOpen className="h-4 w-4" /><span className="hidden sm:inline">Whole diary</span></Button></Can>
         </div>
       </div>
     </div>

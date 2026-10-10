@@ -14,6 +14,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import {
   ArrowLeft, Plus, Edit, Trash2, Loader2, Package, X, Layers, Tags
 } from 'lucide-react';
+import Can from '../components/Can';
 
 const blankKit = {
   name: '', category: 'on-grid',
@@ -147,9 +148,9 @@ export default function MaterialKitsPage() {
                 <Tags className="h-4 w-4 mr-1" /> Categories
               </Button>
             )}
-            <Button onClick={() => openDialog()} className="bg-emerald-600 hover:bg-emerald-700 text-white h-11" data-testid="add-kit-btn">
+            <Can module="module_kits" action="create"><Button onClick={() => openDialog()} className="bg-emerald-600 hover:bg-emerald-700 text-white h-11" data-testid="add-kit-btn">
               <Plus className="h-4 w-4 mr-1" /> New Kit
-            </Button>
+            </Button></Can>
           </div>
         </div>
 

@@ -11,6 +11,7 @@ import { PriceCell } from '../components/pricelist/PriceCell';
 import { BulkAdjustDialog, PriceHistoryDialog } from '../components/pricelist/PricelistDialogs';
 import { PdfOptionsDialog } from '../components/pricelist/PdfOptionsDialog';
 import { generatePriceListPDF } from '../utils/priceListPDF';
+import Can from '../components/Can';
 
 const inr = (v) => `₹${Math.round(v || 0).toLocaleString('en-IN')}`;
 const STATUS = [{ id: 'active', label: 'Active' }, { id: 'archived', label: 'Archived' }, { id: 'all', label: 'All' }];
@@ -94,7 +95,7 @@ export default function PricelistPage({ embedded = false }) {
         <div className="flex flex-wrap gap-2">
           <Button variant="outline" onClick={() => setHistoryItem({})} className="gap-1.5" data-testid="pricelist-history-btn"><History className="h-4 w-4" />History</Button>
           <Button variant="outline" onClick={() => setShowBulk(true)} disabled={selected.size === 0} className="gap-1.5" data-testid="pricelist-bulk-btn"><SlidersHorizontal className="h-4 w-4" />Bulk adjust{selected.size ? ` (${selected.size})` : ''}</Button>
-          <Button onClick={() => setShowPdf(true)} disabled={!data || items.length === 0} className="bg-emerald-600 hover:bg-emerald-700 text-white gap-1.5" data-testid="pricelist-generate-pdf-btn"><FileDown className="h-4 w-4" />Price List PDF</Button>
+          <Can module="module_pricelist" action="export"><Button onClick={() => setShowPdf(true)} disabled={!data || items.length === 0} className="bg-emerald-600 hover:bg-emerald-700 text-white gap-1.5" data-testid="pricelist-generate-pdf-btn"><FileDown className="h-4 w-4" />Price List PDF</Button></Can>
         </div>
       </div>
 

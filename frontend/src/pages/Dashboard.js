@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { dashboardAPI, projectsAPI, dailyReportsAPI, permissionsAPI, attendanceAPI } from '../utils/api';
+import { dashboardAPI, projectsAPI, dailyReportsAPI, attendanceAPI } from '../utils/api';
 import { MonthlyTargetPanel } from '../components/MonthlyTargetPanel';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../components/ui/tabs';
 import CeoDashboard from './CeoDashboard';
@@ -72,7 +72,9 @@ function Stat({ label, value, sub, to }) {
   return to ? <Link to={to}>{body}</Link> : body;
 }
 
-function Overview({ user, isMgr, can }) {
+function Overview({ user, isMgr, can, allowed }) {
+  const seesTeamReports = allowed('can_review_daily_reports');
+  const mustReport = user?.daily_report_required !== false;
   const navigate = useNavigate();
   const [stats, setStats] = useState(null);
   const [projects, setProjects] = useState([]);
@@ -84,14 +86,14 @@ function Overview({ user, isMgr, can }) {
 
   const load = useCallback(async () => {
     const jobs = [dashboardAPI.getStats(), projectsAPI.getAll(), dailyReportsAPI.mine(today)];
-    if (isMgr) jobs.push(dailyReportsAPI.team(today));
+    if (seesTeamReports) jobs.push(dailyReportsAPI.team(today));
     const [s, p, r, t] = await Promise.allSettled(jobs);
     if (s.status === 'fulfilled') setStats(s.value.data);
     if (p.status === 'fulfilled') setProjects(p.value.data || []);
     if (r.status === 'fulfilled') setMyReport(r.value.data);
     if (t?.status === 'fulfilled') setTeam(t.value.data);
     setLoading(false);
-  }, [today, isMgr]);
+  }, [today, seesTeamReports]);
   useEffect(() => { load(); }, [load]);
   useEffect(() => { attendanceAPI.today().then((r) => setAttendance(r.data)).catch(() => {}); }, []);
 
@@ -101,19 +103,20 @@ function Overview({ user, isMgr, can }) {
   const recent = projects.slice(0, 6);
   const attention = [];
   if (attendance && !attendance.record && new Date().getHours() < 20) attention.push({ to: '/dashboard/attendance', icon: Clock, tone: 'amber', title: "You haven't checked in today", detail: 'Tap to check in — your time and location are saved', testid: 'checkin-alert' });
-  if (isMgr && stats?.pending_approvals > 0) attention.push({ to: '/dashboard/approvals', icon: ClipboardCheck, tone: 'sky', title: `${stats.pending_approvals} waiting for your approval`, detail: 'Project reviews, deletions and purchase orders', testid: 'pending-approvals-alert' });
-  if (isMgr && team && team.counts.missing + team.counts.draft > 0) attention.push({ to: '/dashboard/daily-report?tab=team', icon: Users, tone: 'amber', title: `${team.counts.submitted} of ${team.rows.length} daily reports in today`, detail: `${team.counts.missing} not started · ${team.counts.draft} in draft`, testid: 'team-reports-alert' });
-  if (isMgr && stats?.low_stock_alerts > 0) attention.push({ to: '/dashboard/inventory', icon: Package, tone: 'red', title: `${stats.low_stock_alerts} item${stats.low_stock_alerts > 1 ? 's' : ''} low on stock`, detail: 'Reorder before the next installation', testid: 'low-stock-alert' });
-  if (myReport && myReport.status !== 'submitted' && can('/dashboard/daily-report')) attention.push({ to: '/dashboard/daily-report', icon: CalendarCheck, tone: 'amber', title: "Your daily report isn't submitted yet", detail: reportState.text, testid: 'my-report-alert' });
+  if (allowed('module_approvals') && stats?.pending_approvals > 0) attention.push({ to: '/dashboard/approvals', icon: ClipboardCheck, tone: 'sky', title: `${stats.pending_approvals} waiting for your approval`, detail: 'Project reviews, deletions and purchase orders', testid: 'pending-approvals-alert' });
+  const expected = team ? (team.counts.expected ?? team.rows.length) : 0;
+  if (team && team.counts.missing + team.counts.draft > 0) attention.push({ to: '/dashboard/daily-report?tab=team', icon: Users, tone: 'amber', title: `${team.counts.submitted} of ${expected} daily reports in today`, detail: `${team.counts.missing} not started · ${team.counts.draft} in draft`, testid: 'team-reports-alert' });
+  if (allowed('module_inventory') && stats?.low_stock_alerts > 0) attention.push({ to: '/dashboard/inventory', icon: Package, tone: 'red', title: `${stats.low_stock_alerts} item${stats.low_stock_alerts > 1 ? 's' : ''} low on stock`, detail: 'Reorder before the next installation', testid: 'low-stock-alert' });
+  if (mustReport && myReport && myReport.status !== 'submitted' && can('/dashboard/daily-report')) attention.push({ to: '/dashboard/daily-report', icon: CalendarCheck, tone: 'amber', title: "Your daily report isn't submitted yet", detail: reportState.text, testid: 'my-report-alert' });
   if (myDrafts.length > 0) attention.push({ to: '/dashboard/projects?status=draft', icon: FileText, tone: 'amber', title: `${myDrafts.length} draft project${myDrafts.length > 1 ? 's' : ''} to finish`, detail: myDrafts.slice(0, 3).map((p) => p.customer?.name).join(', '), testid: 'my-drafts-alert' });
 
   return (
     <div className="space-y-6">
       <section aria-label="Quick actions" className="grid grid-cols-2 gap-3 md:grid-cols-4">
         {can('/dashboard/projects/new') && <ActionTile to="/dashboard/projects/new" icon={FolderPlus} title="New project" note="Site visit & quotation" tone="green" testid="qa-new-project" />}
-        {can('/dashboard/daily-report') && <ActionTile to="/dashboard/daily-report" icon={CalendarCheck} title="Daily report" note={reportState.text} noteCls={reportState.cls} testid="qa-daily-report" />}
+        {can('/dashboard/daily-report') && <ActionTile to="/dashboard/daily-report" icon={CalendarCheck} title="Daily report" note={!mustReport && reportState === REPORT_STATE.not_started ? 'Optional for you' : reportState.text} noteCls={!mustReport && reportState === REPORT_STATE.not_started ? 'text-slate-500' : reportState.cls} testid="qa-daily-report" />}
         {can('/dashboard/site-diary') && <ActionTile to="/dashboard/site-diary" icon={NotebookPen} title="Site diary" note="Log today's site work" testid="qa-site-diary" />}
-        {isMgr && can('/dashboard/approvals')
+        {can('/dashboard/approvals')
           ? <ActionTile to="/dashboard/approvals" icon={ClipboardCheck} title="Approvals" note={stats?.pending_approvals ? `${stats.pending_approvals} waiting` : 'Nothing waiting'} noteCls={stats?.pending_approvals ? 'text-sky-700' : 'text-slate-500'} testid="qa-approvals" />
           : can('/dashboard/readings') && <ActionTile to="/dashboard/readings" icon={Activity} title="Readings" note="Generation checks" testid="qa-readings" />}
       </section>
@@ -169,19 +172,13 @@ function Overview({ user, isMgr, can }) {
 }
 
 export default function Dashboard() {
-  const { user, isAdmin, isManager } = useAuth();
+  const { user, isAdmin, isManager, perms, can: allowed } = useAuth();
   const isMgr = isAdmin || isManager;
   const [params, setParams] = useSearchParams();
-  const [perms, setPerms] = useState(null);
-  const tab = isMgr && params.get('tab') === 'health' ? 'health' : 'overview';
-
-  useEffect(() => {
-    if (!user?.role) return;
-    permissionsAPI.getRole(user.role).then((r) => setPerms(r.data?.permissions || {})).catch(() => setPerms({}));
-  }, [user?.role]);
+  const ceoAllowed = allowed('module_ceo_dashboard');
+  const tab = ceoAllowed && params.get('tab') === 'health' ? 'health' : 'overview';
   const visible = NAV_SECTIONS.flatMap((s) => s.items).filter((i) => canSee(i, user?.role, perms || {}));
   const can = (href) => visible.some((i) => i.href === href);
-  const ceoAllowed = isMgr && (!perms || perms.module_ceo_dashboard?.view !== false);
 
   const day = new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long' });
 
@@ -197,11 +194,11 @@ export default function Dashboard() {
             <TabsTrigger value="overview" data-testid="home-tab-overview">Today</TabsTrigger>
             <TabsTrigger value="health" data-testid="home-tab-health">Business health</TabsTrigger>
           </TabsList>
-          <TabsContent value="overview"><Overview user={user} isMgr={isMgr} can={can} /></TabsContent>
+          <TabsContent value="overview"><Overview user={user} isMgr={isMgr} can={can} allowed={allowed} /></TabsContent>
           <TabsContent value="health">{tab === 'health' && <CeoDashboard embedded />}</TabsContent>
         </Tabs>
       ) : (
-        <Overview user={user} isMgr={isMgr} can={can} />
+        <Overview user={user} isMgr={isMgr} can={can} allowed={allowed} />
       )}
     </div>
   );

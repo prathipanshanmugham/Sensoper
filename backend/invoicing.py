@@ -134,7 +134,8 @@ def create_router(db, get_current_user, create_audit_log):
 
     async def _require_billing_access(request: Request) -> Dict[str, Any]:
         user = await get_current_user(request)
-        if user.get("role") not in ("admin", "manager"):
+        # the Permissions page can give "Make GST invoices" to another role (policy_grant is set by get_current_user)
+        if user.get("role") not in ("admin", "manager") and not getattr(request.state, "policy_grant", False):
             raise HTTPException(status_code=403, detail="Only admin/manager can access billing documents")
         return user
 
