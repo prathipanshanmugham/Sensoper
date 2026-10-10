@@ -1,5 +1,49 @@
 # Sensoper — change log
 
+## October 2026 · Customer dashboard, attendance, organisation chart
+
+### Customer dashboard (`/my/<link>`)
+- **Sharing:** project page → **Customer dashboard** → Create link → **Send on WhatsApp**.
+  - The customer opens the link and enters their registered mobile number once. They then stay signed in for 30 days on that phone. There's no password or SMS.
+  - The number check allows 8 wrong tries per 15 minutes.
+  - **New link** replaces the old link; **Turn off** disables it.
+- **What the customer sees:**
+  - **Hero:** savings so far, savings per month and CO₂ avoided.
+  - **Breakeven:** a progress ring, the payback date and 25-year savings.
+  - **Planet:** CO₂ avoided so far, per year and over 25 years, the tree equivalent, and units generated. Units are measured when Readings have data, otherwise estimated.
+  - **Installation journey:** site visit → approval → installation (progress from the Site diary) → switched on → net meter → handover.
+  - **Plant and money:** panels, inverter and battery; payments and balance.
+  - **Service:** AMC plan and next service visit, warranty.
+  - **Offers** with "I'm interested".
+  - **Support:** their support requests, plus a **Need help?** form. Each request becomes a support ticket (`reported_via: customer_dashboard`) in AMC → Support.
+  - **Contact:** call, WhatsApp and email buttons.
+- **Customer offers** (Sales menu, admins and managers): create offers (badge, valid till, which system types see them) and call back the people who tapped "I'm interested".
+- **CO₂ factor:** 0.82 kg per grid unit, the same as the solar sizing calculator. A tree absorbs about 21.77 kg CO₂ a year.
+- **Backend:** `backend/customer_portal.py`. New collections: `customer_portal_links` (token stored hashed and encrypted), `customer_offers`, `offer_interests`, `portal_attempts` (24 h TTL). The ticket logic is now shared through `support.open_ticket`.
+
+### Attendance (Daily work → Attendance)
+- **Check in / Check out** saves the time and the phone's GPS. Everyone has it, and Home reminds people who haven't checked in.
+- Admins and managers get:
+  - a **Team** tab: who is in or out, hours, map links, and a pencil to correct a time (logged);
+  - a **Monthly register** (P / H / A / Sunday) with Excel download.
+- In the register, days before someone joined, or before attendance started being used, are blank rather than "absent".
+- **Scope:** managers with locations see their locations' people.
+- **Backend:** `backend/attendance.py`, collection `attendance` (one record per person per day, India time).
+
+### Organisation chart (People & field → Organisation, admins only)
+- Leadership (admins) on top, then each location with its managers, staff and field teams.
+- Every person shows today's attendance and their open projects.
+- People with no location are listed at the bottom so they can be assigned.
+- **Backend:** `backend/org_structure.py` (`GET /api/org-structure`, admin only).
+
+### Login page
+- It now reads "Welcome to Sensoper", with a short corporate introduction (Solar EPC end to end · Built to last · Powering a cleaner India). The old "Solar Project Cost Estimator" wording is gone.
+
+### Project photos: camera and gallery
+- Every photo slot on the site photo checklist (New project and the project page) has separate **Camera** and **Gallery** buttons. Proof of visit is camera-only, so an old photo can't be stamped with today's GPS.
+- The Site diary has **Take photo** and **From gallery** as well.
+- A new **More project photos** section (up to 30 files) takes any other picture or PDF. Like the rest, it's copied to Google Drive under `6 More photos`.
+
 ## October 2026 · What3words removed (GPS coordinates only)
 - **Location step:** **Use my location** fills in latitude and longitude, with an "Open in Google Maps" link. The 3-word box and its refresh button are gone. The step needs either the GPS or a site address.
 - **Project page:** **Update location** saves the phone's GPS only (`PUT /api/projects/{id}/geo`). The What3words row is gone, and the Excel export shows GPS instead.

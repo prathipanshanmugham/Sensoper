@@ -13,7 +13,7 @@ import {
   Home, CalendarCheck, NotebookPen, Activity, ClipboardList, FolderPlus, FolderKanban, ClipboardCheck, ShoppingCart,
   ShoppingBag, RefreshCw, Package, Boxes, PackageOpen, Truck, Undo2, Store, Tags, HardHat, Users, Wrench,
   CreditCard, AlertTriangle, BarChart3, MapPin, Building2, UserCog, Shield, Map, SlidersHorizontal, ScrollText,
-  Layers, History, KeyRound, LockKeyhole, FileText, UserRound,
+  Layers, History, KeyRound, LockKeyhole, FileText, UserRound, Clock, Network, Gift,
 } from 'lucide-react';
 
 const MGR = ['admin', 'manager'];
@@ -36,6 +36,17 @@ export const NAV_SECTIONS = [
   },
   {
     id: 'daily', label: 'Daily work', items: [
+      {
+        href: '/dashboard/attendance', label: 'Attendance', icon: Clock, staff: true,
+        keywords: 'check in check out punch time gps present absent register',
+        help: {
+          what: 'Check in when you start work and check out when you finish. The time and your phone’s location are saved.',
+          steps: ['Tap "Check in" when you reach work or the site — allow location when the phone asks.',
+            'Tap "Check out" when you leave. Your hours for the day appear straight away.',
+            'Managers: the Team tab shows who is in today; the Monthly register downloads to Excel.'],
+          tip: 'Forgot to check out? A manager can correct the time with the pencil button — the change is logged.',
+        },
+      },
       {
         href: '/dashboard/daily-report', label: 'Daily report', icon: CalendarCheck, staff: true, module: 'module_daily_updates',
         keywords: 'end of day update eod',
@@ -106,6 +117,16 @@ export const NAV_SECTIONS = [
         help: {
           what: 'Everything waiting for a manager’s decision: project reviews, deletions, stock reversals and purchase orders.',
           steps: ['Open a request to see what changes.', 'Approve or reject it; the person who asked is updated straight away.'],
+        },
+      },
+      {
+        href: '/dashboard/customer-offers', label: 'Customer offers', icon: Gift, roles: MGR,
+        keywords: 'customer dashboard portal offers promotion amc battery referral interested',
+        help: {
+          what: 'Offers shown on customers’ own dashboards, and the customers who tapped “I’m interested”.',
+          steps: ['Create an offer — AMC plan, battery add-on, cleaning, referral bonus.', 'Choose which customers see it, or leave it for everyone.',
+            'Call back the people listed under “To call back” and tap “Called”.'],
+          tip: 'Share a customer’s dashboard from their project page → Customer dashboard → Send on WhatsApp.',
         },
       },
       {
@@ -197,6 +218,15 @@ export const NAV_SECTIONS = [
   },
   {
     id: 'people', label: 'People & field', items: [
+      {
+        href: '/dashboard/org-structure', label: 'Organisation', icon: Network, roles: ADMIN,
+        keywords: 'org chart structure hierarchy branch location managers staff team',
+        help: {
+          what: 'Who works where: every location with its managers, staff and field teams, and who has checked in today. Admins only.',
+          steps: ['Use "Find a person" to jump to someone.', 'People without a location are listed at the bottom — assign them under Users.'],
+          tip: 'Add branches under Settings → Locations.',
+        },
+      },
       {
         href: '/dashboard/partners', label: 'Subcontractors', icon: HardHat, roles: MGR, module: 'module_partners',
         keywords: 'partners labour crew rate card retention',

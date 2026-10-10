@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { dashboardAPI, projectsAPI, dailyReportsAPI, permissionsAPI } from '../utils/api';
+import { dashboardAPI, projectsAPI, dailyReportsAPI, permissionsAPI, attendanceAPI } from '../utils/api';
 import { MonthlyTargetPanel } from '../components/MonthlyTargetPanel';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../components/ui/tabs';
 import CeoDashboard from './CeoDashboard';
@@ -78,6 +78,7 @@ function Overview({ user, isMgr, can }) {
   const [projects, setProjects] = useState([]);
   const [myReport, setMyReport] = useState(null);
   const [team, setTeam] = useState(null);
+  const [attendance, setAttendance] = useState(null);
   const [loading, setLoading] = useState(true);
   const today = localDate();
 
@@ -92,12 +93,14 @@ function Overview({ user, isMgr, can }) {
     setLoading(false);
   }, [today, isMgr]);
   useEffect(() => { load(); }, [load]);
+  useEffect(() => { attendanceAPI.today().then((r) => setAttendance(r.data)).catch(() => {}); }, []);
 
   const reportState = REPORT_STATE[myReport?.status || 'not_started'] || REPORT_STATE.not_started;
   const mine = projects.filter((p) => p.created_by === user?.id);
   const myDrafts = mine.filter((p) => p.status === 'draft');
   const recent = projects.slice(0, 6);
   const attention = [];
+  if (attendance && !attendance.record && new Date().getHours() < 20) attention.push({ to: '/dashboard/attendance', icon: Clock, tone: 'amber', title: "You haven't checked in today", detail: 'Tap to check in — your time and location are saved', testid: 'checkin-alert' });
   if (isMgr && stats?.pending_approvals > 0) attention.push({ to: '/dashboard/approvals', icon: ClipboardCheck, tone: 'sky', title: `${stats.pending_approvals} waiting for your approval`, detail: 'Project reviews, deletions and purchase orders', testid: 'pending-approvals-alert' });
   if (isMgr && team && team.counts.missing + team.counts.draft > 0) attention.push({ to: '/dashboard/daily-report?tab=team', icon: Users, tone: 'amber', title: `${team.counts.submitted} of ${team.rows.length} daily reports in today`, detail: `${team.counts.missing} not started · ${team.counts.draft} in draft`, testid: 'team-reports-alert' });
   if (isMgr && stats?.low_stock_alerts > 0) attention.push({ to: '/dashboard/inventory', icon: Package, tone: 'red', title: `${stats.low_stock_alerts} item${stats.low_stock_alerts > 1 ? 's' : ''} low on stock`, detail: 'Reorder before the next installation', testid: 'low-stock-alert' });

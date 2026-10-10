@@ -19,6 +19,7 @@ import {
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator } from '../components/ui/dropdown-menu';
 import QRCode from 'qrcode';
 import SitePhotoChecklist from '../components/SitePhotoChecklist';
+import CustomerDashboardCard from '../components/CustomerDashboardCard';
 import { mapsLink, getPosition } from '../lib/geo';
 import { toast } from 'sonner';
 import * as XLSX from 'xlsx';
@@ -648,6 +649,9 @@ export default function ProjectDetails() {
             {/* Labour & Subcontractor assignment — inline from Project Details (Iter 46 Change 1 / Task 3) */}
             {(isAdmin || isManager) && <ProjectPartnerCard projectId={id} canManage={isAdmin || isManager} />}
             <ProjectTeamsCard projectId={id} canManage={isAdmin || isManager} />
+
+            {/* The customer's own dashboard (private link + their mobile number) */}
+            <CustomerDashboardCard project={{ ...project, id }} />
 
             {/* Site photos checklist — adds go straight to the project (and on to Google Drive) */}
             <div data-testid="project-site-photos">

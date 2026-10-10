@@ -179,10 +179,11 @@ def run(coro):
 
 def test_checklist_matches_the_brief():
     labels = [i["key"] for c in site_photos.CHECKLIST for i in c["items"]]
-    assert len(labels) == len(set(labels)) == 23
-    assert [c["folder"] for c in site_photos.CHECKLIST] == ["1 Site & access", "2 Roof", "3 Electrical", "4 Documents", "5 Proof of visit"]
+    assert len(labels) == len(set(labels)) == 24
+    assert [c["folder"] for c in site_photos.CHECKLIST] == ["1 Site & access", "2 Roof", "3 Electrical", "4 Documents", "5 Proof of visit", "6 More photos"]
+    assert site_photos.SLOTS["other_photos"]["max"] == 30 and site_photos.SLOTS["other_photos"]["optional"]
     assert site_photos.SLOTS["roof_corners"]["min"] == 4 and site_photos.SLOTS["eb_bill"]["min"] == 2
-    assert {k for k, s in site_photos.SLOTS.items() if s["optional"]} == {"sheet_roof", "existing_earthing", "backup_power", "ci_panels"}
+    assert {k for k, s in site_photos.SLOTS.items() if s["optional"]} == {"sheet_roof", "existing_earthing", "backup_power", "ci_panels", "other_photos"}
     assert site_photos.summarise({})["required_total"] == 19
 
 

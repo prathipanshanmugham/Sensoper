@@ -5,9 +5,14 @@ import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
-import { Loader2, Sun, Eye, EyeOff } from 'lucide-react';
+import { Loader2, Eye, EyeOff, Building2, ShieldCheck, Leaf, Lock } from 'lucide-react';
 
 const LOGO_URL = `${process.env.PUBLIC_URL}/logo.png`;
+const PILLARS = [
+  { icon: Building2, title: 'Solar EPC, end to end', line: 'Design, engineering, procurement and installation for homes, farms and industry.' },
+  { icon: ShieldCheck, title: 'Built to last', line: 'Trusted components, trained installers and service that stays with every system.' },
+  { icon: Leaf, title: 'Powering a cleaner India', line: 'Every plant we commission cuts bills and carbon for decades.' },
+];
 
 export default function Login() {
   const [email, setEmail] = useState('');
@@ -45,27 +50,26 @@ export default function Login() {
 
   return (
     <div className="min-h-screen flex">
-      {/* Left side - Light branded section */}
-      <div className="hidden lg:flex lg:w-1/2 bg-gradient-to-br from-emerald-50 via-white to-sky-50 relative overflow-hidden">
-        <div className="absolute top-20 left-10 w-32 h-32 rounded-full bg-[#4ADE40] opacity-10 blur-3xl"></div>
-        <div className="absolute bottom-40 right-20 w-48 h-48 rounded-full bg-[#2D9BF0] opacity-10 blur-3xl"></div>
-        <div className="absolute top-1/2 left-1/4 w-64 h-64 rounded-full bg-emerald-200 opacity-20 blur-3xl"></div>
-        
-        <div className="relative z-10 flex flex-col justify-center px-12">
-          <img src={LOGO_URL} alt="Sensoper Controls & Renewables" className="h-28 w-auto object-contain mb-8" />
-          <h1 className="text-4xl font-bold font-['Outfit'] mb-4">
-            <span className="text-[#4ADE40]">Solar</span>{' '}
-            <span className="text-[#2D9BF0]">Project</span>{' '}
-            <span className="text-slate-800">Cost Estimator</span>
-          </h1>
-          <p className="text-base text-slate-500 leading-relaxed max-w-md">
-            Streamline your solar installations with accurate cost estimations,
-            professional quotations, and efficient project management.
-          </p>
-          <div className="mt-8 flex items-center gap-3 text-sm text-slate-400">
-            <Sun className="h-4 w-4 text-[#4ADE40]" />
-            <span>Powering India's solar future</span>
+      {/* Left side — corporate welcome */}
+      <div className="hidden lg:flex lg:w-1/2 relative overflow-hidden bg-gradient-to-br from-emerald-50 via-white to-sky-50" data-testid="login-brand-panel">
+        <div className="absolute -top-24 -left-16 h-72 w-72 rounded-full bg-[#4ADE40] opacity-10 blur-3xl" />
+        <div className="absolute bottom-0 right-0 h-96 w-96 rounded-full bg-[#2D9BF0] opacity-10 blur-3xl" />
+        <div className="relative z-10 flex w-full flex-col justify-between px-14 py-12">
+          <img src={LOGO_URL} alt="Sensoper Controls & Renewables" className="h-20 w-auto self-start object-contain" />
+          <div className="max-w-lg">
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-700">Sensoper Controls &amp; Renewables</p>
+            <h1 className="mt-3 font-['Outfit'] text-5xl font-bold leading-tight text-slate-900">Welcome to <span className="text-[#2D9BF0]">Sensoper</span></h1>
+            <p className="mt-4 text-lg leading-relaxed text-slate-600">Engineering clean, dependable solar power — and running every project, team and customer relationship from one secure workspace.</p>
+            <ul className="mt-10 space-y-5">
+              {PILLARS.map(({ icon: I, title, line }) => (
+                <li key={title} className="flex gap-4">
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-emerald-700 shadow-sm ring-1 ring-slate-200"><I className="h-5 w-5" /></span>
+                  <span><span className="block font-semibold text-slate-900">{title}</span><span className="block text-sm text-slate-500">{line}</span></span>
+                </li>
+              ))}
+            </ul>
           </div>
+          <p className="text-xs text-slate-400">© {new Date().getFullYear()} Sensoper Controls &amp; Renewables · Authorised users only</p>
         </div>
       </div>
 
@@ -73,11 +77,13 @@ export default function Login() {
       <div className="flex-1 flex items-center justify-center p-6 bg-white">
         <Card className="w-full max-w-md border-slate-200 shadow-lg">
           <CardHeader className="text-center pb-2">
-            <div className="flex items-center justify-center mb-4 lg:hidden">
+            <div className="mb-4 flex flex-col items-center lg:hidden">
               <img src={LOGO_URL} alt="Sensoper" className="h-16 w-auto object-contain" />
+              <p className="mt-4 font-['Outfit'] text-2xl font-bold text-slate-900">Welcome to <span className="text-[#2D9BF0]">Sensoper</span></p>
+              <p className="mt-1 text-sm text-slate-500">Engineering clean, dependable solar power.</p>
             </div>
-            <CardTitle className="text-2xl font-['Outfit'] text-slate-900">Welcome back</CardTitle>
-            <CardDescription className="text-slate-500">Sign in to your account to continue</CardDescription>
+            <CardTitle className="text-2xl font-['Outfit'] text-slate-900" data-testid="login-title">Sign in</CardTitle>
+            <CardDescription className="text-slate-500">Use your Sensoper work account</CardDescription>
           </CardHeader>
           <CardContent>
             {needs2fa ? (
@@ -131,6 +137,7 @@ export default function Login() {
             <p className="mt-6 text-center text-sm text-slate-500" data-testid="login-account-help">
               No account yet? Ask your admin to add you under Settings → Users.
             </p>
+            <p className="mt-3 flex items-center justify-center gap-1.5 text-[11px] text-slate-400"><Lock className="h-3 w-3" />Secure sign-in · for Sensoper team members only</p>
           </CardContent>
         </Card>
       </div>

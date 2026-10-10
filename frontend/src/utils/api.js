@@ -754,3 +754,42 @@ export const hardDeleteAPI = {
 };
 
 export default api;
+// Attendance — check in / out with time + GPS
+export const attendanceAPI = {
+  today: () => api.get('/attendance/me/today'),
+  checkIn: (body) => api.post('/attendance/check-in', body),
+  checkOut: (body) => api.post('/attendance/check-out', body),
+  myMonth: (month) => api.get('/attendance/me', { params: { month } }),
+  team: (date) => api.get('/attendance/team', { params: { date } }),
+  register: (month) => api.get('/attendance/register', { params: { month } }),
+  correct: (id, body) => api.put(`/attendance/${id}`, body),
+};
+
+// Location-wise organisation structure (admins)
+export const orgAPI = {
+  structure: () => api.get('/org-structure'),
+};
+
+// Customer dashboard — staff side (share link per project, offers)
+export const customerDashboardAPI = {
+  getLink: (projectId) => api.get(`/projects/${projectId}/portal-link`),
+  createLink: (projectId) => api.post(`/projects/${projectId}/portal-link`),
+  revokeLink: (projectId) => api.delete(`/projects/${projectId}/portal-link`),
+  offers: () => api.get('/customer-offers'),
+  createOffer: (body) => api.post('/customer-offers', body),
+  updateOffer: (id, body) => api.put(`/customer-offers/${id}`, body),
+  deleteOffer: (id) => api.delete(`/customer-offers/${id}`),
+  interests: () => api.get('/customer-offers/interests'),
+  markInterest: (id) => api.put(`/customer-offers/interests/${id}`),
+};
+
+// Customer dashboard — the customer's own page (no staff login; session cookie scoped to the link)
+const portalHttp = axios.create({ baseURL: `${API_URL}/api/portal`, withCredentials: true, headers: { 'Content-Type': 'application/json' } });
+export const portalAPI = {
+  hello: (token) => portalHttp.get(`/${token}/hello`),
+  verify: (token, phone) => portalHttp.post(`/${token}/verify`, { phone }),
+  dashboard: (token) => portalHttp.get(`/${token}/dashboard`),
+  raiseTicket: (token, body) => portalHttp.post(`/${token}/tickets`, body),
+  interested: (token, offerId) => portalHttp.post(`/${token}/offers/${offerId}/interest`),
+  logout: (token) => portalHttp.post(`/${token}/logout`),
+};

@@ -2518,6 +2518,14 @@ api_router.include_router(_create_site_photos_router(db, get_current_user, requi
 api_router.include_router(_create_drive_router(db, get_current_user, require_role, create_audit_log, _drive_sync))
 api_router.include_router(_create_geo_location_router(db, get_current_user, create_audit_log))
 
+# ================== ATTENDANCE · ORG STRUCTURE · CUSTOMER DASHBOARD ==================
+from attendance import create_router as _create_attendance_router  # noqa: E402
+from org_structure import create_router as _create_org_router  # noqa: E402
+from customer_portal import create_router as _create_portal_router  # noqa: E402
+api_router.include_router(_create_attendance_router(db, get_current_user, require_role, create_audit_log))
+api_router.include_router(_create_org_router(db, require_role))
+api_router.include_router(_create_portal_router(db, get_current_user, require_role, create_audit_log, JWT_SECRET))
+
 # ═══════════ ECOMMERCE MARKETPLACES (Iter 46 Change 2) ═══════════
 from ecommerce import create_router as _create_ecommerce_router  # noqa: E402
 _ecommerce_router = _create_ecommerce_router(
@@ -7459,6 +7467,13 @@ async def startup_event():
     await _seed_kit_categories(db)
     # Site photos / Google Drive
     await db.site_photo_uploads.create_index("id", unique=True)
+    # Attendance / customer dashboard
+    await db.attendance.create_index([("user_id", 1), ("date", 1)], unique=True)
+    await db.attendance.create_index("date")
+    await db.customer_portal_links.create_index("token_hash")
+    await db.customer_portal_links.create_index("project_id")
+    await db.portal_attempts.create_index("at", expireAfterSeconds=24 * 3600)
+    await db.offer_interests.create_index([("offer_id", 1), ("project_id", 1)], unique=True)
     # What3words was removed (Oct 2026): clear its cache and the saved (encrypted) API key
     await db.w3w_cache.drop()
     await db.integrations.delete_one({"key": "what3words"})

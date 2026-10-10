@@ -46,6 +46,10 @@ import VaultPage from "./pages/VaultPage";
 import PartnerDetail from "./pages/PartnerDetail";
 import EcommercePage from "./pages/EcommercePage";
 import GoogleCallback from "./pages/GoogleCallback";
+import CustomerPortal from "./pages/CustomerPortal";
+import AttendancePage from "./pages/AttendancePage";
+import OrgStructurePage from "./pages/OrgStructurePage";
+import CustomerOffersPage from "./pages/CustomerOffersPage";
 
 // Protected Route Component
 function ProtectedRoute({ children, allowedRoles = null }) {
@@ -153,6 +157,11 @@ function AppRoutes() {
       <Route path="/dashboard/ecommerce" element={<ProtectedRoute><DashboardLayout><EcommercePage /></DashboardLayout></ProtectedRoute>} />
       {/* Google sign-in comes back here (Settings → Google Drive → Connect). Public: the one-time state authorises it. */}
       <Route path="/auth/google/callback" element={<GoogleCallback />} />
+      {/* Customer's own solar dashboard — public link, mobile-number check inside */}
+      <Route path="/my/:token" element={<CustomerPortal />} />
+      <Route path="/dashboard/attendance" element={<ProtectedRoute><DashboardLayout><AttendancePage /></DashboardLayout></ProtectedRoute>} />
+      <Route path="/dashboard/org-structure" element={<ProtectedRoute allowedRoles={["admin"]}><DashboardLayout><OrgStructurePage /></DashboardLayout></ProtectedRoute>} />
+      <Route path="/dashboard/customer-offers" element={<ProtectedRoute allowedRoles={["admin", "manager"]}><DashboardLayout><CustomerOffersPage /></DashboardLayout></ProtectedRoute>} />
       {/* Default Redirect */}
       <Route path="/" element={<Navigate to="/dashboard" replace />} />
       <Route path="*" element={<Navigate to="/dashboard" replace />} />
