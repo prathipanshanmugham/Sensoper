@@ -10,6 +10,7 @@ import { Badge } from '../components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '../components/ui/dialog';
 import { Loader2, Plus, Truck, CheckCircle2, X, Save, Pencil, Ban, AlertTriangle, Trash2 } from 'lucide-react';
 import HardDeleteButton from '../components/HardDeleteButton';
+import Can from '../components/Can';
 
 export default function DeliveryOutboundPage() {
   const { isAdmin, isManager } = useAuth();
@@ -98,7 +99,7 @@ export default function DeliveryOutboundPage() {
       <div className="max-w-6xl mx-auto">
         <div className="flex items-center justify-between mb-6">
           <div><h1 className="text-2xl font-bold font-['Outfit'] text-slate-900" data-testid="delivery-title">Delivery Outbound</h1><p className="text-sm text-slate-500">Track material dispatches to customers/projects</p></div>
-          <Button onClick={() => setShowForm(true)} className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white" data-testid="new-delivery-btn"><Plus className="h-4 w-4" />New Delivery</Button>
+          <Can module="module_delivery_outbound" action="create"><Button onClick={() => setShowForm(true)} className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white" data-testid="new-delivery-btn"><Plus className="h-4 w-4" />New Delivery</Button></Can>
         </div>
 
         {/* Pending cancellation approvals (admin/manager) */}

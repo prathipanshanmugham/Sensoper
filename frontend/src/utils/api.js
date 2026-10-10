@@ -522,6 +522,8 @@ export const approvalsAPI = {
 
 // Permissions API
 export const permissionsAPI = {
+  catalog: () => api.get('/permissions/catalog'),
+  me: () => api.get('/permissions/me'),
   getAll: () => api.get('/permissions'),
   getRole: (role) => api.get(`/permissions/${role}`),
   updateRole: (role, permissions) => api.put(`/permissions/${role}`, { permissions })
@@ -792,4 +794,30 @@ export const portalAPI = {
   raiseTicket: (token, body) => portalHttp.post(`/${token}/tickets`, body),
   interested: (token, offerId) => portalHttp.post(`/${token}/offers/${offerId}/interest`),
   logout: (token) => portalHttp.post(`/${token}/logout`),
+};
+
+// Investors — admin side (staff session, admins only)
+export const investorsAPI = {
+  meta: () => api.get('/investors/meta'),
+  overview: () => api.get('/investors/overview'),
+  business: (months = 12) => api.get('/investors/business', { params: { months } }),
+  list: () => api.get('/investors'),
+  create: (body) => api.post('/investors', body),
+  update: (id, body) => api.put(`/investors/${id}`, body),
+  remove: (id) => api.delete(`/investors/${id}`),
+  ledger: (id) => api.get(`/investors/${id}/ledger`),
+  addEntry: (id, body) => api.post(`/investors/${id}/ledger`, body),
+  removeEntry: (id, entryId) => api.delete(`/investors/${id}/ledger/${entryId}`),
+  preview: (id, months = 12) => api.get(`/investors/${id}/preview`, { params: { months } }),
+  activity: (id) => api.get(`/investors/${id}/activity`),
+};
+
+// Investor's own session — a separate cookie that only works under /api/investor
+const investorHttp = axios.create({ baseURL: `${API_URL}/api/investor`, withCredentials: true, headers: { 'Content-Type': 'application/json' } });
+export const investorPortalAPI = {
+  login: (email, password) => investorHttp.post('/auth/login', { email, password }),
+  logout: () => investorHttp.post('/auth/logout'),
+  me: () => investorHttp.get('/me'),
+  changePassword: (current_password, new_password) => investorHttp.post('/auth/change-password', { current_password, new_password }),
+  dashboard: (months = 12) => investorHttp.get('/dashboard', { params: { months } }),
 };

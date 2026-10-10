@@ -13,6 +13,7 @@ import {
   ArrowLeft, Plus, Trash2, GripVertical, Pencil, ChevronUp, ChevronDown,
   Save, X, Loader2, ToggleLeft, ToggleRight, Eye, EyeOff, Layers
 } from 'lucide-react';
+import Can from '../components/Can';
 
 const FIELD_TYPES = [
   { value: 'text', label: 'Text' },
@@ -212,9 +213,9 @@ export default function FormTabsManager() {
             <p className="text-sm text-slate-500">Add custom tabs to the project creation form</p>
           </div>
           {!showCreate && (
-            <Button onClick={() => { setShowCreate(true); setEditingTab(null); setFormState(emptyTab); setError(''); }} className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white" data-testid="create-tab-btn">
+            <Can module="module_form_builder" action="create"><Button onClick={() => { setShowCreate(true); setEditingTab(null); setFormState(emptyTab); setError(''); }} className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white" data-testid="create-tab-btn">
               <Plus className="h-4 w-4" />New Tab
-            </Button>
+            </Button></Can>
           )}
         </div>
 

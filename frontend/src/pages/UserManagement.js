@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Badge } from '../components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../components/ui/dialog';
+import { Switch } from '../components/ui/switch';
 import { 
   ArrowLeft,
   Users,
@@ -78,7 +79,7 @@ export default function UserManagement() {
 
   const openCreateDialog = () => {
     setEditingUser(null);
-    setFormData({ name: '', email: '', password: '', phone: '', role: 'staff' });
+    setFormData({ name: '', email: '', password: '', phone: '', role: 'staff', daily_report_required: true });
     setError('');
     setShowDialog(true);
   };
@@ -90,7 +91,8 @@ export default function UserManagement() {
       email: user.email,
       password: '',
       phone: user.phone || '',
-      role: user.role
+      role: user.role,
+      daily_report_required: user.daily_report_required !== false
     });
     setError('');
     setShowDialog(true);
@@ -106,6 +108,7 @@ export default function UserManagement() {
           name: formData.name,
           phone: formData.phone,
           role: formData.role,
+          daily_report_required: !!formData.daily_report_required,
           password: formData.password || undefined
         });
       } else {
@@ -191,6 +194,7 @@ export default function UserManagement() {
                           <div className="flex items-center gap-2">
                             <h3 className="font-semibold text-slate-900">{user.name}</h3>
                             <Badge className={config.color}>{config.label}</Badge>
+                            {user.daily_report_required === false && <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] text-slate-500" data-testid={`no-report-${user.id}`}>No daily report</span>}
                           </div>
                           <p className="text-sm text-slate-500">{user.email}</p>
                           {user.phone && <p className="text-sm text-slate-400">{user.phone}</p>}
@@ -308,6 +312,10 @@ export default function UserManagement() {
                 </SelectContent>
               </Select>
             </div>
+            <label className="flex items-start justify-between gap-3 rounded-lg border border-slate-200 p-3" htmlFor="must-report">
+              <span><span className="block text-sm font-medium text-slate-800">Must send a daily report</span><span className="block text-xs text-slate-500">Off = they’re not counted as “not started” and get no reminder. They can still send one.</span></span>
+              <Switch id="must-report" checked={formData.daily_report_required !== false} onCheckedChange={(v) => setFormData((prev) => ({ ...prev, daily_report_required: v }))} data-testid="user-daily-report-switch" />
+            </label>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowDialog(false)}>

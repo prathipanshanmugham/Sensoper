@@ -11,6 +11,7 @@ import { localDate, dayLabel, timeOf } from '../lib/format';
 import { DateNav } from '../components/FormBits';
 import { Button } from '../components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '../components/ui/dialog';
+import Can from '../components/Can';
 
 const hm = (mins) => (mins == null ? '—' : `${Math.floor(mins / 60)}h ${String(mins % 60).padStart(2, '0')}m`);
 const monthOf = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
@@ -221,7 +222,7 @@ function Register() {
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <MonthNav value={month} onChange={setMonth} testid="register-month" />
-        <Button variant="outline" onClick={download} disabled={!data} className="h-10 gap-2" data-testid="register-download"><Download className="h-4 w-4" />Excel</Button>
+        <Can module="module_attendance" action="export"><Button variant="outline" onClick={download} disabled={!data} className="h-10 gap-2" data-testid="register-download"><Download className="h-4 w-4" />Excel</Button></Can>
       </div>
       {!data ? <div className="flex justify-center py-10"><Loader2 className="h-6 w-6 animate-spin text-slate-400" /></div> : (
         <>
@@ -254,8 +255,8 @@ function Register() {
 }
 
 export default function AttendancePage() {
-  const { isAdmin, isManager } = useAuth();
-  const isMgr = isAdmin || isManager;
+  const { can } = useAuth();
+  const isMgr = can('can_view_team_attendance');
   const [params, setParams] = useSearchParams();
   const tab = isMgr ? (params.get('tab') || 'me') : 'me';
   const tabs = useMemo(() => [['me', 'My day', UserCheck], ['team', 'Team', Users], ['register', 'Monthly register', CalendarDays]], []);

@@ -163,7 +163,8 @@ def _report_totals(doc: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-def create_router(db, get_current_user, require_role, create_audit_log):
+def create_router(db, get_current_user, require_role, create_audit_log, has_option=None, report_required=None):
+    """has_option(user, key) reads the Permissions page; report_required(user_doc) says who must send a report."""
     router = APIRouter()
 
     async def _project_names(ids: List[str]) -> Dict[str, Dict[str, Any]]:
@@ -190,8 +191,20 @@ def create_router(db, get_current_user, require_role, create_audit_log):
                  "created_by_name": user["name"], "created_at": created_at} for e in entries]
         await db.daily_updates.insert_many(docs)
 
+    async def _sees_team(user) -> bool:
+        if user["role"] == "admin":
+            return True
+        if has_option is not None:
+            return await has_option(user, "can_review_daily_reports")
+        return user["role"] in MANAGERS
+
+    def _required(u) -> bool:
+        if report_required is not None:
+            return report_required(u)
+        return u.get("role") != "admin"
+
     async def _can_see_report(user, doc):
-        return user["role"] in MANAGERS or doc.get("user_id") == user["id"]
+        return doc.get("user_id") == user["id"] or await _sees_team(user)
 
     # ═════════════ project list for the pickers ═════════════
     @router.get("/daily-reports/projects")
@@ -287,7 +300,7 @@ def create_router(db, get_current_user, require_role, create_audit_log):
                            user_id: Optional[str] = None, status: Optional[str] = None, limit: int = 200):
         user = await get_current_user(request)
         q: Dict[str, Any] = {}
-        if user["role"] not in MANAGERS:
+        if not await _sees_team(user):
             q["user_id"] = user["id"]
         elif user_id:
             q["user_id"] = user_id
@@ -316,7 +329,7 @@ def create_router(db, get_current_user, require_role, create_audit_log):
         day = _check_date(date)
         uq: Dict[str, Any] = {"active": {"$ne": False}}
         scope = user.get("location_ids") or []
-        users = await db.users.find(uq, {"name": 1, "role": 1, "email": 1, "location_ids": 1}).to_list(1000)
+        users = await db.users.find(uq, {"name": 1, "role": 1, "email": 1, "location_ids": 1, "daily_report_required": 1}).to_list(1000)
         if user["role"] != "admin" and scope:
             users = [u for u in users if not u.get("location_ids") or set(u.get("location_ids")) & set(scope)]
         reports = {r["user_id"]: r for r in await db.daily_reports.find({"date": day}).to_list(1000)}
@@ -324,11 +337,15 @@ def create_router(db, get_current_user, require_role, create_audit_log):
         for u in sorted(users, key=lambda x: (x.get("name") or "").lower()):
             uid = str(u["_id"])
             r = reports.get(uid)
-            rows.append({"user_id": uid, "name": u.get("name"), "role": u.get("role"), "email": u.get("email"),
+            rows.append({"user_id": uid, "name": u.get("name"), "role": u.get("role"), "email": u.get("email"), "required": _required(u),
                          "status": r.get("status") if r else "missing", "report_id": str(r["_id"]) if r else None,
                          "submitted_at": r.get("submitted_at") if r else None, "reviewed": bool(r and r.get("reviewed_at")),
                          "totals": _report_totals(r) if r else None})
-        counts = {k: sum(1 for x in rows if x["status"] == k) for k in ("submitted", "draft", "missing")}
+        # people who don't have to report only count once they have sent one
+        expected = [x for x in rows if x["required"] or x["status"] != "missing"]
+        counts = {k: sum(1 for x in expected if x["status"] == k) for k in ("submitted", "draft", "missing")}
+        counts["expected"] = len(expected)
+        counts["not_required"] = sum(1 for x in rows if not x["required"])
         return {"date": day, "rows": rows, "counts": counts}
 
     @router.get("/daily-reports/{report_id}")

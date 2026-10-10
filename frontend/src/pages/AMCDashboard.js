@@ -16,6 +16,7 @@ import autoTable from 'jspdf-autotable';
 import * as XLSX from 'xlsx';
 import { saveAs } from 'file-saver';
 import SupportTicketsTab from './SupportTicketsTab';
+import Can from '../components/Can';
 
 const STATUS_STYLES = { active: 'bg-emerald-100 text-emerald-700', expiring: 'bg-amber-100 text-amber-700', expired: 'bg-rose-100 text-rose-700', renewed: 'bg-blue-100 text-blue-700', cancelled: 'bg-slate-200 text-slate-600', 'on-hold': 'bg-violet-100 text-violet-700' };
 
@@ -117,8 +118,8 @@ export default function AMCDashboard() {
           {canManage && (
             <div className="flex flex-wrap gap-2 items-end">
               <div className="w-full sm:w-44"><LocationScopeSelect scope={locScope} testIdPrefix="amc-location" /></div>
-              <Button variant="outline" onClick={openFromProject} className="gap-1.5" data-testid="create-amc-from-project-btn"><Sparkles className="h-4 w-4" />From Completed Project</Button>
-              <Button onClick={() => setShowCreate(true)} className="bg-emerald-600 hover:bg-emerald-700 text-white gap-1.5" data-testid="add-amc-btn"><Plus className="h-4 w-4" />New Contract</Button>
+              <Can module="module_amc" action="create"><Button variant="outline" onClick={openFromProject} className="gap-1.5" data-testid="create-amc-from-project-btn"><Sparkles className="h-4 w-4" />From Completed Project</Button></Can>
+              <Can module="module_amc" action="create"><Button onClick={() => setShowCreate(true)} className="bg-emerald-600 hover:bg-emerald-700 text-white gap-1.5" data-testid="add-amc-btn"><Plus className="h-4 w-4" />New Contract</Button></Can>
             </div>
           )}
         </div>
@@ -200,8 +201,8 @@ export default function AMCDashboard() {
             <CardHeader className="py-3 flex-row items-center justify-between">
               <CardTitle className="text-sm font-['Outfit']">Recurring Revenue Report</CardTitle>
               <div className="flex gap-2">
-                <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={exportRevenuePDF} disabled={!revenueReport.rows?.length} data-testid="amc-export-pdf-btn"><FileText className="h-3 w-3" />PDF</Button>
-                <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={exportRevenueExcel} disabled={!revenueReport.rows?.length} data-testid="amc-export-excel-btn"><FileSpreadsheet className="h-3 w-3" />Excel</Button>
+                <Can module="module_amc" action="export"><Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={exportRevenuePDF} disabled={!revenueReport.rows?.length} data-testid="amc-export-pdf-btn"><FileText className="h-3 w-3" />PDF</Button></Can>
+                <Can module="module_amc" action="export"><Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={exportRevenueExcel} disabled={!revenueReport.rows?.length} data-testid="amc-export-excel-btn"><FileSpreadsheet className="h-3 w-3" />Excel</Button></Can>
               </div>
             </CardHeader>
             <CardContent className="space-y-3">

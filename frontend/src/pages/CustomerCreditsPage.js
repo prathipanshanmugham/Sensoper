@@ -12,6 +12,7 @@ import ExpensesSection from '../components/ExpensesSection';
 import GstSection from '../components/GstSection';
 import CustomerSection from '../components/CustomerSection';
 import { CreditInterestCell } from '../components/CreditInterestCell';
+import Can from '../components/Can';
 
 const STATUS_COLORS = { active: 'bg-blue-100 text-blue-700', overdue: 'bg-red-100 text-red-700', closed: 'bg-emerald-100 text-emerald-700' };
 
@@ -67,7 +68,7 @@ export default function CustomerCreditsPage() {
       <div className="max-w-6xl mx-auto">
         <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
           <div><h1 className="text-2xl font-bold font-['Outfit'] text-slate-900" data-testid="credits-title">Accounts</h1><p className="text-sm text-slate-500">Receivables, financial snapshots & expenses</p></div>
-          {section === 'credits' && <Button onClick={() => setShowForm(true)} className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white" data-testid="new-credit-btn"><Plus className="h-4 w-4" />New Credit</Button>}
+          {section === 'credits' && <Can module="module_credits" action="create"><Button onClick={() => setShowForm(true)} className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white" data-testid="new-credit-btn"><Plus className="h-4 w-4" />New Credit</Button></Can>}
         </div>
 
         {/* Section tabs */}

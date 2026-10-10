@@ -11,6 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Label } from '../components/ui/label';
 import { Textarea } from '../components/ui/textarea';
 import { Loader2, Plus, HardHat, Star, Search, Trash2, Tag, Pencil } from 'lucide-react';
+import Can from '../components/Can';
 
 const STATUS_COLORS = { active: 'bg-emerald-100 text-emerald-800', inactive: 'bg-slate-100 text-slate-600', blacklisted: 'bg-red-100 text-red-800' };
 
@@ -121,7 +122,7 @@ export default function PartnersPage() {
         </div>
         <div className="flex gap-2">
           {isAdmin && <Button variant="outline" onClick={() => setShowTagAdmin(true)} className="gap-1.5" data-testid="manage-tags-btn"><Tag className="h-4 w-4" />Manage Tags</Button>}
-          {canManage && <Button onClick={() => setShowCreate(true)} className="bg-emerald-600 hover:bg-emerald-700 text-white gap-1.5" data-testid="add-partner-btn"><Plus className="h-4 w-4" />Onboard Partner</Button>}
+          {canManage && <Can module="module_partners" action="create"><Button onClick={() => setShowCreate(true)} className="bg-emerald-600 hover:bg-emerald-700 text-white gap-1.5" data-testid="add-partner-btn"><Plus className="h-4 w-4" />Onboard Partner</Button></Can>}
         </div>
       </div>
 

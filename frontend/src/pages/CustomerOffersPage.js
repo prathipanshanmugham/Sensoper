@@ -8,6 +8,7 @@ import { formatApiErrorDetail } from '../contexts/AuthContext';
 import { Button } from '../components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '../components/ui/dialog';
 import { inputCls, textareaCls, Field, Chip } from '../components/FormBits';
+import Can from '../components/Can';
 
 const TYPES = [['on-grid', 'On-grid'], ['hybrid', 'Hybrid'], ['off-grid', 'Off-grid'], ['solar-pump', 'Solar pump']];
 const EMPTY = { title: '', description: '', badge: '', valid_till: '', cta_label: "I'm interested", system_types: [], active: true };
@@ -68,7 +69,7 @@ export default function CustomerOffersPage() {
     <div className="mx-auto max-w-4xl space-y-6 p-4 sm:p-6" data-testid="offers-page">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div><h1 className="font-['Outfit'] text-2xl font-bold text-slate-900">Customer offers</h1><p className="text-sm text-slate-500">Offers appear on customers' dashboards. When someone taps “I'm interested”, they show up below to call back.</p></div>
-        <Button onClick={() => setEdit({})} className="h-10 gap-1.5 bg-emerald-600 text-white hover:bg-emerald-700" data-testid="new-offer"><Plus className="h-4 w-4" />New offer</Button>
+        <Can module="module_customer_offers" action="create"><Button onClick={() => setEdit({})} className="h-10 gap-1.5 bg-emerald-600 text-white hover:bg-emerald-700" data-testid="new-offer"><Plus className="h-4 w-4" />New offer</Button></Can>
       </div>
 
       <section className="space-y-2">

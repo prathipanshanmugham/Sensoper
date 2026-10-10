@@ -64,13 +64,14 @@ import { catalogueAPI } from '../utils/api';
 import ProjectInvoiceCard from '../components/ProjectInvoiceCard';
 import ProjectProfitCard from '../components/ProjectProfitCard';
 import ProjectPartnerCard from '../components/ProjectPartnerCard';
+import Can from '../components/Can';
 
 const CATEGORY_LABELS = { solar_panels: 'Solar Panels', inverters: 'Inverters', batteries: 'Batteries', mounting_structures: 'Mounting Structures', cables_accessories: 'Cables & Accessories' };
 
 export default function ProjectDetails() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { user, isAdmin, isManager, isStaff } = useAuth();
+  const { user, isAdmin, isManager, isStaff, can } = useAuth();
   const [project, setProject] = useState(null);
   const [loading, setLoading] = useState(true);
   const [quoteLayout, setQuoteLayoutState] = useState(() => { try { return localStorage.getItem('sensoper.detailedQuoteLayout') || 'list'; } catch { return 'list'; } });
@@ -340,13 +341,13 @@ export default function ProjectDetails() {
   const config = statusConfig[project.status] || statusConfig.draft;
   const StatusIcon = config.icon;
   const canSubmit = project.status === 'draft' && (project.created_by === user?.id || isAdmin || isManager);
-  const canReview = (isAdmin || isManager) && project.status === 'submitted';
-  const canComplete = (isAdmin || isManager) && project.status === 'approved';
+  const canReview = can('can_approve_quotation') && project.status === 'submitted';
+  const canComplete = can('can_complete_project') && project.status === 'approved';
   const canRequestDeletion = isStaff && project.status === 'draft' && project.created_by === user?.id;
-  const canForceDelete = isAdmin;
+  const canForceDelete = can('can_delete_project');
   const isDeletionPending = project.status === 'deletion_requested';
   const canEdit = (project.status === 'draft' && (project.created_by === user?.id || isAdmin || isManager)) || ((isAdmin || isManager) && project.status === 'approved');
-  const canEditRefStatus = isAdmin || isManager;
+  const canEditRefStatus = can('can_approve_quotation');
 
   const selectedItems = project.cost_estimation?.items_breakdown || project.selected_items || [];
   const manualCosts = project.cost_estimation?.manual_costs || project.manual_costs || [];
@@ -417,19 +418,19 @@ export default function ProjectDetails() {
                 )}
                 <DropdownMenuSeparator />
                 <DropdownMenuLabel className="text-xs font-semibold uppercase tracking-wider text-slate-400">Internal</DropdownMenuLabel>
-                <DropdownMenuItem onSelect={generateExcel} data-testid="download-excel-btn"><FileSpreadsheet className="mr-2 h-4 w-4" />Cost sheet (Excel)</DropdownMenuItem>
+                <Can module="module_projects" action="export"><DropdownMenuItem onSelect={generateExcel} data-testid="download-excel-btn"><FileSpreadsheet className="mr-2 h-4 w-4" />Cost sheet (Excel)</DropdownMenuItem></Can>
                 <DropdownMenuItem onSelect={() => setShowKitExplainer(true)} data-testid="explain-kit-price-btn"><Eye className="mr-2 h-4 w-4" />Explain the kit price</DropdownMenuItem>
                 {(isAdmin || isManager) && (
-                  <DropdownMenuItem onSelect={async () => {
+                  <Can module="module_projects" action="export"><DropdownMenuItem onSelect={async () => {
                     try {
                       const [cfg, groups] = await Promise.all([catalogueAPI.getConfig(), catalogueAPI.addonGroups()]);
                       await generateKitExplainerPDF({ ...project, id }, companyProfile, cfg.data, groups.data, { apiUrl: API_URL, preparedBy: user?.name });
                     } catch (e) { toast.error('Kit explainer failed: ' + (e.message || 'unknown error')); }
-                  }} data-testid="download-kit-explainer-btn"><Lock className="mr-2 h-4 w-4" />Kit explainer PDF (cost & margin)</DropdownMenuItem>
+                  }} data-testid="download-kit-explainer-btn"><Lock className="mr-2 h-4 w-4" />Kit explainer PDF (cost & margin)</DropdownMenuItem></Can>
                 )}
               </DropdownMenuContent>
             </DropdownMenu>
-            {(isAdmin || isManager) && <ProjectInvoiceCard projectId={id} companyProfile={companyProfile} terms={invoiceTerms || terms} />}
+            {can('can_make_invoice') && <ProjectInvoiceCard projectId={id} companyProfile={companyProfile} terms={invoiceTerms || terms} />}
             {['approved', 'completed', 'submitted'].includes(project.status) && (
               <Link to={`/dashboard/site-diary?project=${id}`}><Button variant="outline" className="gap-2" data-testid="open-site-diary-btn"><NotebookPen className="h-4 w-4" />Site diary</Button></Link>
             )}
@@ -918,7 +919,7 @@ export default function ProjectDetails() {
                   <div className="flex justify-between text-sm"><span className="text-slate-500">Subtotal</span><span className="font-medium">₹{(ce.subtotal || 0).toLocaleString('en-IN')}</span></div>
                   <div className="flex justify-between text-sm"><span className="text-slate-500">GST</span><span className="font-medium">₹{(ce.total_gst || 0).toLocaleString('en-IN')}</span></div>
                   
-                  {(isAdmin || isManager) && (
+                  {can('can_set_margin') && (
                     <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg mt-2">
                       <div className="flex items-center gap-2 mb-2"><Percent className="h-4 w-4 text-amber-600" /><span className="text-sm font-medium text-amber-800">Per-Item Margin</span></div>
                       <div className="space-y-2 max-h-48 overflow-y-auto">

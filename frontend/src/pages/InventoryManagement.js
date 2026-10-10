@@ -14,6 +14,7 @@ import {
   Search, Warehouse, Tag, X, CheckCircle2, Circle, Link2, CalendarDays,
   Upload, FileSpreadsheet, FileText, Download, Layers
 } from 'lucide-react';
+import Can from '../components/Can';
 
 const REQUIRED_IMPORT_FIELDS = ['name', 'sku_code', 'category', 'quantity', 'unit_price'];
 const IMPORT_STATUS_STYLES = {
@@ -324,11 +325,11 @@ export default function InventoryManagement() {
                 <Link to="/dashboard/inventory/kits" className="flex-1 sm:flex-none">
                   <Button variant="outline" className="w-full h-11 border-emerald-300 text-emerald-700 hover:bg-emerald-50" data-testid="material-kits-btn"><Layers className="h-4 w-4 mr-1" />Solution Kits</Button>
                 </Link>
-                <Button variant="outline" onClick={() => setShowImportDialog(true)} className="flex-1 sm:flex-none h-11" data-testid="import-inventory-btn"><Upload className="h-4 w-4 mr-1" />Import</Button>
-                <Button variant="outline" onClick={() => handleExport('xlsx')} disabled={exportLoading==='xlsx'} className="flex-1 sm:flex-none h-11" data-testid="export-xlsx-btn">{exportLoading==='xlsx' ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Download className="h-4 w-4 mr-1" />}Excel</Button>
-                <Button variant="outline" onClick={() => handleExport('pdf')} disabled={exportLoading==='pdf'} className="flex-1 sm:flex-none h-11" data-testid="export-pdf-btn">{exportLoading==='pdf' ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Download className="h-4 w-4 mr-1" />}PDF</Button>
+                <Can module="module_inventory" action="create"><Button variant="outline" onClick={() => setShowImportDialog(true)} className="flex-1 sm:flex-none h-11" data-testid="import-inventory-btn"><Upload className="h-4 w-4 mr-1" />Import</Button></Can>
+                <Can module="module_inventory" action="export"><Button variant="outline" onClick={() => handleExport('xlsx')} disabled={exportLoading==='xlsx'} className="flex-1 sm:flex-none h-11" data-testid="export-xlsx-btn">{exportLoading==='xlsx' ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Download className="h-4 w-4 mr-1" />}Excel</Button></Can>
+                <Can module="module_inventory" action="export"><Button variant="outline" onClick={() => handleExport('pdf')} disabled={exportLoading==='pdf'} className="flex-1 sm:flex-none h-11" data-testid="export-pdf-btn">{exportLoading==='pdf' ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Download className="h-4 w-4 mr-1" />}PDF</Button></Can>
                 <Button variant="outline" onClick={() => setShowCatDialog(true)} className="flex-1 sm:flex-none h-11" data-testid="manage-categories-btn"><Tag className="h-4 w-4 mr-1" />Categories</Button>
-                <Button onClick={() => openItemDialog()} className="flex-1 sm:flex-none bg-emerald-600 hover:bg-emerald-700 text-white h-11" data-testid="add-item-btn"><Plus className="h-4 w-4 mr-1" />Add Item</Button>
+                <Can module="module_inventory" action="create"><Button onClick={() => openItemDialog()} className="flex-1 sm:flex-none bg-emerald-600 hover:bg-emerald-700 text-white h-11" data-testid="add-item-btn"><Plus className="h-4 w-4 mr-1" />Add Item</Button></Can>
               </div>
             </div>
           </CardContent>
@@ -393,8 +394,8 @@ export default function InventoryManagement() {
                       <td className="py-3 px-4 text-xs font-mono text-slate-600" data-testid={`hsn-${item.id}`}>{item.hsn_code || '—'}</td>
                       <td className="py-3 px-4 text-right">
                         <div className="flex justify-end gap-1">
-                          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openItemDialog(item)} data-testid={`edit-item-${item.id}`}><Edit className="h-4 w-4" /></Button>
-                          <Button variant="ghost" size="icon" className="h-8 w-8 text-red-600" onClick={() => handleDeleteItem(item)} data-testid={`delete-item-${item.id}`}><Trash2 className="h-4 w-4" /></Button>
+                          <Can module="module_inventory" action="edit"><Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openItemDialog(item)} data-testid={`edit-item-${item.id}`}><Edit className="h-4 w-4" /></Button></Can>
+                          <Can module="module_inventory" action="delete"><Button variant="ghost" size="icon" className="h-8 w-8 text-red-600" onClick={() => handleDeleteItem(item)} data-testid={`delete-item-${item.id}`}><Trash2 className="h-4 w-4" /></Button></Can>
                         </div>
                       </td>
                     </tr>
@@ -431,8 +432,8 @@ export default function InventoryManagement() {
                             <p className="text-xs text-slate-500 font-mono">{item.sku_code}</p>
                           </div>
                           <div className="flex gap-1 shrink-0 ml-2">
-                            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openItemDialog(item)}><Edit className="h-4 w-4" /></Button>
-                            <Button variant="ghost" size="icon" className="h-8 w-8 text-red-600" onClick={() => handleDeleteItem(item)}><Trash2 className="h-4 w-4" /></Button>
+                            <Can module="module_inventory" action="edit"><Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openItemDialog(item)}><Edit className="h-4 w-4" /></Button></Can>
+                            <Can module="module_inventory" action="delete"><Button variant="ghost" size="icon" className="h-8 w-8 text-red-600" onClick={() => handleDeleteItem(item)}><Trash2 className="h-4 w-4" /></Button></Can>
                           </div>
                         </div>
                         <div className="flex flex-wrap items-center gap-2 mt-2">

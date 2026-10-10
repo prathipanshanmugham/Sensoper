@@ -9,6 +9,7 @@ import { Badge } from '../components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../components/ui/dialog';
 import { Loader2, Plus, Save, Trash2, Edit, Activity, AlertTriangle, CheckCircle2, Clock, MapPin, User, Cpu, Zap, X } from 'lucide-react';
+import Can from '../components/Can';
 
 const STATUS_META = {
   active: { label: 'Active', color: 'bg-blue-100 text-blue-700 border-blue-200', icon: Clock },
@@ -125,9 +126,9 @@ export default function ReadingsPage() {
             <h1 className="text-2xl font-bold font-['Outfit'] text-slate-900" data-testid="readings-title">Readings</h1>
             <p className="text-sm text-slate-500">Track sites currently in the reading phase</p>
           </div>
-          <Button onClick={openCreate} className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white" data-testid="new-reading-btn">
+          <Can module="module_readings" action="create"><Button onClick={openCreate} className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white" data-testid="new-reading-btn">
             <Plus className="h-4 w-4" />New Reading
-          </Button>
+          </Button></Can>
         </div>
 
         {/* Summary cards */}

@@ -17,6 +17,7 @@ import * as XLSX from 'xlsx';
 import { saveAs } from 'file-saver';
 import { useLocationScope, LocationScopeSelect } from '../components/LocationScope';
 import { AssetDocuments } from '../components/AssetDocuments';
+import Can from '../components/Can';
 
 const CATEGORIES = ['vehicle', 'power_tool', 'hand_tool', 'test_equipment', 'safety', 'it', 'furniture', 'other']; // fallback until /assets/filters loads
 const STATUSES = ['available', 'issued', 'in_maintenance', 'under_repair', 'lost', 'scrapped', 'sold'];
@@ -158,7 +159,7 @@ export default function AssetsPage() {
     setReportType(type); setReportData(null);
     try { const params = locScope.locationId ? { location_id: locScope.locationId } : {}; const r = await assetsAPI.report(type, params); setReportData(r.data); } catch (e) { console.error(e); }
   };
-  useEffect(() => { fetchReport(reportType); }, [locScope.locationId]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (canManage) fetchReport(reportType); }, [locScope.locationId, canManage]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const exportReportPDF = () => {
     if (!reportData) return;
@@ -188,7 +189,7 @@ export default function AssetsPage() {
             <h1 className="text-2xl font-bold font-['Outfit'] text-slate-900" data-testid="assets-title"><Wrench className="inline h-6 w-6 mr-2 text-emerald-600" />Assets &amp; Tools</h1>
             <p className="text-sm text-slate-500">Vehicles, tools, test equipment and safety gear register</p>
           </div>
-          {canManage && <Button onClick={() => setShowCreate(true)} className="bg-emerald-600 hover:bg-emerald-700 text-white gap-1.5" data-testid="add-asset-btn"><Plus className="h-4 w-4" />Add Asset</Button>}
+          {canManage && <Can module="module_assets" action="create"><Button onClick={() => setShowCreate(true)} className="bg-emerald-600 hover:bg-emerald-700 text-white gap-1.5" data-testid="add-asset-btn"><Plus className="h-4 w-4" />Add Asset</Button></Can>}
         </div>
 
         {/* Pending archive approvals (admin/manager) */}
@@ -280,8 +281,8 @@ export default function AssetsPage() {
                       {Object.entries(reportData.summary || {}).map(([k, v]) => <span key={k}><strong>{typeof v === 'number' ? v.toLocaleString('en-IN') : v}</strong> {k.replace(/_/g, ' ')}</span>)}
                     </div>
                     <div className="flex gap-2">
-                      <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={exportReportPDF} disabled={!reportData.rows?.length} data-testid="asset-report-export-pdf-btn"><FileText className="h-3 w-3" />PDF</Button>
-                      <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={exportReportExcel} disabled={!reportData.rows?.length} data-testid="asset-report-export-excel-btn"><FileSpreadsheet className="h-3 w-3" />Excel</Button>
+                      <Can module="module_assets" action="export"><Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={exportReportPDF} disabled={!reportData.rows?.length} data-testid="asset-report-export-pdf-btn"><FileText className="h-3 w-3" />PDF</Button></Can>
+                      <Can module="module_assets" action="export"><Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={exportReportExcel} disabled={!reportData.rows?.length} data-testid="asset-report-export-excel-btn"><FileSpreadsheet className="h-3 w-3" />Excel</Button></Can>
                     </div>
                   </div>
                   <div className="overflow-x-auto border rounded-lg max-h-72 overflow-y-auto">

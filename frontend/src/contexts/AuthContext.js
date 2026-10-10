@@ -8,6 +8,30 @@ const AuthContext = createContext(null);
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null); // null = checking, false = not authenticated
   const [loading, setLoading] = useState(true);
+  const [perms, setPerms] = useState(null); // this role's switches from Settings → Permissions (null = loading)
+
+  const loadPerms = useCallback(async () => {
+    try {
+      const { data } = await axios.get(`${API_URL}/api/permissions/me`, { withCredentials: true });
+      setPerms(data.permissions || {});
+    } catch (error) {
+      setPerms({});
+    }
+  }, []);
+
+  useEffect(() => {
+    if (user) loadPerms();
+    else setPerms(null);
+  }, [user, loadPerms]);
+
+  // An admin may change permissions while someone has the app open — pick that up when they come back to it.
+  useEffect(() => {
+    if (!user || user.role === 'admin') return undefined;
+    let last = Date.now();
+    const onFocus = () => { if (Date.now() - last > 30000) { last = Date.now(); loadPerms(); } };
+    window.addEventListener('focus', onFocus);
+    return () => window.removeEventListener('focus', onFocus);
+  }, [user, loadPerms]);
 
   const checkAuth = useCallback(async () => {
     try {
@@ -69,9 +93,20 @@ export function AuthProvider({ children }) {
     }
   }, [checkAuth]);
 
+  /** can('module_inventory') → may open the page; can('module_inventory', 'export'); can('can_approve_quotation') → an option. */
+  const can = useCallback((key, action = 'view') => {
+    if (!user) return false;
+    if (user.role === 'admin') return true;
+    if (!perms || !key) return false;
+    const v = perms[key];
+    if (v && typeof v === 'object') return !!v[action];
+    return v === true;
+  }, [user, perms]);
+
   const contextValue = useMemo(() => ({
     user, 
     loading, 
+    perms, can, reloadPerms: loadPerms,
     login, completeTwoFactor, 
     register, 
     logout, 
@@ -80,7 +115,7 @@ export function AuthProvider({ children }) {
     isAdmin: user?.role === 'admin',
     isManager: user?.role === 'manager',
     isStaff: user?.role === 'staff'
-  }), [user, loading, login, completeTwoFactor, register, logout, refreshToken]);
+  }), [user, loading, perms, can, loadPerms, login, completeTwoFactor, register, logout, refreshToken]);
 
   return (
     <AuthContext.Provider value={contextValue}>

@@ -50,12 +50,14 @@ import CustomerPortal from "./pages/CustomerPortal";
 import AttendancePage from "./pages/AttendancePage";
 import OrgStructurePage from "./pages/OrgStructurePage";
 import CustomerOffersPage from "./pages/CustomerOffersPage";
+import InvestorsPage from "./pages/InvestorsPage";
+import InvestorPortal from "./pages/InvestorPortal";
 
 // Protected Route Component
-function ProtectedRoute({ children, allowedRoles = null }) {
-  const { user, loading } = useAuth();
+function ProtectedRoute({ children, allowedRoles = null, module = null, action = 'view' }) {
+  const { user, loading, perms, can } = useAuth();
 
-  if (loading) {
+  if (loading || (user && module && user.role !== 'admin' && perms === null)) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-600"></div>
@@ -68,6 +70,11 @@ function ProtectedRoute({ children, allowedRoles = null }) {
   }
 
   if (allowedRoles && !allowedRoles.includes(user.role)) {
+    return <Navigate to="/dashboard" replace />;
+  }
+
+  // Settings → Permissions decides who may open each page
+  if (module && !can(module, action)) {
     return <Navigate to="/dashboard" replace />;
   }
 
@@ -115,53 +122,56 @@ function AppRoutes() {
       />
 
       {/* Protected Routes - wrapped in DashboardLayout */}
-      <Route path="/dashboard" element={<ProtectedRoute><DashboardLayout><Dashboard /></DashboardLayout></ProtectedRoute>} />
-      <Route path="/dashboard/projects" element={<ProtectedRoute><DashboardLayout><ProjectList /></DashboardLayout></ProtectedRoute>} />
-      <Route path="/dashboard/projects/new" element={<ProtectedRoute><DashboardLayout><SiteVisitForm /></DashboardLayout></ProtectedRoute>} />
-      <Route path="/dashboard/projects/:editId/edit" element={<ProtectedRoute><DashboardLayout><SiteVisitForm /></DashboardLayout></ProtectedRoute>} />
-      <Route path="/dashboard/projects/:id" element={<ProtectedRoute><DashboardLayout><ProjectDetails /></DashboardLayout></ProtectedRoute>} />
-      <Route path="/dashboard/users" element={<ProtectedRoute allowedRoles={["admin"]}><DashboardLayout><UserManagement /></DashboardLayout></ProtectedRoute>} />
-      <Route path="/dashboard/audit-logs" element={<ProtectedRoute allowedRoles={["admin"]}><DashboardLayout><AuditLogs /></DashboardLayout></ProtectedRoute>} />
-      <Route path="/dashboard/company-profile" element={<ProtectedRoute allowedRoles={["admin"]}><DashboardLayout><CompanyProfile /></DashboardLayout></ProtectedRoute>} />
-      <Route path="/dashboard/permissions" element={<ProtectedRoute allowedRoles={["admin"]}><DashboardLayout><PermissionsPage /></DashboardLayout></ProtectedRoute>} />
-      <Route path="/dashboard/form-tabs" element={<ProtectedRoute allowedRoles={["admin"]}><DashboardLayout><FormTabsManager /></DashboardLayout></ProtectedRoute>} />
+      <Route path="/dashboard" element={<ProtectedRoute module="module_dashboard"><DashboardLayout><Dashboard /></DashboardLayout></ProtectedRoute>} />
+      <Route path="/dashboard/projects" element={<ProtectedRoute module="module_projects"><DashboardLayout><ProjectList /></DashboardLayout></ProtectedRoute>} />
+      <Route path="/dashboard/projects/new" element={<ProtectedRoute module="module_projects" action="create"><DashboardLayout><SiteVisitForm /></DashboardLayout></ProtectedRoute>} />
+      <Route path="/dashboard/projects/:editId/edit" element={<ProtectedRoute module="module_projects"><DashboardLayout><SiteVisitForm /></DashboardLayout></ProtectedRoute>} />
+      <Route path="/dashboard/projects/:id" element={<ProtectedRoute module="module_projects"><DashboardLayout><ProjectDetails /></DashboardLayout></ProtectedRoute>} />
+      <Route path="/dashboard/users" element={<ProtectedRoute allowedRoles={["admin"]} module="module_users"><DashboardLayout><UserManagement /></DashboardLayout></ProtectedRoute>} />
+      <Route path="/dashboard/audit-logs" element={<ProtectedRoute module="module_audit_logs"><DashboardLayout><AuditLogs /></DashboardLayout></ProtectedRoute>} />
+      <Route path="/dashboard/company-profile" element={<ProtectedRoute module="module_company"><DashboardLayout><CompanyProfile /></DashboardLayout></ProtectedRoute>} />
+      <Route path="/dashboard/permissions" element={<ProtectedRoute allowedRoles={["admin"]} module="module_permissions"><DashboardLayout><PermissionsPage /></DashboardLayout></ProtectedRoute>} />
+      <Route path="/dashboard/form-tabs" element={<ProtectedRoute module="module_form_builder"><DashboardLayout><FormTabsManager /></DashboardLayout></ProtectedRoute>} />
       <Route path="/dashboard/ceo" element={<Navigate to="/dashboard?tab=health" replace />} />
-      <Route path="/dashboard/reports" element={<ProtectedRoute allowedRoles={["admin", "manager"]}><DashboardLayout><ReportsPage /></DashboardLayout></ProtectedRoute>} />
-      <Route path="/dashboard/daily-report" element={<ProtectedRoute><DashboardLayout><DailyReportPage /></DashboardLayout></ProtectedRoute>} />
-      <Route path="/dashboard/site-diary" element={<ProtectedRoute><DashboardLayout><SiteDiaryPage /></DashboardLayout></ProtectedRoute>} />
+      <Route path="/dashboard/reports" element={<ProtectedRoute module="module_reports"><DashboardLayout><ReportsPage /></DashboardLayout></ProtectedRoute>} />
+      <Route path="/dashboard/daily-report" element={<ProtectedRoute module="module_daily_updates"><DashboardLayout><DailyReportPage /></DashboardLayout></ProtectedRoute>} />
+      <Route path="/dashboard/site-diary" element={<ProtectedRoute module="module_site_diary"><DashboardLayout><SiteDiaryPage /></DashboardLayout></ProtectedRoute>} />
       <Route path="/dashboard/daily-updates" element={<Navigate to="/dashboard/daily-report" replace />} />
-      <Route path="/dashboard/alerts" element={<ProtectedRoute allowedRoles={["admin", "manager"]}><DashboardLayout><AlertsDashboard /></DashboardLayout></ProtectedRoute>} />
-      <Route path="/dashboard/credits" element={<ProtectedRoute allowedRoles={["admin", "manager"]}><DashboardLayout><CustomerCreditsPage /></DashboardLayout></ProtectedRoute>} />
-      <Route path="/dashboard/purchase-inbound" element={<ProtectedRoute allowedRoles={["admin", "manager"]}><DashboardLayout><PurchaseInboundPage /></DashboardLayout></ProtectedRoute>} />
-      <Route path="/dashboard/delivery-outbound" element={<ProtectedRoute allowedRoles={["admin", "manager"]}><DashboardLayout><DeliveryOutboundPage /></DashboardLayout></ProtectedRoute>} />
-      <Route path="/dashboard/returns" element={<ProtectedRoute><DashboardLayout><BrandReturnsPage /></DashboardLayout></ProtectedRoute>} />
-      <Route path="/dashboard/audits" element={<ProtectedRoute allowedRoles={["admin", "manager"]}><DashboardLayout><WeeklyAuditPage /></DashboardLayout></ProtectedRoute>} />
-      <Route path="/dashboard/approvals" element={<ProtectedRoute allowedRoles={["admin", "manager"]}><DashboardLayout><ApprovalsPage /></DashboardLayout></ProtectedRoute>} />
-      <Route path="/dashboard/terms" element={<ProtectedRoute allowedRoles={["admin", "manager"]}><DashboardLayout><TermsConditions /></DashboardLayout></ProtectedRoute>} />
-      <Route path="/dashboard/inventory" element={<ProtectedRoute allowedRoles={["admin", "manager"]}><DashboardLayout><InventoryManagement /></DashboardLayout></ProtectedRoute>} />
-      <Route path="/dashboard/inventory/kits" element={<ProtectedRoute allowedRoles={["admin", "manager"]}><DashboardLayout><MaterialKitsPage /></DashboardLayout></ProtectedRoute>} />
-      <Route path="/dashboard/expansion" element={<ProtectedRoute allowedRoles={["admin", "manager"]}><DashboardLayout><ExpansionPage /></DashboardLayout></ProtectedRoute>} />
-      <Route path="/dashboard/pricing-config" element={<ProtectedRoute allowedRoles={["admin"]}><DashboardLayout><PricingConfig /></DashboardLayout></ProtectedRoute>} />
-      <Route path="/dashboard/pricelist" element={<ProtectedRoute allowedRoles={["admin"]}><DashboardLayout><PriceListHub /></DashboardLayout></ProtectedRoute>} />
-      <Route path="/dashboard/vendors" element={<ProtectedRoute allowedRoles={["admin", "manager"]}><DashboardLayout><VendorsPage /></DashboardLayout></ProtectedRoute>} />
-      <Route path="/dashboard/sales" element={<ProtectedRoute><DashboardLayout><DirectSalesPage /></DashboardLayout></ProtectedRoute>} />
-      <Route path="/dashboard/readings" element={<ProtectedRoute><DashboardLayout><ReadingsPage /></DashboardLayout></ProtectedRoute>} />
-      <Route path="/dashboard/assets" element={<ProtectedRoute><DashboardLayout><AssetsPage /></DashboardLayout></ProtectedRoute>} />
-      <Route path="/dashboard/amc" element={<ProtectedRoute allowedRoles={["admin", "manager"]}><DashboardLayout><AMCDashboard /></DashboardLayout></ProtectedRoute>} />
-      <Route path="/dashboard/locations" element={<ProtectedRoute allowedRoles={["admin"]}><DashboardLayout><LocationsPage /></DashboardLayout></ProtectedRoute>} />
-      <Route path="/dashboard/partners" element={<ProtectedRoute><DashboardLayout><PartnersPage /></DashboardLayout></ProtectedRoute>} />
-      <Route path="/dashboard/partners/:id" element={<ProtectedRoute><DashboardLayout><PartnerDetail /></DashboardLayout></ProtectedRoute>} />
-      <Route path="/dashboard/teams" element={<ProtectedRoute><DashboardLayout><TeamsPage /></DashboardLayout></ProtectedRoute>} />
-      <Route path="/dashboard/security" element={<ProtectedRoute><DashboardLayout><CredentialsPage /></DashboardLayout></ProtectedRoute>} />
-      <Route path="/dashboard/vault" element={<ProtectedRoute allowedRoles={["admin"]}><DashboardLayout><VaultPage /></DashboardLayout></ProtectedRoute>} />
-      <Route path="/dashboard/ecommerce" element={<ProtectedRoute><DashboardLayout><EcommercePage /></DashboardLayout></ProtectedRoute>} />
+      <Route path="/dashboard/alerts" element={<ProtectedRoute module="module_alerts"><DashboardLayout><AlertsDashboard /></DashboardLayout></ProtectedRoute>} />
+      <Route path="/dashboard/credits" element={<ProtectedRoute module="module_credits"><DashboardLayout><CustomerCreditsPage /></DashboardLayout></ProtectedRoute>} />
+      <Route path="/dashboard/purchase-inbound" element={<ProtectedRoute module="module_purchase_inbound"><DashboardLayout><PurchaseInboundPage /></DashboardLayout></ProtectedRoute>} />
+      <Route path="/dashboard/delivery-outbound" element={<ProtectedRoute module="module_delivery_outbound"><DashboardLayout><DeliveryOutboundPage /></DashboardLayout></ProtectedRoute>} />
+      <Route path="/dashboard/returns" element={<ProtectedRoute module="module_returns"><DashboardLayout><BrandReturnsPage /></DashboardLayout></ProtectedRoute>} />
+      <Route path="/dashboard/audits" element={<ProtectedRoute module="module_audits"><DashboardLayout><WeeklyAuditPage /></DashboardLayout></ProtectedRoute>} />
+      <Route path="/dashboard/approvals" element={<ProtectedRoute module="module_approvals"><DashboardLayout><ApprovalsPage /></DashboardLayout></ProtectedRoute>} />
+      <Route path="/dashboard/terms" element={<ProtectedRoute module="module_terms"><DashboardLayout><TermsConditions /></DashboardLayout></ProtectedRoute>} />
+      <Route path="/dashboard/inventory" element={<ProtectedRoute module="module_inventory"><DashboardLayout><InventoryManagement /></DashboardLayout></ProtectedRoute>} />
+      <Route path="/dashboard/inventory/kits" element={<ProtectedRoute module="module_kits"><DashboardLayout><MaterialKitsPage /></DashboardLayout></ProtectedRoute>} />
+      <Route path="/dashboard/expansion" element={<ProtectedRoute module="module_expansion"><DashboardLayout><ExpansionPage /></DashboardLayout></ProtectedRoute>} />
+      <Route path="/dashboard/pricing-config" element={<ProtectedRoute module="module_settings"><DashboardLayout><PricingConfig /></DashboardLayout></ProtectedRoute>} />
+      <Route path="/dashboard/pricelist" element={<ProtectedRoute module="module_pricelist"><DashboardLayout><PriceListHub /></DashboardLayout></ProtectedRoute>} />
+      <Route path="/dashboard/vendors" element={<ProtectedRoute module="module_vendors"><DashboardLayout><VendorsPage /></DashboardLayout></ProtectedRoute>} />
+      <Route path="/dashboard/sales" element={<ProtectedRoute module="module_direct_sales"><DashboardLayout><DirectSalesPage /></DashboardLayout></ProtectedRoute>} />
+      <Route path="/dashboard/readings" element={<ProtectedRoute module="module_readings"><DashboardLayout><ReadingsPage /></DashboardLayout></ProtectedRoute>} />
+      <Route path="/dashboard/assets" element={<ProtectedRoute module="module_assets"><DashboardLayout><AssetsPage /></DashboardLayout></ProtectedRoute>} />
+      <Route path="/dashboard/amc" element={<ProtectedRoute module="module_amc"><DashboardLayout><AMCDashboard /></DashboardLayout></ProtectedRoute>} />
+      <Route path="/dashboard/locations" element={<ProtectedRoute module="module_locations"><DashboardLayout><LocationsPage /></DashboardLayout></ProtectedRoute>} />
+      <Route path="/dashboard/partners" element={<ProtectedRoute module="module_partners"><DashboardLayout><PartnersPage /></DashboardLayout></ProtectedRoute>} />
+      <Route path="/dashboard/partners/:id" element={<ProtectedRoute module="module_partners"><DashboardLayout><PartnerDetail /></DashboardLayout></ProtectedRoute>} />
+      <Route path="/dashboard/teams" element={<ProtectedRoute module="module_teams"><DashboardLayout><TeamsPage /></DashboardLayout></ProtectedRoute>} />
+      <Route path="/dashboard/security" element={<ProtectedRoute module="module_security"><DashboardLayout><CredentialsPage /></DashboardLayout></ProtectedRoute>} />
+      <Route path="/dashboard/vault" element={<ProtectedRoute allowedRoles={["admin"]} module="module_vault"><DashboardLayout><VaultPage /></DashboardLayout></ProtectedRoute>} />
+      <Route path="/dashboard/ecommerce" element={<ProtectedRoute module="module_ecommerce"><DashboardLayout><EcommercePage /></DashboardLayout></ProtectedRoute>} />
       {/* Google sign-in comes back here (Settings → Google Drive → Connect). Public: the one-time state authorises it. */}
       <Route path="/auth/google/callback" element={<GoogleCallback />} />
       {/* Customer's own solar dashboard — public link, mobile-number check inside */}
       <Route path="/my/:token" element={<CustomerPortal />} />
-      <Route path="/dashboard/attendance" element={<ProtectedRoute><DashboardLayout><AttendancePage /></DashboardLayout></ProtectedRoute>} />
-      <Route path="/dashboard/org-structure" element={<ProtectedRoute allowedRoles={["admin"]}><DashboardLayout><OrgStructurePage /></DashboardLayout></ProtectedRoute>} />
-      <Route path="/dashboard/customer-offers" element={<ProtectedRoute allowedRoles={["admin", "manager"]}><DashboardLayout><CustomerOffersPage /></DashboardLayout></ProtectedRoute>} />
+      <Route path="/dashboard/attendance" element={<ProtectedRoute module="module_attendance"><DashboardLayout><AttendancePage /></DashboardLayout></ProtectedRoute>} />
+      <Route path="/dashboard/org-structure" element={<ProtectedRoute module="module_org"><DashboardLayout><OrgStructurePage /></DashboardLayout></ProtectedRoute>} />
+      <Route path="/dashboard/customer-offers" element={<ProtectedRoute module="module_customer_offers"><DashboardLayout><CustomerOffersPage /></DashboardLayout></ProtectedRoute>} />
+      <Route path="/dashboard/investors" element={<ProtectedRoute allowedRoles={["admin"]} module="module_investors"><DashboardLayout><InvestorsPage /></DashboardLayout></ProtectedRoute>} />
+      {/* Investors' own dashboard — separate investor session (they sign in on /login) */}
+      <Route path="/investor" element={<InvestorPortal />} />
       {/* Default Redirect */}
       <Route path="/" element={<Navigate to="/dashboard" replace />} />
       <Route path="*" element={<Navigate to="/dashboard" replace />} />

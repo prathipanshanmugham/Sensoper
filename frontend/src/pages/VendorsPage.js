@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Badge } from '../components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../components/ui/dialog';
 import { ArrowLeft, Plus, Search, Save, Loader2, Trash2, Edit, Store, Phone, Mail, Receipt, X, History } from 'lucide-react';
+import Can from '../components/Can';
 
 const CATEGORIES = ['panels', 'inverters', 'batteries', 'structure', 'transport', 'services', 'other'];
 const blankForm = { name: '', contact_person: '', phone: '', email: '', gstin: '', address: '', state: 'Tamil Nadu', district: '', payment_terms: '', category: 'other', notes: '' };
@@ -104,7 +105,7 @@ export default function VendorsPage() {
             <p className="text-sm text-slate-500">Supplier directory with GSTIN and purchase order history.</p>
           </div>
         </div>
-        <Button onClick={openCreate} className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white" data-testid="new-vendor-btn"><Plus className="h-4 w-4" />New Vendor</Button>
+        <Can module="module_vendors" action="create"><Button onClick={openCreate} className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white" data-testid="new-vendor-btn"><Plus className="h-4 w-4" />New Vendor</Button></Can>
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
