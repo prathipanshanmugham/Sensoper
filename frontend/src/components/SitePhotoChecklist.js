@@ -7,12 +7,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
-import { AlertTriangle, Camera, Check, CloudOff, CloudUpload, ExternalLink, FileText, Loader2, MapPin, RefreshCw, X } from 'lucide-react';
+import { AlertTriangle, Check, CloudOff, CloudUpload, ExternalLink, FileText, Loader2, MapPin, RefreshCw, X } from 'lucide-react';
 import { sitePhotosAPI, driveAPI, uploadAPI } from '../utils/api';
 import { useAuth, formatApiErrorDetail } from '../contexts/AuthContext';
 import { compressImage } from '../lib/format';
 import { getPosition, tryPosition, stampImage } from '../lib/geo';
 import { Section } from './FormBits';
+import PhotoSourceButtons from './PhotoSourceButtons';
 
 let checklistCache = null;
 function loadChecklist() {
@@ -110,8 +111,9 @@ export default function SitePhotoChecklist({ value, onChange, projectId = null, 
 
   const addFiles = async (slotKey, fileList) => {
     const slot = slots[slotKey];
-    const files = Array.from(fileList || []).slice(0, Math.max(0, maxPer - (photos[slotKey] || []).length));
-    if (!files.length) { toast.error(`Up to ${maxPer} files for this item.`); return; }
+    const limit = slot.max || maxPer;
+    const files = Array.from(fileList || []).slice(0, Math.max(0, limit - (photos[slotKey] || []).length));
+    if (!files.length) { toast.error(`Up to ${limit} files for this item.`); return; }
     for (const file of files) {
       const key = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
       setBusy((b) => [...b, { key, slot: slotKey, name: file.name, pct: 0 }]);
@@ -233,13 +235,10 @@ export default function SitePhotoChecklist({ value, onChange, projectId = null, 
                                 <Loader2 className="h-5 w-5 animate-spin" /><span className="text-[11px] font-semibold tabular-nums">{b.pct ? `${b.pct}%` : '…'}</span>
                               </div>
                             ))}
-                            {canEdit && list.length + uploading.length < maxPer && (
-                              <label className="flex h-20 w-20 shrink-0 cursor-pointer flex-col items-center justify-center gap-1 rounded-lg border border-dashed border-slate-300 bg-white text-slate-600 hover:border-emerald-400 hover:text-emerald-700 focus-within:ring-2 focus-within:ring-emerald-200" data-testid={`add-photo-${it.key}`}>
-                                <Camera className="h-5 w-5" />
-                                <span className="text-[11px] font-medium">{s.docs ? 'Add file' : 'Add photo'}</span>
-                                <input type="file" multiple={!s.geotag} accept={s.docs ? 'image/*,application/pdf' : 'image/*'} className="sr-only"
-                                  onChange={(e) => { const f = e.target.files; addFiles(it.key, f); e.target.value = ''; }} data-testid={`file-input-${it.key}`} />
-                              </label>
+                            {canEdit && list.length + uploading.length < (s.max || maxPer) && (
+                              /* Proof of visit is camera-only: an old gallery photo would get today's GPS stamped on it */
+                              <PhotoSourceButtons variant="tiles" onFiles={(f) => addFiles(it.key, f)} multiple={!s.geotag} allowGallery={!s.geotag}
+                                allowPdf={!!s.docs} testid={`add-photo-${it.key}`} />
                             )}
                           </div>
                         )}

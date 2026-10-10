@@ -57,6 +57,9 @@ CHECKLIST: List[Dict[str, Any]] = [
     {"key": "proof", "title": "Proof of visit", "folder": "5 Proof of visit", "items": [
         {"key": "team_with_customer", "label": "Team with the customer at the site", "hint": "Location, date and time are stamped on the photo", "geotag": True},
     ]},
+    {"key": "other", "title": "More project photos", "folder": "6 More photos", "items": [
+        {"key": "other_photos", "label": "Other project photos", "hint": "Anything else — installation progress, handover, damage, documents", "optional": True, "max": 30, "docs": True},
+    ]},
 ]
 
 SLOTS: Dict[str, Dict[str, Any]] = {}
@@ -117,7 +120,7 @@ async def normalise_for_save(db, incoming: Optional[dict], existing: Optional[di
     for slot, lst in (incoming or {}).items():
         if slot not in SLOTS or not isinstance(lst, list):
             continue
-        for p in lst[:MAX_PER_SLOT]:
+        for p in lst[:SLOTS[slot].get("max", MAX_PER_SLOT)]:
             pid = p.get("id") if isinstance(p, dict) else p
             if isinstance(pid, str) and pid:
                 wanted.append((slot, pid))
@@ -179,8 +182,9 @@ def create_router(db, get_current_user, require_role, create_audit_log, put_obje
         if len(data) > MAX_BYTES:
             raise HTTPException(status_code=400, detail="File must be under 15 MB")
         project = await _project_for_photos(project_id, user) if project_id else None
-        if project and len((project.get("site_photos") or {}).get(slot) or []) >= MAX_PER_SLOT:
-            raise HTTPException(status_code=400, detail=f"Up to {MAX_PER_SLOT} files per item")
+        limit = SLOTS[slot].get("max", MAX_PER_SLOT)
+        if project and len((project.get("site_photos") or {}).get(slot) or []) >= limit:
+            raise HTTPException(status_code=400, detail=f"Up to {limit} files for this item")
         ext = "pdf" if is_pdf else ((file.filename or "").rsplit(".", 1)[-1].lower() if "." in (file.filename or "") else "jpg")
         if not ext.isalnum() or len(ext) > 5:
             ext = "jpg"

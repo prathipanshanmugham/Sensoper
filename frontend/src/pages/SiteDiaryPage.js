@@ -1,13 +1,14 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
 import { toast } from 'sonner';
 import { siteDiaryAPI, dailyReportsAPI, partnersAPI, inventoryAPI, uploadAPI, companyAPI } from '../utils/api';
 import { Button } from '../components/ui/button';
 import { DateNav, Section, Stepper, Chip, Field, ProjectPicker, inputCls, textareaCls } from '../components/FormBits';
+import PhotoSourceButtons from '../components/PhotoSourceButtons';
 import { localDate, dayLabel, fullDate, compressImage } from '../lib/format';
 import { generateSiteDiaryPDF } from '../utils/siteDiaryPDF';
 import { StatusPill } from './Dashboard';
-import { Plus, Trash2, Loader2, Download, Save, Camera, Sun, Cloud, CloudRain, CloudDrizzle, ShieldCheck, ShieldAlert, ArrowRight, NotebookPen, BookOpen, X } from 'lucide-react';
+import { Plus, Trash2, Loader2, Download, Save, Sun, Cloud, CloudRain, CloudDrizzle, ShieldCheck, ShieldAlert, ArrowRight, NotebookPen, BookOpen, X } from 'lucide-react';
 
 export const STAGES = ['Site survey', 'Material delivered', 'Structure erected', 'Panels mounted', 'DC wiring done', 'Inverter installed', 'AC wiring & earthing', 'Testing & commissioning', 'Net-meter applied', 'Handover done'];
 const WEATHER = [['Sunny', Sun], ['Cloudy', Cloud], ['Light rain', CloudDrizzle], ['Heavy rain', CloudRain]];
@@ -36,7 +37,6 @@ function DiaryForm({ projectId, date, projects, partners, items, onSaved }) {
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(0);
   const [open, setOpen] = useState({ work: true, crew: true, materials: false, safety: false, photos: false, next: true });
-  const fileRef = useRef(null);
 
   useEffect(() => {
     let live = true;
@@ -171,10 +171,9 @@ function DiaryForm({ projectId, date, projects, partners, items, onSaved }) {
       <Section n={5} title="Photos" hint="Before / after shots, structure, wiring, meter" summary={form.photos.length ? `${form.photos.length} photo${form.photos.length > 1 ? 's' : ''}` : ''} open={open.photos} onToggle={() => setOpen((o) => ({ ...o, photos: !o.photos }))} testid="diary-section-photos">
         <div className="space-y-3">
           {form.photos.length > 0 && <div className="grid grid-cols-3 gap-2">{form.photos.map((p) => <Photo key={p} path={p} onRemove={() => set({ photos: form.photos.filter((x) => x !== p) })} />)}</div>}
-          <input ref={fileRef} type="file" accept="image/*" multiple capture="environment" className="hidden" onChange={(e) => { upload(e.target.files); e.target.value = ''; }} data-testid="diary-photo-input" />
-          <Button type="button" variant="outline" disabled={uploading > 0 || form.photos.length >= 10} onClick={() => fileRef.current?.click()} className="w-full gap-2 border-dashed" data-testid="diary-add-photo">
-            {uploading > 0 ? <><Loader2 className="h-4 w-4 animate-spin" />Uploading {uploading}…</> : <><Camera className="h-4 w-4" />Add photos</>}
-          </Button>
+          {uploading > 0
+            ? <p className="flex h-11 items-center justify-center gap-2 rounded-lg border border-dashed border-emerald-300 bg-emerald-50 text-sm text-emerald-700" data-testid="diary-uploading"><Loader2 className="h-4 w-4 animate-spin" />Uploading {uploading}…</p>
+            : <PhotoSourceButtons onFiles={upload} disabled={form.photos.length >= 10} testid="diary-photo" />}
           <p className="text-[11px] text-slate-400">Up to 10 photos per day. Big phone photos are shrunk before upload to save data.</p>
         </div>
       </Section>

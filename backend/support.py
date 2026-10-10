@@ -167,6 +167,54 @@ def _breach_flags(ticket: Dict[str, Any], sla: Dict[str, Dict[str, float]]) -> D
     }
 
 
+
+async def open_ticket(db, data: Dict[str, Any], actor_name: str, note: str = "Ticket opened") -> Dict[str, Any]:
+    """Create a support ticket (staff screen or the customer dashboard). `data` follows TicketCreate."""
+    payload = TicketCreate(**data)
+    pre: Dict[str, Any] = {}
+    if payload.project_id:
+        try:
+            p = await db.projects.find_one({"_id": ObjectId(payload.project_id)})
+            if p:
+                ss = (p.get("custom_fields") or {}).get("proposed_solution") or p.get("solar_system") or {}
+                pre["system_type"] = ss.get("system_type")
+                pre["system_capacity_kw"] = ss.get("system_size_kw") or 0
+                if isinstance(p.get("location"), dict):
+                    pre["district"] = p["location"].get("district")
+                    pre["location_id"] = p.get("location_id")
+        except Exception:
+            pass
+    if payload.amc_contract_id:
+        try:
+            c = await db.amc_contracts.find_one({"_id": ObjectId(payload.amc_contract_id)})
+            if c:
+                pre["system_type"] = pre.get("system_type") or c.get("system_type")
+                pre["system_capacity_kw"] = pre.get("system_capacity_kw") or c.get("system_capacity_kw", 0)
+                pre["district"] = pre.get("district") or c.get("district")
+        except Exception:
+            pass
+    sla = await _get_sla_config(db)
+    limits = sla.get(payload.priority, DEFAULT_SLA_HOURS["medium"])
+    now = _now()
+    doc = payload.dict()
+    for k, v in pre.items():
+        if not doc.get(k) and v:
+            doc[k] = v
+    doc.update({
+        "ticket_number": await _next_ticket_number(db), "status": "open",
+        "assigned_to": None, "assigned_to_name": None, "assigned_date": None,
+        "sla_response_hours": limits["response"], "sla_resolution_hours": limits["resolution"],
+        "first_response_at": None, "resolved_at": None, "breached_response_sla": False, "breached_resolution_sla": False,
+        "resolution_notes": "", "root_cause": None, "parts_used": [], "linked_service_visit_id": None,
+        "customer_satisfaction_rating": None, "reopen_count": 0,
+        "timeline": [{"timestamp": now, "actor": actor_name, "action": "created", "note": note}],
+        "attachments": [], "created_at": now, "updated_at": now,
+    })
+    res = await db.support_tickets.insert_one(doc)
+    row = _clean({**doc, "_id": res.inserted_id})
+    row.update(_breach_flags(row, sla))
+    return row
+
 def create_router(db, get_current_user, require_role, create_audit_log):
     router = APIRouter()
 
@@ -267,62 +315,9 @@ def create_router(db, get_current_user, require_role, create_audit_log):
     @router.post("/support/tickets")
     async def create_ticket(payload: TicketCreate, request: Request):
         user = await require_role("admin", "manager", "staff")(request)
-        # Pre-fill from project or AMC contract if provided
-        pre: Dict[str, Any] = {}
-        if payload.project_id:
-            try:
-                p = await db.projects.find_one({"_id": ObjectId(payload.project_id)})
-                if p:
-                    ss = (p.get("custom_fields") or {}).get("proposed_solution") or p.get("solar_system") or {}
-                    pre["system_type"] = pre.get("system_type") or ss.get("system_type")
-                    pre["system_capacity_kw"] = pre.get("system_capacity_kw") or ss.get("system_size_kw") or 0
-                    if isinstance(p.get("location"), dict):
-                        pre["district"] = pre.get("district") or p["location"].get("district")
-            except Exception:
-                pass
-        if payload.amc_contract_id:
-            try:
-                c = await db.amc_contracts.find_one({"_id": ObjectId(payload.amc_contract_id)})
-                if c:
-                    pre["system_type"] = pre.get("system_type") or c.get("system_type")
-                    pre["system_capacity_kw"] = pre.get("system_capacity_kw") or c.get("system_capacity_kw", 0)
-                    pre["district"] = pre.get("district") or c.get("district")
-            except Exception:
-                pass
-        sla = await _get_sla_config(db)
-        limits = sla.get(payload.priority, DEFAULT_SLA_HOURS["medium"])
-        now = _now()
-        doc = payload.dict()
-        for k, v in pre.items():
-            if not doc.get(k):
-                doc[k] = v
-        doc["ticket_number"] = await _next_ticket_number(db)
-        doc["status"] = "open"
-        doc["assigned_to"] = None
-        doc["assigned_to_name"] = None
-        doc["assigned_date"] = None
-        doc["sla_response_hours"] = limits["response"]
-        doc["sla_resolution_hours"] = limits["resolution"]
-        doc["first_response_at"] = None
-        doc["resolved_at"] = None
-        doc["breached_response_sla"] = False
-        doc["breached_resolution_sla"] = False
-        doc["resolution_notes"] = ""
-        doc["root_cause"] = None
-        doc["parts_used"] = []
-        doc["linked_service_visit_id"] = None
-        doc["customer_satisfaction_rating"] = None
-        doc["reopen_count"] = 0
-        doc["timeline"] = [{"timestamp": now, "actor": user.get("name"), "action": "created",
-                             "note": "Ticket opened"}]
-        doc["attachments"] = []
-        doc["created_at"] = now
-        doc["updated_at"] = now
-        res = await db.support_tickets.insert_one(doc)
-        await create_audit_log(user["id"], user["name"], "create", "support_ticket", str(res.inserted_id), None,
-                                {"customer": doc["customer_name"], "category": doc["category"]})
-        row = _clean({**doc, "_id": res.inserted_id})
-        row.update(_breach_flags(row, sla))
+        row = await open_ticket(db, payload.dict(), actor_name=user.get("name"))
+        await create_audit_log(user["id"], user["name"], "create", "support_ticket", row["id"], None,
+                                {"customer": row["customer_name"], "category": row["category"]})
         return row
 
     @router.get("/support/tickets/{ticket_id}")

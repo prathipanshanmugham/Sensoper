@@ -267,3 +267,12 @@ See CHANGES.md for the full list. Highlights for the next agent:
 - Site location is GPS coordinates only: Location step "Use my location", project page "Update location" (`backend/geo_location.py`,
   `PUT /api/projects/{id}/geo`). `geo_w3w.py`, the Settings key card, the `w3w_cache` collection and the stored key are gone.
 - Legacy `location.site_location_words` is kept in the model for old data but never shown; form saves clear it.
+
+## Iteration 64 — customer dashboard, attendance, org chart (2026-10-10)
+- `backend/customer_portal.py`: per-project private link (`/my/<token>`, token sha256 + Fernet-encrypted), mobile-number check →
+  30-day JWT cookie scoped to `/api/portal/<token>`; dashboard numbers in pure `build_dashboard_numbers()`; offers + interests;
+  tickets via `support.open_ticket()` (shared with the staff endpoint).
+- `backend/attendance.py` (check-in/out, team day, monthly register, corrections) and `backend/org_structure.py` (admin-only org chart).
+- Frontend: `pages/CustomerPortal.js` (public), `pages/AttendancePage.js`, `pages/OrgStructurePage.js`, `pages/CustomerOffersPage.js`,
+  `components/CustomerDashboardCard.js` (project page), `components/PhotoSourceButtons.js` (Camera / Gallery).
+- Tests: backend/tests/test_attendance_org_portal.py (live-server style).
