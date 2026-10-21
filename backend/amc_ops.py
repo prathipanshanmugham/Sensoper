@@ -91,6 +91,13 @@ def cluster_visits(rows: List[Dict[str, Any]], hq: Optional[Dict[str, float]], k
 def create_router(db, get_current_user, require_role, create_audit_log):
     router = APIRouter()
 
+    async def _scheduler(request: Request) -> Dict[str, Any]:
+        """Admins / managers schedule visits; so do joint-venture partners (AMC servicing is shared)."""
+        user = await get_current_user(request)
+        if user.get("role") == "partner":
+            return user
+        return await require_role("admin", "manager")(request)
+
     # ── 1. AMC interest / opt-in on completed projects ──
     @router.put("/amc/interest/{project_id}")
     async def set_interest(project_id: str, body: InterestIn, request: Request):
@@ -122,15 +129,19 @@ def create_router(db, get_current_user, require_role, create_audit_log):
     # ── 2. Scheduling with notifications ──
     @router.post("/amc/contracts/{contract_id}/schedule")
     async def schedule_with_notifications(contract_id: str, body: ScheduleIn, request: Request):
-        user = await require_role("admin", "manager")(request)
-        c = await db.amc_contracts.find_one({"_id": ObjectId(contract_id)})
+        user = await _scheduler(request)
+        c = await db.amc_contracts.find_one({"_id": ObjectId(contract_id)}) if ObjectId.is_valid(contract_id) else None
         if not c or c.get("status") != "active":
             raise HTTPException(status_code=400, detail="Only active contracts can be scheduled")
         try:
             datetime.fromisoformat(body.scheduled_date)
         except ValueError:
             raise HTTPException(status_code=400, detail="scheduled_date must be YYYY-MM-DD")
-        lead = [int(x) for x in (body.lead_days or DEFAULT_LEAD_DAYS) if int(x) >= 0]
+        lead = [int(x) for x in (body.lead_days or DEFAULT_LEAD_DAYS) if 0 <= int(x) <= 60]
+        if user.get("role") == "partner" and body.technician_id:
+            tech = await db.users.find_one({"_id": ObjectId(body.technician_id)}, {"partner_id": 1}) if ObjectId.is_valid(body.technician_id) else None
+            if not tech or tech.get("partner_id") != user.get("partner_id"):
+                body.technician_id = None                 # partners assign their own people only
         now_iso = _iso(_now())
         visit = {"contract_id": contract_id, "visit_number": await db.amc_service_visits.count_documents({"contract_id": contract_id}) + 1,
                  "scheduled_date": body.scheduled_date, "actual_date": None, "visit_type": body.visit_type, "technician_id": body.technician_id,

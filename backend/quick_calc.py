@@ -133,12 +133,17 @@ def compute_quick(inputs: Dict[str, Any], config: Dict[str, Any],
     elif roof_limited:
         warn("system_size_kw", f"Size limited by roof: {roof_sqft:g} sq ft fits about {roof_cap_kw:g} kW.")
 
+    panel_off, inverter_off = inputs.get("panel_mode") == "none", inputs.get("inverter_mode") == "none"
+    if panel_off:
+        panel = None
+    if inverter_off:
+        inverter = None
     panel_w = _num((panel or {}).get("specs", {}).get("wattage")) if panel else 0
     if panel and panel_w <= 0:
         warn("panel_item_id", f"'{panel.get('name')}' has no wattage in Inventory — set the panel count manually or add specs.wattage.")
     panel_count_auto = math.ceil(kw * 1000 / panel_w) if (kw > 0 and panel_w > 0) else None
     pc_manual = overrides.get("panel_count")
-    panel_count = int(_num(pc_manual)) if pc_manual not in (None, "") else (panel_count_auto or 0)
+    panel_count = 0 if panel_off else (int(_num(pc_manual)) if pc_manual not in (None, "") else (panel_count_auto or 0))
 
     inverter_kw = _num((inverter or {}).get("specs", {}).get("rated_kw")) if inverter else 0
     if inverter and inverter_kw > 0 and kw > 0:
@@ -177,8 +182,8 @@ def compute_quick(inputs: Dict[str, Any], config: Dict[str, Any],
             return None, None
         g, m = _pct(item.get("gst_percentage")), _pct(item.get("margin_pct"))
         if g is None:
-            pricing_issues.append(f"{label}: GST% missing on '{item.get('name')}' — set it in the Pricelist.")
-            warn(field, f"'{item.get('name')}' has no GST% in the Pricelist.")
+            pricing_issues.append(f"{label}: GST% missing on '{item.get('name')}' — {'enter it above' if item.get('custom') else 'set it in the Pricelist'}.")
+            warn(field, f"'{item.get('name')}' has no GST%{'' if item.get('custom') else ' in the Pricelist'}.")
         if m is None:
             pricing_issues.append(f"{label}: margin% missing on '{item.get('name')}' — set it in the Pricelist.")
             warn(field, f"'{item.get('name')}' has no margin% in the Pricelist.")
@@ -186,12 +191,12 @@ def compute_quick(inputs: Dict[str, Any], config: Dict[str, Any],
 
     panel_gst, panel_margin = item_pricing(panel, "panel_item_id", "Panels")
     panel_sell = sell_price(panel)
-    panel_cost = panel_sell * panel_count if (panel and panel_sell > 0 and panel_count > 0) else PANEL_BENCH_SHARE * base_kwp * kw
-    panel_benchmark = not (panel and panel_sell > 0 and panel_count > 0)
+    panel_cost = 0.0 if panel_off else (panel_sell * panel_count if (panel and panel_sell > 0 and panel_count > 0) else PANEL_BENCH_SHARE * base_kwp * kw)
+    panel_benchmark = not panel_off and not (panel and panel_sell > 0 and panel_count > 0)
     inverter_gst, inverter_margin = item_pricing(inverter, "inverter_item_id", "Inverter")
     inverter_sell = sell_price(inverter)
-    inverter_cost = inverter_sell if (inverter and inverter_sell > 0) else INVERTER_BENCH_SHARE * type_kwp * kw
-    inverter_benchmark = not (inverter and inverter_sell > 0)
+    inverter_cost = 0.0 if inverter_off else (inverter_sell if (inverter and inverter_sell > 0) else INVERTER_BENCH_SHARE * type_kwp * kw)
+    inverter_benchmark = not inverter_off and not (inverter and inverter_sell > 0)
     battery_gst, battery_margin = item_pricing(battery, "battery_item_id", "Battery") if needs_battery else (None, None)
     battery_sell = sell_price(battery)
     battery_cost = 0.0
@@ -203,9 +208,9 @@ def compute_quick(inputs: Dict[str, Any], config: Dict[str, Any],
             battery_cost = battery_count * battery_unit_kwh * _num(config.get("battery_benchmark_per_kwh"), 20000)
             battery_benchmark = True
     if panel_benchmark and kw > 0:
-        pricing_issues.append("Panels: benchmark price used — pick a panel from Inventory to price with its GST% & margin%.")
+        pricing_issues.append("Panels: benchmark price used — pick a panel from Inventory (or type one in) to price with its GST% & margin%.")
     if inverter_benchmark and kw > 0:
-        pricing_issues.append("Inverter: benchmark price used — pick an inverter from Inventory to price with its GST% & margin%.")
+        pricing_issues.append("Inverter: benchmark price used — pick an inverter from Inventory (or type one in) to price with its GST% & margin%.")
 
     bos_auto = BOS_SHARE * base_kwp * kw
     legacy_bos = overrides.get("bos_cost")
@@ -301,9 +306,9 @@ def compute_quick(inputs: Dict[str, Any], config: Dict[str, Any],
         "battery_count_auto": battery_count_auto,
         "battery_count": battery_count,
         "lines": {
-            "panels": {"amount": round(panel_cost), "benchmark": panel_benchmark, "unit_price": round(panel_sell, 2) if panel else None,
+            "panels": {"amount": round(panel_cost), "benchmark": panel_benchmark, "excluded": panel_off, "custom": bool((panel or {}).get("custom")), "unit_price": round(panel_sell, 2) if panel else None,
                        "gst_pct": panel_gst, "margin_pct": panel_margin, "gst_amount": round(panel_cost * (panel_gst or 0) / 100)},
-            "inverter": {"amount": round(inverter_cost), "benchmark": inverter_benchmark, "unit_price": round(inverter_sell, 2) if inverter else None,
+            "inverter": {"amount": round(inverter_cost), "benchmark": inverter_benchmark, "excluded": inverter_off, "custom": bool((inverter or {}).get("custom")), "unit_price": round(inverter_sell, 2) if inverter else None,
                          "gst_pct": inverter_gst, "margin_pct": inverter_margin, "gst_amount": round(inverter_cost * (inverter_gst or 0) / 100)},
             "battery": {"amount": round(battery_cost), "benchmark": battery_benchmark, "unit_price": round(battery_sell, 2) if battery else None,
                         "gst_pct": battery_gst, "margin_pct": battery_margin, "gst_amount": round(battery_cost * (battery_gst or 0) / 100)} if needs_battery else None,
@@ -364,8 +369,21 @@ class QuickCalcRequest(BaseModel):
     panel_item_id: Optional[str] = None
     inverter_item_id: Optional[str] = None
     battery_item_id: Optional[str] = None
+    panel_mode: Optional[str] = "inventory"           # inventory | custom (typed in, not in Inventory) | none (not in this job)
+    inverter_mode: Optional[str] = "inventory"
+    panel_custom: Optional[Dict[str, Any]] = None     # {name, wattage, unit_price, gst_percentage}
+    inverter_custom: Optional[Dict[str, Any]] = None  # {name, rated_kw, unit_price, gst_percentage}
     pricing_mode: Optional[str] = "itemised"
     overrides: Dict[str, Any] = {}
+
+
+def custom_item(c: Optional[Dict[str, Any]], kind: str) -> Optional[Dict[str, Any]]:
+    """A panel / inverter typed in on the quote (not in Inventory): priced at what was entered, margin 0. Mirrors solarCalc.customItem."""
+    if not c or not (_num(c.get("unit_price")) > 0):
+        return None
+    return {"custom": True, "name": (str(c.get("name") or "").strip() or ("Solar panel" if kind == "panel" else "Inverter")),
+            "unit_price": _num(c.get("unit_price")), "gst_percentage": _pct(c.get("gst_percentage")), "margin_pct": 0,
+            "specs": {"wattage": _num(c.get("wattage"))} if kind == "panel" else {"rated_kw": _num(c.get("rated_kw"))}}
 
 
 def create_router(db, get_current_user, get_calc_config):
@@ -384,6 +402,10 @@ def create_router(db, get_current_user, get_calc_config):
             return {"error": f"system_type must be one of {list(GRID_TYPES)} — solar pumps use /calculate/solution"}
         config = await get_calc_config()
         panel, inverter, battery = await _item(payload.panel_item_id), await _item(payload.inverter_item_id), await _item(payload.battery_item_id)
+        if payload.panel_mode == "custom":
+            panel = custom_item(payload.panel_custom, "panel")
+        if payload.inverter_mode == "custom":
+            inverter = custom_item(payload.inverter_custom, "inverter")
         slab_doc = await db.pricing_slabs.find_one({"category": payload.system_type, "active": {"$ne": False}})
         return compute_quick(payload.model_dump(), config, panel, inverter, battery, slab_doc)
 

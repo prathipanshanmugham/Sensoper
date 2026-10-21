@@ -604,7 +604,8 @@ export default function SiteVisitForm() {
     const subsidy = systemCost > 0 ? Math.min(parseFloat(ps.subsidy) || 0, systemCost + systemGst) : 0;
     const itemsTotal = formData.selected_items.reduce((sum, i) => sum + i.unit_price * i.quantity, 0);
     const manualTotal = formData.manual_costs.reduce((sum, c) => sum + (parseFloat(c.amount) || 0), 0);
-    const addonsGst = formData.selected_items.reduce((sum, i) => sum + i.unit_price * i.quantity * ((pct(i.gst_percentage) || 0) / 100), 0);
+    // GST on what the customer pays for the line (cost + margin) — same rule as the server and the invoice
+    const addonsGst = formData.selected_items.reduce((sum, i) => sum + i.unit_price * i.quantity * (1 + (pct(i.margin_percentage) || 0) / 100) * ((pct(i.gst_percentage) || 0) / 100), 0);
     const marginTotal = formData.selected_items.reduce((sum, i) => sum + i.unit_price * i.quantity * ((pct(i.margin_percentage) || 0) / 100), 0);
     formData.selected_items.forEach(i => {
       if (pct(i.gst_percentage) === null) issues.push(`Add-on '${i.name}': GST% missing.`);
@@ -652,9 +653,13 @@ export default function SiteVisitForm() {
       case 'location': if (!formData.location.address && !(formData.location.latitude && formData.location.longitude)) { setError('Tap "Use my location" or enter the site address'); return false; } return validateExtraFields();
       case 'site_electrical': return validateExtraFields();
       case 'materials': {
+        // Something must be quoted — a solar system, or just items / charges (a spare inverter, a service job…).
+        // Panels and inverter are optional: pick from stock, type one in, or mark "Not needed".
         const ps = formData.custom_fields?.proposed_solution || {};
-        if (ps.system_type !== 'solar-pump' && !(parseFloat(ps.system_size_kw) > 0)) {
-          setError('Enter System Size (kW) in the Solar Calculator before continuing'); return false;
+        const hasSystem = ps.system_type === 'solar-pump' || parseFloat(ps.system_size_kw) > 0;
+        const hasLines = formData.selected_items.length > 0 || formData.manual_costs.some(c => (parseFloat(c.amount) || 0) > 0);
+        if (!hasSystem && !hasLines) {
+          setError('Nothing to quote yet — type a system size (step 2), or add at least one item or charge under Extras'); return false;
         }
         return validateExtraFields();
       }
@@ -1296,12 +1301,15 @@ export default function SiteVisitForm() {
                 </details>
 
                 <div>
-                  <div className="flex items-center justify-between mb-3">
-                    <div>
-                      <h3 className="font-semibold text-slate-900 flex items-center gap-2"><Package className="h-4 w-4" />Add-ons & Extras</h3>
-                      <p className="text-[11px] text-slate-500 mt-0.5">Optional extras on top of the core kit — safety, monitoring, civil work, service. Grouped on the customer PDF.</p>
+                  <div className="flex items-start justify-between gap-3 mb-3">
+                    <div className="flex items-baseline gap-2">
+                      <span className="h-5 w-5 rounded-full bg-slate-900 text-white text-[11px] font-bold inline-flex items-center justify-center flex-shrink-0">4</span>
+                      <div>
+                        <h3 className="text-sm font-semibold text-slate-800">Extras <span className="font-normal text-slate-400">— optional</span></h3>
+                        <p className="text-[11px] text-slate-500 mt-0.5">Anything else on this quote: items from stock, a ready-made kit, or something not in stock yet. Also use this alone for a quote without a full system.</p>
+                      </div>
                     </div>
-                    <Button type="button" variant="outline" size="sm" onClick={() => setShowAddCategory(true)} className="h-9 text-xs gap-1" data-testid="add-category-btn"><FolderPlus className="h-3.5 w-3.5" />Add Category</Button>
+                    <button type="button" onClick={() => setShowAddCategory(true)} className="shrink-0 text-[11px] font-medium text-slate-500 hover:text-slate-800 flex items-center gap-1" data-testid="add-category-btn"><FolderPlus className="h-3.5 w-3.5" />New category</button>
                   </div>
 
                   {showAddCategory && (
@@ -1319,7 +1327,7 @@ export default function SiteVisitForm() {
 
                   {/* Universal searchable combobox — replaces per-category dropdowns */}
                   <div className="rounded-lg border border-slate-200 bg-white p-3 space-y-2" data-testid="addons-searchbox">
-                    <Label className="text-xs uppercase tracking-wider text-slate-500">Search all inventory</Label>
+                    <Label className="text-xs text-slate-700">Add from stock</Label>
                     <Select onValueChange={(v) => addSelectedItem(v)}>
                       <SelectTrigger className="h-11" data-testid="addons-select-any"><SelectValue placeholder="Search by name / SKU / category..." /></SelectTrigger>
                       <SelectContent>
@@ -1334,8 +1342,8 @@ export default function SiteVisitForm() {
                       </SelectContent>
                     </Select>
                     <div className="pt-1 flex items-center justify-between gap-2 flex-wrap">
-                      <p className="text-[11px] text-slate-500">Need something that isn't catalogued yet?</p>
-                      <Button type="button" variant="outline" size="sm" className="h-8 text-xs border-amber-300 text-amber-800 hover:bg-amber-50" onClick={() => setShowAdhocForm(v => !v)} data-testid="adhoc-toggle-btn"><Plus className="h-3.5 w-3.5 mr-1" />Add item not in inventory</Button>
+                      <p className="text-[11px] text-slate-500">Not in stock yet? Add it with its price — it works like any other line.</p>
+                      <Button type="button" variant="outline" size="sm" className="h-9 text-xs border-amber-300 text-amber-800 hover:bg-amber-50" onClick={() => setShowAdhocForm(v => !v)} data-testid="adhoc-toggle-btn"><Plus className="h-3.5 w-3.5 mr-1" />Add item not in stock</Button>
                     </div>
                     {showAdhocForm && <AdhocLineForm categories={categories} onCancel={() => setShowAdhocForm(false)} onAdd={(line) => { setFormData(prev => ({ ...prev, selected_items: [...prev.selected_items, line] })); setShowAdhocForm(false); }} />}
                     {/* Quick-add strip: 6 most recent items */}
@@ -1395,7 +1403,7 @@ export default function SiteVisitForm() {
 
                 <div>
                   <div className="flex items-center justify-between mb-2">
-                    <h3 className="font-semibold text-slate-900">Other Priced Lines <span className="text-xs text-slate-400 font-normal">— each needs its own GST% & margin%</span></h3>
+                    <h3 className="text-sm font-semibold text-slate-800">Other charges <span className="text-xs text-slate-400 font-normal">— e.g. civil work, transport (each with its own GST% &amp; margin%)</span></h3>
                     <Button type="button" variant="outline" size="sm" onClick={() => addManualCost()} className="h-9" data-testid="add-manual-cost-btn"><Plus className="h-3.5 w-3.5 mr-1" />Add</Button>
                   </div>
                   {formData.manual_costs.map((cost, idx) => (
@@ -1411,10 +1419,10 @@ export default function SiteVisitForm() {
 
                 <Card className="border-emerald-200 bg-emerald-50">
                   <CardContent className="p-4">
-                    <h3 className="font-semibold text-slate-900 mb-2">Cost Summary</h3>
+                    <h3 className="font-semibold text-slate-900 mb-2">Quote total</h3>
                     <div className="space-y-1 text-sm">
                       <div className="flex justify-between"><span className="text-slate-600">Base system{formData.custom_fields?.proposed_solution?.system_size_kw ? ` (${formData.custom_fields.proposed_solution.system_size_kw} kW)` : ''}</span><span className="font-medium" data-testid="cost-summary-system">₹{totals.systemCost.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span></div>
-                      {totals.systemCost === 0 && <p className="text-[11px] text-amber-700" data-testid="cost-summary-no-system">No base system yet — complete the calculator above so the quote includes panels, inverter, structure &amp; BOS.</p>}
+                      {totals.systemCost === 0 && <p className="text-[11px] text-slate-500" data-testid="cost-summary-no-system">No solar system in this quote — only the extras below. Type a system size above to add one.</p>}
                       <div className="flex justify-between"><span className="text-slate-600">Add-ons &amp; extras</span><span className="font-medium">₹{totals.itemsTotal.toLocaleString('en-IN')}</span></div>
                       <div className="flex justify-between"><span className="text-slate-600">Other lines</span><span className="font-medium">₹{totals.manualTotal.toLocaleString('en-IN')}</span></div>
                       <div className="flex justify-between"><span className="text-slate-600">GST</span><span className="font-medium">₹{totals.gstTotal.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span></div>

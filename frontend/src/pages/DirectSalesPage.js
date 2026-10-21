@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '../components/ui/dialog';
 import { ArrowLeft, Plus, X, Loader2, Receipt, ShoppingCart, IndianRupee, Users, Package, Pencil, Trash2, AlertTriangle } from 'lucide-react';
 import HardDeleteButton from '../components/HardDeleteButton';
+import { useLiveRefresh } from '../lib/liveSync';
 
 const LEAD_SOURCES = ['google_ads', 'meta_ads', 'referral', 'organic', 'exhibitions', 'field_marketing', 'telecalling', 'website_seo', 'whatsapp', 'other'];
 
@@ -63,6 +64,7 @@ export default function DirectSalesPage() {
     try { const r = await actionRequestsAPI.list({ status: 'pending', resource_type: 'sale' }); setPendingApprovals(r.data || []); } catch { /* noop */ }
   }, [isAdmin, isManager]);
   useEffect(() => { fetchApprovals(); }, [fetchApprovals]);
+  useLiveRefresh(['direct-sales', 'action-requests', 'inventory'], () => { fetchAll(); fetchApprovals(); });
 
   const handleApproveCancel = async (id) => {
     try { await actionRequestsAPI.approve(id); await fetchApprovals(); await fetchAll(); }

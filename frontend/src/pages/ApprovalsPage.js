@@ -9,6 +9,7 @@ import { Card, CardContent } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
 import { Textarea } from '../components/ui/textarea';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '../components/ui/dialog';
+import { useLiveRefresh } from '../lib/liveSync';
 
 const SOURCE_META = {
   approval: { label: 'Deletion / change request', icon: ShieldAlert, color: 'bg-red-100 text-red-800' },
@@ -41,6 +42,7 @@ export default function ApprovalsPage() {
     finally { setLoading(false); }
   }, [tab, source]);
   useEffect(() => { load(); }, [load]);
+  useLiveRefresh(['projects', 'approvals', 'purchases', 'inventory', 'deliveries', 'direct-sales', 'action-requests', 'investors'], load);
 
   const approve = async (it) => {
     setBusy(it.id);

@@ -10,6 +10,7 @@ import { generateSiteDiaryPDF } from '../utils/siteDiaryPDF';
 import { StatusPill } from './Dashboard';
 import { Plus, Trash2, Loader2, Download, Save, Sun, Cloud, CloudRain, CloudDrizzle, ShieldCheck, ShieldAlert, ArrowRight, NotebookPen, BookOpen, X } from 'lucide-react';
 import Can from '../components/Can';
+import { useLiveRefresh } from '../lib/liveSync';
 
 export const STAGES = ['Site survey', 'Material delivered', 'Structure erected', 'Panels mounted', 'DC wiring done', 'Inverter installed', 'AC wiring & earthing', 'Testing & commissioning', 'Net-meter applied', 'Handover done'];
 const WEATHER = [['Sunny', Sun], ['Cloudy', Cloud], ['Light rain', CloudDrizzle], ['Heavy rain', CloudRain]];
@@ -216,6 +217,7 @@ export default function SiteDiaryPage() {
     inventoryAPI.getItems().then((r) => setItems(Array.isArray(r.data) ? r.data : (r.data?.items || []))).catch(() => {});
   }, []);
   useEffect(() => { loadRecent(); }, [loadRecent]);
+  useLiveRefresh(['site-diaries', 'site-diary'], loadRecent);
 
   const project = projects.find((p) => p.id === projectId);
   const active = useMemo(() => projects.filter((p) => ['approved', 'submitted'].includes(p.status)).slice(0, 8), [projects]);

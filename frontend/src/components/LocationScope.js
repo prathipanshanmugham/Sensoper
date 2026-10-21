@@ -18,6 +18,7 @@ export function useLocationScope(storageKey) {
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
+    if (user?.role === 'partner') { setReady(true); return; }   // joint-venture partners have no branches here
     locationsAPI.list().then(r => {
       const locs = r.data || [];
       setLocations(locs);
@@ -32,7 +33,7 @@ export function useLocationScope(storageKey) {
       setReady(true);
     }).catch(() => setReady(true));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isAdmin, key]);
+  }, [isAdmin, key, user?.role]);
 
   useEffect(() => {
     if (key && ready) localStorage.setItem(key, locationId || '');

@@ -32,7 +32,7 @@ def create_router(db, require_role):
             open_projects[p.get("created_by")] = open_projects.get(p.get("created_by"), 0) + 1
 
         people: List[Dict[str, Any]] = []
-        async for u in db.users.find({}, {"password_hash": 0, "totp_secret": 0, "totp_secret_enc": 0}):
+        async for u in db.users.find({"role": {"$ne": "partner"}}, {"password_hash": 0, "totp_secret": 0, "totp_secret_enc": 0}):
             if u.get("disabled") or u.get("is_active") is False:
                 continue
             uid = str(u["_id"])

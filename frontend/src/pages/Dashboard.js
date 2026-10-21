@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { dashboardAPI, projectsAPI, dailyReportsAPI, attendanceAPI } from '../utils/api';
+import { dashboardAPI, projectsAPI, dailyReportsAPI, attendanceAPI, amcAPI } from '../utils/api';
 import { MonthlyTargetPanel } from '../components/MonthlyTargetPanel';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../components/ui/tabs';
 import CeoDashboard from './CeoDashboard';
@@ -9,8 +9,9 @@ import { NAV_SECTIONS, canSee } from '../lib/navigation';
 import { localDate, greeting, inrShort, inr } from '../lib/format';
 import {
   FolderPlus, CalendarCheck, NotebookPen, ClipboardCheck, FolderKanban, Package, Users, ChevronRight, CheckCircle2,
-  Clock, AlertCircle, XCircle, Trash2, Activity, FileText,
+  Clock, AlertCircle, XCircle, Trash2, Activity, FileText, ShieldCheck,
 } from 'lucide-react';
+import { useLiveRefresh } from '../lib/liveSync';
 
 export const STATUS = {
   draft: { label: 'Draft', cls: 'bg-amber-50 text-amber-800 ring-amber-200', icon: Clock },
@@ -81,8 +82,10 @@ function Overview({ user, isMgr, can, allowed }) {
   const [myReport, setMyReport] = useState(null);
   const [team, setTeam] = useState(null);
   const [attendance, setAttendance] = useState(null);
+  const [amcOffers, setAmcOffers] = useState(0);
   const [loading, setLoading] = useState(true);
   const today = localDate();
+  const seesAmc = allowed('module_amc');
 
   const load = useCallback(async () => {
     const jobs = [dashboardAPI.getStats(), projectsAPI.getAll(), dailyReportsAPI.mine(today)];
@@ -95,7 +98,12 @@ function Overview({ user, isMgr, can, allowed }) {
     setLoading(false);
   }, [today, seesTeamReports]);
   useEffect(() => { load(); }, [load]);
+  useLiveRefresh(['projects', 'approvals', 'daily-reports', 'inventory', 'purchases', 'amc', 'attendance'], () => {
+    load();
+    if (seesAmc) amcAPI.offersCount().then((r) => setAmcOffers(r.data.without_quote || 0)).catch(() => {});
+  });
   useEffect(() => { attendanceAPI.today().then((r) => setAttendance(r.data)).catch(() => {}); }, []);
+  useEffect(() => { if (seesAmc) amcAPI.offersCount().then((r) => setAmcOffers(r.data.without_quote || 0)).catch(() => {}); }, [seesAmc]);
 
   const reportState = REPORT_STATE[myReport?.status || 'not_started'] || REPORT_STATE.not_started;
   const mine = projects.filter((p) => p.created_by === user?.id);
@@ -108,6 +116,7 @@ function Overview({ user, isMgr, can, allowed }) {
   if (team && team.counts.missing + team.counts.draft > 0) attention.push({ to: '/dashboard/daily-report?tab=team', icon: Users, tone: 'amber', title: `${team.counts.submitted} of ${expected} daily reports in today`, detail: `${team.counts.missing} not started · ${team.counts.draft} in draft`, testid: 'team-reports-alert' });
   if (allowed('module_inventory') && stats?.low_stock_alerts > 0) attention.push({ to: '/dashboard/inventory', icon: Package, tone: 'red', title: `${stats.low_stock_alerts} item${stats.low_stock_alerts > 1 ? 's' : ''} low on stock`, detail: 'Reorder before the next installation', testid: 'low-stock-alert' });
   if (mustReport && myReport && myReport.status !== 'submitted' && can('/dashboard/daily-report')) attention.push({ to: '/dashboard/daily-report', icon: CalendarCheck, tone: 'amber', title: "Your daily report isn't submitted yet", detail: reportState.text, testid: 'my-report-alert' });
+  if (seesAmc && amcOffers > 0) attention.push({ to: '/dashboard/amc?tab=offers', icon: ShieldCheck, tone: 'sky', title: `${amcOffers} customer${amcOffers > 1 ? 's' : ''} ready for an AMC offer`, detail: 'Their plants are old enough — send them an AMC quote', testid: 'amc-offers-alert' });
   if (myDrafts.length > 0) attention.push({ to: '/dashboard/projects?status=draft', icon: FileText, tone: 'amber', title: `${myDrafts.length} draft project${myDrafts.length > 1 ? 's' : ''} to finish`, detail: myDrafts.slice(0, 3).map((p) => p.customer?.name).join(', '), testid: 'my-drafts-alert' });
 
   return (
@@ -135,7 +144,7 @@ function Overview({ user, isMgr, can, allowed }) {
         <Stat label="Waiting approval" value={loading ? '–' : stats?.submitted ?? 0} to="/dashboard/projects?status=submitted" />
         <Stat label="Approved · in progress" value={loading ? '–' : stats?.approved ?? 0} sub={`${stats?.completed || 0} completed`} to="/dashboard/projects?status=approved" />
         {isMgr
-          ? <Stat label="Revenue (approved + done)" value={loading ? '–' : inrShort(stats?.total_revenue)} sub={`${stats?.conversion_rate || 0}% of quotes won`} />
+          ? <Stat label="Revenue (won + direct sales)" value={loading ? '–' : inrShort(stats?.total_revenue)} sub={`${stats?.conversion_rate || 0}% of quotes won`} to="/dashboard/reports?type=sales_revenue" />
           : <Stat label="My projects" value={loading ? '–' : mine.length} sub={`${myDrafts.length} draft`} />}
       </section>
 

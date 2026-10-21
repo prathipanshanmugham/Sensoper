@@ -279,6 +279,7 @@ class InventoryItemCreate(BaseModel):
     addon_group: Optional[str] = None                # Iter 44 Change 3 — links to addon_groups collection
     location_id: Optional[str] = None
     specs: Dict[str, Any] = {}                        # Iter 45 — electrical specs (wattage_w, voc, rated_kw, ...) for calculator use
+    photos: List[str] = []                            # uploaded pictures (storage paths); the first is the main one
 
 class InventoryItemUpdate(BaseModel):
     name: Optional[str] = None
@@ -302,6 +303,7 @@ class InventoryItemUpdate(BaseModel):
     addon_group: Optional[str] = None                # Iter 44 Change 3
     location_id: Optional[str] = None
     specs: Optional[Dict[str, Any]] = None            # Iter 45
+    photos: Optional[List[str]] = None
 
 class InventoryCategoryCreate(BaseModel):
     name: str
@@ -591,6 +593,7 @@ async def get_current_user(request: Request) -> dict:
             "must_reset_password": bool(user.get("must_reset_password")),
             "totp_enabled": bool(user.get("totp_enabled")),
             "daily_report_required": daily_report_required(user),
+            "partner_id": user.get("partner_id"),
         }
     except jwt.ExpiredSignatureError:
         raise HTTPException(status_code=401, detail="Token expired")
@@ -602,6 +605,8 @@ async def get_current_user(request: Request) -> dict:
 
 def daily_report_required(user: dict) -> bool:
     """Admins choose per person who must send a daily report; by default everyone except admins."""
+    if user.get("role") == "partner":
+        return False                                   # joint-venture partners aren't our staff
     v = user.get("daily_report_required")
     return bool(v) if v is not None else user.get("role") != "admin"
 
@@ -617,6 +622,12 @@ async def _policy_gate(request: Request, user: dict) -> None:
         return
     route = request.scope.get("route")
     path = getattr(route, "path", None) or request.url.path
+    if user.get("role") == access_policy.PARTNER_ROLE:
+        # joint-venture partners: the AMC page and their own login, nothing else (each AMC route scopes them further)
+        request.state.policy_grant = False
+        if not access_policy.partner_allows(request.method, path):
+            raise HTTPException(status_code=403, detail="Joint-venture partner logins can only use the AMC page")
+        return
     perms = await get_permissions(user["role"])
     ok, reason, grantable = access_policy.decide(perms, request.method, path)
     if ok is False:
@@ -671,6 +682,8 @@ DEFAULT_PERMISSIONS = {r: access_policy.default_permissions(r) for r in ("admin"
 
 async def get_permissions(role: str) -> dict:
     """A role's matrix from the DB, with anything missing filled from the recommended defaults (cached briefly)."""
+    if role == access_policy.PARTNER_ROLE:
+        return access_policy.partner_permissions()
     if role not in ("admin", "manager", "staff"):
         return {}
     hit = _PERM_CACHE.get(role)
@@ -779,7 +792,9 @@ def calculate_cost_estimation(selected_items: list, manual_costs: list, custom_f
         if margin_pct is None:
             pricing_issues.append(f"Add-on '{item['name']}': margin% missing.")
         item_margin = item_cost * ((margin_pct or 0) / 100)
-        item_gst = item_cost * ((gst_pct or 0) / 100)
+        # GST is charged on what the customer pays for the line — cost + margin (same rule as other charges and
+        # the calculator's lines). It used to be worked out on cost only, so the invoice's GST didn't match its taxable value.
+        item_gst = (item_cost + item_margin) * ((gst_pct or 0) / 100)
         total_items_cost += item_cost
         total_gst += item_gst
         total_margin += item_margin
@@ -794,6 +809,8 @@ def calculate_cost_estimation(selected_items: list, manual_costs: list, custom_f
             "amount": round(item_cost, 2),
             "gst_amount": round(item_gst, 2),
             "margin_amount": round(item_margin, 2),
+            "sell_unit_price": round(item["unit_price"] * (1 + (margin_pct or 0) / 100), 2),
+            "sell_amount": round(item_cost + item_margin, 2),
             # Iter 55 — ad-hoc provenance travels with the breakdown (internal only; PDFs ignore these flags)
             "line_id": item.get("line_id"),
             "is_adhoc": bool(item.get("is_adhoc")),
@@ -831,6 +848,8 @@ def calculate_cost_estimation(selected_items: list, manual_costs: list, custom_f
     subtotal = system_cost + total_items_cost + manual_total            # ex-GST, ex-margin
     total_exact = system_cost + system_gst + addons_total - subsidy     # what the customer pays, before cash rounding
     total_cost = round_cash(total_exact, rounding or {})
+    from project_numbers import system_margin as _system_margin
+    sys_margin = _system_margin({"system_lines": system["lines"], "system_cost": system_cost})
 
     return {
         "items_breakdown": items_breakdown,
@@ -854,6 +873,10 @@ def calculate_cost_estimation(selected_items: list, manual_costs: list, custom_f
                      "adjustment": round(total_cost - total_exact, 2)},
         "total_cost": round(total_cost, 2),
         "pricing_issues": pricing_issues,
+        # one set of numbers for every screen (see project_numbers.py)
+        "taxable_total": round(system_cost + total_items_cost + manual_total + total_margin, 2),   # price before GST
+        "system_margin": sys_margin,
+        "margin_total": round(total_margin + sys_margin, 2),
     }
 
 
@@ -944,6 +967,8 @@ async def login(credentials: UserLogin, response: Response, request: Request):
     
     # Clear failed attempts on success
     await db.login_attempts.delete_one({"identifier": identifier})
+    if user.get("active") is False:
+        raise HTTPException(status_code=401, detail="This login is switched off — ask your admin")
     if user.get("totp_enabled"):
         # Iter 53: second factor required — no session until the authenticator code is verified
         return await _start_preauth(db, response, user)
@@ -967,6 +992,7 @@ def _issue_session(response: Response, user: dict) -> dict:
         "created_at": user["created_at"],
         "must_reset_password": bool(user.get("must_reset_password")),
         "totp_enabled": bool(user.get("totp_enabled")),
+        "partner_id": user.get("partner_id"),
     }
 
 @api_router.post("/auth/logout")
@@ -1023,6 +1049,8 @@ async def get_users(request: Request):
             "location_ids": u.get("location_ids", []),
             "default_location_id": u.get("default_location_id"),
             "daily_report_required": daily_report_required(u),
+            "partner_id": u.get("partner_id"),
+            "active": u.get("active", True),
         }
         for u in users
     ]
@@ -1073,9 +1101,12 @@ async def update_user(user_id: str, request: Request):
     
     if "name" in body:
         update_data["name"] = body["name"]
-    if "role" in body:
-        if body["role"] not in ("admin", "manager", "staff"):
-            raise HTTPException(status_code=400, detail="Role must be admin, manager or staff")
+    target = await db.users.find_one({"_id": ObjectId(user_id)}, {"role": 1}) if ObjectId.is_valid(user_id) else None
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found")
+    if "role" in body and body["role"] != target.get("role"):
+        if target.get("role") == "partner" or body["role"] not in ("admin", "manager", "staff"):
+            raise HTTPException(status_code=400, detail="Role must be admin, manager or staff (partner logins are managed on the AMC page)")
         update_data["role"] = body["role"]
     if "phone" in body:
         update_data["phone"] = body["phone"]
@@ -1616,6 +1647,17 @@ async def delete_inventory_category(cat_id: str, request: Request):
 
 # ================== FILE UPLOAD ==================
 
+_PHOTO_PATH = re.compile(rf"^{re.escape(APP_NAME)}/images/[\w\-]+\.(png|jpe?g|webp|gif|heic|heif)$", re.I)
+
+
+def _clean_photo_paths(paths) -> list:
+    """Only pictures uploaded through /upload/image, at most 8, no duplicates."""
+    out = []
+    for p in paths or []:
+        if isinstance(p, str) and _PHOTO_PATH.match(p) and p not in out:
+            out.append(p)
+    return out[:8]
+
 @api_router.post("/upload/image")
 async def upload_image(request: Request, file: UploadFile = File(...)):
     current_user = await get_current_user(request)
@@ -1752,6 +1794,7 @@ async def get_inventory_items(
             "hsn_code": item.get("hsn_code"),
             "reorder_level": item.get("reorder_level", 10),
             "image_url": item.get("image_url"),
+            "photos": item.get("photos") or [],
             "margin_pct": item.get("margin_pct"),
             "active": item.get("active", True),
             "qc_checklist": item.get("qc_checklist", []),
@@ -1803,6 +1846,7 @@ async def get_inventory_item(item_id: str, request: Request):
         "hsn_code": item.get("hsn_code"),
         "reorder_level": item.get("reorder_level", 10),
         "image_url": item.get("image_url"),
+        "photos": item.get("photos") or [],
         "margin_pct": item.get("margin_pct"),
         "active": item.get("active", True),
         "qc_checklist": item.get("qc_checklist", []),
@@ -1847,6 +1891,7 @@ async def create_inventory_item(item: InventoryItemCreate, request: Request):
         "hsn_code": item.hsn_code,
         "reorder_level": item.reorder_level,
         "image_url": item.image_url,
+        "photos": _clean_photo_paths(item.photos),
         "margin_pct": item.margin_pct,
         "active": item.active,
         "qc_checklist": item.qc_checklist,
@@ -1903,6 +1948,8 @@ async def update_inventory_item(item_id: str, updates: InventoryItemUpdate, requ
         update_data["bin_location"] = updates.bin_location
     if updates.image_url is not None:
         update_data["image_url"] = updates.image_url
+    if updates.photos is not None:
+        update_data["photos"] = _clean_photo_paths(updates.photos)
     if updates.category is not None:
         update_data["category"] = updates.category
     if updates.location_id is not None:
@@ -2418,6 +2465,12 @@ _amc_router = _create_amc_router(
 api_router.include_router(_amc_router)
 from amc_ops import create_router as _create_amc_ops_router  # noqa: E402
 api_router.include_router(_create_amc_ops_router(db=db, get_current_user=get_current_user, require_role=require_role, create_audit_log=create_audit_log))
+from amc_jv import create_router as _create_amc_jv_router, ours_query as _amc_ours_query  # noqa: E402
+_amc_jv_router = _create_amc_jv_router(db=db, get_current_user=get_current_user, require_role=require_role, create_audit_log=create_audit_log,
+                                       hash_password=hash_password, role_ok=role_ok)
+api_router.include_router(_amc_jv_router)
+from live_sync import create_router as _create_live_sync_router  # noqa: E402
+api_router.include_router(_create_live_sync_router(db, get_current_user))
 
 # ═══════════ MULTI-LOCATION ACCESS CONTROL (Iter 42 Change 8) ═══════════
 from locations import create_router as _create_locations_router, location_scope_filter
@@ -4335,14 +4388,17 @@ async def get_dashboard_stats(request: Request):
             stats[item["_id"]] = item["count"]
             stats["total"] += item["count"]
     
-    # Calculate total revenue from completed projects
+    # Revenue — the same definition as the CEO dashboard and the investor view: won projects (approved + completed)
+    # plus direct sales. (It used to count completed projects only while the Home card said "approved + done".)
     revenue_pipeline = [
-        {"$match": {**query, "status": "completed"}},
+        {"$match": {**query, "status": {"$in": ["approved", "completed"]}}},
         {"$group": {"_id": None, "total": {"$sum": "$cost_estimation.total_cost"}}}
     ]
-    
     revenue_result = await db.projects.aggregate(revenue_pipeline).to_list(1)
-    stats["total_revenue"] = revenue_result[0]["total"] if revenue_result else 0
+    stats["project_revenue"] = round(revenue_result[0]["total"], 2) if revenue_result else 0
+    sales_q = {"status": {"$ne": "cancelled"}, **({"sold_by": user["id"]} if user["role"] == "staff" else {})}
+    stats["direct_sales_revenue"] = round(sum(_s.get("grand_total", 0) or 0 for _s in await db.sales.find(sales_q, {"grand_total": 1}).to_list(10000)), 2)
+    stats["total_revenue"] = round(stats["project_revenue"] + stats["direct_sales_revenue"], 2)
     
     # Conversion rate — based on real leads (drafts excluded; they are work-in-progress, not leads)
     leads = stats["total"] - stats["draft"]
@@ -4422,7 +4478,8 @@ async def get_ceo_dashboard(request: Request, location_id: Optional[str] = None,
     ecommerce_commission = sum(o.get("commission_total", 0) for o in ecommerce_docs)
     project_revenue = total_revenue
     total_revenue = project_revenue + direct_sales_revenue
-    total_margin = sum(p.get("cost_estimation", {}).get("margin_total", 0) for p in all_projects if p.get("status") in ["completed", "approved"])
+    from project_numbers import project_margin as _pm
+    total_margin = sum(_pm(p) for p in all_projects if p.get("status") in ["completed", "approved"]) + direct_sales_margin  # same as the investor view
     
     # Conversion rate — proportion of real leads (drafts excluded) that became wins (approved + completed)
     drafts = status_counts.get("draft", 0)
@@ -5116,9 +5173,9 @@ async def get_report(report_type: str, request: Request, date_from: str = None, 
         monthly_gst = defaultdict(float)
         for p in projects:
             ce = p.get("cost_estimation",{})
-            gst = ce.get("gst_total",0); total_gst += gst
+            gst = ce.get("total_gst", 0) or 0; total_gst += gst
             monthly_gst[p.get("created_at","")[:7]] += gst
-            rows.append({"customer": p.get("customer",{}).get("name",""), "ref": p.get("reference_number",""), "subtotal": round(ce.get("items_total",0)), "gst": round(gst), "total": round(ce.get("total_cost",0)), "date": p.get("created_at","")[:10]})
+            rows.append({"customer": p.get("customer",{}).get("name",""), "ref": p.get("reference_number",""), "subtotal": round(ce.get("taxable_total", (ce.get("gross_total") or 0) - gst) or 0), "gst": round(gst), "total": round(ce.get("total_cost",0)), "date": p.get("created_at","")[:10]})
         chart_data = [{"name": k, "value": round(v)} for k,v in sorted(monthly_gst.items())[-6:]]
         return {"title": "Compliance & Tax Report", "summary": {"total_gst": round(total_gst), "invoices": len(rows)}, "rows": rows, "chart_data": chart_data}
 
@@ -5211,7 +5268,7 @@ async def get_report(report_type: str, request: Request, date_from: str = None, 
 
     # === 14. AMC REPORT (Iter 43 Change 4) ===
     elif report_type == "amc":
-        contracts = await db.amc_contracts.find(loc_filter).to_list(2000)
+        contracts = await db.amc_contracts.find({**loc_filter, **_amc_ours_query()}).to_list(2000)  # partner (JV) contracts never count as ours
         active = [c for c in contracts if c.get("status") == "active"]
         arr = sum(c.get("annual_value", 0) or 0 for c in active)
         outstanding = sum(c.get("outstanding", 0) or 0 for c in contracts)
@@ -5371,7 +5428,7 @@ async def get_report(report_type: str, request: Request, date_from: str = None, 
 
     # === EMPLOYEE PERFORMANCE (Iter 44 Batch D) — auto activity + manual scores ===
     elif report_type == "employee_performance":
-        all_users = await db.users.find({}).to_list(500)
+        all_users = await db.users.find({"role": {"$ne": "partner"}}).to_list(500)
         team: Dict[str, Any] = defaultdict(lambda: {"name": "", "assigned": 0, "completed": 0, "revenue": 0.0})
         for p in projects:
             uid = p.get("created_by", "")
@@ -5722,6 +5779,11 @@ async def get_alerts_dashboard(request: Request):
             await _vault_router.sync_rotation_alerts()  # Iter 56: overdue credential rotations → bell
         except Exception as e:
             logger.warning(f"vault rotation alert sync skipped: {e}")
+    if user["role"] in ("admin", "manager"):
+        try:
+            await _amc_jv_router.sync_offer_notifications()  # plants old enough for an AMC offer → bell
+        except Exception as e:
+            logger.warning(f"AMC offer alert sync skipped: {e}")
     _nq = {"channel": "in_app", "user_id": user["id"], "status": "pending", "notify_at": {"$lte": datetime.now(timezone.utc).isoformat()}}
     due_notifs = await db.notifications.count_documents(_nq)
     notif_rows = [{"id": str(n["_id"]), "kind": n.get("kind", "amc"), "title": n.get("title"), "message": n.get("message"), "link": n.get("link") or "/dashboard/amc", "notify_at": n.get("notify_at")}
@@ -7445,6 +7507,12 @@ async def startup_event():
     # Attendance / customer dashboard
     await db.attendance.create_index([("user_id", 1), ("date", 1)], unique=True)
     await db.attendance.create_index("date")
+    await db.amc_contracts.create_index("org_id")
+    await db.amc_contracts.create_index("project_id")
+    await db.jv_projects.create_index("org_id")
+    await db.amc_quotes.create_index([("org_id", 1), ("created_at", -1)])
+    await db.amc_offer_flags.create_index([("source_type", 1), ("source_id", 1)], unique=True)
+    await db.users.create_index("partner_id")
     await db.customer_portal_links.create_index("token_hash")
     await db.customer_portal_links.create_index("project_id")
     await db.portal_attempts.create_index("at", expireAfterSeconds=24 * 3600)
@@ -7595,7 +7663,20 @@ async def startup_event():
             logger.info("Permissions for %s moved to policy v%s", role_name, access_policy.POLICY_VERSION)
     _PERM_CACHE.clear()
     logger.info("Role permissions ready")
-    
+
+    # Once: give saved projects the shared money fields (margin_total was read by several screens but never written)
+    if not await db.migrations.find_one({"_id": "ce_numbers_v1"}):
+        from project_numbers import fill_missing
+        n = 0
+        async for p in db.projects.find({"cost_estimation": {"$exists": True}, "cost_estimation.margin_total": {"$exists": False}}, {"cost_estimation": 1}):
+            ce = fill_missing(p.get("cost_estimation") or {})
+            await db.projects.update_one({"_id": p["_id"]}, {"$set": {"cost_estimation.margin_total": ce["margin_total"],
+                                                                      "cost_estimation.taxable_total": ce["taxable_total"],
+                                                                      "cost_estimation.system_margin": ce["system_margin"]}})
+            n += 1
+        await db.migrations.update_one({"_id": "ce_numbers_v1"}, {"$set": {"at": datetime.now(timezone.utc).isoformat(), "projects": n}}, upsert=True)
+        logger.info("Project money fields filled in for %s projects", n)
+
     # Seed system form tabs
     system_tabs = [
         {"name": "Customer", "slug": "customer", "system": True, "active": True, "icon": "User", "fields": [], "roles_visible": ["admin", "manager", "staff"]},
@@ -8385,6 +8466,10 @@ class SecureCookieMiddleware:
 
 
 app.add_middleware(SecureCookieMiddleware)
+
+# Live refresh — every successful change bumps its area's counter; screens poll /api/sync/version (see live_sync.py)
+from live_sync import LiveSyncMiddleware  # noqa: E402
+app.add_middleware(LiveSyncMiddleware, db_getter=lambda: db)
 
 # CORS — origins come from CORS_ORIGINS (comma-separated). "*" is expressed as an origin regex so the
 # exact requesting origin is echoed back, which is what cookie-based (credentialed) auth requires.

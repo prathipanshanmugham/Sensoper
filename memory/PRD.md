@@ -291,3 +291,22 @@ See CHANGES.md for the full list. Highlights for the next agent:
   `pages/InvestorsPage.js`, `pages/InvestorPortal.js`, `components/investor/BusinessView.js` (recharts).
 - Tests: backend/tests/test_permissions_investors.py (in-process, mongomock): no default escalation, locked pages, migration,
   live grant/deny, daily-report switch, investor isolation and rate limit.
+
+## Iteration 66 — AMC joint venture, AMC offers/quotes/report, inventory photos, optional panel/inverter, live refresh (2026-10-22)
+- `backend/amc_jv.py`: partners (`jv_partners`, logo path, logins = users role `partner` + `partner_id`), partner projects
+  (`jv_projects`), AMC settings (`amc_settings`: offer_after_years, lead/snooze days, plans rate_per_kw/min/visits/response/
+  recovers_pct/includes, benefit assumptions), offers (`offer_rows`, `amc_offer_flags`, bell sync `sync_offer_notifications`),
+  quotes (`amc_quotes`, AMCQ-0001, `quote_plans()` pure), accept → contract, `GET /amc/report`.
+  `ours_query()` = `org_id` null/"" — used by investors.py, reports amc, AMC dashboard default.
+- Partner role: `access_policy.partner_allows()` allowlist (AMC + own login only) checked in `_policy_gate`;
+  `partner_permissions()` fixed matrix; amc.py masks money on our contracts (`mask_for_partner`), forces partner org on
+  writes, `_editable()` keeps partners to their own contracts. Partners excluded from daily-report team, attendance, org chart.
+- `backend/live_sync.py`: ASGI middleware bumps `sync_state[area].v` after successful POST/PUT/PATCH/DELETE;
+  `GET /api/sync/version`. Frontend `lib/liveSync.js` `useLiveRefresh(topics, fn)` (15 s poll + focus + after own saves).
+- Calculator: `panel_mode` / `inverter_mode` = inventory | custom | none, `panel_custom` / `inverter_custom`
+  (solarCalc.customItem ↔ quick_calc.custom_item, parity tests). Materials step passes with a system size OR any line.
+- Money: add-on GST on cost + margin; cost_estimation adds `sell_unit_price`/`sell_amount` per line, `taxable_total`,
+  `system_margin`, `margin_total`. `backend/project_numbers.py` (`project_margin`, `fill_missing`); start-up migration
+  `ce_numbers_v1`. Dashboard stats revenue = won + direct sales.
+- Inventory items: `photos` (storage paths, `_clean_photo_paths`); `components/PhotoStrip.js` (`itemImage()`).
+- Tests: backend/tests/test_amc_jv.py, test_calc_optional_items.py (in-process); frontend/src/utils/solarCalc.spec.js cases.

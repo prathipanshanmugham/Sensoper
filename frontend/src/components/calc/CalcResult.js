@@ -21,7 +21,7 @@ export function CalcResult({ r }) {
   ];
   return (
     <div className="rounded-xl border border-emerald-200 bg-gradient-to-br from-emerald-50 to-white p-3 space-y-2" data-testid="calc-result-strip">
-      <p className="text-[11px] font-semibold text-emerald-800 flex items-center gap-1"><Sun className="h-3.5 w-3.5" />{r.system_size_kw} kW {r.system_type} · {r.panel_count ? `${r.panel_count} panels` : 'panels TBD'}{r.battery_count ? ` · ${r.battery_count} battery` : ''}</p>
+      <p className="text-[11px] font-semibold text-emerald-800 flex items-center gap-1"><Sun className="h-3.5 w-3.5" />{r.system_size_kw} kW {r.system_type} · {r.lines?.panels?.excluded ? 'no panels in this quote' : r.panel_count ? `${r.panel_count} panels` : 'panels to be chosen'}{r.battery_count ? ` · ${r.battery_count} battery` : ''}</p>
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
         {tiles.map(t => (
           <div key={t.testid} className={`rounded-lg p-2.5 ${t.accent ? 'bg-emerald-600 text-white' : 'bg-white border border-slate-100'}`}>

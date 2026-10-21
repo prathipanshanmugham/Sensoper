@@ -1,5 +1,67 @@
 # Sensoper — change log
 
+## October 2026 · AMC joint venture, AMC offers & quotes, inventory photos, easier quotes, live refresh
+
+### AMC joint venture (AMC & service → ⋯ → Joint venture partner, admins)
+- Add the partner company, its logo and its logins. The AMC page then shows **Sensoper logo × partner logo**; admins and
+  the partner's own people can change the partner logo there.
+- Partner logins (role *partner*) see **only the AMC page** and their own login settings. The server refuses every other
+  address. They see every AMC contract, but Sensoper contracts show **without prices or money**. They can plan and close
+  visits on any contract. They can only change their own company's contracts.
+- **Partner projects** tab: plants the partner built. They are kept in their own list (`jv_projects`), never in our
+  projects, so they **never count towards our targets or numbers** (Home, CEO dashboard, investor view, reports).
+- **Company dropdown** (“Show”): *Sensoper (ours)* · *All companies* · *the partner*. It changes the KPIs, contracts, quotes
+  and report. In *All companies*, the numbers for each company are shown side by side. Each record carries a company chip.
+### Time to offer AMC
+- When a customer's plant reaches the offer age (AMC settings, **default 3 years after commissioning**) and it has no
+  active AMC, the customer shows on the AMC page (with a count), on Home → *Needs attention*, and in the bell
+  (admins and managers). *Later* hides the customer for 90 days. *Not interested* stops the offers.
+### AMC quotes
+- **New quote** (or *Make quote* on an offer) prices **Basic / Standard / Premium** side by side. Each plan is a
+  ₹/kW/year rate with a yearly minimum, set in AMC settings.
+- For each plan the quote shows the power it protects (units and ₹ a year), the visits and the response time.
+- The quote also shows how care extends the plant's life (+7 years by default) and the value of that extra power.
+- Quote actions:
+  - **PDF**: co-branded for partner customers.
+  - **WhatsApp** text.
+  - **Sent** / **Said no**.
+  - **Customer said yes**: pick the plan and the start date, and the AMC contract is created.
+- *Contract from a finished project* now uses the Standard plan price from settings, so it agrees with the quotes.
+### AMC report
+- **Report** tab: choose the company and the period.
+- Shows contracts, kW, yearly value, new / renewed / cancelled, visits done / planned / overdue, renewals due, customers to offer, and quote win rate.
+- Includes a by-company table and a month-by-month chart. Download as **PDF** or **Excel**.
+
+### Inventory photos
+- Add item photos straight from the **camera or gallery** (up to 6). The first photo is the main one and shows in the
+  lists. A web link still works as a fallback.
+
+### New project → Proposed solution & materials (simpler)
+- **Panel and inverter are optional.** Each one can be:
+  - **From stock**.
+  - **Type it in**: name, size, price and GST, used only on this quote.
+  - **Not needed**.
+- Adding an inverter that isn't in stock no longer blocks the step.
+- A quote can also be **only extras / charges**, with no system size.
+- Rarely used fields fold away: feed-in & network charge, roof check, and each service line one by one.
+- Structure, cabling and installation get one margin % and one GST % for all three.
+
+### Numbers that agree everywhere
+- **Live refresh:** a change anyone saves shows on everyone's open screens within about 15 seconds, without pressing
+  refresh. This covers Home, the menu counts and bell, Projects, Approvals, Inventory, Purchases, Deliveries, Direct sales,
+  Site diary, Attendance and Daily report team, and AMC. On a project page, someone else's change shows a *Show the latest*
+  banner, so nothing you are typing is lost.
+- **GST on add-ons is now charged on the selling price (cost + margin)**, like other charges and the calculator's lines.
+  Before, it was charged on cost only, so an invoice line's GST did not match its taxable value.
+- Quote PDF, project page and invoice lines show the selling price, so the lines add up to the total. The project page now
+  lists the solar system line, *Before GST*, GST, subsidy, round-off and the total.
+- **Margin** is now stored as one figure (`margin_total`, including the calculator's own lines). Several screens read a
+  margin field that was never saved, so they showed 0. This affected the Home target, expansion, health score, the
+  investor view and the CEO dashboard. Old projects are filled in once on start-up.
+- **Revenue is defined the same way** on Home, the CEO dashboard and the investor view: won projects (approved +
+  completed) plus direct sales. Home used to count completed projects only. CEO profit now includes direct-sales margin.
+- The Compliance & Tax report showed GST 0 and subtotal 0 because it read the wrong field. Fixed.
+
 ## October 2026 · Connected permissions, investor logins, daily-report switch
 
 ### Settings → Permissions (rebuilt)

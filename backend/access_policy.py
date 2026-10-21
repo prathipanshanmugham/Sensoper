@@ -432,6 +432,10 @@ rule("POST", "/api/ecommerce/orders/import-preview", page("module_ecommerce", C)
 rule("DELETE", "/api/ecommerce/orders/*", page("module_ecommerce", D, grant=False))
 rule("DELETE", "/api/ecommerce/platforms/*", page("module_ecommerce", D, grant=False))
 rule("*", "/api/ecommerce*", page("module_ecommerce"))
+rule("PUT", "/api/amc/settings", page("module_amc", E, grant=False))           # admin only (code checks)
+rule("POST,PUT,DELETE", "/api/amc/jv/partners*", page("module_amc", E, grant=False))
+rule("POST", "/api/amc/quotes/preview", page("module_amc", V))
+rule("POST", "/api/amc/offers/{source_type}/{source_id}", page("module_amc", E))
 rule("POST", "/api/amc/contracts/{contract_id}/visits", page("module_amc", C))
 rule("POST", "/api/amc/contracts/{contract_id}/*", page("module_amc", E))
 rule("POST", "/api/amc/outbox/*", page("module_amc", E))
@@ -555,3 +559,44 @@ def catalog() -> Dict[str, Any]:
                 {k: p[k] for k in ("key", "label", "what", "actions", "locked", "always")} | {"options": [{k: o[k] for k in ("key", "label", "what")} for o in p["options"]]}
                 for p in s["pages"]]} for s in SECTIONS],
             "recommended": {r: default_permissions(r) for r in ("manager", "staff")}}
+
+
+# ───────────────────────── joint-venture partners ─────────────────────────
+# People from the AMC joint-venture partner sign in with the "partner" role. They get the AMC page and
+# their own login settings — nothing else, whatever any other switch says. Each AMC route then keeps
+# them to their own company's records and hides our prices and money (see amc_jv.py).
+PARTNER_ROLE = "partner"
+_PARTNER = []
+
+
+def _allow(methods, pattern):
+    _PARTNER.append((set(methods.split(",")) if methods != "*" else None, re.compile("^" + re.escape(pattern).replace(r"\*", ".*") + "$")))
+
+
+for _m, _p in [
+    ("GET", "/api/auth/me"), ("POST", "/api/auth/logout"), ("POST", "/api/auth/refresh"), ("POST", "/api/auth/change-password"),
+    ("*", "/api/auth/2fa/*"), ("GET", "/api/permissions/me"), ("GET", "/api/company/logo-base64"), ("POST", "/api/upload/image"),
+    ("GET", "/api/notifications"), ("POST", "/api/notifications/{notif_id}/dismiss"), ("GET", "/api/sync/*"),
+    ("GET,POST", "/api/amc/contracts"), ("GET,PUT", "/api/amc/contracts/{contract_id}"),
+    ("POST", "/api/amc/contracts/{contract_id}/renew"), ("POST", "/api/amc/contracts/{contract_id}/cancel"),
+    ("POST", "/api/amc/contracts/{contract_id}/visits"), ("POST", "/api/amc/contracts/{contract_id}/schedule"),
+    ("PUT", "/api/amc/visits/{visit_id}/complete"), ("GET", "/api/amc/visits"), ("GET", "/api/amc/schedule"), ("GET", "/api/amc/dashboard"),
+    ("*", "/api/amc/jv/*"), ("*", "/api/amc/quotes*"), ("*", "/api/amc/offers*"), ("GET", "/api/amc/settings"), ("GET", "/api/amc/report"),
+]:
+    _allow(_m, _p)
+
+
+def partner_allows(method: str, path: str) -> bool:
+    return any((ms is None or method in ms) and rx.match(path) for ms, rx in _PARTNER)
+
+
+def partner_permissions() -> Dict[str, Any]:
+    """Fixed matrix for partner logins (not editable on the Permissions page)."""
+    out: Dict[str, Any] = {key: {a: False for a in ACTIONS} for key in PAGES}
+    out["module_amc"] = {V: True, C: True, E: True, D: False, X: True}
+    out["module_security"] = {a: a == V for a in ACTIONS}
+    for key in OPTIONS:
+        out[key] = False
+    for k in LEGACY_FLAGS:
+        out[k] = False
+    return out

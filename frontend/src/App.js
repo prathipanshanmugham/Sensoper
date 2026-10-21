@@ -69,13 +69,16 @@ function ProtectedRoute({ children, allowedRoles = null, module = null, action =
     return <Navigate to="/login" replace />;
   }
 
+  // Joint-venture partner logins only have the AMC page (and their own login settings)
+  const home = user.role === 'partner' ? '/dashboard/amc' : '/dashboard';
+
   if (allowedRoles && !allowedRoles.includes(user.role)) {
-    return <Navigate to="/dashboard" replace />;
+    return <Navigate to={home} replace />;
   }
 
   // Settings → Permissions decides who may open each page
   if (module && !can(module, action)) {
-    return <Navigate to="/dashboard" replace />;
+    return <Navigate to={home} replace />;
   }
 
   return children;

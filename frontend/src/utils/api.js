@@ -10,6 +10,14 @@ const api = axios.create({
   }
 });
 
+// After a successful save, let the live-refresh poller look again soon (lib/liveSync.js) so every open screen catches up.
+api.interceptors.response.use((r) => {
+  if (/^(post|put|patch|delete)$/i.test(r.config?.method || '') && typeof window !== 'undefined') window.dispatchEvent(new Event('sensoper:saved'));
+  return r;
+});
+
+export const syncAPI = { version: () => api.get('/sync/version') };
+
 // Auth API
 export const authAPI = {
   login: (email, password) => api.post('/auth/login', { email, password }),
@@ -637,7 +645,34 @@ export const amcAPI = {
   schedule: (params = {}) => api.get('/amc/schedule', { params }),
   batching: (days = 30) => api.get('/amc/batching', { params: { days } }),
   outbox: (allPending = false) => api.get('/amc/outbox', { params: { all_pending: allPending } }),
-  outboxSent: (id) => api.post(`/amc/outbox/${id}/sent`)
+  outboxSent: (id) => api.post(`/amc/outbox/${id}/sent`),
+  // joint venture, offers, quotes, report
+  jvMe: () => api.get('/amc/jv/me'),
+  partners: () => api.get('/amc/jv/partners'),
+  createPartner: (data) => api.post('/amc/jv/partners', data),
+  updatePartner: (id, data) => api.put(`/amc/jv/partners/${id}`, data),
+  setPartnerLogo: (id, logoPath) => api.put(`/amc/jv/partners/${id}/logo`, { logo_path: logoPath }),
+  partnerUsers: (id) => api.get(`/amc/jv/partners/${id}/users`),
+  addPartnerUser: (id, data) => api.post(`/amc/jv/partners/${id}/users`, data),
+  updatePartnerUser: (id, userId, data) => api.put(`/amc/jv/partners/${id}/users/${userId}`, data),
+  removePartnerUser: (id, userId) => api.delete(`/amc/jv/partners/${id}/users/${userId}`),
+  jvProjects: (params = {}) => api.get('/amc/jv/projects', { params }),
+  createJvProject: (data) => api.post('/amc/jv/projects', data),
+  updateJvProject: (id, data) => api.put(`/amc/jv/projects/${id}`, data),
+  deleteJvProject: (id) => api.delete(`/amc/jv/projects/${id}`),
+  contractFromJvProject: (id) => api.post(`/amc/jv/projects/${id}/contract`),
+  settings: () => api.get('/amc/settings'),
+  saveSettings: (data) => api.put('/amc/settings', data),
+  offers: (params = {}) => api.get('/amc/offers', { params }),
+  offersCount: () => api.get('/amc/offers/count'),
+  flagOffer: (sourceType, sourceId, action, reason) => api.post(`/amc/offers/${sourceType}/${sourceId}`, { action, reason }),
+  quotePreview: (data) => api.post('/amc/quotes/preview', data),
+  quotes: (params = {}) => api.get('/amc/quotes', { params }),
+  quote: (id) => api.get(`/amc/quotes/${id}`),
+  createQuote: (data) => api.post('/amc/quotes', data),
+  quoteStatus: (id, status, reason) => api.put(`/amc/quotes/${id}/status`, { status, reason }),
+  acceptQuote: (id, data) => api.post(`/amc/quotes/${id}/accept`, data),
+  report: (params = {}) => api.get('/amc/report', { params })
 };
 export const notificationsAPI = {
   list: () => api.get('/notifications'),

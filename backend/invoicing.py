@@ -253,7 +253,11 @@ def create_router(db, get_current_user, create_audit_log):
                     "igst": round(sys_gst, 2) if inter_state else 0,
                 })
         for it in ce.get("items_breakdown", []):
-            gst_amt = float(it.get("gst_amount", 0) or 0)
+            qty = float(it.get("quantity", 1) or 1)
+            taxable = round(float(it.get("amount", 0) or 0) + float(it.get("margin_amount", 0) or 0), 2)
+            pct = it.get("gst_percentage")
+            # GST on the taxable value shown on this line (older estimates worked it out on cost only)
+            gst_amt = round(taxable * float(pct) / 100, 2) if pct not in (None, "") else float(it.get("gst_amount", 0) or 0)
             # Iter 55: promoted/linked lines reference the real item's SKU+HSN; un-promoted ad-hoc lines use their own HSN
             hsn = hsn_by_id.get(it.get("inventory_item_id")) or it.get("hsn_code") or hsn_by_name.get((it.get("name") or "").lower(), "")
             line_items.append({
@@ -262,8 +266,8 @@ def create_router(db, get_current_user, create_audit_log):
                 "inventory_item_id": it.get("inventory_item_id"),
                 "sku_code": sku_by_id.get(it.get("inventory_item_id")) or it.get("sku_code") or "",
                 "quantity": it.get("quantity", 1),
-                "unit_price": it.get("unit_price", 0),
-                "taxable_value": round(float(it.get("amount", 0) or 0) + float(it.get("margin_amount", 0) or 0), 2),
+                "unit_price": it.get("sell_unit_price") or round(taxable / qty, 2),   # selling price, so qty × price = taxable value
+                "taxable_value": taxable,
                 "gst_pct": it.get("gst_percentage", 0),
                 "gst_amount": round(gst_amt, 2),
                 "cgst": round(gst_amt / 2, 2) if not inter_state else 0,

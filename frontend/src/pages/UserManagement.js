@@ -155,7 +155,7 @@ export default function UserManagement() {
             </Link>
             <div>
               <h1 className="text-2xl font-bold font-['Outfit'] text-slate-900">User Management</h1>
-              <p className="text-slate-500">{users.length} users</p>
+              <p className="text-slate-500">{users.filter(u => u.role !== 'partner').length} users{users.some(u => u.role === 'partner') && <> · <Link to="/dashboard/amc" className="text-violet-700 hover:underline" data-testid="partner-logins-link">{users.filter(u => u.role === 'partner').length} joint-venture partner login(s) — managed on the AMC page</Link></>}</p>
             </div>
           </div>
           <Button 
@@ -175,7 +175,7 @@ export default function UserManagement() {
           </div>
         ) : (
           <div className="space-y-4">
-            {users.map((user) => {
+            {users.filter((u) => u.role !== 'partner').map((user) => {
               const config = roleConfig[user.role] || roleConfig.staff;
 
               return (

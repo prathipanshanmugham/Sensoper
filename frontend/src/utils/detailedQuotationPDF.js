@@ -30,13 +30,19 @@ function systemRows(ce, project) {
   return [[{ content: `${kw}Solar Power System — panels, inverter, structure, BOS & installation`, styles: { fontStyle: 'bold' } }, 'System', '1', inr(ce.system_cost), ce.system_cost ? `${Math.round((ce.system_gst || 0) / ce.system_cost * 1000) / 10}%` : '—', inr(ce.system_cost)]];
 }
 
+/** What the customer pays for an add-on line before GST (cost + margin), and per unit. */
+export const lineSell = (it) => it.sell_amount ?? ((it.amount ?? (it.unit_price || 0) * (it.quantity || 1)) + (it.margin_amount || 0));
+export const lineSellUnit = (it) => it.sell_unit_price ?? lineSell(it) / (it.quantity || 1);
+/** Price before GST: stored on new estimates, worked out the same way for older ones. */
+export const taxableOf = (ce) => ce.taxable_total ?? (ce.gross_total != null ? ce.gross_total - (ce.total_gst || 0) : (ce.subtotal || 0) + (ce.total_margin || 0));
+
 /** Iter 53 — "Combined" layout: one subtotal per logical section. Same lines, same totals, presented grouped. */
 export function combinedSections(ce, project, items = [], manualCosts = []) {
   const lines = ce.system_lines || project.custom_fields?.proposed_solution?._quick?.lines || {};
   const amt = (k) => (lines[k] && lines[k].amount > 0 ? lines[k].amount : 0);
   const gst = (k) => (lines[k] ? lines[k].gst_amount || 0 : 0);
   const sysFallback = !['panels', 'inverter', 'battery', 'structure', 'cabling', 'installation'].some(k => amt(k) > 0) && ce.system_cost > 0;
-  const addonsAmt = items.reduce((s, it) => s + (it.amount || (it.unit_price || 0) * (it.quantity || 1)), 0) + manualCosts.reduce((s, c) => s + (c.amount || 0) + (c.margin_amount || 0), 0);
+  const addonsAmt = items.reduce((s, it) => s + lineSell(it), 0) + manualCosts.reduce((s, c) => s + (c.amount || 0) + (c.margin_amount || 0), 0);
   const addonsGst = items.reduce((s, it) => s + (it.gst_amount || 0), 0) + manualCosts.reduce((s, c) => s + (c.gst_amount || 0), 0);
   const sections = [
     { name: 'Panels', amount: sysFallback ? ce.system_cost : amt('panels'), gst: sysFallback ? (ce.system_gst || 0) : gst('panels'), count: sysFallback ? 1 : (amt('panels') > 0 ? 1 : 0) },
@@ -116,10 +122,12 @@ export async function generateDetailedQuotationPDF({ project, companyProfile, te
   // ── 3. Your system + site & electrical (compliance page) ─────────
   y = ensureSpace(doc, ctx, y, 70);
   y = sectionTitle(doc, ctx, y, 'Your system', 'Proposed solution');
+  // panel / inverter may be typed in on the quote (not in Inventory) or left out of the job
+  const eqName = (kind) => (n.ps[`${kind}_mode`] === 'custom' ? (n.ps[`${kind}_custom`] || {}).name : inventoryNames[n.ps[`${kind}_item_id`]]) || '';
   const specRows = [
     ['System type', sysType], ['System size', val(n.kw, ' kW')],
-    ['Solar panels', n.panels ? `${n.panels} nos${n.panelW ? ` × ${n.panelW} W` : ''}${inventoryNames[n.ps.panel_item_id] ? ` — ${inventoryNames[n.ps.panel_item_id]}` : ''}` : null],
-    ['Inverter', inventoryNames[n.ps.inverter_item_id] || (n.q.inverter_rated_kw ? `${n.q.inverter_rated_kw} kW` : null)],
+    ['Solar panels', n.ps.panel_mode === 'none' ? null : n.panels ? `${n.panels} nos${n.panelW ? ` × ${n.panelW} W` : ''}${eqName('panel') ? ` — ${eqName('panel')}` : ''}` : null],
+    ['Inverter', n.ps.inverter_mode === 'none' ? null : eqName('inverter') || (n.q.inverter_rated_kw ? `${n.q.inverter_rated_kw} kW` : null)],
     ['Battery', n.batteries ? `${n.batteries} nos${inventoryNames[n.ps.battery_item_id] ? ` — ${inventoryNames[n.ps.battery_item_id]}` : ''}${n.q.backup_hours ? ` · ${n.q.backup_hours} h backup` : ''}` : null],
     ['Estimated generation', n.annualGen ? `${Math.round(n.annualGen).toLocaleString('en-IN')} units/year (${Math.round(n.annualGen / 12).toLocaleString('en-IN')}/month)` : null],
     ['Current consumption', n.q.monthly_eb_units ? (n.q.period_months === 2 ? `${n.q.bill_units} units per 2-month bill (${n.q.monthly_eb_units}/month) at ₹${n.q.tariff_per_unit}/unit` : `${n.q.monthly_eb_units} units/month at ₹${n.q.tariff_per_unit}/unit`) : null],
@@ -156,7 +164,7 @@ export async function generateDetailedQuotationPDF({ project, companyProfile, te
     startY: y, margin: { left: m, right: m, top: 44 }, theme: 'grid',
     head: [['Item', 'Category', 'Qty', 'Unit price', 'GST', 'Amount']],
     body: layout === 'combined' ? combinedRows(ce, project, items, manualCosts) : [...systemRows(ce, project),
-           ...items.map(it => [it.name, categoryLabels[it.category] || it.category || '', String(it.quantity ?? 1), inr(it.unit_price), gstLabel(it.gst_percentage), inr(it.amount || (it.unit_price || 0) * (it.quantity || 1))]),
+           ...items.map(it => [it.name, categoryLabels[it.category] || it.category || '', String(it.quantity ?? 1), inr(lineSellUnit(it)), gstLabel(it.gst_percentage), inr(lineSell(it))]),
            ...manualCosts.map(c => [{ content: c.description || 'Additional', styles: { fontStyle: 'italic' } }, '', '', '', gstLabel(c.gst_pct), inr((c.amount || 0) + (c.margin_amount || 0))])],
     headStyles: { font: FONT, fillColor: INK, textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 8.5 },
     styles: { font: FONT, fontSize: 8.5, cellPadding: 2.6, textColor: INK, lineColor: LINE, lineWidth: 0.3 },
@@ -165,7 +173,7 @@ export async function generateDetailedQuotationPDF({ project, companyProfile, te
     didDrawPage: () => drawHeader(doc, ctx, 'Detailed Quotation'),
   });
   y = doc.lastAutoTable.finalY + 2;
-  const totals = [['Subtotal', inr(ce.subtotal)], ['GST', inr(ce.total_gst)], [{ content: 'Total (incl. GST)', styles: { fontStyle: 'bold' } }, { content: inr(n.totalQuoted), styles: { fontStyle: 'bold' } }]];
+  const totals = [['Before GST', inr(taxableOf(ce))], ['GST', inr(ce.total_gst)], [{ content: 'Total (incl. GST)', styles: { fontStyle: 'bold' } }, { content: inr(n.totalQuoted), styles: { fontStyle: 'bold' } }]];
   if (n.subsidy > 0) totals.push(['Less subsidy', `− ${inr(n.subsidy)}`]);
   if (Math.abs(ce.rounding?.adjustment || 0) >= 0.5) totals.push(['Round off', `${ce.rounding.adjustment > 0 ? '+' : '−'} ${inr(Math.abs(ce.rounding.adjustment))}`]);
   totals.push([{ content: 'YOU PAY', styles: { fontStyle: 'bold', fillColor: p, textColor: INK, fontSize: 11 } }, { content: inr(n.netPay), styles: { fontStyle: 'bold', fillColor: p, textColor: INK, fontSize: 11, halign: 'right' } }]);

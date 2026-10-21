@@ -15,6 +15,8 @@ import {
   Upload, FileSpreadsheet, FileText, Download, Layers
 } from 'lucide-react';
 import Can from '../components/Can';
+import PhotoStrip, { itemImage } from '../components/PhotoStrip';
+import { useLiveRefresh } from '../lib/liveSync';
 
 const REQUIRED_IMPORT_FIELDS = ['name', 'sku_code', 'category', 'quantity', 'unit_price'];
 const IMPORT_STATUS_STYLES = {
@@ -44,8 +46,9 @@ export default function InventoryManagement() {
     name: '', sku_code: '', category: '',
     zone: '', aisle: '', shelf: '', rack: '', bin_location: '',
     quantity: 0, unit_price: 0, supplier: '', gst_percentage: '', margin_pct: '', wattage_w: '', hsn_code: '', reorder_level: 10,
-    image_url: '', active: true, qc_checklist: [], procurement_date: '', location_id: ''
+    image_url: '', photos: [], active: true, qc_checklist: [], procurement_date: '', location_id: ''
   });
+  const [showLink, setShowLink] = useState(false);
   const [viewMode, setViewMode] = useState('all');   // all | panels (Iter 52)
   const isPanelCategory = (slug) => /panel/i.test(slug || '');
   const [newQcItem, setNewQcItem] = useState('');
@@ -145,6 +148,7 @@ export default function InventoryManagement() {
   }, []);
 
   useEffect(() => { fetchData(); }, [fetchData]);
+  useLiveRefresh(['inventory', 'purchases', 'deliveries'], fetchData);
 
   const openItemDialog = (item = null) => {
     if (item) {
@@ -157,7 +161,7 @@ export default function InventoryManagement() {
         supplier: item.supplier || '', gst_percentage: item.gst_percentage ?? '', margin_pct: item.margin_pct ?? '',
         wattage_w: item.specs?.wattage ?? '',
         hsn_code: item.hsn_code || '',
-        reorder_level: item.reorder_level || 10, image_url: item.image_url || '',
+        reorder_level: item.reorder_level || 10, image_url: item.image_url || '', photos: Array.isArray(item.photos) ? item.photos : [],
         active: item.active !== undefined ? item.active : true,
         qc_checklist: Array.isArray(item.qc_checklist) ? item.qc_checklist : [],
         procurement_date: item.procurement_date || '',
@@ -169,9 +173,10 @@ export default function InventoryManagement() {
         name: '', sku_code: '', category: categories[0]?.slug || '',
         zone: '', aisle: '', shelf: '', rack: '', bin_location: '',
         quantity: 0, unit_price: 0, supplier: '', gst_percentage: '', margin_pct: '', wattage_w: '', hsn_code: '', reorder_level: 10,
-        image_url: '', active: true, qc_checklist: [], procurement_date: '', location_id: user?.default_location_id || ''
+        image_url: '', photos: [], active: true, qc_checklist: [], procurement_date: '', location_id: user?.default_location_id || ''
       });
     }
+    setShowLink(!!item?.image_url);
     setNewQcItem('');
     setImagePreviewOk(true);
     setError('');
@@ -368,8 +373,8 @@ export default function InventoryManagement() {
                             title={item.active === false ? 'Inactive' : 'Active'}
                             data-testid={`status-dot-${item.id}`}
                           />
-                          {item.image_url ? (
-                            <img src={item.image_url} alt="" className="h-10 w-10 rounded-lg object-cover border border-slate-200" />
+                          {itemImage(item) ? (
+                            <img src={itemImage(item)} alt="" className="h-10 w-10 rounded-lg object-cover border border-slate-200" data-testid={`item-thumb-${item.id}`} />
                           ) : (
                             <div className="h-10 w-10 rounded-lg bg-slate-100 flex items-center justify-center"><Package className="h-5 w-5 text-slate-400" /></div>
                           )}
@@ -415,8 +420,8 @@ export default function InventoryManagement() {
                         title={item.active === false ? 'Inactive' : 'Active'}
                         data-testid={`status-dot-mobile-${item.id}`}
                       />
-                      {item.image_url ? (
-                        <img src={item.image_url} alt="" className="h-14 w-14 rounded-lg object-cover border" />
+                      {itemImage(item) ? (
+                        <img src={itemImage(item)} alt="" className="h-14 w-14 rounded-lg object-cover border" data-testid={`item-thumb-mobile-${item.id}`} />
                       ) : (
                         <div className="h-14 w-14 rounded-lg bg-slate-100 flex items-center justify-center shrink-0"><Package className="h-6 w-6 text-slate-400" /></div>
                       )}
@@ -462,44 +467,38 @@ export default function InventoryManagement() {
           <div className="space-y-4 py-4">
             {error && <div className="p-3 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg" role="alert" data-testid="item-form-error">{error}</div>}
 
-            {/* Image URL + Preview */}
+            {/* Photos — straight from the camera or gallery; a web link is still possible */}
             <div className="space-y-2">
-              <Label className="flex items-center gap-1.5"><Link2 className="h-3.5 w-3.5" /> Product Image URL</Label>
-              <div className="flex items-start gap-3">
-                <div className="flex-1">
-                  <Input
-                    type="url"
-                    value={itemForm.image_url}
-                    onChange={(e) => { setItemForm(p => ({ ...p, image_url: e.target.value })); setImagePreviewOk(true); }}
-                    placeholder="https://example.com/product.jpg"
-                    className="h-10"
-                    data-testid="item-image-url-input"
-                  />
-                  <p className="text-[11px] text-slate-400 mt-1">Paste a public https:// link to an image (product photo, datasheet thumbnail, etc.)</p>
-                  {itemForm.image_url && !isValidImageUrl(itemForm.image_url) && (
-                    <p className="text-[11px] text-red-500 mt-1">Invalid URL — must start with http:// or https://</p>
+              <PhotoStrip value={itemForm.photos} onChange={(photos) => setItemForm(p => ({ ...p, photos }))} max={6} testid="item-photos"
+                label="Photos" hint="Take a picture of the product or pick one from your gallery. The first photo shows in lists and quotes." />
+              {!showLink ? (
+                <button type="button" onClick={() => setShowLink(true)} className="flex items-center gap-1 text-xs font-medium text-slate-500 hover:text-slate-800" data-testid="item-image-link-toggle"><Link2 className="h-3.5 w-3.5" />Use a web link instead</button>
+              ) : (
+                <div className="flex items-start gap-3">
+                  <div className="flex-1">
+                    <Label className="flex items-center gap-1.5 text-xs"><Link2 className="h-3.5 w-3.5" /> Picture from a web link</Label>
+                    <Input
+                      type="url"
+                      value={itemForm.image_url}
+                      onChange={(e) => { setItemForm(p => ({ ...p, image_url: e.target.value })); setImagePreviewOk(true); }}
+                      placeholder="https://example.com/product.jpg"
+                      className="h-10 mt-1"
+                      data-testid="item-image-url-input"
+                    />
+                    <p className="text-[11px] text-slate-400 mt-1">Only used when there is no uploaded photo.</p>
+                    {itemForm.image_url && !isValidImageUrl(itemForm.image_url) && (
+                      <p className="text-[11px] text-red-500 mt-1">Invalid link — it must start with http:// or https://</p>
+                    )}
+                  </div>
+                  {itemForm.image_url && isValidImageUrl(itemForm.image_url) && (
+                    imagePreviewOk ? (
+                      <img src={itemForm.image_url} alt="preview" className="h-16 w-16 rounded-lg object-cover border border-slate-200 shrink-0" onError={() => setImagePreviewOk(false)} data-testid="item-image-preview" />
+                    ) : (
+                      <div className="h-16 w-16 rounded-lg border border-dashed border-red-300 bg-red-50 flex items-center justify-center shrink-0 text-[10px] text-red-600 px-1 text-center" data-testid="item-image-preview-error">Preview failed</div>
+                    )
                   )}
                 </div>
-                {itemForm.image_url && isValidImageUrl(itemForm.image_url) ? (
-                  imagePreviewOk ? (
-                    <img
-                      src={itemForm.image_url}
-                      alt="preview"
-                      className="h-20 w-20 rounded-lg object-cover border border-slate-200 shrink-0"
-                      onError={() => setImagePreviewOk(false)}
-                      data-testid="item-image-preview"
-                    />
-                  ) : (
-                    <div className="h-20 w-20 rounded-lg border border-dashed border-red-300 bg-red-50 flex flex-col items-center justify-center shrink-0 text-[10px] text-red-600 px-1 text-center" data-testid="item-image-preview-error">
-                      Preview<br />failed
-                    </div>
-                  )
-                ) : (
-                  <div className="h-20 w-20 rounded-lg border border-dashed border-slate-300 bg-slate-50 flex items-center justify-center shrink-0">
-                    <Package className="h-6 w-6 text-slate-300" />
-                  </div>
-                )}
-              </div>
+              )}
             </div>
 
             <div className="grid grid-cols-2 gap-4">

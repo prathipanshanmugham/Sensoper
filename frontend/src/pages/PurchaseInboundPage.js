@@ -13,6 +13,7 @@ import { Loader2, Plus, Truck, CheckCircle2, ClipboardCheck, Package, X, Save, T
 import { toast } from 'sonner';
 import HardDeleteButton from '../components/HardDeleteButton';
 import Can from '../components/Can';
+import { useLiveRefresh } from '../lib/liveSync';
 
 const STATUS_COLORS = { pending: 'bg-amber-100 text-amber-700', approved: 'bg-blue-100 text-blue-700', arrived: 'bg-violet-100 text-violet-700', qc_done: 'bg-teal-100 text-teal-700', completed: 'bg-emerald-100 text-emerald-700' };
 const STATUS_LABELS = { pending: 'Pending Approval', approved: 'Approved', arrived: 'Material Arrived', qc_done: 'QC Passed', completed: 'Completed' };
@@ -52,6 +53,7 @@ export default function PurchaseInboundPage() {
     try { const r = await inboundApprovalsAPI.list('pending'); setPendingApprovals(r.data || []); } catch { /* noop */ }
   }, [user]);
   useEffect(() => { fetchApprovals(); }, [fetchApprovals]);
+  useLiveRefresh(['purchases', 'action-requests', 'inventory'], () => { fetch(); fetchApprovals(); });
 
   const handleApproveReversal = async (id) => {
     setSaving(true);

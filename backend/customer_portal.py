@@ -342,6 +342,12 @@ def create_router(db, get_current_user, require_role, create_audit_log, jwt_secr
         q = ps.get("_quick") or {}
         names = {}
         for key in ("panel_item_id", "inverter_item_id", "battery_item_id"):
+            kind = key.split("_")[0]
+            if ps.get(f"{kind}_mode") == "none":
+                continue
+            if ps.get(f"{kind}_mode") == "custom":       # typed in on the quote, not in Inventory
+                names[key] = ((ps.get(f"{kind}_custom") or {}).get("name") or None)
+                continue
             if ps.get(key) and ObjectId.is_valid(ps[key]):
                 it = await db.inventory_items.find_one({"_id": ObjectId(ps[key])}, {"name": 1})
                 names[key] = (it or {}).get("name")
