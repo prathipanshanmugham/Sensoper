@@ -1,5 +1,44 @@
 # Sensoper — change log
 
+## October 2026 · AMC metrics, quote terms, system types & notes, contract delete, Customer support page, AMC company
+
+### AMC overview — more numbers
+- **Size of the AMC book**: total kW looked after (all system types, pumps included), active contracts, yearly value,
+  value per kW.
+- **Service visits**: done this month / this year, planned in the next 30 days, overdue, still owed this term.
+- **Renewals & new business**: ending in 30 / 60 / 90 days, renewal rate (renewed vs cancelled), customers ready for an
+  AMC offer, open quotes with their value and the 12-month win rate.
+- **Money & reach**: billed and % collected, outstanding, plants under AMC, open support tickets on AMC contracts.
+- Charts: contracts started per month (new vs renewals, last 12 months), kW by system type, plans, top districts by kW.
+
+### Terms & conditions on AMC quotes
+- New quote → **Terms & conditions** opens with the default terms. Edit the lines, add your own, or pick any T&C
+  template of category *AMC* (Settings → Terms). The terms print on the quote PDF.
+- With no AMC template the quote uses 8 standard AMC terms.
+
+### System type and notes
+- System type is now **On-grid / Off-grid / Hybrid / Solar pump / Others** on contracts, quotes and partner projects.
+  *Others* asks what the system is (for example *UPS* or *street lights*), and that text shows everywhere.
+- **Notes** on contracts, quotes and partner projects. Quote notes carry over to the contract when the customer says yes.
+- Tap a contract to open its **sheet**: details, edit, notes, visit history, plan visit, renew, cancel.
+
+### Delete a cancelled contract (Sensoper admins only)
+- In the contract sheet, a **cancelled** contract shows *Delete for good* to Sensoper admins only — not managers, not
+  partner logins. Type the contract number to confirm. Its visits and reminders go too; the action is kept in the audit log.
+
+### Customer support — its own page
+- **Customer support** is now its own menu item (`/dashboard/support`), for every Sensoper customer, with or without an
+  AMC. It is no longer a tab on the AMC page.
+- Its own permission (*Customer support*). Roles start with what they had on AMC, so nobody gains access.
+  Partner logins never see it.
+
+### AMC company (logo & details)
+- **Company profile**: add a new company with its logo, address, phone, email, GSTIN. Admins can press
+  **Use for AMC quotes & reports** on it.
+- **AMC settings → Company on AMC quotes & reports**: pick that company, or keep *Same as the main company profile*.
+- Every AMC quote PDF, the AMC report PDF, the WhatsApp quote text, the AMC reminders and the AMC page header then
+  carry that company's name and logo. Deleting the company switches AMC back to the main profile.
+
 ## October 2026 · AMC joint venture, AMC offers & quotes, inventory photos, easier quotes, live refresh
 
 ### AMC joint venture (AMC & service → ⋯ → Joint venture partner, admins)

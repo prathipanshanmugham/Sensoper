@@ -44,12 +44,13 @@ def haversine_km(a_lat, a_lon, b_lat, b_lon) -> float:
     return 2 * r * math.asin(math.sqrt(h))
 
 
-def build_notifications(contract: Dict[str, Any], visit: Dict[str, Any], lead_days: List[int], created_by: str) -> List[Dict[str, Any]]:
+def build_notifications(contract: Dict[str, Any], visit: Dict[str, Any], lead_days: List[int], created_by: str,
+                        company_name: str = "Sensoper Controls & Renewables") -> List[Dict[str, Any]]:
     """Pure: one technician (in-app) + one customer (outbox) notification per lead day, due at 08:00 UTC-agnostic on that date."""
     out: List[Dict[str, Any]] = []
     day = datetime.fromisoformat(visit["scheduled_date"]).replace(tzinfo=timezone.utc)
     cust_msg = (f"Dear {contract.get('customer_name', 'Customer')}, your solar AMC service visit ({contract.get('contract_number', '')}) is scheduled on "
-                f"{day.strftime('%d %b %Y')}. Our technician {visit.get('technician_name') or 'team'} will visit your site. — Sensoper Controls & Renewables")
+                f"{day.strftime('%d %b %Y')}. Our technician {visit.get('technician_name') or 'team'} will visit your site. — {company_name}")
     phone = "".join(ch for ch in str(contract.get("contact") or "") if ch.isdigit())
     wa = f"https://wa.me/{'91' + phone if len(phone) == 10 else phone}?text={quote(cust_msg)}" if phone else None
     for d in sorted(set(lead_days), reverse=True):
@@ -149,7 +150,10 @@ def create_router(db, get_current_user, require_role, create_audit_log):
         res = await db.amc_service_visits.insert_one(visit)
         visit["id"] = str(res.inserted_id)
         visit.pop("_id", None)
-        notes = build_notifications(c, visit, lead, user["id"])
+        brand = await db.amc_settings.find_one({"key": "defaults"}, {"brand_company_id": 1}) or {}
+        cp = await db.company_profiles.find_one({"_id": ObjectId(brand["brand_company_id"])}, {"company_name": 1}) if ObjectId.is_valid(str(brand.get("brand_company_id") or "")) else None
+        cp = cp or await db.company_profiles.find_one({"is_active": True}, {"company_name": 1}) or {}
+        notes = build_notifications(c, visit, lead, user["id"], cp.get("company_name") or "Sensoper Controls & Renewables")
         if notes:
             await db.notifications.insert_many([dict(n) for n in notes])
         await db.amc_contracts.update_one({"_id": c["_id"]}, {"$push": {"service_schedule": {"visit_id": visit["id"], "date": body.scheduled_date, "technician_name": body.technician_name, "status": "scheduled"}},

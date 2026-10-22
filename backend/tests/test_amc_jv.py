@@ -311,3 +311,108 @@ def test_saves_bump_the_area_counter(app, loop, world):
         pt = await login(app, "pat@suncare.example", PW)
         assert set((await pt.get("/api/sync/version")).json()["topics"]) <= {"amc"}
     run(loop, go())
+
+
+# ───────────── Oct 2026 batch 2: metrics, terms, "others", hard delete, support page, AMC company ─────────────
+def test_dashboard_has_the_bigger_picture(app, loop, world):
+    async def go():
+        d = (await world["admin"].get("/api/amc/dashboard?org=all")).json()
+        for k in ("total_kw", "count_by_type", "value_per_kw", "avg_contract_value", "contracts_total", "new_this_year", "visits_done_year",
+                  "visits_next_30", "plan_mix", "top_districts", "monthly", "quotes_open", "quote_win_pct", "tickets_open", "collection_pct"):
+            assert k in d, k
+        assert d["total_kw"] == round(sum(r["kw"] for r in d["top_districts"]), 1) or len(d["top_districts"]) == 6
+        assert len(d["monthly"]) == 12 and d["total_kw"] > 0
+    run(loop, go())
+
+
+def test_quote_terms_and_other_system_types(app, loop, world):
+    async def go():
+        a = world["admin"]
+        t = (await a.get("/api/amc/quotes/terms")).json()
+        assert t["default_text"] == amc_jv.DEFAULT_TERMS and t["templates"] == []
+        r = await a.post("/api/terms", json={"title": "AMC terms 2026", "content": "<p>Fee is yearly.</p><ul><li>Visits as per plan</li></ul>", "category": "amc"})
+        assert r.status_code == 200, r.text
+        tid = r.json().get("id")
+        await a.put(f"/api/terms/{tid}", json={"is_active": True})
+        t = (await a.get("/api/amc/quotes/terms")).json()
+        assert t["default_text"] == "Fee is yearly.\n• Visits as per plan" and t["templates"][0]["title"] == "AMC terms 2026"
+        q = await a.post("/api/amc/quotes", json={"customer_name": "UPS Owner", "system_capacity_kw": 4, "system_type": "others", "system_type_other": "UPS + batteries"})
+        assert q.status_code == 200, q.text
+        assert q.json()["system_type_other"] == "UPS + batteries" and q.json()["terms_text"].startswith("Fee is yearly")
+        q2 = (await a.post("/api/amc/quotes", json={"customer_name": "Own Terms", "system_capacity_kw": 4, "terms_text": "1. Our own words"})).json()
+        assert q2["terms_text"] == "1. Our own words"
+        assert (await a.post("/api/amc/quotes", json={"customer_name": "Bad", "system_capacity_kw": 4, "system_type": "wind"})).status_code == 400
+        assert (await a.post("/api/amc/contracts", json={"customer_name": "X", "system_type": "others", "start_date": _ago(0.01)})).status_code == 400
+        c = await a.post("/api/amc/contracts", json={"customer_name": "Street lights", "system_type": "others", "system_type_other": "Solar street lights",
+                                                    "start_date": _ago(0.01), "notes": "Gate code 4411"})
+        assert c.status_code == 200 and c.json()["notes"] == "Gate code 4411" and c.json()["system_type_other"] == "Solar street lights"
+        pt = await login(app, "pat@suncare.example", PW)
+        pt_terms = (await pt.get("/api/amc/quotes/terms")).json()
+        assert pt_terms["templates"] == [] and pt_terms["default_text"].startswith("Fee is yearly")
+    run(loop, go())
+
+
+def test_cancelled_contracts_are_deleted_only_by_sensoper_admins(app, loop, world):
+    async def go():
+        a = world["admin"]
+        c = (await a.post("/api/amc/contracts", json={"customer_name": "To Delete", "system_type": "on-grid", "system_capacity_kw": 3, "start_date": _ago(0.02)})).json()
+        await a.post(f"/api/amc/contracts/{c['id']}/schedule", json={"scheduled_date": _ago(-0.02)})
+        assert (await a.delete(f"/api/amc/contracts/{c['id']}?confirm={c['contract_number']}")).status_code == 400   # still active
+        await a.post(f"/api/amc/contracts/{c['id']}/cancel", json={"reason": "duplicate"})
+        m = await login(app, "jvmgr@example.com", PW)
+        assert (await m.delete(f"/api/amc/contracts/{c['id']}?confirm={c['contract_number']}")).status_code == 403
+        pt = await login(app, "pat@suncare.example", PW)
+        assert (await pt.delete(f"/api/amc/contracts/{c['id']}?confirm={c['contract_number']}")).status_code == 403
+        assert (await a.delete(f"/api/amc/contracts/{c['id']}?confirm=WRONG")).status_code == 400
+        r = await a.delete(f"/api/amc/contracts/{c['id']}?confirm={c['contract_number'].lower()}")
+        assert r.status_code == 200 and r.json()["visits_deleted"] == 1
+        assert (await a.get(f"/api/amc/contracts/{c['id']}")).status_code == 404
+        assert await server.db.amc_service_visits.count_documents({"contract_id": c["id"]}) == 0
+        assert await server.db.audit_logs.find_one({"action_type": "amc_contract_deleted", "entity_id": c["id"]})
+    run(loop, go())
+
+
+def test_customer_support_is_its_own_page_for_sensoper_only(app, loop, world):
+    async def go():
+        a = world["admin"]
+        await a.post("/api/users", json={"email": "sita.staff@example.com", "password": PW, "name": "Sita Staff", "role": "staff", "phone": "9876500012"})
+        s = await login(app, "sita.staff@example.com", PW)
+        m = await login(app, "jvmgr@example.com", PW)
+        pt = await login(app, "pat@suncare.example", PW)
+        assert (await m.get("/api/support/tickets")).status_code == 200
+        assert (await s.get("/api/support/tickets")).status_code == 403
+        assert (await pt.get("/api/support/tickets")).status_code == 403
+        perms = (await m.get("/api/permissions/me")).json()["permissions"]
+        assert perms["module_support"]["view"] and perms["module_support"]["create"]
+        # an admin can open it to staff on the Permissions page, separately from AMC
+        cur = (await a.get("/api/permissions")).json()["staff"]
+        cur["module_support"] = {"view": True, "create": True, "edit": False, "delete": False, "export": False}
+        assert (await a.put("/api/permissions/staff", json={"permissions": cur})).status_code == 200
+        server._PERM_CACHE.clear()
+        assert (await s.get("/api/support/tickets")).status_code == 200
+        assert (await s.get("/api/amc/contracts")).status_code == 403
+        cur["module_support"] = {"view": False, "create": False, "edit": False, "delete": False, "export": False}
+        await a.put("/api/permissions/staff", json={"permissions": cur}); server._PERM_CACHE.clear()
+    run(loop, go())
+
+
+def test_amc_documents_use_the_chosen_company(app, loop, world):
+    async def go():
+        a = world["admin"]
+        r = await a.post("/api/company", json={"company_name": "Solar Care Co", "address": "1 Ring Rd, Erode", "phone": "9000012345", "email": "hi@solarcare.example",
+                                               "logo_url": "data:image/png;base64,iVBORw0KGgo=", "gst_number": "33AAAAA0000A1Z5"})
+        assert r.status_code == 200, r.text
+        cid = r.json()["id"]
+        s = (await a.get("/api/amc/settings")).json()
+        assert (await a.put("/api/amc/settings", json={**s, "brand_company_id": "6ad9" + "0" * 20})).status_code == 400
+        s2 = (await a.put("/api/amc/settings", json={**s, "brand_company_id": cid})).json()
+        assert s2["brand_company_id"] == cid
+        b = (await a.get("/api/amc/brand")).json()
+        assert b["company_name"] == "Solar Care Co" and b["chosen"] and b["logo_base64"].startswith("data:image/png") and b["gst_number"] == "33AAAAA0000A1Z5"
+        assert (await a.get("/api/amc/jv/me")).json()["ours"]["name"] == "Solar Care Co"
+        pt = await login(app, "pat@suncare.example", PW)
+        assert (await pt.get("/api/amc/brand")).json()["company_name"] == "Solar Care Co"
+        assert (await pt.get("/api/company")).status_code == 403
+        await a.put("/api/amc/settings", json={**s2, "brand_company_id": None})
+        assert (await a.get("/api/amc/brand")).json()["chosen"] is False
+    run(loop, go())

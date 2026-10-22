@@ -18,7 +18,7 @@ ALIAS = {
     "material-kits": "inventory", "kit-categories": "inventory", "inventory-approvals": "inventory",
     "site-visits": "projects", "deletion-requests": "projects", "adhoc-lines": "projects", "project-payments": "projects",
     "purchase-orders": "purchases", "purchase-inbound": "purchases", "grn": "purchases",
-    "support": "amc", "approvals": "approvals",
+    "approvals": "approvals",
 }
 SKIP_PATHS = ("/api/amc/quotes/preview",)
 

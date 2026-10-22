@@ -3,7 +3,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { FileSpreadsheet, FileText, Loader2 } from 'lucide-react';
 import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import { amcAPI, companyAPI } from '../../utils/api';
+import { amcAPI } from '../../utils/api';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
@@ -43,7 +43,7 @@ export default function AmcReportTab({ jv, org: pageOrg }) {
     setBusy('pdf');
     try {
       let cp = { company_name: jv?.ours?.name };
-      if (!jv?.is_partner) { try { cp = (await companyAPI.getActive()).data || cp; } catch { /* name only */ } }
+      try { cp = (await amcAPI.brand()).data || cp; } catch { /* name only */ }   // the company chosen in AMC settings
       const partnerLogo = partner?.logo_path ? await imageDataUrl(logoUrl(partner.logo_path)) : null;
       await amcReportPDF(rep, { companyProfile: cp, partner, partnerLogo });
     } catch (e) { console.error(e); toast.error('Could not make the PDF'); } finally { setBusy(''); }

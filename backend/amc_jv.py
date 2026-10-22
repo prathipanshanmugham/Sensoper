@@ -53,8 +53,21 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
     "loss_without_amc_pct": 12,      # dust, loose joints, undetected faults on an unmaintained plant
     "life_without_amc_years": 18,
     "life_with_amc_years": 25,
+    "brand_company_id": None,        # company profile whose name, logo and details go on every AMC quote and report
     "plans": DEFAULT_PLANS,
 }
+
+# Used on a quote when there is no active AMC template in Terms & conditions.
+DEFAULT_TERMS = """1. The plan runs for 12 months from the start date and can be renewed at the then current rate.
+2. The yearly fee is payable in advance. GST is extra as shown on the quote.
+3. Visits are planned with the customer; a missed visit because the site was closed counts as done.
+4. Spare parts, panels, inverters and batteries are not included unless the plan says so; warranty claims are handled with the maker.
+5. Damage from storms, lightning, floods, fire, theft, rodents or changes by others is not covered.
+6. Breakdown response times are counted on working days from the time the customer reports the problem.
+7. The generation figures are estimates; real generation depends on weather, shade and use.
+8. Either side may end the plan with 30 days' written notice; fees for completed visits are not refunded."""
+
+SYSTEM_TYPES = {"on-grid", "off-grid", "hybrid", "solar-pump", "others"}
 
 
 def _now() -> datetime:
@@ -120,6 +133,28 @@ def mask_for_partner(doc: Dict[str, Any], user: Dict[str, Any]) -> Dict[str, Any
     return out
 
 
+def html_to_text(html: Optional[str]) -> str:
+    """Terms templates are stored as HTML; the AMC quote prints plain lines. Pure."""
+    import html as _html
+    t = str(html or "")
+    t = re.sub(r"(?i)<\s*br\s*/?>", "\n", t)
+    t = re.sub(r"(?i)<\s*li[^>]*>", "\n• ", t)
+    t = re.sub(r"(?i)</\s*(p|div|li|h[1-6]|tr|ul|ol)\s*>", "\n", t)
+    t = re.sub(r"<[^>]+>", "", t)
+    t = _html.unescape(t).replace("\r", "")
+    lines = [re.sub(r"[ \t]+", " ", ln).strip() for ln in t.split("\n")]
+    out, blank = [], False
+    for ln in lines:
+        if not ln:
+            blank = bool(out)
+            continue
+        if blank and not ln.startswith("•"):
+            out.append("")
+        out.append(ln)
+        blank = False
+    return "\n".join(out).strip()
+
+
 def merge_settings(stored: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     out = {**DEFAULT_SETTINGS, **{k: v for k, v in (stored or {}).items() if k in DEFAULT_SETTINGS and v is not None}}
     plans = []
@@ -149,6 +184,8 @@ def clean_settings(body: Dict[str, Any]) -> Dict[str, Any]:
     rng("loss_without_amc_pct", 0, 50)
     rng("life_without_amc_years", 5, 40)
     rng("life_with_amc_years", 5, 40)
+    bid = s.get("brand_company_id")
+    s["brand_company_id"] = str(bid) if bid and ObjectId.is_valid(str(bid)) else None
     for p in s["plans"]:
         p["name"] = (str(p.get("name") or "").strip() or p["key"].capitalize())[:40]
         for key, lo, hi in (("rate_per_kw", 0, 100000), ("min_per_year", 0, 10000000), ("recovers_pct", 0, 100)):
@@ -274,6 +311,7 @@ class JvProjectIn(BaseModel):
     state: Optional[str] = None
     pincode: Optional[str] = None
     system_type: str = "on-grid"
+    system_type_other: Optional[str] = None          # what it is when the type is "others" (UPS, street lights, EV charger…)
     system_capacity_kw: float = Field(ge=0, le=100000)
     pump_hp: Optional[float] = None
     commissioning_date: Optional[str] = None
@@ -290,11 +328,13 @@ class QuoteIn(BaseModel):
     site_address: Optional[str] = None
     district: Optional[str] = None
     system_type: Optional[str] = None
+    system_type_other: Optional[str] = None
     system_capacity_kw: Optional[float] = None
     commissioning_date: Optional[str] = None
     tariff: Optional[float] = None
     recommended_plan: Optional[str] = "standard"
     notes: Optional[str] = None
+    terms_text: Optional[str] = None                 # printed on the quote; empty → the active AMC terms template
     org_id: Optional[str] = None
 
 
@@ -319,7 +359,6 @@ class DismissIn(BaseModel):
     reason: Optional[str] = None
 
 
-SYSTEM_TYPES = {"on-grid", "off-grid", "hybrid", "solar-pump"}
 EMAIL_RX = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 
@@ -396,8 +435,8 @@ def create_router(db, get_current_user, require_role, create_audit_log, hash_pas
     async def jv_me(request: Request):
         """What the AMC page needs to draw itself: who is looking, the partner companies and the co-brand."""
         user = await get_current_user(request)
-        cp = await db.company_profiles.find_one({"is_active": True}) or await db.company_profiles.find_one({}) or {}
-        ours = {"name": cp.get("company_name") or cp.get("name") or "Sensoper Controls & Renewables", "logo_url": cp.get("logo_url")}
+        b = await brand_profile()
+        ours = {"name": b["company_name"], "logo_url": b.get("logo_url"), "company_id": b.get("id")}
         pq = {"_id": _oid(user.get("partner_id"))} if is_partner(user) else {"active": {"$ne": False}}
         partners = [_partner_out(p) async for p in db.jv_partners.find(pq).sort("created_at", 1)]
         return {"is_partner": is_partner(user), "partner_id": user.get("partner_id"), "ours": ours, "partners": partners}
@@ -520,6 +559,8 @@ def create_router(db, get_current_user, require_role, create_audit_log, hash_pas
     async def _jv_doc(body: JvProjectIn, user: Dict[str, Any]) -> Dict[str, Any]:
         if body.system_type not in SYSTEM_TYPES:
             raise HTTPException(status_code=400, detail="Unknown system type")
+        if body.system_type == "others" and not (body.system_type_other or "").strip():
+            raise HTTPException(status_code=400, detail="Say what the system is (for example UPS or street lights)")
         if body.commissioning_date and not _to_date(body.commissioning_date):
             raise HTTPException(status_code=400, detail="Commissioning date must be YYYY-MM-DD")
         if body.commissioning_date and _to_date(body.commissioning_date) > _now().date():
@@ -576,7 +617,8 @@ def create_router(db, get_current_user, require_role, create_audit_log, hash_pas
             "project_id": src.get("project_id"), "jv_project_id": src.get("jv_project_id"), "org_id": org_id,
             "customer_id": None, "customer_name": src.get("customer_name") or "Customer", "contact": src.get("phone"),
             "site_address": src.get("site_address"), "district": src.get("district"), "state": src.get("state"), "location_id": src.get("location_id"),
-            "system_type": src.get("system_type") or "on-grid", "system_capacity_kw": _f(src.get("system_capacity_kw")), "pump_hp": src.get("pump_hp"),
+            "system_type": src.get("system_type") or "on-grid", "system_type_other": src.get("system_type_other"),
+            "system_capacity_kw": _f(src.get("system_capacity_kw")), "pump_hp": src.get("pump_hp"), "notes": src.get("notes"),
             "commissioning_date": src.get("commissioning_date"), "contract_type": "comprehensive", "plan_key": (plan or {}).get("key"),
             "plan_name": (plan or {}).get("name"), "start_date": start_date, "end_date": _end_date(start_date, duration_months),
             "duration_months": duration_months, "annual_value": _f((plan or {}).get("price")), "billing_frequency": "annual",
@@ -608,6 +650,42 @@ def create_router(db, get_current_user, require_role, create_audit_log, hash_pas
         await _resolve_offer_notes("jv_project", project_id)
         return _ser(doc)
 
+    # ═══════════════ the company on AMC documents ═══════════════
+    async def brand_profile() -> Dict[str, Any]:
+        """The company profile chosen in AMC settings (else the active one) — letterhead for every AMC quote and report."""
+        s = await settings()
+        cp = None
+        if s.get("brand_company_id"):
+            cp = await db.company_profiles.find_one({"_id": ObjectId(s["brand_company_id"])})
+        cp = cp or await db.company_profiles.find_one({"is_active": True}) or await db.company_profiles.find_one({}, sort=[("created_at", 1)]) or {}
+        keys = ("company_name", "tagline", "logo_url", "address", "phone", "email", "website", "gst_number", "state",
+                "primary_color", "secondary_color", "authorized_signatory", "designation", "sales_contact_phone")
+        out = {k: cp.get(k) for k in keys}
+        out["id"] = str(cp["_id"]) if cp.get("_id") else None
+        out["company_name"] = out.get("company_name") or "Sensoper Controls & Renewables"
+        out["chosen"] = bool(s.get("brand_company_id")) and out["id"] == s.get("brand_company_id")
+        return out
+
+    router.brand_profile = brand_profile
+
+    @router.get("/amc/brand")
+    async def brand(request: Request):
+        await get_current_user(request)
+        b = await brand_profile()
+        logo = b.get("logo_url") or ""
+        b["logo_base64"] = logo if logo.startswith("data:") else None
+        if logo and not b["logo_base64"] and logo.startswith("https://"):
+            try:
+                import base64
+                import httpx
+                async with httpx.AsyncClient(timeout=6) as c:
+                    r = await c.get(logo)
+                if r.status_code == 200 and r.headers.get("content-type", "").startswith("image/") and len(r.content) < 3 * 1024 * 1024:
+                    b["logo_base64"] = f"data:{r.headers['content-type'].split(';')[0]};base64,{base64.b64encode(r.content).decode()}"
+            except Exception:
+                pass
+        return b
+
     # ═══════════════ settings ═══════════════
     @router.get("/amc/settings")
     async def get_settings(request: Request):
@@ -618,6 +696,8 @@ def create_router(db, get_current_user, require_role, create_audit_log, hash_pas
     async def put_settings(request: Request):
         user = await _admin(request)
         s = clean_settings(await request.json())
+        if s.get("brand_company_id") and not await db.company_profiles.find_one({"_id": ObjectId(s["brand_company_id"])}, {"_id": 1}):
+            raise HTTPException(status_code=400, detail="That company profile no longer exists")
         await db.amc_settings.update_one({"key": "defaults"}, {"$set": {**s, "key": "defaults", "updated_at": _now().isoformat(), "updated_by": user["name"]}}, upsert=True)
         await create_audit_log(user["id"], user["name"], "amc_settings_updated", "amc_settings", "defaults", None,
                                {"offer_after_years": s["offer_after_years"], "rates": {p["key"]: p["rate_per_kw"] for p in s["plans"]}})
@@ -756,6 +836,20 @@ def create_router(db, get_current_user, require_role, create_audit_log, hash_pas
         await get_current_user(request)
         return quote_plans(body.system_capacity_kw, await settings(), body.tariff)
 
+    async def default_terms() -> str:
+        t = await db.terms_conditions.find_one({"category": "amc", "is_active": True}, sort=[("version", -1)])
+        return html_to_text(t.get("content")) if t else DEFAULT_TERMS
+
+    @router.get("/amc/quotes/terms")
+    async def quote_terms(request: Request):
+        """Terms for the quote builder: the AMC templates from Terms & conditions (our people) and the default text."""
+        user = await get_current_user(request)
+        templates = []
+        if not is_partner(user):
+            templates = [{"id": str(t["_id"]), "title": t.get("title"), "is_active": t.get("is_active", False), "text": html_to_text(t.get("content"))}
+                         async for t in db.terms_conditions.find({"category": "amc"}).sort("version", -1).limit(20)]
+        return {"default_text": await default_terms(), "templates": templates}
+
     async def _source(body: QuoteIn, user: Dict[str, Any]) -> Dict[str, Any]:
         """Fill customer / plant details from the project the quote is for."""
         if body.source_type == "project":
@@ -778,7 +872,8 @@ def create_router(db, get_current_user, require_role, create_audit_log, hash_pas
                 raise HTTPException(status_code=404, detail="Project not found")
             _own(user, j)
             return {"org_id": j.get("org_id"), "customer_name": j.get("customer_name"), "phone": j.get("phone"), "site_address": j.get("site_address"),
-                    "district": j.get("district"), "state": j.get("state"), "system_type": j.get("system_type"), "system_capacity_kw": _f(j.get("system_capacity_kw")),
+                    "district": j.get("district"), "state": j.get("state"), "system_type": j.get("system_type"), "system_type_other": j.get("system_type_other"),
+                    "system_capacity_kw": _f(j.get("system_capacity_kw")),
                     "commissioning_date": j.get("commissioning_date"), "tariff": j.get("tariff"), "jv_project_id": str(j["_id"])}
         if body.source_type != "manual":
             raise HTTPException(status_code=400, detail="Unknown source")
@@ -805,6 +900,9 @@ def create_router(db, get_current_user, require_role, create_audit_log, hash_pas
         kw = _f(info.get("system_capacity_kw"))
         if kw <= 0:
             raise HTTPException(status_code=400, detail="Enter the plant size in kW")
+        if (info.get("system_type") or "on-grid") not in SYSTEM_TYPES:
+            raise HTTPException(status_code=400, detail="Unknown system type")
+        terms = (body.terms_text or "").strip()[:6000] or await default_terms()
         s = await settings()
         calc = quote_plans(kw, s, info.get("tariff"))
         seq = await _seq("amc_quote_number")
@@ -812,6 +910,7 @@ def create_router(db, get_current_user, require_role, create_audit_log, hash_pas
         doc = {"quote_number": f"AMCQ-{seq:04d}", "source_type": body.source_type, "source_id": body.source_id if body.source_type != "manual" else None,
                "org_id": info.get("org_id"), "customer_name": info["customer_name"].strip(), "phone": info.get("phone"), "site_address": info.get("site_address"),
                "district": info.get("district"), "state": info.get("state"), "system_type": info.get("system_type") or "on-grid", "system_capacity_kw": kw,
+               "system_type_other": (body.system_type_other or info.get("system_type_other") or "").strip()[:80] or None, "terms_text": terms,
                "commissioning_date": info.get("commissioning_date"), "tariff": calc["tariff"], "reference_number": info.get("reference_number"),
                "project_id": info.get("project_id"), "jv_project_id": info.get("jv_project_id"), "location_id": info.get("location_id"),
                "calc": calc, "recommended_plan": body.recommended_plan if body.recommended_plan in {p["key"] for p in calc["plans"]} else "standard",
@@ -878,7 +977,7 @@ def create_router(db, get_current_user, require_role, create_audit_log, hash_pas
         if d.get("jv_project_id") and await db.amc_contracts.find_one({"jv_project_id": d["jv_project_id"], "status": "active"}):
             raise HTTPException(status_code=400, detail="This customer already has an active AMC contract")
         src = {k: d.get(k) for k in ("project_id", "jv_project_id", "customer_name", "phone", "site_address", "district", "state", "system_type",
-                                      "system_capacity_kw", "commissioning_date", "location_id")}
+                                      "system_type_other", "system_capacity_kw", "commissioning_date", "location_id", "notes")}
         contract = await _contract_from_source(src, d.get("org_id"), plan, start[:10], body.duration_months, user, {"quote_id": quote_id})
         await db.amc_quotes.update_one({"_id": d["_id"]}, {"$set": {"status": "accepted", "accepted_plan": plan["key"], "contract_id": str(contract["_id"]),
                                                                     "contract_number": contract["contract_number"], "updated_at": _now().isoformat()},

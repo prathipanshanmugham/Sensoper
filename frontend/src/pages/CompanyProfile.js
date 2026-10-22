@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
-import { companyAPI, locationsAPI, invoicingAPI } from '../utils/api';
-import { formatApiErrorDetail } from '../contexts/AuthContext';
+import { companyAPI, locationsAPI, invoicingAPI, amcAPI } from '../utils/api';
+import { toast } from 'sonner';
+import { formatApiErrorDetail, useAuth } from '../contexts/AuthContext';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
@@ -39,6 +40,8 @@ export default function CompanyProfile() {
   const [uploading, setUploading] = useState(false);
   const [invoiceSettings, setInvoiceSettings] = useState({ prefix: 'INV', next_number: 1 });
   const [savingInvoiceSettings, setSavingInvoiceSettings] = useState(false);
+  const [amcSettings, setAmcSettings] = useState(null);   // which profile AMC quotes & reports go out under
+  const { isAdmin } = useAuth();
 
   const fetchProfiles = useCallback(async () => {
     try {
@@ -55,7 +58,16 @@ export default function CompanyProfile() {
     fetchProfiles();
     locationsAPI.list().then(r => setLocations(r.data || [])).catch(() => {});
     invoicingAPI.getSettings().then(r => setInvoiceSettings(r.data)).catch(() => {});
+    amcAPI.settings().then(r => setAmcSettings(r.data)).catch(() => {});
   }, [fetchProfiles]);
+
+  const chooseAmcCompany = async (profile) => {
+    try {
+      const r = await amcAPI.saveSettings({ ...amcSettings, brand_company_id: amcSettings?.brand_company_id === profile.id ? null : profile.id });
+      setAmcSettings(r.data);
+      toast.success(r.data.brand_company_id ? `AMC quotes and reports now go out as ${profile.company_name}` : 'AMC documents use the main company again');
+    } catch (e) { toast.error(formatApiErrorDetail(e.response?.data?.detail) || 'Only an admin can change this'); }
+  };
 
   const saveInvoiceSettings = async () => {
     setSavingInvoiceSettings(true);
@@ -327,7 +339,13 @@ export default function CompanyProfile() {
                             Active
                           </Badge>
                         )}
+                        {amcSettings?.brand_company_id === profile.id && <Badge className="bg-violet-100 text-violet-800" data-testid={`amc-brand-badge-${profile.id}`}>AMC documents</Badge>}
                       </div>
+                      {amcSettings && isAdmin && (
+                        <button type="button" onClick={() => chooseAmcCompany(profile)} className="mb-2 text-xs font-medium text-violet-700 hover:underline" data-testid={`use-for-amc-${profile.id}`}>
+                          {amcSettings.brand_company_id === profile.id ? 'Stop using for AMC documents' : 'Use for AMC quotes & reports'}
+                        </button>
+                      )}
                       {profile.tagline && (
                         <p className="text-sm text-slate-500 mb-2">{profile.tagline}</p>
                       )}

@@ -38,6 +38,7 @@ import BrandReturnsPage from "./pages/BrandReturnsPage";
 import WeeklyAuditPage from "./pages/WeeklyAuditPage";
 import AssetsPage from "./pages/AssetsPage";
 import AMCDashboard from "./pages/AMCDashboard";
+import CustomerSupportPage from "./pages/CustomerSupportPage";
 import LocationsPage from "./pages/LocationsPage";
 import PartnersPage from "./pages/PartnersPage";
 import TeamsPage from "./pages/TeamsPage";
@@ -158,6 +159,7 @@ function AppRoutes() {
       <Route path="/dashboard/readings" element={<ProtectedRoute module="module_readings"><DashboardLayout><ReadingsPage /></DashboardLayout></ProtectedRoute>} />
       <Route path="/dashboard/assets" element={<ProtectedRoute module="module_assets"><DashboardLayout><AssetsPage /></DashboardLayout></ProtectedRoute>} />
       <Route path="/dashboard/amc" element={<ProtectedRoute module="module_amc"><DashboardLayout><AMCDashboard /></DashboardLayout></ProtectedRoute>} />
+      <Route path="/dashboard/support" element={<ProtectedRoute module="module_support"><DashboardLayout><CustomerSupportPage /></DashboardLayout></ProtectedRoute>} />
       <Route path="/dashboard/locations" element={<ProtectedRoute module="module_locations"><DashboardLayout><LocationsPage /></DashboardLayout></ProtectedRoute>} />
       <Route path="/dashboard/partners" element={<ProtectedRoute module="module_partners"><DashboardLayout><PartnersPage /></DashboardLayout></ProtectedRoute>} />
       <Route path="/dashboard/partners/:id" element={<ProtectedRoute module="module_partners"><DashboardLayout><PartnerDetail /></DashboardLayout></ProtectedRoute>} />
