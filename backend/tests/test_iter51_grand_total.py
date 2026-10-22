@@ -2,7 +2,7 @@
 
 Hand calculation for the fixture below (GST config = pricing_config.gst_pct, read at test time):
   base system   : 3 kW calculator result total_cost = 1,80,000  (ex-GST)  → GST @ g%  → system_total
-  add-ons       : 2 × 4,000 @ 18% GST, 10% margin   → 8,000 + 800 margin + 1,440 GST = 10,240
+  add-ons       : 2 × 4,000 @ 18% GST, 10% margin   → 8,000 + 800 margin + 1,584 GST (18% of 8,800) = 10,384
                   1 × 6,000 @ 12% GST,  0% margin   → 6,000 + 720 GST               =  6,720
   manual        : 2,500 (no GST)
   subsidy       : 78,000
@@ -23,7 +23,7 @@ ADDONS = [
     {"name": f"{TAG} Wi-Fi logger", "category": "cables_accessories", "unit_price": 6000, "quantity": 1, "gst_percentage": 12, "margin_percentage": 0},
 ]
 MANUAL = [{"description": f"{TAG} crane hire", "amount": 2500, "gst_pct": 18, "margin_pct": 0}]
-ADDONS_TOTAL = (8000 + 800 + 1440) + (6000 + 720) + (2500 + 450)   # 19,910 — crane hire now carries its own 18% GST
+ADDONS_TOTAL = (8000 + 800 + 1584) + (6000 + 720) + (2500 + 450)   # 20,054 — GST on cost + margin (Oct 2026); crane hire carries its own 18% GST
 SYSTEM_GST = 24840.0   # Iter 52: per-line GST from the calculator (13.8% composite retired) — pinned in _quick.total_gst
 
 

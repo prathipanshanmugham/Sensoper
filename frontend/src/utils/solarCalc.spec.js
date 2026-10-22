@@ -2,7 +2,7 @@
  * Worked-example regression for the client-side engine — same three cases as
  * backend/tests/test_iter48_calculator.py. Run:  node frontend/src/utils/solarCalc.spec.js
  */
-import { computeQuick } from './solarCalc.js';
+import { computeQuick, customItem } from './solarCalc.js';
 
 const config = { default_specific_yield: 4.6, cost_per_kwp: { 'on-grid': 55000, hybrid: 75000, 'off-grid': 95000 },
   system_life_years: 25, panel_degradation_pct_per_year: 0.7, battery_unit_kwh: 5, default_tariff_per_unit: 8,
@@ -50,6 +50,20 @@ const f = computeQuick({ system_type: 'on-grid', monthly_eb_units: 300, tariff_p
 eq('Network per kW per month', f.network_charge_monthly, 300);
 const g = computeQuick({ system_type: 'off-grid', monthly_eb_units: 300, tariff_per_unit: 8, export_rate: 3, network_charge: 1, overrides: { system_size_kw: 5 } }, config, panel540, inv3);
 eq('Off-grid ignores export & network', [g.export_income_monthly, g.network_charge_monthly], [0, 0]);
+
+// Oct 2026 — panel / inverter optional: typed in (not in Inventory) or not part of this job
+const base = { system_type: 'on-grid', monthly_eb_units: 300, tariff_per_unit: 8, overrides: { system_size_kw: 3, ...svc } };
+const noInv = computeQuick({ ...base, inverter_mode: 'none' }, config, withGst(panel540), withGst(inv3));
+eq('No inverter: line is zero, not benchmarked', [noInv.lines.inverter.amount, noInv.lines.inverter.benchmark, noInv.lines.inverter.excluded], [0, false, true]);
+eq('No inverter: no "benchmark" issue', noInv.pricing_issues.some(m => m.startsWith('Inverter')), false);
+const noBoth = computeQuick({ ...base, panel_mode: 'none', inverter_mode: 'none' }, config, withGst(panel540), withGst(inv3));
+eq('Neither: only services priced', [noBoth.panel_count, noBoth.lines.panels.amount, noBoth.total_cost], [0, 0, noBoth.lines.bos.amount]);
+const typed = customItem({ name: 'Growatt 3kW', rated_kw: 3, unit_price: 42000, gst_percentage: 12 }, 'inverter');
+const cust = computeQuick({ ...base, inverter_mode: 'custom' }, config, withGst(panel540), typed);
+eq('Typed-in inverter priced as entered', [cust.lines.inverter.amount, cust.lines.inverter.custom, cust.lines.inverter.benchmark, cust.lines.inverter.gst_amount], [42000, true, false, 5040]);
+eq('Typed-in inverter: no margin issue', cust.pricing_issues.filter(m => m.includes('Growatt')), []);
+eq('Typed-in without GST asks for it', computeQuick({ ...base, inverter_mode: 'custom' }, config, withGst(panel540), customItem({ name: 'X', unit_price: 1000 }, 'inverter')).pricing_issues.some(m => m.includes('enter it above')), true);
+eq('Typed-in without a price is ignored', customItem({ name: 'X' }, 'panel'), null);
 
 console.log(failed ? `\n${failed} FAILED` : '\nALL PASS');
 process.exit(failed ? 1 : 0);

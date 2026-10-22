@@ -11,6 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import { Loader2, Plus, Truck, CheckCircle2, X, Save, Pencil, Ban, AlertTriangle, Trash2 } from 'lucide-react';
 import HardDeleteButton from '../components/HardDeleteButton';
 import Can from '../components/Can';
+import { useLiveRefresh } from '../lib/liveSync';
 
 export default function DeliveryOutboundPage() {
   const { isAdmin, isManager } = useAuth();
@@ -39,6 +40,7 @@ export default function DeliveryOutboundPage() {
     try { const r = await actionRequestsAPI.list({ status: 'pending', resource_type: 'delivery' }); setPendingApprovals(r.data || []); } catch { /* noop */ }
   }, [canManage]);
   useEffect(() => { fetchApprovals(); }, [fetchApprovals]);
+  useLiveRefresh(['deliveries', 'action-requests', 'projects'], () => { fetch(); fetchApprovals(); });
 
   const handleApproveCancel = async (id) => {
     try { await actionRequestsAPI.approve(id); await fetchApprovals(); await fetch(); }

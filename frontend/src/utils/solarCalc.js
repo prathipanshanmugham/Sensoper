@@ -61,8 +61,20 @@ export function slabPriceFor(doc, value, onDate) {
   return { category: doc.category, unit: doc.unit, rate_per_unit: rate, value, total, from_value: s.from_value, to_value: s.to_value ?? null, effective_from: s.effective_from, gst_pct: gst, gst_amount: gst === null ? null : Math.round(total * gst / 100), gst_missing: gst === null };
 }
 
+/** Panel / inverter for a quote: picked from Inventory, typed in (not in Inventory), or not part of this job.
+ *  A typed-in item is priced at what you enter (that is the selling price, so margin 0). */
+export const ITEM_MODES = ['inventory', 'custom', 'none'];
+export function customItem(c, kind) {
+  if (!c || !(num(c.unit_price) > 0)) return null;
+  return { id: `custom-${kind}`, custom: true, name: (c.name || '').trim() || (kind === 'panel' ? 'Solar panel' : 'Inverter'), unit_price: num(c.unit_price),
+    gst_percentage: pct(c.gst_percentage), margin_pct: 0, specs: kind === 'panel' ? { wattage: num(c.wattage) } : { rated_kw: num(c.rated_kw) } };
+}
+
 export function computeQuick(inputs, config, panel, inverter, battery, slabDoc) {
   const systemType = inputs.system_type || 'on-grid';
+  const panelOff = inputs.panel_mode === 'none', inverterOff = inputs.inverter_mode === 'none';
+  if (panelOff) panel = null;
+  if (inverterOff) inverter = null;
   const overrides = inputs.overrides || {};
   const customerType = inputs.customer_type || 'residential';
   const warnings = [];
@@ -101,7 +113,7 @@ export function computeQuick(inputs, config, panel, inverter, battery, slabDoc) 
   const panelW = panel ? num(panel.specs?.wattage) : 0;
   if (panel && panelW <= 0) warn('panel_item_id', `'${panel.name}' has no wattage in Inventory — set the panel count manually or add specs.wattage.`);
   const panelCountAuto = kw > 0 && panelW > 0 ? Math.ceil(kw * 1000 / panelW) : null;
-  const panelCount = isSet(overrides.panel_count) ? Math.trunc(num(overrides.panel_count)) : (panelCountAuto || 0);
+  const panelCount = panelOff ? 0 : (isSet(overrides.panel_count) ? Math.trunc(num(overrides.panel_count)) : (panelCountAuto || 0));
 
   const inverterKw = inverter ? num(inverter.specs?.rated_kw) : 0;
   if (inverter && inverterKw > 0 && kw > 0) {
@@ -127,18 +139,18 @@ export function computeQuick(inputs, config, panel, inverter, battery, slabDoc) 
   const itemPricing = (item, field, label) => {
     if (!item) return [null, null];
     const g = pct(item.gst_percentage), m = pct(item.margin_pct);
-    if (g === null) { pricingIssues.push(`${label}: GST% missing on '${item.name}' — set it in the Pricelist.`); warn(field, `'${item.name}' has no GST% in the Pricelist.`); }
+    if (g === null) { pricingIssues.push(`${label}: GST% missing on '${item.name}' — ${item.custom ? 'enter it above' : 'set it in the Pricelist'}.`); warn(field, `'${item.name}' has no GST%${item.custom ? '' : ' in the Pricelist'}.`); }
     if (m === null) { pricingIssues.push(`${label}: margin% missing on '${item.name}' — set it in the Pricelist.`); warn(field, `'${item.name}' has no margin% in the Pricelist.`); }
     return [g, m];
   };
   const [panelGst, panelMargin] = itemPricing(panel, 'panel_item_id', 'Panels');
   const panelSell = sellPrice(panel);
   const panelReal = panel && panelSell > 0 && panelCount > 0;
-  const panelCost = panelReal ? panelSell * panelCount : PANEL_BENCH_SHARE * baseKwp * kw;
+  const panelCost = panelOff ? 0 : (panelReal ? panelSell * panelCount : PANEL_BENCH_SHARE * baseKwp * kw);
   const [inverterGst, inverterMargin] = itemPricing(inverter, 'inverter_item_id', 'Inverter');
   const inverterSell = sellPrice(inverter);
   const inverterReal = inverter && inverterSell > 0;
-  const inverterCost = inverterReal ? inverterSell : INVERTER_BENCH_SHARE * typeKwp * kw;
+  const inverterCost = inverterOff ? 0 : (inverterReal ? inverterSell : INVERTER_BENCH_SHARE * typeKwp * kw);
   const [batteryGst, batteryMargin] = needsBattery ? itemPricing(battery, 'battery_item_id', 'Battery') : [null, null];
   const batterySell = sellPrice(battery);
   let batteryCost = 0, batteryBenchmark = false;
@@ -146,8 +158,8 @@ export function computeQuick(inputs, config, panel, inverter, battery, slabDoc) 
     if (battery && batterySell > 0) batteryCost = batterySell * batteryCount;
     else { batteryCost = batteryCount * batteryUnitKwh * num(config?.battery_benchmark_per_kwh, 20000); batteryBenchmark = true; }
   }
-  if (!panelReal && kw > 0) pricingIssues.push('Panels: benchmark price used — pick a panel from Inventory to price with its GST% & margin%.');
-  if (!inverterReal && kw > 0) pricingIssues.push('Inverter: benchmark price used — pick an inverter from Inventory to price with its GST% & margin%.');
+  if (!panelReal && !panelOff && kw > 0) pricingIssues.push('Panels: benchmark price used — pick a panel from Inventory (or type one in) to price with its GST% & margin%.');
+  if (!inverterReal && !inverterOff && kw > 0) pricingIssues.push('Inverter: benchmark price used — pick an inverter from Inventory (or type one in) to price with its GST% & margin%.');
 
   const bosAuto = BOS_SHARE * baseKwp * kw;
   const legacyBos = isSet(overrides.bos_cost) ? num(overrides.bos_cost) : null;
@@ -217,8 +229,8 @@ export function computeQuick(inputs, config, panel, inverter, battery, slabDoc) 
     backup_hours: needsBattery ? backupHours : null, battery_kwh_needed: needsBattery ? batteryKwhNeeded : null,
     battery_unit_kwh: needsBattery ? batteryUnitKwh : null, battery_count_auto: batteryCountAuto, battery_count: batteryCount,
     lines: {
-      panels: { amount: Math.round(panelCost), benchmark: !panelReal, unit_price: panel ? round(panelSell, 2) : null, gst_pct: panelGst, margin_pct: panelMargin, gst_amount: Math.round(panelCost * (panelGst || 0) / 100) },
-      inverter: { amount: Math.round(inverterCost), benchmark: !inverterReal, unit_price: inverter ? round(inverterSell, 2) : null, gst_pct: inverterGst, margin_pct: inverterMargin, gst_amount: Math.round(inverterCost * (inverterGst || 0) / 100) },
+      panels: { amount: Math.round(panelCost), benchmark: !panelReal && !panelOff, excluded: panelOff, custom: !!panel?.custom, unit_price: panel ? round(panelSell, 2) : null, gst_pct: panelGst, margin_pct: panelMargin, gst_amount: Math.round(panelCost * (panelGst || 0) / 100) },
+      inverter: { amount: Math.round(inverterCost), benchmark: !inverterReal && !inverterOff, excluded: inverterOff, custom: !!inverter?.custom, unit_price: inverter ? round(inverterSell, 2) : null, gst_pct: inverterGst, margin_pct: inverterMargin, gst_amount: Math.round(inverterCost * (inverterGst || 0) / 100) },
       battery: needsBattery ? { amount: Math.round(batteryCost), benchmark: batteryBenchmark, unit_price: battery ? round(batterySell, 2) : null, gst_pct: batteryGst, margin_pct: batteryMargin, gst_amount: Math.round(batteryCost * (batteryGst || 0) / 100) } : null,
       structure: serviceLines.structure, cabling: serviceLines.cabling, installation: serviceLines.installation,
       bos: { amount: Math.round(bosCost), auto: Math.round(bosAuto) },

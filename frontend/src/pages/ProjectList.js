@@ -6,6 +6,7 @@ import { Button } from '../components/ui/button';
 import { StatusPill } from './Dashboard';
 import { inr } from '../lib/format';
 import { FolderPlus, Search, Loader2, FolderKanban, X, ChevronRight } from 'lucide-react';
+import { useLiveRefresh } from '../lib/liveSync';
 
 const FILTERS = [
   ['all', 'All'], ['draft', 'Draft'], ['submitted', 'Waiting approval'], ['approved', 'Approved'], ['completed', 'Completed'], ['rejected', 'Rejected'],
@@ -29,6 +30,7 @@ export default function ProjectList() {
     try { setProjects((await projectsAPI.getAll()).data || []); } catch (e) { console.error('Failed to fetch projects', e); } finally { setLoading(false); }
   }, []);
   useEffect(() => { fetchProjects(); }, [fetchProjects]);
+  useLiveRefresh(['projects'], fetchProjects);
 
   const counts = useMemo(() => {
     const c = { all: projects.length };

@@ -16,6 +16,7 @@ import jwt
 from bson import ObjectId
 from fastapi import APIRouter, HTTPException, Request, Response
 from pydantic import BaseModel, Field
+from project_numbers import project_margin
 
 IST = timezone(timedelta(hours=5, minutes=30))
 COOKIE = "sp_investor"
@@ -96,7 +97,7 @@ async def business_snapshot(db, months: int = 12, today: Optional[date] = None) 
     today = today or _now().astimezone(IST).date()
     projects = await db.projects.find({"deleted_at": {"$exists": False}}, {
         "status": 1, "created_at": 1, "project_date": 1, "approved_at": 1, "completed_at": 1, "updated_at": 1, "commissioning_date": 1,
-        "installation_date": 1, "cost_estimation.total_cost": 1, "cost_estimation.margin_total": 1, "cost_estimation.total_capacity_kw": 1,
+        "installation_date": 1, "cost_estimation.total_cost": 1, "cost_estimation.margin_total": 1, "cost_estimation.total_margin": 1, "cost_estimation.system_lines": 1, "cost_estimation.system_cost": 1, "cost_estimation.total_capacity_kw": 1,
         "custom_fields.proposed_solution.system_size_kw": 1, "custom_fields.proposed_solution.system_type": 1, "solar_system": 1,
         "location_id": 1}).to_list(50000)
     first = min((d for d in (_day(p.get("created_at")) for p in projects) if d), default=today.isoformat())
@@ -111,7 +112,7 @@ async def business_snapshot(db, months: int = 12, today: Optional[date] = None) 
 
     won = [p for p in projects if p.get("status") in ("approved", "completed")]
     value = lambda p: _f((p.get("cost_estimation") or {}).get("total_cost"))  # noqa: E731
-    margin = lambda p: _f((p.get("cost_estimation") or {}).get("margin_total"))  # noqa: E731
+    margin = project_margin  # noqa: E731  (one definition of margin — see project_numbers.py)
     won_period = [p for p in won if in_period(_won_day(p))]
     installed = [p for p in projects if p.get("status") == "completed"]
     installed_period = [p for p in installed if in_period(_installed_day(p))]
@@ -209,7 +210,7 @@ async def business_snapshot(db, months: int = 12, today: Optional[date] = None) 
             "credit_outstanding": round(sum(_f(c.get("balance")) for c in credits))}
 
     # ── service income ──
-    contracts = await db.amc_contracts.find({}, {"status": 1, "annual_value": 1, "end_date": 1}).to_list(20000)
+    contracts = await db.amc_contracts.find({"org_id": {"$in": [None, ""]}}, {"status": 1, "annual_value": 1, "end_date": 1}).to_list(20000)  # ours only, never JV partner work
     active = [c for c in contracts if c.get("status") == "active"]
     soon = (today + timedelta(days=60)).isoformat()
     amc = {"active_contracts": len(active), "yearly_income": round(sum(_f(c.get("annual_value")) for c in active)),

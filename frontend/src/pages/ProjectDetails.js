@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useAuth, formatApiErrorDetail } from '../contexts/AuthContext';
 import { projectsAPI, termsAPI, companyAPI, marginAPI, uploadAPI, inventoryAPI, siteGeoAPI } from '../utils/api';
@@ -59,12 +59,15 @@ import ProjectTermsCard from '../components/ProjectTermsCard';
 import AdhocLinesCard from '../components/AdhocLinesCard';
 import { AdhocTag } from '../components/AdhocLine';
 import { AmcInterestToggle } from '../components/AmcOps';
-import { generateDetailedQuotationPDF } from '../utils/detailedQuotationPDF';
+import { generateDetailedQuotationPDF, taxableOf } from '../utils/detailedQuotationPDF';
 import { catalogueAPI } from '../utils/api';
 import ProjectInvoiceCard from '../components/ProjectInvoiceCard';
 import ProjectProfitCard from '../components/ProjectProfitCard';
 import ProjectPartnerCard from '../components/ProjectPartnerCard';
 import Can from '../components/Can';
+import { useLiveRefresh, savedHereRecently } from '../lib/liveSync';
+
+const money = (v) => `₹${Math.round(Number(v) || 0).toLocaleString('en-IN')}`;
 
 const CATEGORY_LABELS = { solar_panels: 'Solar Panels', inverters: 'Inverters', batteries: 'Batteries', mounting_structures: 'Mounting Structures', cables_accessories: 'Cables & Accessories' };
 
@@ -145,6 +148,18 @@ export default function ProjectDetails() {
   }, [id, navigate]);
 
   useEffect(() => { fetchProject(); fetchCompanyProfile(); }, [fetchProject]);
+  // Live refresh: our own saves reload quietly; someone else's change shows a banner so nothing being typed here is lost.
+  const [staleBy, setStaleBy] = useState(false);
+  const projectRef = useRef(null);
+  projectRef.current = project;
+  useLiveRefresh(['projects', 'approvals', 'site-diaries'], async () => {
+    if (!projectRef.current) return;
+    try {
+      const r = await projectsAPI.getOne(id);
+      if ((r.data.updated_at || '') === (projectRef.current.updated_at || '') && r.data.status === projectRef.current.status) return;
+      if (savedHereRecently()) fetchProject(); else setStaleBy(true);
+    } catch { /* deleted or no access — the page shows that on the next load */ }
+  });
 
   // Standing at the site: save the phone's GPS to this project (any status, no re-approval)
   const pinLocation = async () => {
@@ -291,10 +306,11 @@ export default function ProjectDetails() {
       ['Inverter to Panel (m)', project.additional?.inverter_to_panel_distance || 0],
       [],
       ['— Cost Summary —'],
-      ['Subtotal (₹)', (project.cost_estimation || {}).subtotal || 0],
+      ['Before GST (₹)', taxableOf(project.cost_estimation || {})],
       ['GST (₹)', (project.cost_estimation || {}).total_gst || 0],
-      ['Margin (₹)', (project.cost_estimation || {}).total_margin || 0],
+      ['Subsidy (₹)', (project.cost_estimation || {}).subsidy || 0],
       ['TOTAL (₹)', (project.cost_estimation || {}).total_cost || 0],
+      ['Our margin (₹)', (project.cost_estimation || {}).margin_total ?? (project.cost_estimation || {}).total_margin ?? 0],
     ];
     const overviewWs = XLSX.utils.aoa_to_sheet(overview);
     overviewWs['!cols'] = [{ wch: 30 }, { wch: 50 }];
@@ -307,10 +323,11 @@ export default function ProjectDetails() {
         Category: CATEGORY_LABELS[item.category] || item.category,
         SKU: item.sku_code || '-',
         Quantity: item.quantity,
-        'Unit Price (₹)': item.unit_price || 0,
-        'GST %': item.gst_percentage || 18,
-        'Margin %': item.margin_percentage || 0,
-        'Amount (₹)': item.amount || (item.unit_price * item.quantity)
+        'Cost price (₹)': item.unit_price || 0,
+        'Margin %': item.margin_percentage ?? '',
+        'Selling price (₹)': item.sell_unit_price ?? Math.round((item.unit_price || 0) * (1 + (item.margin_percentage || 0) / 100) * 100) / 100,
+        'GST %': item.gst_percentage ?? '',
+        'Amount before GST (₹)': item.sell_amount ?? ((item.amount ?? item.unit_price * item.quantity) + (item.margin_amount || 0))
       }));
       const matsWs = XLSX.utils.json_to_sheet(matsRows);
       matsWs['!cols'] = [{ wch: 30 }, { wch: 18 }, { wch: 14 }, { wch: 10 }, { wch: 14 }, { wch: 8 }, { wch: 10 }, { wch: 14 }];
@@ -352,10 +369,17 @@ export default function ProjectDetails() {
   const selectedItems = project.cost_estimation?.items_breakdown || project.selected_items || [];
   const manualCosts = project.cost_estimation?.manual_costs || project.manual_costs || [];
   const ce = project.cost_estimation || {};
+  const beforeGst = taxableOf(ce);
 
   return (
     <div className="min-h-screen bg-slate-50 px-4 py-5 sm:py-6">
       <div className="max-w-5xl mx-auto">
+        {staleBy && (
+          <div className="mb-4 flex flex-wrap items-center gap-3 rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900" role="status" data-testid="project-stale-banner">
+            <span className="flex-1">Someone else just changed this project.</span>
+            <Button size="sm" onClick={() => { setStaleBy(false); fetchProject(); }} className="h-8 bg-sky-700 text-white hover:bg-sky-800" data-testid="project-stale-reload">Show the latest</Button>
+          </div>
+        )}
         {/* Header: who / status / reference, then one tidy row of actions */}
         <div className="mb-6 space-y-4">
           <Link to="/dashboard/projects" className="inline-flex items-center gap-1 text-sm font-medium text-slate-500 hover:text-slate-800" data-testid="back-btn"><ArrowLeft className="h-4 w-4" />Projects</Link>
@@ -904,20 +928,29 @@ export default function ProjectDetails() {
             <Card className="border-slate-200 sticky top-6">
               <CardHeader className="pb-3 border-b border-slate-200"><CardTitle className="text-lg font-['Outfit']">Cost Summary</CardTitle></CardHeader>
               <CardContent className="pt-4">
+                {/* Every line at the price the customer pays (before GST), so the lines add up to the total below */}
+                {(ce.system_cost || 0) > 0 && (
+                  <div className="flex justify-between py-1.5 border-b border-slate-100" data-testid="cost-line-system">
+                    <span className="text-sm text-slate-500 truncate mr-2">Solar system{ce.system_size_kw ? ` · ${ce.system_size_kw} kW` : ''}</span>
+                    <span className="text-sm font-medium text-slate-900">{money(ce.system_cost)}</span>
+                  </div>
+                )}
                 {selectedItems.map((item, i) => (
                   <div key={item.inventory_item_id || `cost-${i}`} className="flex justify-between py-1.5 border-b border-slate-100 last:border-0">
                     <span className="text-sm text-slate-500 truncate mr-2">{item.name} x{item.quantity}</span>
-                    <span className="text-sm font-medium text-slate-900">₹{(item.amount || item.unit_price * item.quantity).toLocaleString('en-IN')}</span>
+                    <span className="text-sm font-medium text-slate-900">{money(item.sell_amount ?? ((item.amount ?? item.unit_price * item.quantity) + (item.margin_amount || 0)))}</span>
                   </div>
                 ))}
                 {manualCosts.map((c, i) => (
                   <div key={`m${i}`} className="flex justify-between py-1.5 border-b border-slate-100">
-                    <span className="text-sm text-slate-500 italic">{c.description}</span><span className="text-sm font-medium text-slate-900">₹{(c.amount || 0).toLocaleString('en-IN')}</span>
+                    <span className="text-sm text-slate-500 italic">{c.description}</span><span className="text-sm font-medium text-slate-900">{money((c.amount || 0) + (c.margin_amount || 0))}</span>
                   </div>
                 ))}
-                <div className="mt-4 pt-3 border-t border-slate-200 space-y-2">
-                  <div className="flex justify-between text-sm"><span className="text-slate-500">Subtotal</span><span className="font-medium">₹{(ce.subtotal || 0).toLocaleString('en-IN')}</span></div>
-                  <div className="flex justify-between text-sm"><span className="text-slate-500">GST</span><span className="font-medium">₹{(ce.total_gst || 0).toLocaleString('en-IN')}</span></div>
+                <div className="mt-4 pt-3 border-t border-slate-200 space-y-2" data-testid="cost-summary-totals">
+                  <div className="flex justify-between text-sm"><span className="text-slate-500">Before GST</span><span className="font-medium" data-testid="cost-before-gst">{money(beforeGst)}</span></div>
+                  <div className="flex justify-between text-sm"><span className="text-slate-500">GST</span><span className="font-medium" data-testid="cost-gst">{money(ce.total_gst)}</span></div>
+                  {(ce.subsidy || 0) > 0 && <div className="flex justify-between text-sm text-emerald-700"><span>Subsidy</span><span className="font-medium">− {money(ce.subsidy)}</span></div>}
+                  {Math.abs(ce.rounding?.adjustment || 0) >= 0.5 && <div className="flex justify-between text-xs text-slate-500"><span>Round off</span><span>{ce.rounding.adjustment > 0 ? '+' : '−'} {money(Math.abs(ce.rounding.adjustment))}</span></div>}
                   
                   {can('can_set_margin') && (
                     <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg mt-2">
@@ -934,14 +967,14 @@ export default function ProjectDetails() {
                       <Button size="sm" onClick={handleMarginUpdate} disabled={marginLoading} className="w-full mt-2 bg-amber-600 hover:bg-amber-700 text-white h-8 text-xs" data-testid="update-margins-btn">
                         {marginLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Apply Margins'}
                       </Button>
-                      <div className="flex justify-between text-xs mt-2"><span className="text-amber-600">Total Margin</span><span className="font-medium text-amber-800">₹{(ce.total_margin || 0).toLocaleString('en-IN')}</span></div>
+                      <div className="flex justify-between text-xs mt-2"><span className="text-amber-600">Total margin{(ce.system_margin || 0) > 0 ? ' (incl. system lines)' : ''}</span><span className="font-medium text-amber-800">{money(ce.margin_total ?? ce.total_margin)}</span></div>
                       {project.margin_added_by && <p className="text-xs text-amber-500 mt-1">Last by {project.margin_added_by}</p>}
                     </div>
                   )}
                   
                   <div className="flex justify-between pt-3 border-t-2 border-slate-300 mt-2">
                     <span className="font-bold text-slate-900 text-base">TOTAL</span>
-                    <span className="font-bold text-emerald-600 text-lg">₹{(ce.total_cost || 0).toLocaleString('en-IN')}</span>
+                    <span className="font-bold text-emerald-600 text-lg" data-testid="cost-total">{money(ce.total_cost)}</span>
                   </div>
                 </div>
 

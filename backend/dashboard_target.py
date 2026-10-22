@@ -21,7 +21,8 @@ def _project_revenue(p: dict[str, Any]) -> float:
 
 
 def _project_margin(p: dict[str, Any]) -> float:
-    return p.get("cost_estimation", {}).get("margin_total", 0) or 0
+    from project_numbers import project_margin
+    return project_margin(p)
 
 
 def resolve_target(health_cfg: dict[str, Any], location_id: str | None) -> dict[str, Any]:

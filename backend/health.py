@@ -7,6 +7,7 @@ in `db.health_snapshots` so the trend line reflects real history.
 from __future__ import annotations
 from datetime import datetime, timezone, timedelta
 from collections import defaultdict
+from project_numbers import project_margin
 
 
 DEFAULT_HEALTH_CONFIG = {
@@ -90,7 +91,7 @@ def compute_pillars(projects, credits, inv_items, approvals, health_cfg,
         created = (p.get("created_at") or "")[:7]
         status = p.get("status", "draft")
         cost = p.get("cost_estimation", {}).get("total_cost", 0)
-        margin_amt = p.get("cost_estimation", {}).get("margin_total", 0)
+        margin_amt = project_margin(p)
         if created:
             projects_by_month[created] += 1
             if status != "draft":

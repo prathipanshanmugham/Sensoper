@@ -12,6 +12,7 @@ import { generateDailyReportPDF } from '../utils/dailyReportPDF';
 import { Plus, Trash2, Loader2, Download, Send, Save, CheckCircle2, Clock, CircleDashed, Eye, MessageSquare, CalendarRange, Lightbulb, UserMinus } from 'lucide-react';
 import { Switch } from '../components/ui/switch';
 import Can from '../components/Can';
+import { useLiveRefresh } from '../lib/liveSync';
 
 const WORK_CHIPS = ['Site survey', 'Material delivered', 'Structure erected', 'Panels mounted', 'DC wiring done', 'Inverter installed', 'AC wiring & earthing', 'Testing & commissioning', 'Net-meter applied', 'Handover done'];
 const PCT = [10, 25, 50, 75, 90, 100];
@@ -380,6 +381,7 @@ function TeamView({ date }) {
   const [busy, setBusy] = useState(false);
   const load = useCallback(() => dailyReportsAPI.team(date).then((r) => setData(r.data)).catch(() => toast.error('Could not load the team')), [date]);
   useEffect(() => { setData(null); load(); }, [load]);
+  useLiveRefresh(['daily-reports', 'users'], load);
 
   const dayPdf = async () => {
     setBusy(true);

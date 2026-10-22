@@ -3,7 +3,7 @@ import { inventoryAPI, calcAPI, pricingSlabsAPI } from '../utils/api';
 import { Label } from './ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from './ui/alert-dialog';
-import { computeQuick, projectResult } from '../utils/solarCalc';
+import { computeQuick, projectResult, customItem } from '../utils/solarCalc';
 import { GridSolarFlow } from './calc/GridSolarFlow';
 import { PumpFlow } from './calc/PumpFlow';
 
@@ -19,7 +19,7 @@ const SYSTEM_TYPES = [
   { value: 'off-grid', label: 'Off-Grid (battery only)' },
   { value: 'solar-pump', label: 'Solar Pump' },
 ];
-const GRID_KEYS = ['monthly_eb_bill', 'monthly_eb_units_entered', 'tariff_per_unit_manual', 'billing_cycle', 'export_rate', 'network_charge', 'network_charge_basis', 'roof_area_sqft', 'panel_item_id', 'inverter_item_id', 'battery_item_id', 'backup_hours', 'subsidy', 'overrides', 'customer_type', 'pricing_mode'];
+const GRID_KEYS = ['monthly_eb_bill', 'monthly_eb_units_entered', 'tariff_per_unit_manual', 'billing_cycle', 'export_rate', 'network_charge', 'network_charge_basis', 'roof_area_sqft', 'panel_item_id', 'inverter_item_id', 'battery_item_id', 'backup_hours', 'subsidy', 'overrides', 'customer_type', 'pricing_mode', 'panel_mode', 'inverter_mode', 'panel_custom', 'inverter_custom'];
 const PUMP_KEYS = ['pump_path', 'required_flow_lpm', 'static_water_level_m', 'bore_casing_diameter_mm', 'daily_operating_hours', 'controller_max_voltage', 'string_voltage_v', '_pump_result', '_pump_warnings', 'pump_hp', 'pump_head_m', 'pump_discharge_lph', 'pump_type'];
 const BATTERY_KEYS = ['battery_item_id', 'backup_hours'];
 const RESULT_KEYS = ['system_size_kw', 'panel_count', 'battery_count', 'monthly_eb_units', 'tariff_per_unit', 'total_cost', 'net_cost', '_derived', '_quick'];
@@ -48,7 +48,10 @@ export default function ProposedSolutionSection({ value, onChange }) {
   const recompute = useMemo(() => (merged) => {
     const inputs = { ...merged, system_type: merged.system_type || 'on-grid', monthly_eb_units: merged.monthly_eb_units_entered, tariff_per_unit: merged.tariff_per_unit_manual };
     const slabDoc = slabDocs.find(d => d.category === inputs.system_type);
-    const r = computeQuick(inputs, config, panels.find(p => p.id === merged.panel_item_id), inverters.find(i => i.id === merged.inverter_item_id), batteries.find(b => b.id === merged.battery_item_id), slabDoc);
+    // panel / inverter: from Inventory, typed in on this quote, or not part of the job (the engine skips 'none')
+    const panel = merged.panel_mode === 'custom' ? customItem(merged.panel_custom, 'panel') : panels.find(p => p.id === merged.panel_item_id);
+    const inverter = merged.inverter_mode === 'custom' ? customItem(merged.inverter_custom, 'inverter') : inverters.find(i => i.id === merged.inverter_item_id);
+    const r = computeQuick(inputs, config, panel, inverter, batteries.find(b => b.id === merged.battery_item_id), slabDoc);
     return projectResult(merged, r);
   }, [config, panels, inverters, batteries, slabDocs]);
 

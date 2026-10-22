@@ -7,9 +7,10 @@ import { Badge } from './ui/badge';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from './ui/sheet';
 import {
   LogOut, Menu, X, Bell, AlertTriangle, HelpCircle, Search, ChevronDown, Plus, Home, FolderKanban, CalendarCheck,
-  LayoutGrid, Lightbulb, KeyRound,
+  LayoutGrid, Lightbulb, KeyRound, RefreshCw,
 } from 'lucide-react';
 import { NAV_SECTIONS, canSee, routeInfo, activeHref } from '../lib/navigation';
+import { useLiveRefresh } from '../lib/liveSync';
 
 const LOGO_URL = `${process.env.PUBLIC_URL}/logo.png`;
 const COLLAPSE_KEY = 'sensoper.nav.collapsed';
@@ -230,12 +231,14 @@ export default function DashboardLayout({ children }) {
   const [nudge, setNudge] = useState(() => !readStore(HELP_SEEN_KEY, false));
   const seesAlerts = allowed('module_alerts');
 
-  const fetchStats = useCallback(async () => { try { setStats((await dashboardAPI.getStats()).data); } catch { /* the menu works without counts */ } }, []);
+  const isPartner = user?.role === 'partner';
+  const fetchStats = useCallback(async () => { if (isPartner) return; try { setStats((await dashboardAPI.getStats()).data); } catch { /* the menu works without counts */ } }, [isPartner]);
   const fetchAlerts = useCallback(async () => {
     if (!seesAlerts) return;
     try { setAlertInfo((await alertsAPI.getDashboard()).data); } catch { /* optional */ }
   }, [seesAlerts]);
   useEffect(() => { fetchStats(); fetchAlerts(); }, [fetchStats, fetchAlerts]);
+  useLiveRefresh(['projects', 'approvals', 'inventory', 'purchases', 'amc', 'action-requests'], () => { fetchStats(); fetchAlerts(); }, { enabled: !!user && !isPartner });
   useEffect(() => { setDrawerOpen(false); window.scrollTo?.(0, 0); }, [location.pathname]);
 
   const sections = useMemo(() => NAV_SECTIONS
@@ -258,6 +261,7 @@ export default function DashboardLayout({ children }) {
   const sidebarProps = { sections, active, stats, user, onLogout: handleLogout };
   const bottomItems = [
     { href: '/dashboard', label: 'Home', icon: Home },
+    ...(isPartner ? [{ href: '/dashboard/amc', label: 'AMC', icon: RefreshCw }, { href: '/dashboard/security', label: 'Login', icon: KeyRound }] : []),
     { href: '/dashboard/projects', label: 'Projects', icon: FolderKanban },
     { href: '/dashboard/projects/new', label: 'New', icon: Plus, primary: true },
     { href: '/dashboard/daily-report', label: 'Report', icon: CalendarCheck },

@@ -46,7 +46,7 @@ class TestAdhocParity:
         assert line["line_id"] and line["inventory_item_id"] is None and line["promoted"] is False
         bd = next(b for b in p["cost_estimation"]["items_breakdown"] if b.get("is_adhoc"))
         assert bd["amount"] == 12500 * 4
-        assert bd["gst_amount"] == round(12500 * 4 * 0.12, 2)
+        assert bd["gst_amount"] == round(12500 * 4 * 1.10 * 0.12, 2)   # GST on cost + margin
         assert bd["margin_amount"] == round(12500 * 4 * 0.10, 2)
         assert bd["hsn_code"] == "8541" and bd["line_id"] == line["line_id"]
         # identical numbers to a normal (inventory-linked) line with same price/qty/gst/margin

@@ -12,6 +12,7 @@ import { DateNav } from '../components/FormBits';
 import { Button } from '../components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '../components/ui/dialog';
 import Can from '../components/Can';
+import { useLiveRefresh } from '../lib/liveSync';
 
 const hm = (mins) => (mins == null ? '—' : `${Math.floor(mins / 60)}h ${String(mins % 60).padStart(2, '0')}m`);
 const monthOf = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
@@ -161,6 +162,7 @@ function TeamDay() {
   const [filter, setFilter] = useState('all');
   const load = useCallback(() => { setData(null); attendanceAPI.team(date).then((r) => setData(r.data)).catch(() => toast.error('Could not load the team')); }, [date]);
   useEffect(() => { load(); }, [load]);
+  useLiveRefresh(['attendance'], () => attendanceAPI.team(date).then((r) => setData(r.data)).catch(() => {}));
   const rows = (data?.rows || []).filter((r) => filter === 'all' || (filter === 'present' ? r.record : !r.record));
   return (
     <div className="space-y-4">

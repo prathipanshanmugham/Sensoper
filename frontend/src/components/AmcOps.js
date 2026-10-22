@@ -13,7 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 const inr = (v) => (v == null ? '—' : `₹${Math.round(v).toLocaleString('en-IN')}`);
 
 /** Iter 53 — AMC operations: follow-up pipeline, scheduled-visit calendar, pincode batching, customer outbox. */
-export function AmcOpsPanel({ canManage }) {
+export function AmcOpsPanel({ canManage, canComplete = canManage, partnerMode = false }) {
   const [followUps, setFollowUps] = useState([]);
   const [schedule, setSchedule] = useState([]);
   const [batching, setBatching] = useState(null);
@@ -25,11 +25,15 @@ export function AmcOpsPanel({ canManage }) {
 
   const load = useCallback(async () => {
     try {
+      if (partnerMode) {           // joint-venture view: the shared visit calendar only
+        setSchedule((await amcAPI.schedule()).data || []);
+        return;
+      }
       const [f, s, b, o] = await Promise.all([amcAPI.followUps(), amcAPI.schedule(), canManage ? amcAPI.batching(days) : Promise.resolve({ data: null }), amcAPI.outbox(true)]);
       setFollowUps(f.data.rows || []); setSchedule(s.data || []); setBatching(b.data); setOutbox(o.data.rows || []);
       if (canManage) usersAPI.getAll().then(r => setTechs(r.data || [])).catch(() => {});
     } catch (e) { console.warn('amc ops load failed', e); }
-  }, [canManage, days]);
+  }, [canManage, days, partnerMode]);
   useEffect(() => { load(); }, [load]);
 
   const scheduleVisit = async () => {
@@ -43,6 +47,24 @@ export function AmcOpsPanel({ canManage }) {
     finally { setBusy(''); }
   };
   const markSent = async (n) => { try { await amcAPI.outboxSent(n.id); load(); } catch (e) { toast.error('Failed'); } };
+  const markDone = async (v) => { try { await amcAPI.completeVisit(v.id, {}); toast.success('Visit marked done'); load(); } catch (e) { toast.error(e.response?.data?.detail || 'Failed'); } };
+
+  const scheduleCard = (
+    <Card data-testid="amc-schedule-card">
+      <CardHeader className="pb-2"><CardTitle className="text-base font-['Outfit'] flex items-center gap-2"><CalendarClock className="h-4 w-4 text-blue-600" />Upcoming visits <Badge variant="secondary">{schedule.length}</Badge></CardTitle></CardHeader>
+      <CardContent className="space-y-1.5">
+        {schedule.length === 0 && <p className="text-xs text-slate-400" data-testid="amc-schedule-empty">Nothing planned — use “Plan visit” on a contract.</p>}
+        {schedule.slice(0, 10).map(v => (
+          <div key={v.id} className="flex items-center justify-between gap-2 text-sm border-b border-slate-100 pb-1.5" data-testid={`amc-scheduled-${v.id}`}>
+            <div className="min-w-0"><p className="font-medium text-slate-800">{v.scheduled_date} · {v.customer_name}</p><p className="text-[11px] text-slate-400">{v.contract_number} · {v.district || '—'} · {v.technician_name || 'technician to be chosen'}</p></div>
+            <div className="flex shrink-0 items-center gap-1.5"><Badge variant="outline" className="text-[10px] capitalize">{v.visit_type}</Badge>
+              {canComplete && v.scheduled_date <= new Date().toISOString().slice(0, 10) && <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => markDone(v)} data-testid={`amc-visit-done-${v.id}`}>Done</Button>}</div>
+          </div>
+        ))}
+      </CardContent>
+    </Card>
+  );
+  if (partnerMode) return <div className="space-y-4" data-testid="amc-ops-panel">{scheduleCard}</div>;
 
   return (
     <div className="space-y-4" data-testid="amc-ops-panel">
@@ -59,18 +81,7 @@ export function AmcOpsPanel({ canManage }) {
             ))}
           </CardContent>
         </Card>
-        <Card data-testid="amc-schedule-card">
-          <CardHeader className="pb-2"><CardTitle className="text-base font-['Outfit'] flex items-center gap-2"><CalendarClock className="h-4 w-4 text-blue-600" />Upcoming scheduled visits <Badge variant="secondary">{schedule.length}</Badge></CardTitle></CardHeader>
-          <CardContent className="space-y-1.5">
-            {schedule.length === 0 && <p className="text-xs text-slate-400" data-testid="amc-schedule-empty">Nothing scheduled — use "Schedule" on a batch below or on a contract.</p>}
-            {schedule.slice(0, 8).map(v => (
-              <div key={v.id} className="flex items-center justify-between text-sm border-b border-slate-100 pb-1.5" data-testid={`amc-scheduled-${v.id}`}>
-                <div><p className="font-medium text-slate-800">{v.scheduled_date} · {v.customer_name}</p><p className="text-[11px] text-slate-400">{v.contract_number} · {v.district || '—'} · {v.technician_name || 'technician TBD'}</p></div>
-                <Badge variant="outline" className="text-[10px] capitalize">{v.visit_type}</Badge>
-              </div>
-            ))}
-          </CardContent>
-        </Card>
+        {scheduleCard}
       </div>
 
       {canManage && batching && (

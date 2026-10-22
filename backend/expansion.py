@@ -11,6 +11,7 @@ from __future__ import annotations
 import math
 from collections import defaultdict
 from datetime import datetime, timezone, timedelta
+from project_numbers import project_margin as _project_margin
 
 
 DEFAULT_EXPANSION_CONFIG = {
@@ -86,7 +87,7 @@ def compute_district_scores(projects, credits, brand_returns, branches, config,
         pump_hp = float(ps.get("pump_hp") or 0)
         if status in ("approved", "completed"):
             cost = p.get("cost_estimation", {}).get("total_cost", 0)
-            marg = p.get("cost_estimation", {}).get("margin_total", 0)
+            marg = _project_margin(p)
             entry["revenue"] += cost
             entry["margin_total"] += marg
             entry["ticket_sizes"].append(cost)
