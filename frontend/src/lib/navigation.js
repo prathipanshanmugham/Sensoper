@@ -12,6 +12,7 @@ import {
   ShoppingBag, RefreshCw, Package, Boxes, PackageOpen, Truck, Undo2, Store, Tags, HardHat, Users, Wrench,
   CreditCard, AlertTriangle, BarChart3, MapPin, Building2, UserCog, Shield, Map, SlidersHorizontal, ScrollText,
   Layers, History, KeyRound, LockKeyhole, FileText, UserRound, Clock, Network, Gift, Landmark,
+  LifeBuoy,
 } from 'lucide-react';
 
 export const NAV_SECTIONS = [
@@ -142,10 +143,19 @@ export const NAV_SECTIONS = [
       },
       {
         href: '/dashboard/amc', label: 'AMC & service', icon: RefreshCw, module: 'module_amc',
-        keywords: 'maintenance contract support ticket complaint',
+        keywords: 'maintenance contract amc offer quote renewal visit joint venture partner',
         help: {
-          what: 'Annual maintenance contracts and customer support tickets for installed systems.',
-          steps: ['Contracts: create an AMC for a completed project and track visits and renewals.', 'Support tickets: log a customer complaint, assign a technician and close it with the customer’s rating.'],
+          what: 'Annual maintenance contracts: who to offer an AMC, quotes with three plans, contracts, visits and the AMC report.',
+          steps: ['Time to offer AMC: customers whose plant is old enough — make a quote in one tap.', 'Quotes: send the PDF or WhatsApp; when the customer says yes, the contract is made.', 'Contracts: plan visits, renew, cancel. A Sensoper admin can delete a cancelled contract for good.'],
+          tip: 'Use the Show dropdown to see Sensoper, the joint-venture partner, or both.',
+        },
+      },
+      {
+        href: '/dashboard/support', label: 'Customer support', icon: LifeBuoy, module: 'module_support',
+        keywords: 'support ticket complaint problem service sla rating customer',
+        help: {
+          what: 'Problems and requests from any Sensoper customer — with or without an AMC. Joint-venture partners never see this page.',
+          steps: ['New ticket: who, what is wrong, how urgent.', 'Assign a technician and move it along: in progress → resolved → closed with the customer’s rating.'],
           tip: 'Tickets show red when they are past their response or fix deadline.',
         },
       },

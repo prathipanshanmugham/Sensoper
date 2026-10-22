@@ -10,6 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Label } from '../components/ui/label';
 import { Textarea } from '../components/ui/textarea';
 import { Loader2, Plus, Ticket, Clock, AlertTriangle, TrendingUp, Star, Users, Settings } from 'lucide-react';
+import { useLiveRefresh } from '../lib/liveSync';
 
 const STATUS_STYLES = { open: 'bg-slate-100 text-slate-700', assigned: 'bg-blue-100 text-blue-700', in_progress: 'bg-amber-100 text-amber-700', pending_customer: 'bg-purple-100 text-purple-700', resolved: 'bg-emerald-100 text-emerald-700', closed: 'bg-slate-200 text-slate-600', reopened: 'bg-rose-100 text-rose-700' };
 const PRIORITY_STYLES = { low: 'bg-slate-100 text-slate-600', medium: 'bg-blue-100 text-blue-700', high: 'bg-orange-100 text-orange-700', critical: 'bg-red-100 text-red-700' };
@@ -46,8 +47,8 @@ export default function SupportTicketsTab() {
   const [form, setForm] = useState(emptyTicket());
   const [saving, setSaving] = useState(false);
 
-  const fetchAll = useCallback(async () => {
-    setLoading(true);
+  const fetchAll = useCallback(async (quiet = false) => {
+    if (quiet !== true) setLoading(true);
     try {
       const params = {};
       if (filters.status !== 'all') params.status = filters.status;
@@ -60,6 +61,7 @@ export default function SupportTicketsTab() {
     } catch (e) { console.error(e); } finally { setLoading(false); }
   }, [filters]);
   useEffect(() => { fetchAll(); }, [fetchAll]);
+  useLiveRefresh(['support', 'portal'], () => fetchAll(true));
 
   const openSLA = async () => { try { const r = await supportAPI.slaConfig.get(); setSla({ critical_response_hours: r.data.critical.response, critical_resolution_hours: r.data.critical.resolution, high_response_hours: r.data.high.response, high_resolution_hours: r.data.high.resolution, medium_response_hours: r.data.medium.response, medium_resolution_hours: r.data.medium.resolution, low_response_hours: r.data.low.response, low_resolution_hours: r.data.low.resolution }); setShowSLA(true); } catch (e) { alert('Could not load SLA config'); } };
   const saveSLA = async () => { try { await supportAPI.slaConfig.update(sla); setShowSLA(false); fetchAll(); } catch (e) { alert(e.response?.data?.detail || 'Save failed'); } };
@@ -83,11 +85,7 @@ export default function SupportTicketsTab() {
 
   return (
     <div className="space-y-5" data-testid="support-tab">
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div>
-          <h2 className="text-lg font-bold font-['Outfit'] flex items-center gap-2"><Ticket className="h-5 w-5 text-emerald-600" />Customer Support Tickets</h2>
-          <p className="text-xs text-slate-500">Reactive support requests — separate from scheduled maintenance visits</p>
-        </div>
+      <div className="flex items-center justify-end flex-wrap gap-3">
         <div className="flex gap-2">
           {isAdmin && <Button variant="outline" onClick={openSLA} className="gap-1.5" data-testid="sla-config-btn"><Settings className="h-4 w-4" />SLA Config</Button>}
           <Button onClick={() => setShowCreate(true)} className="bg-emerald-600 text-white gap-1.5" data-testid="new-ticket-btn"><Plus className="h-4 w-4" />New Ticket</Button>

@@ -5,8 +5,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { Building2, CalendarClock, EyeOff, FileSignature, IndianRupee, Loader2, MoreHorizontal, Plus, RefreshCw, Settings2, Sparkles, Ticket, TrendingUp, Users, Zap } from 'lucide-react';
+import { Building2, CalendarClock, ChevronRight, EyeOff, FileSignature, Loader2, MoreHorizontal, Plus, RefreshCw, Settings2, Sparkles } from 'lucide-react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '../components/ui/dropdown-menu';
 import { amcAPI, projectsAPI } from '../utils/api';
 import { AmcOpsPanel } from '../components/AmcOps';
@@ -18,9 +17,10 @@ import { Label } from '../components/ui/label';
 import { Badge } from '../components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from '../components/ui/dialog';
-import SupportTicketsTab from './SupportTicketsTab';
 import Can from '../components/Can';
-import { ALL, OURS, CoBrand, OrgChip, OrgSelect, inr, useJv } from '../components/amc/jv';
+import { ALL, OURS, CoBrand, OrgChip, OrgSelect, SYSTEM_TYPE_OPTIONS, inr, systemLabel, useJv } from '../components/amc/jv';
+import AmcOverview from '../components/amc/AmcOverview';
+import ContractSheet from '../components/amc/ContractSheet';
 import QuoteBuilder from '../components/amc/QuoteBuilder';
 import { JvProjectsTab, OffersTab, QuotesTab } from '../components/amc/AmcTabs';
 import AmcReportTab from '../components/amc/AmcReportTab';
@@ -31,17 +31,7 @@ const STATUS_STYLES = { active: 'bg-emerald-100 text-emerald-700', expiring: 'bg
 const ORG_KEY = 'amc_org_view';
 const readOrg = () => { try { return localStorage.getItem(ORG_KEY) || OURS; } catch { return OURS; } };
 
-function Kpi({ label, value, icon: Icon, testid, sub }) {
-  return (
-    <div className="rounded-xl border border-slate-200 bg-white p-3" data-testid={testid}>
-      <div className="mb-1 flex items-center gap-1.5 text-slate-400"><Icon className="h-4 w-4" /><span className="text-[11px] uppercase tracking-wide">{label}</span></div>
-      <p className="font-['Outfit'] text-xl font-bold tabular-nums text-slate-900">{value}</p>
-      {sub && <p className="text-[11px] text-slate-500">{sub}</p>}
-    </div>
-  );
-}
-
-const blankContract = { org_id: '', customer_name: '', contact: '', site_address: '', district: '', system_type: 'on-grid', system_capacity_kw: '', contract_type: 'comprehensive', start_date: '', duration_months: 12, annual_value: '', billing_frequency: 'annual', visits_per_year: 2 };
+const blankContract = { org_id: '', customer_name: '', contact: '', site_address: '', district: '', system_type: 'on-grid', system_type_other: '', system_capacity_kw: '', contract_type: 'comprehensive', start_date: '', duration_months: 12, annual_value: '', billing_frequency: 'annual', visits_per_year: 2, notes: '' };
 
 export default function AMCDashboard() {
   const { user, isAdmin, isManager, can } = useAuth();
@@ -71,6 +61,7 @@ export default function AMCDashboard() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [jvOpen, setJvOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [openContract, setOpenContract] = useState(null);
 
   const hasPartners = isPartner || (jv?.partners?.length || 0) > 0;
   const viewOrg = isPartner ? OURS : (hasPartners ? org : OURS);   // the server keeps a partner to its own company anyway
@@ -104,7 +95,7 @@ export default function AMCDashboard() {
   const handleCreate = async () => {
     setSaving(true);
     try {
-      await amcAPI.create({ ...form, org_id: isPartner ? null : (form.org_id || null), system_capacity_kw: parseFloat(form.system_capacity_kw) || 0, annual_value: parseFloat(form.annual_value) || 0, duration_months: parseInt(form.duration_months, 10) || 12, visits_per_year: parseInt(form.visits_per_year, 10) || 2 });
+      await amcAPI.create({ ...form, org_id: isPartner ? null : (form.org_id || null), system_type_other: form.system_type === 'others' ? form.system_type_other.trim() : null, notes: form.notes.trim() || null, system_capacity_kw: parseFloat(form.system_capacity_kw) || 0, annual_value: parseFloat(form.annual_value) || 0, duration_months: parseInt(form.duration_months, 10) || 12, visits_per_year: parseInt(form.visits_per_year, 10) || 2 });
       setShowCreate(false); toast.success('Contract created'); changed();
     } catch (e) { toast.error(e.response?.data?.detail || 'Could not create contract'); } finally { setSaving(false); }
   };
@@ -135,7 +126,6 @@ export default function AMCDashboard() {
     return [...m.values()].sort((a, b) => (a.org_id ? 1 : 0) - (b.org_id ? 1 : 0));
   }, [contracts, viewOrg]);
 
-  const capacityChartData = dashboard?.capacity_by_type ? Object.entries(dashboard.capacity_by_type).map(([name, value]) => ({ name: name.replace(/-/g, ' '), value: Math.round(value * 10) / 10 })) : [];
   const tabs = [
     ['overview', 'Overview'],
     ['offers', 'Time to offer AMC', offerCount],
@@ -143,7 +133,6 @@ export default function AMCDashboard() {
     ['contracts', 'Contracts'],
     hasPartners && ['partner', isPartner ? 'Our projects' : 'Partner projects'],
     ['report', 'Report'],
-    !isPartner && ['support', 'Customer support'],
   ].filter(Boolean);
 
   if (!dashboard || !jv) return <div className="flex justify-center py-24"><Loader2 className="h-8 w-8 animate-spin text-emerald-600" /></div>;
@@ -151,7 +140,7 @@ export default function AMCDashboard() {
   return (
     <div className="px-4 py-5 sm:py-6">
       <div className="mx-auto max-w-7xl space-y-4">
-        {shownPartner && <CoBrand jv={jv} partner={shownPartner} canEditLogo={isAdmin || isPartner} onLogoChanged={reloadJv} />}
+        <CoBrand jv={jv} partner={shownPartner} canEditLogo={isAdmin || isPartner} onLogoChanged={reloadJv} />
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
             <h1 className="flex items-center gap-2 font-['Outfit'] text-2xl font-bold text-slate-900" data-testid="amc-title"><RefreshCw className="h-6 w-6 text-emerald-600" />AMC &amp; service</h1>
@@ -180,7 +169,7 @@ export default function AMCDashboard() {
             {tabs.map(([k, l, n]) => (
               <button key={k} type="button" role="tab" aria-selected={tab === k} onClick={() => setTab(k)}
                 className={`flex items-center gap-1.5 whitespace-nowrap rounded-full border px-3.5 py-2 text-sm ${tab === k ? 'border-emerald-300 bg-emerald-100 font-medium text-emerald-800' : 'border-slate-200 bg-white text-slate-600'}`} data-testid={`amc-tab-${k}`}>
-                {k === 'support' && <Ticket className="h-3.5 w-3.5" />}{l}{n > 0 && <span className="rounded-full bg-amber-500 px-1.5 text-[11px] font-semibold text-white" data-testid="amc-offers-count">{n}</span>}
+                {l}{n > 0 && <span className="rounded-full bg-amber-500 px-1.5 text-[11px] font-semibold text-white" data-testid="amc-offers-count">{n}</span>}
               </button>
             ))}
           </div>
@@ -188,12 +177,7 @@ export default function AMCDashboard() {
 
         {tab === 'overview' && (
           <div className="space-y-4" data-testid="amc-overview">
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-              <Kpi label="Yearly value" value={inr(dashboard.arr)} icon={IndianRupee} testid="amc-kpi-arr" sub={`${inr(dashboard.mrr)} a month`} />
-              <Kpi label="Active contracts" value={dashboard.active_contracts} icon={Users} testid="amc-kpi-active" sub={`${dashboard.capacity_kw ?? 0} kW looked after`} />
-              <Kpi label="Renewal rate" value={`${dashboard.renewal_rate_pct}%`} icon={TrendingUp} testid="amc-kpi-renewal" sub={`${dashboard.expiring_30} end in 30 days`} />
-              <Kpi label="Plants under AMC" value={`${dashboard.penetration_pct}%`} icon={Zap} testid="amc-kpi-penetration" sub={`of ${dashboard.commissioned_projects} finished`} />
-            </div>
+            <AmcOverview d={dashboard} offerCount={offerCount} isPartner={isPartner} onTab={setTab} />
             {viewOrg === ALL && byCompany.length > 0 && (
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2" data-testid="amc-by-company">
                 {byCompany.map((r) => (
@@ -212,20 +196,6 @@ export default function AMCDashboard() {
               </button>
             )}
             {!isPartner && (viewOrg === OURS || viewOrg === ALL) ? <AmcOpsPanel canManage={ourManager} canComplete={canEdit} /> : <AmcOpsPanel canManage={false} canComplete={canEdit} partnerMode />}
-            {capacityChartData.length > 0 && (
-              <div className="rounded-xl border border-slate-200 bg-white p-3">
-                <p className="mb-2 text-sm font-semibold text-slate-900">kW under AMC by system type</p>
-                <ResponsiveContainer width="100%" height={200}>
-                  <BarChart data={capacityChartData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
-                    <XAxis dataKey="name" tick={{ fontSize: 11, fill: '#64748b' }} axisLine={false} tickLine={false} />
-                    <YAxis tick={{ fontSize: 11, fill: '#64748b' }} axisLine={false} tickLine={false} />
-                    <Tooltip cursor={{ fill: 'rgba(148,163,184,0.12)' }} />
-                    <Bar dataKey="value" name="kW" fill="#2a78d6" radius={[4, 4, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            )}
           </div>
         )}
 
@@ -233,7 +203,6 @@ export default function AMCDashboard() {
         {tab === 'quotes' && <QuotesTab jv={jv} org={viewOrg} canEdit={canEdit} reloadKey={reloadKey} onChanged={changed} />}
         {tab === 'partner' && <JvProjectsTab jv={jv} org={viewOrg} canEdit={canEdit} reloadKey={reloadKey} onChanged={changed} />}
         {tab === 'report' && <AmcReportTab jv={jv} org={viewOrg} />}
-        {tab === 'support' && !isPartner && <SupportTicketsTab />}
 
         {tab === 'contracts' && (
           <div className="space-y-2" data-testid="amc-contracts-tab">
@@ -247,8 +216,11 @@ export default function AMCDashboard() {
                 <div key={c.id} className={`rounded-xl border bg-white p-3 ${c.org_id ? 'border-violet-200' : 'border-slate-200'}`} data-testid={`amc-row-${c.id}`}>
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-start">
                     <div className="min-w-0 flex-1">
-                      <p className="flex flex-wrap items-center gap-1.5 font-medium text-slate-900">{c.customer_name}<OrgChip jv={jv} orgId={c.org_id} /><Badge className={STATUS_STYLES[c.status] || ''}>{c.status}</Badge></p>
-                      <p className="text-xs text-slate-500">{c.contract_number} · {c.system_type} {c.system_capacity_kw ? `${c.system_capacity_kw} kW` : ''}{c.plan_name ? ` · ${c.plan_name}` : ''} · ends {c.end_date}{c.district ? ` · ${c.district}` : ''}</p>
+                      <button type="button" onClick={() => setOpenContract(c.id)} className="group block w-full text-left" data-testid={`amc-open-${c.id}`}>
+                        <p className="flex flex-wrap items-center gap-1.5 font-medium text-slate-900 group-hover:text-emerald-800">{c.customer_name}<OrgChip jv={jv} orgId={c.org_id} /><Badge className={STATUS_STYLES[c.status] || ''}>{c.status}</Badge><ChevronRight className="h-4 w-4 text-slate-300" /></p>
+                        <p className="text-xs text-slate-500">{c.contract_number} · {systemLabel(c)} {c.system_capacity_kw ? `${c.system_capacity_kw} kW` : ''}{c.plan_name ? ` · ${c.plan_name}` : ''} · ends {c.end_date}{c.district ? ` · ${c.district}` : ''}</p>
+                        {c.notes && <p className="mt-0.5 line-clamp-1 text-xs italic text-slate-500">“{c.notes}”</p>}
+                      </button>
                       <p className="mt-0.5 text-xs text-slate-600">{c.money_hidden ? <span className="inline-flex items-center gap-1 text-slate-400" data-testid={`amc-money-hidden-${c.id}`}><EyeOff className="h-3 w-3" />Price private to Sensoper</span> : <>{inr(c.annual_value)} a year</>} · visits {c.visits_completed || 0}/{c.visits_per_year}</p>
                     </div>
                     {c.status === 'active' && (
@@ -266,6 +238,10 @@ export default function AMCDashboard() {
         )}
       </div>
 
+      <ContractSheet contractId={openContract} onOpenChange={(v) => !v && setOpenContract(null)} jv={jv} isAdmin={isAdmin} isPartner={isPartner}
+        canChange={!!openContract && mine(contracts.find((x) => x.id === openContract) || {})} onChanged={changed}
+        onPlanVisit={canEdit ? (c) => setVisitDlg({ contract: c, date: new Date(Date.now() + 3 * 864e5).toISOString().slice(0, 10), tech: '', notes: '' }) : null}
+        onRenew={handleRenew} onCancel={handleCancel} />
       <QuoteBuilder open={quoteOpen} onOpenChange={setQuoteOpen} jv={jv} prefill={prefill} onSaved={() => { changed(); setTab('quotes'); }} />
       {isAdmin && <AmcSettingsSheet open={settingsOpen} onOpenChange={setSettingsOpen} onSaved={changed} />}
       {isAdmin && <JvPartnerSheet open={jvOpen} onOpenChange={setJvOpen} jv={jv} onChanged={() => { reloadJv(); changed(); }} />}
@@ -305,7 +281,7 @@ export default function AMCDashboard() {
             <Input placeholder="Customer name" value={form.customer_name} onChange={(e) => setForm((p) => ({ ...p, customer_name: e.target.value }))} className="col-span-2 h-10" data-testid="amc-customer-input" />
             <Input placeholder="Phone" value={form.contact} onChange={(e) => setForm((p) => ({ ...p, contact: e.target.value }))} className="h-10" />
             <Input placeholder="District" value={form.district} onChange={(e) => setForm((p) => ({ ...p, district: e.target.value }))} className="h-10" />
-            <Select value={form.system_type} onValueChange={(v) => setForm((p) => ({ ...p, system_type: v }))}><SelectTrigger className="h-10"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="on-grid">On-grid</SelectItem><SelectItem value="off-grid">Off-grid</SelectItem><SelectItem value="hybrid">Hybrid</SelectItem><SelectItem value="solar-pump">Solar pump</SelectItem></SelectContent></Select>
+            <Select value={form.system_type} onValueChange={(v) => setForm((p) => ({ ...p, system_type: v }))}><SelectTrigger className="h-10" data-testid="amc-contract-type"><SelectValue /></SelectTrigger><SelectContent>{SYSTEM_TYPE_OPTIONS.map(([v, l]) => <SelectItem key={v} value={v}>{l}</SelectItem>)}</SelectContent></Select>
             <Input type="number" placeholder="Size (kW)" value={form.system_capacity_kw} onChange={(e) => setForm((p) => ({ ...p, system_capacity_kw: e.target.value }))} className="h-10" />
             <Select value={form.contract_type} onValueChange={(v) => setForm((p) => ({ ...p, contract_type: v }))}><SelectTrigger className="h-10"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="comprehensive">Comprehensive</SelectItem><SelectItem value="non-comprehensive">Non-comprehensive</SelectItem><SelectItem value="labour-only">Labour only</SelectItem></SelectContent></Select>
             <div className="space-y-1"><Label className="text-[11px] text-slate-500">Starts on</Label><Input type="date" value={form.start_date} onChange={(e) => setForm((p) => ({ ...p, start_date: e.target.value }))} className="h-10" data-testid="amc-start-date-input" /></div>
@@ -313,8 +289,10 @@ export default function AMCDashboard() {
             <Input type="number" placeholder="Yearly value (₹)" value={form.annual_value} onChange={(e) => setForm((p) => ({ ...p, annual_value: e.target.value }))} className="h-10" data-testid="amc-value-input" />
             <Select value={form.billing_frequency} onValueChange={(v) => setForm((p) => ({ ...p, billing_frequency: v }))}><SelectTrigger className="h-10"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="monthly">Monthly</SelectItem><SelectItem value="quarterly">Quarterly</SelectItem><SelectItem value="half-yearly">Half-yearly</SelectItem><SelectItem value="annual">Yearly</SelectItem></SelectContent></Select>
             <Input type="number" placeholder="Visits a year" value={form.visits_per_year} onChange={(e) => setForm((p) => ({ ...p, visits_per_year: e.target.value }))} className="h-10" />
+            {form.system_type === 'others' && <Input placeholder="What system is it? (UPS, street lights, EV charger…)" value={form.system_type_other} onChange={(e) => setForm((p) => ({ ...p, system_type_other: e.target.value }))} className="col-span-2 h-10" data-testid="amc-contract-type-other" />}
+            <textarea rows={2} placeholder="Notes (optional) — gate code, best time to visit, who to call…" value={form.notes} onChange={(e) => setForm((p) => ({ ...p, notes: e.target.value }))} className="col-span-2 rounded-md border border-slate-200 p-2 text-sm outline-none focus:border-emerald-400" data-testid="amc-contract-notes" />
           </div>
-          <DialogFooter><Button variant="outline" onClick={() => setShowCreate(false)}>Cancel</Button><Button onClick={handleCreate} disabled={saving || !form.customer_name || !form.start_date} className="bg-emerald-600 text-white" data-testid="save-amc-btn">{saving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Create'}</Button></DialogFooter>
+          <DialogFooter><Button variant="outline" onClick={() => setShowCreate(false)}>Cancel</Button><Button onClick={handleCreate} disabled={saving || !form.customer_name || !form.start_date || (form.system_type === 'others' && !form.system_type_other.trim())} className="bg-emerald-600 text-white" data-testid="save-amc-btn">{saving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Create'}</Button></DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

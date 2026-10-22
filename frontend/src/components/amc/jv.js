@@ -20,10 +20,9 @@ export function useJv() {
 }
 
 export function orgName(jv, orgId) {
-  if (!orgId) return jv?.ours?.name ? shortName(jv.ours.name) : 'Sensoper';
+  if (!orgId) return 'Sensoper';   // whose work it is (ours vs the partner) — the letterhead company is separate (AMC settings)
   return jv?.partners?.find((p) => p.id === orgId)?.name || 'Partner';
 }
-const shortName = (n) => (/sensoper/i.test(n) ? 'Sensoper' : n);
 
 /** Who did it — always text, colour only as a helper. */
 export function OrgChip({ jv, orgId, className = '' }) {
@@ -46,7 +45,15 @@ function LogoBox({ src, alt, fallback, big }) {
 export function CoBrand({ jv, partner, canEditLogo, onLogoChanged }) {
   const input = useRef(null);
   const [busy, setBusy] = useState(false);
-  if (!partner) return null;
+  if (!partner) {
+    // no joint venture shown: just the company that AMC documents go out under (AMC settings)
+    return (
+      <div className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3" data-testid="amc-brand-strip">
+        <LogoBox big src={jv?.ours?.logo_url || LOGO} alt={jv?.ours?.name || 'Sensoper'} fallback={<span className="font-['Outfit'] text-sm font-bold text-emerald-700">{jv?.ours?.name || 'Sensoper'}</span>} />
+        <p className="ml-auto text-right text-[11px] leading-tight text-slate-500">AMC documents go out as<br /><b className="text-slate-700">{jv?.ours?.name}</b></p>
+      </div>
+    );
+  }
   const upload = async (e) => {
     const f = e.target.files?.[0]; e.target.value = '';
     if (!f) return;
@@ -62,7 +69,7 @@ export function CoBrand({ jv, partner, canEditLogo, onLogoChanged }) {
   };
   return (
     <div className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3" data-testid="amc-cobrand">
-      <LogoBox big src={jv?.ours?.logo_url || LOGO} alt="Sensoper" fallback={<span className="font-['Outfit'] text-sm font-bold text-emerald-700">Sensoper</span>} />
+      <LogoBox big src={jv?.ours?.logo_url || LOGO} alt={jv?.ours?.name || 'Sensoper'} fallback={<span className="font-['Outfit'] text-sm font-bold text-emerald-700">{jv?.ours?.name || 'Sensoper'}</span>} />
       <span className="text-lg font-light text-slate-400" aria-hidden="true">×</span>
       <div className="flex min-w-0 items-center gap-2">
         <LogoBox big src={logoUrl(partner.logo_path)} alt={partner.name} fallback={<span className="truncate font-['Outfit'] text-sm font-bold text-violet-700" data-testid="amc-cobrand-partner-name">{partner.name}</span>} />
@@ -105,3 +112,11 @@ export async function imageDataUrl(url) {
     return await new Promise((res) => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.onerror = () => res(null); fr.readAsDataURL(b); });
   } catch { return null; }
 }
+
+/** System types on AMC contracts, quotes and partner projects ("Others" asks what it is). */
+export const SYSTEM_TYPE_OPTIONS = [['on-grid', 'On-grid'], ['off-grid', 'Off-grid'], ['hybrid', 'Hybrid'], ['solar-pump', 'Solar pump'], ['others', 'Others']];
+export const systemLabel = (row) => {
+  if (!row) return '';
+  if (row.system_type === 'others') return row.system_type_other || 'Other system';
+  return (SYSTEM_TYPE_OPTIONS.find(([v]) => v === row.system_type) || [null, row.system_type || ''])[1];
+};

@@ -310,3 +310,20 @@ See CHANGES.md for the full list. Highlights for the next agent:
   `ce_numbers_v1`. Dashboard stats revenue = won + direct sales.
 - Inventory items: `photos` (storage paths, `_clean_photo_paths`); `components/PhotoStrip.js` (`itemImage()`).
 - Tests: backend/tests/test_amc_jv.py, test_calc_optional_items.py (in-process); frontend/src/utils/solarCalc.spec.js cases.
+
+## Iteration 67 — AMC metrics, quote terms, Others + notes, hard delete, Customer support page, AMC brand company (2026-10-22)
+- AMC dashboard (`amc.py`): total_kw, count_by_type, avg_kw_per_contract, value_per_kw, avg_contract_value, contracts_total,
+  renewed/cancelled, new_this_month/year, visits_done_month/year, visits_next_30, collection_pct, plan_mix, top_districts,
+  monthly (12), quotes_open/_value, quote_win_pct, tickets_open (AMC-linked, 0 for partners). UI `components/amc/AmcOverview.js`.
+- System types `on-grid|off-grid|hybrid|solar-pump|others` + `system_type_other` (required for others) on contracts, quotes,
+  jv_projects; `notes` carried quote → contract. `jv.js` `SYSTEM_TYPE_OPTIONS`, `systemLabel()`.
+- Quote terms: `amc_quotes.terms_text`; `GET /amc/quotes/terms` (default = active terms_conditions category amc via
+  `html_to_text`, else `DEFAULT_TERMS`; templates hidden from partners). Printed by `amcPdf`.
+- `DELETE /amc/contracts/{id}?confirm=<contract_number>`: role admin only (policy grant=False), status cancelled only;
+  removes visits + notifications, clears previous_contract_id links, marks quotes contract_deleted, audit
+  `amc_contract_deleted`. UI `components/amc/ContractSheet.js`.
+- Customer support: page `pages/CustomerSupportPage.js`, route `/dashboard/support`, permission `module_support`
+  (`access_policy.INHERIT` from module_amc), live topic `support`; partners never allowed.
+- Brand: `amc_settings.brand_company_id` → `brand_profile()`; `GET /amc/brand` (+ logo_base64, chosen); used by quote/report
+  PDFs, WhatsApp text, reminders, `jv_me.ours`. Company profile "Use for AMC" (admin); deleting the profile clears the choice.
+- Tests: 5 more in backend/tests/test_amc_jv.py (67 total pass).

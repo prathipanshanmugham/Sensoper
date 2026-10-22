@@ -1368,6 +1368,7 @@ async def delete_company_profile(profile_id: str, request: Request):
         raise HTTPException(status_code=400, detail="Cannot delete active profile")
     
     await db.company_profiles.delete_one({"_id": ObjectId(profile_id)})
+    await db.amc_settings.update_one({"key": "defaults", "brand_company_id": profile_id}, {"$set": {"brand_company_id": None}})   # AMC docs fall back to the main company
     
     await create_audit_log(
         current_user["id"], current_user["name"], "delete", "company_profile", profile_id

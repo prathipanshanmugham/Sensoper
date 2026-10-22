@@ -9,10 +9,9 @@ import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
-import { inr, OrgChip } from './jv';
+import { inr, OrgChip, SYSTEM_TYPE_OPTIONS } from './jv';
 
-const TYPES = [['on-grid', 'On-grid'], ['hybrid', 'Hybrid'], ['off-grid', 'Off-grid'], ['solar-pump', 'Solar pump']];
-const blank = { source_type: 'manual', source_id: null, customer_name: '', phone: '', site_address: '', district: '', system_type: 'on-grid', system_capacity_kw: '', commissioning_date: '', tariff: '', notes: '', recommended_plan: 'standard', org_id: null };
+const blank = { source_type: 'manual', source_id: null, customer_name: '', phone: '', site_address: '', district: '', system_type: 'on-grid', system_type_other: '', system_capacity_kw: '', commissioning_date: '', tariff: '', notes: '', terms_text: '', recommended_plan: 'standard', org_id: null };
 
 export function PlanCards({ calc, recommended, onRecommend, chosen, onChoose, compact }) {
   if (!calc?.plans?.length) return null;
@@ -70,12 +69,15 @@ export default function QuoteBuilder({ open, onOpenChange, jv, prefill, onSaved 
   const [jvProjects, setJvProjects] = useState([]);
   const [calc, setCalc] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [terms, setTerms] = useState({ default_text: '', templates: [] });
+  const [termsOpen, setTermsOpen] = useState(false);
   const set = (k) => (e) => setF((p) => ({ ...p, [k]: e?.target ? e.target.value : e }));
 
   useEffect(() => {
     if (!open) return;
     const start = { ...blank, ...(prefill || {}) };
-    setF(start); setWho(start.source_type || 'manual'); setCalc(null);
+    setF(start); setWho(start.source_type || 'manual'); setCalc(null); setTermsOpen(false);
+    amcAPI.quoteTerms().then((r) => { setTerms(r.data); setF((x) => ({ ...x, terms_text: x.terms_text || r.data.default_text || '' })); }).catch(() => {});
     if (!isPartner) projectsAPI.getAll('completed').then((r) => setProjects(r.data || [])).catch(() => {});
     if (isPartner || jv?.partners?.length) amcAPI.jvProjects().then((r) => setJvProjects(r.data || [])).catch(() => {});
   }, [open, prefill, isPartner, jv?.partners?.length]);
@@ -88,14 +90,14 @@ export default function QuoteBuilder({ open, onOpenChange, jv, prefill, onSaved 
       const ps = p.custom_fields?.proposed_solution || {};
       setF((x) => (x.source_id !== id ? x : { ...x, customer_name: p.customer?.name || '', phone: p.customer?.phone || '', site_address: p.customer?.address || p.location?.address || '',
         district: p.location?.district || '', system_type: ps.system_type || 'on-grid', system_capacity_kw: ps.system_size_kw || slim?.system_size_kw || '',
-        commissioning_date: (p.commissioning_date || p.completed_at || '').slice(0, 10), tariff: ps.tariff_per_unit || p.electrical?.eb_tariff || '' }));
+        system_type_other: '', commissioning_date: (p.commissioning_date || p.completed_at || '').slice(0, 10), tariff: ps.tariff_per_unit || p.electrical?.eb_tariff || '' }));
     } catch { /* the slim row is enough to quote */ }
   };
   const fromJv = (id) => {
     const j = jvProjects.find((x) => x.id === id);
     if (!j) return;
     setF((x) => ({ ...x, source_type: 'jv_project', source_id: id, org_id: j.org_id, customer_name: j.customer_name, phone: j.phone || '', site_address: j.site_address || '', district: j.district || '',
-      system_type: j.system_type || 'on-grid', system_capacity_kw: j.system_capacity_kw || '', commissioning_date: j.commissioning_date || '', tariff: j.tariff || '' }));
+      system_type: j.system_type || 'on-grid', system_type_other: j.system_type_other || '', system_capacity_kw: j.system_capacity_kw || '', commissioning_date: j.commissioning_date || '', tariff: j.tariff || '' }));
   };
 
   // live price of the three plans
@@ -111,7 +113,8 @@ export default function QuoteBuilder({ open, onOpenChange, jv, prefill, onSaved 
     setSaving(true);
     try {
       const body = { ...f, source_type: who === 'manual' ? 'manual' : f.source_type, source_id: who === 'manual' ? null : f.source_id,
-        system_capacity_kw: parseFloat(f.system_capacity_kw) || 0, tariff: parseFloat(f.tariff) || null, commissioning_date: f.commissioning_date || null };
+        system_capacity_kw: parseFloat(f.system_capacity_kw) || 0, tariff: parseFloat(f.tariff) || null, commissioning_date: f.commissioning_date || null,
+        system_type_other: f.system_type === 'others' ? f.system_type_other.trim() : null, terms_text: f.terms_text.trim() || null };
       const r = await amcAPI.createQuote(body);
       toast.success(`Quote ${r.data.quote_number} saved`);
       onSaved?.(r.data);
@@ -125,7 +128,7 @@ export default function QuoteBuilder({ open, onOpenChange, jv, prefill, onSaved 
     ['manual', 'Someone new'],
   ].filter(Boolean), [isPartner, jv?.partners?.length]);
   const fromOffer = !!prefill?.source_id;
-  const ready = f.customer_name.trim() && parseFloat(f.system_capacity_kw) > 0 && (who === 'manual' || f.source_id);
+  const ready = f.customer_name.trim() && parseFloat(f.system_capacity_kw) > 0 && (who === 'manual' || f.source_id) && (f.system_type !== 'others' || f.system_type_other.trim());
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -140,7 +143,7 @@ export default function QuoteBuilder({ open, onOpenChange, jv, prefill, onSaved 
             <Label className="text-xs text-slate-700">Who is it for?</Label>
             <div className={`grid gap-1 rounded-lg border border-slate-200 bg-slate-50 p-1 text-sm ${choices.length === 3 ? "grid-cols-3" : "grid-cols-2"}`} role="group">
               {choices.map(([k, l]) => (
-                <button key={k} type="button" onClick={() => { setWho(k); setF((x) => ({ ...blank, recommended_plan: x.recommended_plan, source_type: k })); }} aria-pressed={who === k}
+                <button key={k} type="button" onClick={() => { setWho(k); setF((x) => ({ ...blank, recommended_plan: x.recommended_plan, terms_text: x.terms_text, source_type: k })); }} aria-pressed={who === k}
                   className={`rounded-md px-2 py-2 font-medium ${who === k ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600'}`} data-testid={`amc-quote-who-${k}`}>{l}</button>
               ))}
             </div>
@@ -166,9 +169,10 @@ export default function QuoteBuilder({ open, onOpenChange, jv, prefill, onSaved 
           <div className="col-span-2 space-y-1 sm:col-span-1"><Label className="text-xs">District</Label><Input value={f.district} onChange={set('district')} className="h-11" /></div>
           <div className="space-y-1"><Label className="text-xs">Plant size (kW) *</Label><Input type="number" inputMode="decimal" min="0" step="0.5" value={f.system_capacity_kw} onChange={set('system_capacity_kw')} className="h-11" data-testid="amc-quote-kw" /></div>
           <div className="space-y-1"><Label className="text-xs">Type</Label>
-            <Select value={f.system_type || 'on-grid'} onValueChange={set('system_type')}><SelectTrigger className="h-11"><SelectValue /></SelectTrigger><SelectContent>{TYPES.map(([v, l]) => <SelectItem key={v} value={v}>{l}</SelectItem>)}</SelectContent></Select></div>
+            <Select value={f.system_type || 'on-grid'} onValueChange={set('system_type')}><SelectTrigger className="h-11" data-testid="amc-quote-type"><SelectValue /></SelectTrigger><SelectContent>{SYSTEM_TYPE_OPTIONS.map(([v, l]) => <SelectItem key={v} value={v}>{l}</SelectItem>)}</SelectContent></Select></div>
           <div className="space-y-1"><Label className="text-xs">Running since</Label><Input type="date" value={f.commissioning_date || ''} onChange={set('commissioning_date')} className="h-11" data-testid="amc-quote-commissioned" /></div>
           <div className="space-y-1"><Label className="text-xs">Tariff (₹/unit)</Label><Input type="number" inputMode="decimal" min="0" step="0.5" value={f.tariff} onChange={set('tariff')} placeholder="8" className="h-11" data-testid="amc-quote-tariff" /></div>
+          {f.system_type === 'others' && <div className="col-span-2 space-y-1 sm:col-span-4"><Label className="text-xs">What system is it? *</Label><Input value={f.system_type_other} onChange={set('system_type_other')} placeholder="e.g. UPS, street lights, EV charger" className="h-11" data-testid="amc-quote-type-other" /></div>}
           <div className="col-span-2 space-y-1 sm:col-span-4"><Label className="text-xs">Site address</Label><Input value={f.site_address} onChange={set('site_address')} className="h-11" /></div>
         </div>
 
@@ -179,7 +183,27 @@ export default function QuoteBuilder({ open, onOpenChange, jv, prefill, onSaved 
           </div>
         ) : <p className="rounded-lg border border-dashed border-slate-200 bg-slate-50 p-4 text-center text-xs text-slate-500">Enter the plant size to see the three plans.</p>}
 
-        <div className="space-y-1"><Label className="text-xs">Note on the quote (optional)</Label><Input value={f.notes} onChange={set('notes')} placeholder="e.g. First cleaning within 7 days of signing" className="h-11" /></div>
+        <div className="space-y-1"><Label className="text-xs">Notes on the quote (optional)</Label>
+          <textarea rows={2} value={f.notes} onChange={set('notes')} placeholder="e.g. First cleaning within 7 days of signing" className="w-full rounded-md border border-slate-200 p-2 text-sm outline-none focus:border-emerald-400" data-testid="amc-quote-notes" /></div>
+        <div className="rounded-lg border border-slate-200" data-testid="amc-quote-terms">
+          <button type="button" onClick={() => setTermsOpen((v) => !v)} aria-expanded={termsOpen} className="flex w-full items-center justify-between gap-2 px-3 py-2.5 text-left" data-testid="amc-quote-terms-toggle">
+            <span className="text-sm font-medium text-slate-800">Terms &amp; conditions <span className="font-normal text-slate-500">— {f.terms_text.trim() ? `${f.terms_text.trim().split('\n').filter(Boolean).length} lines, printed on the quote` : 'none'}</span></span>
+            <span className="text-xs font-medium text-emerald-700">{termsOpen ? 'Done' : 'Edit'}</span>
+          </button>
+          {termsOpen && (
+            <div className="space-y-2 border-t border-slate-200 p-3">
+              {terms.templates.length > 0 && (
+                <Select onValueChange={(id) => { const t = terms.templates.find((x) => x.id === id); if (t) setF((x) => ({ ...x, terms_text: t.text })); }}>
+                  <SelectTrigger className="h-10" data-testid="amc-quote-terms-template"><SelectValue placeholder="Use a saved AMC terms template…" /></SelectTrigger>
+                  <SelectContent>{terms.templates.map((t) => <SelectItem key={t.id} value={t.id}>{t.title}{t.is_active ? ' (active)' : ''}</SelectItem>)}</SelectContent>
+                </Select>
+              )}
+              <textarea rows={8} value={f.terms_text} onChange={set('terms_text')} className="w-full rounded-md border border-slate-200 p-2 font-mono text-xs leading-relaxed outline-none focus:border-emerald-400" data-testid="amc-quote-terms-text" />
+              <div className="flex justify-between text-[11px] text-slate-500"><span>One term per line. Change it just for this quote, or save templates in Terms &amp; conditions (type AMC).</span>
+                <button type="button" onClick={() => setF((x) => ({ ...x, terms_text: terms.default_text }))} className="shrink-0 font-medium text-slate-600 hover:text-slate-900">Reset</button></div>
+            </div>
+          )}
+        </div>
         <div className="flex justify-end gap-2">
           <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
           <Button onClick={save} disabled={!ready || saving} className="bg-emerald-600 text-white hover:bg-emerald-700" data-testid="amc-quote-save">{saving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Save quote'}</Button>

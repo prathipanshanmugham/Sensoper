@@ -66,7 +66,9 @@ SECTIONS: List[Dict[str, Any]] = [
               manager=(V, C, E, D)),
         _page("module_direct_sales", "Direct sales", "Counter and B2B sales with GST invoices.", staff=(V, C), manager=(V, C, E, X)),
         _page("module_ecommerce", "Online orders", "Marketplace products and orders.", manager=(V, C, E, D, X)),
-        _page("module_amc", "AMC & service", "Maintenance contracts, visits and support tickets.", manager=(V, C, E, X)),
+        _page("module_amc", "AMC & service", "Maintenance contracts, visits, offers and quotes.", manager=(V, C, E, X)),
+        _page("module_support", "Customer support", "Problems and requests from any Sensoper customer — tickets, SLA and ratings. Never shown to partners.",
+              manager=(V, C, E, X)),
     ]},
     {"id": "stock", "label": "Stock & purchase", "pages": [
         _page("module_inventory", "Inventory", "Everything in the store.", manager=(V, C, E, X)),
@@ -139,10 +141,17 @@ def default_permissions(role: str) -> Dict[str, Any]:
     return out
 
 
+# A page split out of another later starts with what the role had on the old page (never wider than before).
+INHERIT = {"module_support": "module_amc"}
+
+
 def merge_with_defaults(role: str, stored: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     """Stored values win; anything missing (a page added later) comes from the defaults. Locked/always pages are forced."""
     base = default_permissions(role)
-    stored = stored or {}
+    stored = dict(stored or {})
+    for new_key, old_key in INHERIT.items():
+        if new_key not in stored and isinstance(stored.get(old_key), dict):
+            stored[new_key] = dict(stored[old_key])
     out = dict(base)
     for k, v in stored.items():
         if k in PAGES and isinstance(v, dict):
@@ -433,6 +442,7 @@ rule("DELETE", "/api/ecommerce/orders/*", page("module_ecommerce", D, grant=Fals
 rule("DELETE", "/api/ecommerce/platforms/*", page("module_ecommerce", D, grant=False))
 rule("*", "/api/ecommerce*", page("module_ecommerce"))
 rule("PUT", "/api/amc/settings", page("module_amc", E, grant=False))           # admin only (code checks)
+rule("DELETE", "/api/amc/contracts/{contract_id}", page("module_amc", D, grant=False))   # Sensoper admins only (code checks)
 rule("POST,PUT,DELETE", "/api/amc/jv/partners*", page("module_amc", E, grant=False))
 rule("POST", "/api/amc/quotes/preview", page("module_amc", V))
 rule("POST", "/api/amc/offers/{source_type}/{source_id}", page("module_amc", E))
@@ -440,9 +450,9 @@ rule("POST", "/api/amc/contracts/{contract_id}/visits", page("module_amc", C))
 rule("POST", "/api/amc/contracts/{contract_id}/*", page("module_amc", E))
 rule("POST", "/api/amc/outbox/*", page("module_amc", E))
 rule("*", "/api/amc*", page("module_amc"))
-rule("POST", "/api/support/tickets", page("module_amc", C))
-rule("POST", "/api/support/tickets/*", page("module_amc", E))
-rule("*", "/api/support*", page("module_amc"))
+rule("POST", "/api/support/tickets", page("module_support", C))
+rule("POST", "/api/support/tickets/*", page("module_support", E))
+rule("*", "/api/support*", page("module_support"))
 
 rule("GET", "/api/inventory/export", page("module_inventory", X))
 rule("POST", "/api/inventory/import*", page("module_inventory", C))
@@ -581,7 +591,7 @@ for _m, _p in [
     ("POST", "/api/amc/contracts/{contract_id}/renew"), ("POST", "/api/amc/contracts/{contract_id}/cancel"),
     ("POST", "/api/amc/contracts/{contract_id}/visits"), ("POST", "/api/amc/contracts/{contract_id}/schedule"),
     ("PUT", "/api/amc/visits/{visit_id}/complete"), ("GET", "/api/amc/visits"), ("GET", "/api/amc/schedule"), ("GET", "/api/amc/dashboard"),
-    ("*", "/api/amc/jv/*"), ("*", "/api/amc/quotes*"), ("*", "/api/amc/offers*"), ("GET", "/api/amc/settings"), ("GET", "/api/amc/report"),
+    ("*", "/api/amc/jv/*"), ("*", "/api/amc/quotes*"), ("*", "/api/amc/offers*"), ("GET", "/api/amc/settings"), ("GET", "/api/amc/report"), ("GET", "/api/amc/brand"),
 ]:
     _allow(_m, _p)
 

@@ -41,8 +41,9 @@ function coBrandHeader(doc, ctx, { partner, partnerLogo, subtitle }) {
   doc.setFont(FONT, 'normal'); doc.setFontSize(7.5); doc.setTextColor(...MUTED);
   const lines = partner
     ? ['AMC joint venture', partner.name, partner.phone, partner.email].filter(Boolean)
-    : [cp.phone, cp.email, cp.website, cp.gst_number ? `GSTIN ${cp.gst_number}` : null].filter(Boolean);
-  lines.forEach((t, i) => doc.text(t, W - m, 11 + i * 4.2, { align: 'right' }));
+    : [cp.address ? doc.splitTextToSize(String(cp.address).replace(/\s+/g, ' '), 70)[0] : null, [cp.phone, cp.email].filter(Boolean).join(' · '), cp.website,
+       cp.gst_number ? `GSTIN ${cp.gst_number}` : null].filter(Boolean);
+  lines.forEach((t, i) => doc.text(t, W - m, 9.5 + i * 4.2, { align: 'right' }));
   doc.setDrawColor(...p); doc.setLineWidth(1.2); doc.line(m, 33, W - m, 33);
   if (subtitle) { doc.setFont(FONT, 'bold'); doc.setFontSize(7); doc.setTextColor(...MUTED); doc.text(subtitle.toUpperCase(), m, 38.5); }
 }
@@ -56,8 +57,11 @@ const BENEFITS = [
   ['No running around', 'One call — we plan the visits, send the technician and handle the paperwork.'],
 ];
 
-/** Our logo for the PDF: the company logo, else the app's own logo file. */
-async function withOurLogo(ctx) {
+/** The letterhead logo. `brand` comes from /api/amc/brand (the company chosen in AMC settings): when a company is
+ *  chosen, only its own logo is used (a text header if it has none); otherwise the main company's, else the app logo. */
+async function withOurLogo(ctx, brand) {
+  if (brand?.chosen) { ctx.logo = brand.logo_base64 || null; return; }
+  if (brand?.logo_base64) { ctx.logo = brand.logo_base64; return; }
   if (ctx.logo) return;
   try {
     const r = await fetch(`${process.env.PUBLIC_URL || ''}/logo.png`);
@@ -69,7 +73,7 @@ async function withOurLogo(ctx) {
 
 export async function generateAmcQuotePDF({ quote, companyProfile, partner, partnerLogo }) {
   const { doc, ctx } = await createBrandDoc(companyProfile || {}, API_URL);
-  await withOurLogo(ctx);
+  await withOurLogo(ctx, companyProfile);
   const { FONT, W, m, contentW, p } = ctx;
   const calc = quote.calc || {};
   const plans = calc.plans || [];
@@ -93,7 +97,8 @@ export async function generateAmcQuotePDF({ quote, companyProfile, partner, part
     if (extra) { doc.setFont(FONT, 'normal'); doc.setFontSize(8); doc.setTextColor(...MUTED); doc.text(doc.splitTextToSize(extra, 82).slice(0, 2), x, y + 17); }
   };
   col(m + 4, 'Prepared for', quote.customer_name, [quote.phone, quote.site_address || quote.district].filter(Boolean).join(' · '));
-  col(m + contentW / 2 + 2, 'Your solar plant', `${quote.system_capacity_kw} kW ${(quote.system_type || '').replace('-', ' ')}`,
+  const sysName = quote.system_type === 'others' ? (quote.system_type_other || 'system') : (quote.system_type || '').replace('-', ' ');
+  col(m + contentW / 2 + 2, 'Your solar plant', `${quote.system_capacity_kw} kW ${sysName}`,
     quote.commissioning_date ? `Running since ${fmtDate(quote.commissioning_date)}${age != null ? ` (${age.toFixed(1)} years)` : ''}` : null);
   y += 31;
 
@@ -173,7 +178,24 @@ export async function generateAmcQuotePDF({ quote, companyProfile, partner, part
   plans.forEach((pl, i) => { const x = m + 4 + i * 34; doc.rect(x, y + 11, 3.5, 3.5); doc.text(pl.name, x + 5.5, y + 14); });
   doc.line(W - m - 70, y + 20, W - m - 4, y + 20);
   doc.setFontSize(7.5); doc.setTextColor(...MUTED); doc.text('Customer signature & date', W - m - 70, y + 24);
-  if (quote.notes) { y += 32; y = paragraph(doc, ctx, y, `Notes: ${quote.notes}`, { size: 8.5 }); }
+  y += 32;
+  if (quote.notes) { y = paragraph(doc, ctx, y, `Notes: ${quote.notes}`, { size: 8.5 }); y += 2; }
+
+  // terms & conditions (from the quote — edited in the quote builder, default = the active AMC terms template)
+  const termLines = String(quote.terms_text || '').split('\n').map((t) => t.trim());
+  if (termLines.some(Boolean)) {
+    if (y > 245) { doc.addPage(); coBrandHeader(doc, ctx, { partner, partnerLogo, subtitle: sub }); y = 46; }
+    doc.setFont(FONT, 'bold'); doc.setFontSize(10.5); doc.setTextColor(...INK); doc.text('Terms & conditions', m, y);
+    doc.setFillColor(...p); doc.rect(m, y + 1.8, 12, 1, 'F');
+    y += 6;
+    doc.setFont(FONT, 'normal'); doc.setFontSize(7.8); doc.setTextColor(...MUTED);
+    termLines.forEach((t) => {
+      if (!t) { y += 1.5; return; }
+      const lines = doc.splitTextToSize(t, contentW);
+      if (y + lines.length * 3.6 > ctx.H - 18) { doc.addPage(); coBrandHeader(doc, ctx, { partner, partnerLogo, subtitle: sub }); y = 46; doc.setFont(FONT, 'normal'); doc.setFontSize(7.8); doc.setTextColor(...MUTED); }
+      doc.text(lines, m, y); y += lines.length * 3.6 + 0.8;
+    });
+  }
 
   const footer = partner ? `${companyProfile?.company_name || 'Sensoper Controls & Renewables'} × ${partner.name} — AMC joint venture` : (companyProfile?.company_name || 'Sensoper Controls & Renewables');
   drawFooters(doc, ctx, footer, 'Prices in ₹. GST as shown.', quote.quote_number);
@@ -181,9 +203,9 @@ export async function generateAmcQuotePDF({ quote, companyProfile, partner, part
 }
 
 /** Short text for WhatsApp / SMS. */
-export function amcQuoteMessage(quote, partner) {
+export function amcQuoteMessage(quote, partner, brandName = 'Sensoper Controls & Renewables') {
   const plans = quote.calc?.plans || [];
-  const who = partner ? `Sensoper × ${partner.name}` : 'Sensoper Controls & Renewables';
+  const who = partner ? `${brandName} × ${partner.name}` : brandName;
   return [`Dear ${quote.customer_name},`, `Your ${quote.system_capacity_kw} kW solar plant is due for regular maintenance. Our AMC plans (per year, incl. GST):`,
     ...plans.map((p) => `• ${p.name}: ${inr(p.total)} — ${p.visits_per_year} visits, protects about ${inr(p.value_protected)} of power a year`),
     `Quote ${quote.quote_number}, valid until ${fmtDate(quote.valid_until)}. Reply to choose a plan. — ${who}`].join('\n');
@@ -200,7 +222,7 @@ const monthLabel = (k) => new Date(`${k}-01T00:00:00`).toLocaleDateString('en-IN
 
 export async function amcReportPDF(rep, { companyProfile, partner, partnerLogo, hideMoney }) {
   const { doc, ctx } = await createBrandDoc(companyProfile || {}, API_URL);
-  await withOurLogo(ctx);
+  await withOurLogo(ctx, companyProfile);
   const { FONT, m, contentW } = ctx;
   const sub = 'AMC report';
   coBrandHeader(doc, ctx, { partner, partnerLogo, subtitle: sub });
@@ -239,7 +261,7 @@ export async function amcReportPDF(rep, { companyProfile, partner, partnerLogo, 
     rep.contracts.map((r) => [r.contract_number, r.company, r.customer, r.kw, r.plan || '—', r.start_date, r.end_date, r.status, ...(hideMoney ? [] : [inr(r.yearly_value)])]));
   table('Service visits', ['Date', 'Contract', 'Customer', 'Type', 'Technician', 'Status'], rep.visits.map((v) => [v.date, v.contract_number, v.customer, v.type, v.technician || '—', v.status]));
   table('Quotes', ['Quote', 'Customer', 'Company', 'kW', 'Status', 'Plan', 'Date'], rep.quotes.map((q) => [q.number, q.customer, q.company, q.kw, q.status, q.plan || '—', q.date]));
-  drawFooters(doc, ctx, partner ? `Sensoper × ${partner.name} — AMC joint venture` : (companyProfile?.company_name || 'Sensoper Controls & Renewables'), null, 'AMC report');
+  drawFooters(doc, ctx, partner ? `${companyProfile?.company_name || 'Sensoper'} × ${partner.name} — AMC joint venture` : (companyProfile?.company_name || 'Sensoper Controls & Renewables'), null, 'AMC report');
   doc.save(`AMC_report_${rep.org_label.replace(/[^\w]+/g, '_')}_${rep.period.start}_${rep.period.end}.pdf`);
 }
 

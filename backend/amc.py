@@ -33,7 +33,8 @@ class AMCContractCreate(BaseModel):
     location_id: Optional[str] = None
     org_id: Optional[str] = None      # joint-venture partner company (None = Sensoper)
     jv_project_id: Optional[str] = None
-    system_type: str  # on-grid | off-grid | hybrid | solar-pump
+    system_type: str  # on-grid | off-grid | hybrid | solar-pump | others
+    system_type_other: Optional[str] = None   # what it is when the type is "others"
     system_capacity_kw: float = 0
     pump_hp: Optional[float] = None
     commissioning_date: Optional[str] = None
@@ -49,6 +50,10 @@ class AMCContractCreate(BaseModel):
     exclusions: List[str] = []
     response_time_hours: Optional[float] = None
     uptime_guarantee_pct: Optional[float] = None
+    notes: Optional[str] = None
+
+
+SYSTEM_TYPES = {"on-grid", "off-grid", "hybrid", "solar-pump", "others"}
 
 
 def _end_date(start_date: str, duration_months: int) -> str:
@@ -131,6 +136,10 @@ def create_router(db, get_current_user, require_role, create_audit_log, check_mo
                 raise HTTPException(status_code=400, detail="That project belongs to another company")
         if is_partner(user):
             payload.project_id = None                     # partners can't attach contracts to our projects
+        if payload.system_type not in SYSTEM_TYPES:
+            raise HTTPException(status_code=400, detail="Unknown system type")
+        if payload.system_type == "others" and not (payload.system_type_other or "").strip():
+            raise HTTPException(status_code=400, detail="Say what the system is (for example UPS or street lights)")
         now_iso = datetime.now(timezone.utc).isoformat()
         doc = payload.dict()
         seq = await _next_sequence(db, "amc_contract_number")
@@ -211,6 +220,8 @@ def create_router(db, get_current_user, require_role, create_audit_log, check_mo
             payload.pop("org_id", None)                   # only an admin moves a contract between companies
         if is_partner(user):
             payload.pop("project_id", None); payload.pop("location_id", None)
+        if "system_type" in payload and payload["system_type"] not in SYSTEM_TYPES:
+            raise HTTPException(status_code=400, detail="Unknown system type")
         payload["updated_at"] = datetime.now(timezone.utc).isoformat()
         r = await db.amc_contracts.update_one({"_id": ObjectId(contract_id)}, {"$set": payload})
         if r.matched_count == 0:
@@ -264,6 +275,29 @@ def create_router(db, get_current_user, require_role, create_audit_log, check_mo
         }})
         await create_audit_log(user["id"], user["name"], "amc_contract_cancelled", "amc_contract", contract_id)
         return {"message": "Contract cancelled"}
+
+    @router.delete("/amc/contracts/{contract_id}")
+    async def delete_contract(contract_id: str, request: Request, confirm: Optional[str] = None):
+        """Remove a CANCELLED contract for good — Sensoper admins only (never managers or partner logins).
+        `confirm` must be the contract number. Its visits and reminders go too; the audit log keeps a copy."""
+        user = await get_current_user(request)
+        if user.get("role") != "admin":
+            raise HTTPException(status_code=403, detail="Only a Sensoper admin can delete a contract for good")
+        c = await db.amc_contracts.find_one({"_id": ObjectId(contract_id)}) if ObjectId.is_valid(contract_id) else None
+        if not c:
+            raise HTTPException(status_code=404, detail="Contract not found")
+        if c.get("status") != "cancelled":
+            raise HTTPException(status_code=400, detail="Only cancelled contracts can be deleted — cancel it first")
+        if (confirm or "").strip().upper() != str(c.get("contract_number") or "").upper():
+            raise HTTPException(status_code=400, detail=f"Type the contract number ({c.get('contract_number')}) to confirm")
+        visits = await db.amc_service_visits.delete_many({"contract_id": contract_id})
+        await db.notifications.delete_many({"contract_id": contract_id})
+        await db.amc_contracts.update_many({"previous_contract_id": contract_id}, {"$set": {"previous_contract_id": None}})
+        await db.amc_quotes.update_many({"contract_id": contract_id}, {"$set": {"contract_deleted": True}})
+        await db.amc_contracts.delete_one({"_id": c["_id"]})
+        await create_audit_log(user["id"], user["name"], "amc_contract_deleted", "amc_contract", contract_id, _serialize(c), None,
+                               f"Hard-deleted cancelled contract {c.get('contract_number')} ({visits.deleted_count} visits)")
+        return {"ok": True, "deleted": c.get("contract_number"), "visits_deleted": visits.deleted_count}
 
     # ── Service visits ──
     @router.post("/amc/contracts/{contract_id}/visits")
@@ -337,13 +371,14 @@ def create_router(db, get_current_user, require_role, create_audit_log, check_mo
         contracts = await db.amc_contracts.find({**loc_filter, **scope}).to_list(5000)
         active = [c for c in contracts if c.get("status") == "active"]
         capacity_by_type: Dict[str, float] = {}
+        count_by_type: Dict[str, int] = {}
         pump_hp_total = 0.0
         for c in active:
-            st = c.get("system_type", "other")
+            st = c.get("system_type") or "others"
+            count_by_type[st] = count_by_type.get(st, 0) + 1
+            capacity_by_type[st] = capacity_by_type.get(st, 0) + (c.get("system_capacity_kw", 0) or 0)
             if st == "solar-pump":
                 pump_hp_total += c.get("pump_hp", 0) or 0
-            else:
-                capacity_by_type[st] = capacity_by_type.get(st, 0) + (c.get("system_capacity_kw", 0) or 0)
 
         def _monthly_value(c):
             return (c.get("annual_value", 0) or 0) / 12
@@ -385,6 +420,49 @@ def create_router(db, get_current_user, require_role, create_audit_log, check_mo
             covered = sum(1 for c in active if c.get("project_id"))
         penetration_pct = round((covered / commissioned_projects) * 100, 1) if commissioned_projects else 0
 
+        # ── more numbers: size, growth, service, sales ──
+        ids = [str(c["_id"]) for c in contracts]
+        total_kw = sum(c.get("system_capacity_kw", 0) or 0 for c in active)
+        month0, year0 = today.replace(day=1).isoformat(), today.replace(month=1, day=1).isoformat()
+        firsts = [c for c in contracts if not c.get("previous_contract_id")]
+        visits = await db.amc_service_visits.find({"contract_id": {"$in": ids}}, {"status": 1, "actual_date": 1, "scheduled_date": 1}).to_list(20000)
+        done = [v for v in visits if v.get("status") == "completed"]
+        soon30 = (today + timedelta(days=30)).isoformat()
+        plan_mix: Dict[str, int] = {}
+        for c in active:
+            k = c.get("plan_name") or (c.get("contract_type") or "other").replace("-", " ").capitalize()
+            plan_mix[k] = plan_mix.get(k, 0) + 1
+        by_district: Dict[str, Dict[str, float]] = {}
+        for c in active:
+            d = c.get("district") or "Not set"
+            row = by_district.setdefault(d, {"district": d, "contracts": 0, "kw": 0.0})
+            row["contracts"] += 1
+            row["kw"] += c.get("system_capacity_kw", 0) or 0
+        months = []
+        y, m = today.year, today.month
+        for _ in range(12):
+            months.append(f"{y:04d}-{m:02d}")
+            y, m = (y - 1, 12) if m == 1 else (y, m - 1)
+        months.reverse()
+        monthly = {k: {"month": k, "new": 0, "renewals": 0, "value": 0.0, "visits": 0} for k in months}
+        for c in contracts:
+            k = str(c.get("start_date") or "")[:7]
+            if k in monthly:
+                monthly[k]["renewals" if c.get("previous_contract_id") else "new"] += 1
+                monthly[k]["value"] += c.get("annual_value", 0) or 0
+        for v in done:
+            k = str(v.get("actual_date") or "")[:7]
+            if k in monthly:
+                monthly[k]["visits"] += 1
+        year_ago = (today - timedelta(days=365)).isoformat()
+        quotes = await db.amc_quotes.find(scope, {"status": 1, "calc": 1, "recommended_plan": 1, "created_at": 1}).to_list(5000)
+        open_q = [q for q in quotes if q.get("status") in ("draft", "sent")]
+        rec_total = lambda q: next((p.get("total", 0) for p in (q.get("calc") or {}).get("plans", []) if p.get("key") == q.get("recommended_plan")), 0)  # noqa: E731
+        q12 = [q for q in quotes if str(q.get("created_at") or "") >= year_ago]
+        won12 = sum(1 for q in q12 if q.get("status") == "accepted")
+        tickets_open = 0 if is_partner(user) else await db.support_tickets.count_documents({
+            "amc_contract_id": {"$in": ids}, "status": {"$in": ["open", "assigned", "in_progress", "pending_customer", "reopened"]}})
+
         return {
             "capacity_by_type": capacity_by_type, "pump_hp_total": round(pump_hp_total, 1),
             "active_contracts": len(active), "arr": round(arr, 2), "mrr": round(mrr, 2),
@@ -393,7 +471,25 @@ def create_router(db, get_current_user, require_role, create_audit_log, check_mo
             "total_collected": round(total_collected, 2), "outstanding": round(outstanding, 2),
             "visits_due": visits_due, "overdue_visits": overdue_visits,
             "penetration_pct": penetration_pct, "commissioned_projects": commissioned_projects,
-            "capacity_kw": round(sum(capacity_by_type.values()), 1), "org": org or OURS,
+            "capacity_kw": round(total_kw, 1), "org": org or OURS,
+            "total_kw": round(total_kw, 1), "count_by_type": count_by_type,
+            "avg_kw_per_contract": round(total_kw / len(active), 1) if active else 0,
+            "value_per_kw": round(arr / total_kw) if total_kw else 0,
+            "avg_contract_value": round(arr / len(active)) if active else 0,
+            "contracts_total": len(contracts), "renewed": renewed,
+            "cancelled": sum(1 for c in contracts if c.get("status") == "cancelled"),
+            "new_this_month": sum(1 for c in firsts if str(c.get("start_date") or "") >= month0),
+            "new_this_year": sum(1 for c in firsts if str(c.get("start_date") or "") >= year0),
+            "visits_done_month": sum(1 for v in done if str(v.get("actual_date") or "") >= month0),
+            "visits_done_year": sum(1 for v in done if str(v.get("actual_date") or "") >= year0),
+            "visits_next_30": sum(1 for v in visits if v.get("status") == "scheduled" and today.isoformat() <= str(v.get("scheduled_date") or "") <= soon30),
+            "collection_pct": round(total_collected / total_billed * 100, 1) if total_billed else 0,
+            "plan_mix": plan_mix,
+            "top_districts": sorted(({**r, "kw": round(r["kw"], 1)} for r in by_district.values()), key=lambda r: (-r["kw"], -r["contracts"]))[:6],
+            "monthly": [{**r, "value": round(r["value"])} for r in monthly.values()],
+            "quotes_open": len(open_q), "quotes_open_value": round(sum(rec_total(q) for q in open_q)),
+            "quotes_12m": len(q12), "quotes_won_12m": won12, "quote_win_pct": round(won12 / len(q12) * 100, 1) if q12 else 0,
+            "tickets_open": tickets_open,
         }
 
     @router.get("/amc/recurring-revenue-report")

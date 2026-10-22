@@ -2,14 +2,14 @@
 import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { BellRing, CalendarClock, Check, Clock3, Download, FileSignature, Loader2, MessageCircle, Pencil, Plus, Send, ShieldCheck, Trash2, X } from 'lucide-react';
-import { amcAPI, companyAPI } from '../../utils/api';
+import { amcAPI } from '../../utils/api';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '../ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 import PhotoStrip from '../PhotoStrip';
-import { ALL, OURS, OrgChip, imageDataUrl, inr, logoUrl } from './jv';
+import { ALL, OURS, OrgChip, SYSTEM_TYPE_OPTIONS, imageDataUrl, inr, logoUrl, systemLabel } from './jv';
 import { PlanCards } from './QuoteBuilder';
 import { amcQuoteMessage, generateAmcQuotePDF } from '../../utils/amcPdf';
 
@@ -48,7 +48,7 @@ export function OffersTab({ jv, org, canEdit, onQuote, reloadKey }) {
                 <div className="min-w-0 flex-1">
                   <p className="flex flex-wrap items-center gap-2 font-medium text-slate-900">{o.customer_name}<OrgChip jv={jv} orgId={o.org_id} />
                     <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${o.state === 'due' ? 'bg-amber-100 text-amber-900' : 'bg-slate-100 text-slate-600'}`}>{o.state === 'due' ? (o.days_overdue > 0 ? `Due ${o.days_overdue} days ago` : 'Due today') : `Due ${fmt(o.due_on)}`}</span></p>
-                  <p className="text-xs text-slate-500">{o.system_capacity_kw} kW {o.system_type} · running since {fmt(o.commissioned_on)} ({o.years} years){o.district ? ` · ${o.district}` : ''}{o.reference_number ? ` · ${o.reference_number}` : ''}</p>
+                  <p className="text-xs text-slate-500">{o.system_capacity_kw} kW {systemLabel(o)} · running since {fmt(o.commissioned_on)} ({o.years} years){o.district ? ` · ${o.district}` : ''}{o.reference_number ? ` · ${o.reference_number}` : ''}</p>
                   {o.quote && <p className="mt-1 text-xs text-emerald-800">Quote {o.quote.number} · {STATUS_LABEL[o.quote.status] || o.quote.status}</p>}
                 </div>
                 <div className="flex flex-wrap gap-1.5">
@@ -79,14 +79,14 @@ export function QuotesTab({ jv, org, canEdit, reloadKey, onChanged }) {
     setBusy(`pdf-${q.id}`);
     try {
       let cp = { company_name: jv?.ours?.name };
-      if (!jv?.is_partner) { try { cp = (await companyAPI.getActive()).data || cp; } catch { /* name only */ } }
+      try { cp = (await amcAPI.brand()).data || cp; } catch { /* name only */ }   // the company chosen in AMC settings
       const partner = partnerOf(q);
       const partnerLogo = partner?.logo_path ? await imageDataUrl(logoUrl(partner.logo_path)) : null;
       await generateAmcQuotePDF({ quote: q, companyProfile: cp, partner, partnerLogo });
     } catch (e) { console.error(e); toast.error('Could not make the PDF'); } finally { setBusy(''); }
   };
   const share = (q) => {
-    const text = amcQuoteMessage(q, partnerOf(q));
+    const text = amcQuoteMessage(q, partnerOf(q), jv?.ours?.name);
     const phone = String(q.phone || '').replace(/\D/g, '');
     window.open(`https://wa.me/${phone.length === 10 ? `91${phone}` : phone}?text=${encodeURIComponent(text)}`, '_blank', 'noopener');
   };
@@ -140,8 +140,7 @@ export function QuotesTab({ jv, org, canEdit, reloadKey, onChanged }) {
 }
 
 // ───────────────────────── Partner projects ─────────────────────────
-const TYPES = [['on-grid', 'On-grid'], ['hybrid', 'Hybrid'], ['off-grid', 'Off-grid'], ['solar-pump', 'Solar pump']];
-const blankProject = { org_id: '', customer_name: '', phone: '', site_address: '', district: '', state: '', pincode: '', system_type: 'on-grid', system_capacity_kw: '', commissioning_date: '', tariff: '', notes: '', photos: [] };
+const blankProject = { org_id: '', customer_name: '', phone: '', site_address: '', district: '', state: '', pincode: '', system_type: 'on-grid', system_type_other: '', system_capacity_kw: '', commissioning_date: '', tariff: '', notes: '', photos: [] };
 
 export function JvProjectsTab({ jv, org, canEdit, reloadKey, onChanged }) {
   const [rows, setRows] = useState(null);
@@ -153,7 +152,7 @@ export function JvProjectsTab({ jv, org, canEdit, reloadKey, onChanged }) {
   const save = async () => {
     setSaving(true);
     try {
-      const body = { ...form, system_capacity_kw: parseFloat(form.system_capacity_kw) || 0, tariff: parseFloat(form.tariff) || null, commissioning_date: form.commissioning_date || null, org_id: jv?.is_partner ? null : form.org_id };
+      const body = { ...form, system_type_other: form.system_type === 'others' ? (form.system_type_other || '').trim() : null, system_capacity_kw: parseFloat(form.system_capacity_kw) || 0, tariff: parseFloat(form.tariff) || null, commissioning_date: form.commissioning_date || null, org_id: jv?.is_partner ? null : form.org_id };
       if (form.id) await amcAPI.updateJvProject(form.id, body); else await amcAPI.createJvProject(body);
       toast.success('Saved'); setForm(null); load(); onChanged?.();
     } catch (e) { toast.error(e.response?.data?.detail?.[0]?.msg || e.response?.data?.detail || 'Could not save'); } finally { setSaving(false); }
@@ -181,7 +180,7 @@ export function JvProjectsTab({ jv, org, canEdit, reloadKey, onChanged }) {
               {p.photos?.[0] ? <img src={logoUrl(p.photos[0])} alt="" className="h-16 w-16 shrink-0 rounded-lg object-cover" /> : <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-lg bg-violet-50 text-violet-400"><ShieldCheck className="h-6 w-6" /></div>}
               <div className="min-w-0 flex-1">
                 <p className="flex flex-wrap items-center gap-1.5 font-medium text-slate-900">{p.customer_name}<OrgChip jv={jv} orgId={p.org_id} />{p.has_active_amc && <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-800">AMC active</span>}</p>
-                <p className="text-xs text-slate-500">{p.system_capacity_kw} kW {p.system_type}{p.commissioning_date ? ` · since ${fmt(p.commissioning_date)}` : ''}{p.district ? ` · ${p.district}` : ''}</p>
+                <p className="text-xs text-slate-500">{p.system_capacity_kw} kW {systemLabel(p)}{p.commissioning_date ? ` · since ${fmt(p.commissioning_date)}` : ''}{p.district ? ` · ${p.district}` : ''}</p>
                 {canEdit && (
                   <div className="mt-2 flex flex-wrap gap-1.5">
                     {!p.has_active_amc && <Button size="sm" variant="outline" className="h-8 gap-1 text-xs" onClick={() => contract(p)} data-testid={`amc-jv-contract-${p.id}`}><CalendarClock className="h-3.5 w-3.5" />Start AMC</Button>}
@@ -208,11 +207,12 @@ export function JvProjectsTab({ jv, org, canEdit, reloadKey, onChanged }) {
               <div className="space-y-1"><Label className="text-xs">District</Label><Input value={form.district || ''} onChange={set('district')} className="h-11" /></div>
               <div className="col-span-2 space-y-1"><Label className="text-xs">Site address</Label><Input value={form.site_address || ''} onChange={set('site_address')} className="h-11" /></div>
               <div className="space-y-1"><Label className="text-xs">Plant size (kW) *</Label><Input type="number" inputMode="decimal" min="0" step="0.5" value={form.system_capacity_kw} onChange={set('system_capacity_kw')} className="h-11" data-testid="amc-jv-kw" /></div>
-              <div className="space-y-1"><Label className="text-xs">Type</Label><Select value={form.system_type} onValueChange={set('system_type')}><SelectTrigger className="h-11"><SelectValue /></SelectTrigger><SelectContent>{TYPES.map(([v, l]) => <SelectItem key={v} value={v}>{l}</SelectItem>)}</SelectContent></Select></div>
+              <div className="space-y-1"><Label className="text-xs">Type</Label><Select value={form.system_type} onValueChange={set('system_type')}><SelectTrigger className="h-11" data-testid="amc-jv-type"><SelectValue /></SelectTrigger><SelectContent>{SYSTEM_TYPE_OPTIONS.map(([v, l]) => <SelectItem key={v} value={v}>{l}</SelectItem>)}</SelectContent></Select></div>
+              {form.system_type === 'others' && <div className="col-span-2 space-y-1"><Label className="text-xs">What system is it? *</Label><Input value={form.system_type_other || ''} onChange={set('system_type_other')} placeholder="e.g. UPS, street lights, EV charger" className="h-11" data-testid="amc-jv-type-other" /></div>}
               <div className="space-y-1"><Label className="text-xs">Running since</Label><Input type="date" max={new Date().toISOString().slice(0, 10)} value={form.commissioning_date || ''} onChange={set('commissioning_date')} className="h-11" data-testid="amc-jv-date" /></div>
               <div className="space-y-1"><Label className="text-xs">Tariff (₹/unit)</Label><Input type="number" inputMode="decimal" value={form.tariff ?? ''} onChange={set('tariff')} placeholder="8" className="h-11" /></div>
               <div className="col-span-2"><PhotoStrip value={form.photos || []} onChange={(photos) => setForm((f) => ({ ...f, photos }))} max={6} testid="amc-jv-photos" label="Photos of the plant" /></div>
-              <div className="col-span-2 space-y-1"><Label className="text-xs">Notes</Label><Input value={form.notes || ''} onChange={set('notes')} className="h-11" /></div>
+              <div className="col-span-2 space-y-1"><Label className="text-xs">Notes</Label><textarea rows={2} value={form.notes || ''} onChange={set('notes')} className="w-full rounded-md border border-slate-200 p-2 text-sm outline-none focus:border-emerald-400" data-testid="amc-jv-notes" /></div>
             </div>
           )}
           <DialogFooter><Button variant="outline" onClick={() => setForm(null)}>Cancel</Button><Button onClick={save} disabled={saving || !form?.customer_name || !(parseFloat(form?.system_capacity_kw) > 0) || (!jv?.is_partner && !form?.org_id)} className="bg-violet-600 text-white hover:bg-violet-700" data-testid="amc-jv-save">{saving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Save'}</Button></DialogFooter>
