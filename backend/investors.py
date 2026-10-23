@@ -210,7 +210,7 @@ async def business_snapshot(db, months: int = 12, today: Optional[date] = None) 
             "credit_outstanding": round(sum(_f(c.get("balance")) for c in credits))}
 
     # ── service income ──
-    contracts = await db.amc_contracts.find({"org_id": {"$in": [None, ""]}}, {"status": 1, "annual_value": 1, "end_date": 1}).to_list(20000)  # ours only, never JV partner work
+    contracts = await db.amc_contracts.find({}, {"status": 1, "annual_value": 1, "end_date": 1}).to_list(20000)
     active = [c for c in contracts if c.get("status") == "active"]
     soon = (today + timedelta(days=60)).isoformat()
     amc = {"active_contracts": len(active), "yearly_income": round(sum(_f(c.get("annual_value")) for c in active)),

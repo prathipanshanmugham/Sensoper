@@ -13,7 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 const inr = (v) => (v == null ? '—' : `₹${Math.round(v).toLocaleString('en-IN')}`);
 
 /** Iter 53 — AMC operations: follow-up pipeline, scheduled-visit calendar, pincode batching, customer outbox. */
-export function AmcOpsPanel({ canManage, canComplete = canManage, partnerMode = false }) {
+export function AmcOpsPanel({ canManage, canComplete = canManage }) {
   const [followUps, setFollowUps] = useState([]);
   const [schedule, setSchedule] = useState([]);
   const [batching, setBatching] = useState(null);
@@ -25,15 +25,11 @@ export function AmcOpsPanel({ canManage, canComplete = canManage, partnerMode = 
 
   const load = useCallback(async () => {
     try {
-      if (partnerMode) {           // joint-venture view: the shared visit calendar only
-        setSchedule((await amcAPI.schedule()).data || []);
-        return;
-      }
       const [f, s, b, o] = await Promise.all([amcAPI.followUps(), amcAPI.schedule(), canManage ? amcAPI.batching(days) : Promise.resolve({ data: null }), amcAPI.outbox(true)]);
       setFollowUps(f.data.rows || []); setSchedule(s.data || []); setBatching(b.data); setOutbox(o.data.rows || []);
       if (canManage) usersAPI.getAll().then(r => setTechs(r.data || [])).catch(() => {});
     } catch (e) { console.warn('amc ops load failed', e); }
-  }, [canManage, days, partnerMode]);
+  }, [canManage, days]);
   useEffect(() => { load(); }, [load]);
 
   const scheduleVisit = async () => {
@@ -64,7 +60,6 @@ export function AmcOpsPanel({ canManage, canComplete = canManage, partnerMode = 
       </CardContent>
     </Card>
   );
-  if (partnerMode) return <div className="space-y-4" data-testid="amc-ops-panel">{scheduleCard}</div>;
 
   return (
     <div className="space-y-4" data-testid="amc-ops-panel">

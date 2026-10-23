@@ -1,5 +1,76 @@
 # Sensoper — change log
 
+## October 2026 · Sensoper only (no joint venture), Brands, better vendors & 3-quote buying, org chart, event calendar, HR, loans
+
+### Joint venture removed — Sensoper only
+- There are no partner companies, partner logins or JV projects any more. AMC offers, quotes, contracts, the AMC report
+  and every other page are Sensoper only.
+- **On the first start after this update, all joint-venture data is deleted for good** (partner contracts and their
+  visits, partner quotes, JV projects, partner companies and partner logins). This runs once and is kept in the audit log.
+
+### Brands (Stock & purchase → Brands)
+- One list for **our own brands** and the brands we hold a **dealership** or **distribution** for: logo, company,
+  agreement dates, territory, sales target, contact.
+- **Trademarks** per brand: mark, classes, application number, status (filed → registered, objected, opposed…), renewal
+  date (10 years from filing when registered), next action. Bell reminders before renewals (180 / 60 / 15 days),
+  next actions, and dealership agreements ending (60 / 15 days).
+- Link stock items to a brand (also from Stock → item → Brand). *Find items named …* suggests matches.
+- **Brand report**: sales by brand (counter, online, projects), share, progress against target, bought, stock value,
+  margin, returns, month-by-month chart per brand; Excel download.
+
+### Vendors — dropdowns only, ratings, tags
+- No checkboxes on the page: search, category, tag and sort are always there; *More filters* adds state, district,
+  rating, preferred/blocked and status (all dropdowns).
+- **Ratings** after each order: quality, delivery, price, service (1–5 stars) with a comment; the average shows on the card.
+- **Tags** (e.g. *panels*, *GST-registered*, *fast delivery*), **Preferred** and **Blocked** (a reason is required;
+  blocked vendors can't be asked for quotes). Credit days, lead time and minimum order value.
+- Vendor **scorecard**: spend, orders, on-time delivery, QC pass rate, quotes won, lead time; order history and the
+  price history of each item from that vendor.
+
+### Buying: 3 quotes, then choose one
+- Purchases now opens on **Purchase requests**: say what is needed and by when → add quotes from vendors → compare side
+  by side (landed cost with freight, delivery days, credit, rating; cheapest and recommended are marked) → **Choose**.
+  Choosing makes the purchase order, which then goes through approval as before.
+- **Rule: 3 quotes** before choosing (Rules button: number of quotes, a below-amount limit that needs no quotes, the
+  rating below which a vendor isn't recommended). Picking a vendor that isn't the cheapest needs a reason. Savings vs the
+  average and the highest quote are tracked.
+- **PO without quotes** is now admins only and needs a reason; the PO shows *No quotes: reason*. POs made from a request
+  show *From PR-…*. New permission option *Choose the vendor quote* (Purchases).
+
+### Org chart (Organisation → Org chart)
+- A diagram of who reports to whom, from HR → People. Where nobody has set it, the line is a guess and drawn dashed.
+  Tap a person to set their designation and who they report to. Zoom, open/close teams; big teams stack in a column.
+
+### Event calendar (Daily work → Event calendar)
+- Month view with company events (meetings, holidays, training) — for everyone or chosen people, one-off or repeating
+  weekly / monthly / yearly, with a bell reminder.
+- The same calendar shows dated work from the pages you can open: AMC visits, installations and crews, purchase needs and
+  deliveries, HR (interviews, cover, last working days), loan EMIs, trademark and agreement dates. Filter by source.
+
+### HR (People & field → HR)
+- **People**: designation, department, reports-to, joining date, employee code, usual shift.
+- **Hiring**: openings, candidates through applied → screening → interview → offer → hired / rejected; interview times
+  with a bell reminder to the interviewer; hiring can create the login.
+- **Cover for absent staff**: who is away, who covers, the dates and a hand-over note. The cover person gets a bell note;
+  everyone sees their own covers.
+- **Exits & notice period**: resignation, termination, end of contract, retirement. The last working day comes from the
+  notice period (Settings: 30 days by default; can be waived), with an exit checklist and the company assets the person
+  still holds. **The login stops working after the last working day.** Admins only by default (option *Handle resignations and terminations*).
+- **Shifts**: define shifts, set each person's usual shift, plan the week (copy to next week), see late / missing
+  check-ins and covers in the roster. On phones the roster shows one day at a time.
+
+### Loans (Finance & insights → Loans)
+- Each loan: lender, type (term, working capital, OD / CC, vehicle, equipment…), amount, rate, tenure, EMI (worked out,
+  or entered), papers.
+- Payments: EMI, prepayment, interest only, charges, OD / CC repayment and drawdown — each split into interest and
+  principal. Still owed, interest paid this financial year, interest still to come, the EMI schedule, the next 12 months
+  chart and what is owed to each lender. Missed EMIs are flagged; bell reminders 3 days before each EMI.
+- **Admins only by default** (permission *Loans*). The money menu group is now called **Finance & insights**.
+
+### Other
+- The bell now works for everyone: people without the Alerts page still get their own notes (covers, events, interviews).
+- Stock items have a **Brand**. Document upload (PDF, images, Word, up to 10 MB) for loan papers, trademark and brand files.
+
 ## October 2026 · AMC metrics, quote terms, system types & notes, contract delete, Customer support page, AMC company
 
 ### AMC overview — more numbers

@@ -19,6 +19,7 @@ ALIAS = {
     "site-visits": "projects", "deletion-requests": "projects", "adhoc-lines": "projects", "project-payments": "projects",
     "purchase-orders": "purchases", "purchase-inbound": "purchases", "grn": "purchases",
     "approvals": "approvals",
+    "purchase-requests": "purchases", "procurement": "purchases",
 }
 SKIP_PATHS = ("/api/amc/quotes/preview",)
 
@@ -67,10 +68,8 @@ def create_router(db, get_current_user):
     @router.get("/sync/version")
     async def version(request: Request):
         """{area: {v, at}} — cheap enough to poll; screens compare `v` with what they loaded."""
-        user = await get_current_user(request)
+        await get_current_user(request)
         topics: Dict[str, Any] = {d["_id"]: {"v": d.get("v", 0), "at": d.get("at")} async for d in db.sync_state.find({})}
-        if user.get("role") == "partner":
-            topics = {k: v for k, v in topics.items() if k == "amc"}
         return {"topics": topics, "now": datetime.now(timezone.utc).isoformat()}
 
     return router

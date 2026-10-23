@@ -9,7 +9,7 @@ from pymongo import ReturnDocument
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 from locations import location_scope_filter
-from amc_jv import is_partner, mask_for_partner, scope_for, org_query, merge_settings, quote_plans, OURS, ALL
+from amc_sales import merge_settings, quote_plans
 
 BILLING_MONTHS = {"monthly": 1, "quarterly": 3, "half-yearly": 6, "annual": 12}
 
@@ -31,8 +31,6 @@ class AMCContractCreate(BaseModel):
     district: Optional[str] = None
     state: Optional[str] = None
     location_id: Optional[str] = None
-    org_id: Optional[str] = None      # joint-venture partner company (None = Sensoper)
-    jv_project_id: Optional[str] = None
     system_type: str  # on-grid | off-grid | hybrid | solar-pump | others
     system_type_other: Optional[str] = None   # what it is when the type is "others"
     system_capacity_kw: float = 0
@@ -79,63 +77,29 @@ def _serialize(c: Dict[str, Any]) -> Dict[str, Any]:
 def create_router(db, get_current_user, require_role, create_audit_log, check_module_permission=None):
     router = APIRouter()
 
-    async def _partner_names() -> Dict[str, str]:
-        return {str(p["_id"]): p.get("name") async for p in db.jv_partners.find({}, {"name": 1})}
-
-    def _out(c: Dict[str, Any], user: Dict[str, Any], names: Dict[str, str]) -> Dict[str, Any]:
-        r = mask_for_partner(_serialize(c), user)
-        r["org_name"] = names.get(c.get("org_id")) if c.get("org_id") else None
-        return r
-
-    async def _editable(contract_id: str, user: Dict[str, Any], request: Request) -> Dict[str, Any]:
-        """Load a contract someone wants to change: partners only their own company's, our people (admin/manager) any."""
+    async def _editable(contract_id: str, request: Request) -> Dict[str, Any]:
+        """Load a contract someone wants to change (admin / manager, or whoever Permissions opened AMC editing to)."""
+        await require_role("admin", "manager")(request)
         c = await db.amc_contracts.find_one({"_id": ObjectId(contract_id)}) if ObjectId.is_valid(contract_id) else None
         if not c:
             raise HTTPException(status_code=404, detail="Contract not found")
-        if is_partner(user):
-            if c.get("org_id") != user.get("partner_id"):
-                raise HTTPException(status_code=403, detail="This contract belongs to Sensoper — you can view it but not change it")
-        else:
-            await require_role("admin", "manager")(request)
         return c
 
     @router.get("/amc/contracts")
     async def list_contracts(request: Request, status: Optional[str] = None, system_type: Optional[str] = None,
-                              district: Optional[str] = None, search: Optional[str] = None, location_id: Optional[str] = None,
-                              org: Optional[str] = None):
-        """Every company's contracts by default (the JV shares AMC); `org` narrows to ours / one partner.
-        Partners see our contracts without prices or money."""
+                              district: Optional[str] = None, search: Optional[str] = None, location_id: Optional[str] = None):
         user = await get_current_user(request)
-        loc_filter = location_scope_filter(user, location_id) if not is_partner(user) else {}
-        query: Dict[str, Any] = dict(loc_filter)
-        if org and org != ALL:
-            query.update(org_query(org))
+        query: Dict[str, Any] = dict(location_scope_filter(user, location_id))
         if status: query["status"] = status
         if system_type: query["system_type"] = system_type
         if district: query["district"] = district
         if search: query["customer_name"] = {"$regex": re.escape(search), "$options": "i"}
         docs = await db.amc_contracts.find(query).sort("created_at", -1).to_list(2000)
-        names = await _partner_names()
-        return [_out(d, user, names) for d in docs]
+        return [_serialize(d) for d in docs]
 
     @router.post("/amc/contracts")
     async def create_contract(payload: AMCContractCreate, request: Request):
-        user = await get_current_user(request)
-        if is_partner(user):
-            payload.org_id = user.get("partner_id")       # a partner's contracts are always its own
-            payload.location_id = None
-            if not payload.org_id:
-                raise HTTPException(status_code=403, detail="This login isn't linked to a partner company")
-        else:
-            user = await require_role("admin", "manager")(request)
-        if payload.org_id and not (ObjectId.is_valid(payload.org_id) and await db.jv_partners.find_one({"_id": ObjectId(payload.org_id)}, {"_id": 1})):
-            raise HTTPException(status_code=400, detail="Partner company not found")
-        if payload.jv_project_id:
-            j = await db.jv_projects.find_one({"_id": ObjectId(payload.jv_project_id)}) if ObjectId.is_valid(payload.jv_project_id) else None
-            if not j or j.get("org_id") != payload.org_id:
-                raise HTTPException(status_code=400, detail="That project belongs to another company")
-        if is_partner(user):
-            payload.project_id = None                     # partners can't attach contracts to our projects
+        user = await require_role("admin", "manager")(request)
         if payload.system_type not in SYSTEM_TYPES:
             raise HTTPException(status_code=400, detail="Unknown system type")
         if payload.system_type == "others" and not (payload.system_type_other or "").strip():
@@ -154,8 +118,8 @@ def create_router(db, get_current_user, require_role, create_audit_log, check_mo
             "created_at": now_iso, "updated_at": now_iso,
         })
         res = await db.amc_contracts.insert_one(doc)
-        await create_audit_log(user["id"], user["name"], "amc_contract_created", "amc_contract", str(res.inserted_id), None, {"customer": doc["customer_name"], "org_id": doc.get("org_id")})
-        return _out({**doc, "_id": res.inserted_id}, user, await _partner_names())
+        await create_audit_log(user["id"], user["name"], "amc_contract_created", "amc_contract", str(res.inserted_id), None, {"customer": doc["customer_name"]})
+        return _serialize({**doc, "_id": res.inserted_id})
 
     @router.post("/amc/contracts/from-project/{project_id}")
     async def create_from_project(project_id: str, request: Request):
@@ -177,7 +141,7 @@ def create_router(db, get_current_user, require_role, create_audit_log, check_mo
             "contact": customer.get("phone"), "site_address": customer.get("address"),
             "district": project.get("location", {}).get("district") if isinstance(project.get("location"), dict) else project.get("district"),
             "state": project.get("location", {}).get("state") if isinstance(project.get("location"), dict) else project.get("state"),
-            "location_id": project.get("location_id"), "org_id": None, "system_type": ps.get("system_type", "on-grid"),
+            "location_id": project.get("location_id"), "system_type": ps.get("system_type", "on-grid"),
             "system_capacity_kw": float(ps.get("system_size_kw") or 0), "pump_hp": ps.get("pump_hp"),
             "commissioning_date": project.get("completed_at", now_iso)[:10],
             "contract_type": "comprehensive", "start_date": start_date, "end_date": _end_date(start_date, duration_months),
@@ -199,27 +163,22 @@ def create_router(db, get_current_user, require_role, create_audit_log, check_mo
 
     @router.get("/amc/contracts/{contract_id}")
     async def get_contract(contract_id: str, request: Request):
-        user = await get_current_user(request)
+        await get_current_user(request)
         c = await db.amc_contracts.find_one({"_id": ObjectId(contract_id)}) if ObjectId.is_valid(contract_id) else None
         if not c:
             raise HTTPException(status_code=404, detail="Contract not found")
         visits = await db.amc_service_visits.find({"contract_id": contract_id}).sort("scheduled_date", -1).to_list(200)
-        result = _out(c, user, await _partner_names())
-        hide = is_partner(user) and c.get("org_id") != user.get("partner_id")
-        result["visit_history"] = [{**{k: v for k, v in vi.items() if k != "_id" and not (hide and k == "cost_incurred")}, "id": str(vi["_id"])} for vi in visits]
+        result = _serialize(c)
+        result["visit_history"] = [{**{k: v for k, v in vi.items() if k != "_id"}, "id": str(vi["_id"])} for vi in visits]
         return result
 
     @router.put("/amc/contracts/{contract_id}")
     async def update_contract(contract_id: str, payload: Dict[str, Any], request: Request):
         user = await get_current_user(request)
-        await _editable(contract_id, user, request)
+        await _editable(contract_id, request)
         payload.pop("_id", None); payload.pop("id", None)
-        for k in ("contract_number", "created_at", "previous_contract_id", "quote_id"):
+        for k in ("contract_number", "created_at", "previous_contract_id", "quote_id", "org_id", "jv_project_id"):
             payload.pop(k, None)
-        if is_partner(user) or user.get("role") != "admin":
-            payload.pop("org_id", None)                   # only an admin moves a contract between companies
-        if is_partner(user):
-            payload.pop("project_id", None); payload.pop("location_id", None)
         if "system_type" in payload and payload["system_type"] not in SYSTEM_TYPES:
             raise HTTPException(status_code=400, detail="Unknown system type")
         payload["updated_at"] = datetime.now(timezone.utc).isoformat()
@@ -232,7 +191,7 @@ def create_router(db, get_current_user, require_role, create_audit_log, check_mo
     @router.post("/amc/contracts/{contract_id}/renew")
     async def renew_contract(contract_id: str, request: Request):
         user = await get_current_user(request)
-        c = await _editable(contract_id, user, request)
+        c = await _editable(contract_id, request)
         now_iso = datetime.now(timezone.utc).isoformat()
         start_date = c.get("end_date") or now_iso[:10]
         duration = c.get("duration_months", 12)
@@ -250,7 +209,7 @@ def create_router(db, get_current_user, require_role, create_audit_log, check_mo
         res = await db.amc_contracts.insert_one(new_doc)
         await db.amc_contracts.update_one({"_id": ObjectId(contract_id)}, {"$set": {"status": "renewed", "renewal_status": "renewed"}})
         await create_audit_log(user["id"], user["name"], "amc_contract_renewed", "amc_contract", contract_id, None, {"new_contract_id": str(res.inserted_id)})
-        return _out({**new_doc, "_id": res.inserted_id}, user, await _partner_names())
+        return _serialize({**new_doc, "_id": res.inserted_id})
 
     @router.post("/amc/contracts/bulk-renew")
     async def bulk_renew(payload: Dict[str, Any], request: Request):
@@ -268,7 +227,7 @@ def create_router(db, get_current_user, require_role, create_audit_log, check_mo
     @router.post("/amc/contracts/{contract_id}/cancel")
     async def cancel_contract(contract_id: str, payload: Dict[str, Any], request: Request):
         user = await get_current_user(request)
-        await _editable(contract_id, user, request)
+        await _editable(contract_id, request)
         await db.amc_contracts.update_one({"_id": ObjectId(contract_id)}, {"$set": {
             "status": "cancelled", "renewal_status": "churned", "churn_reason": payload.get("reason", ""),
             "cancelled_at": datetime.now(timezone.utc).isoformat(), "updated_at": datetime.now(timezone.utc).isoformat(),
@@ -278,11 +237,11 @@ def create_router(db, get_current_user, require_role, create_audit_log, check_mo
 
     @router.delete("/amc/contracts/{contract_id}")
     async def delete_contract(contract_id: str, request: Request, confirm: Optional[str] = None):
-        """Remove a CANCELLED contract for good — Sensoper admins only (never managers or partner logins).
+        """Remove a CANCELLED contract for good — admins only (never managers).
         `confirm` must be the contract number. Its visits and reminders go too; the audit log keeps a copy."""
         user = await get_current_user(request)
         if user.get("role") != "admin":
-            raise HTTPException(status_code=403, detail="Only a Sensoper admin can delete a contract for good")
+            raise HTTPException(status_code=403, detail="Only an admin can delete a contract for good")
         c = await db.amc_contracts.find_one({"_id": ObjectId(contract_id)}) if ObjectId.is_valid(contract_id) else None
         if not c:
             raise HTTPException(status_code=404, detail="Contract not found")
@@ -350,25 +309,19 @@ def create_router(db, get_current_user, require_role, create_audit_log, check_mo
 
     @router.get("/amc/visits")
     async def list_visits(request: Request, status: Optional[str] = None, contract_id: Optional[str] = None):
-        user = await get_current_user(request)
+        await get_current_user(request)
         query: Dict[str, Any] = {}
         if status: query["status"] = status
         if contract_id: query["contract_id"] = contract_id
         docs = await db.amc_service_visits.find(query).sort("scheduled_date", 1).to_list(2000)
-        own: set = set()
-        if is_partner(user):
-            own = {str(c["_id"]) async for c in db.amc_contracts.find({"org_id": user.get("partner_id")}, {"_id": 1})}
-        return [{**{k: v for k, v in d.items() if k != "_id" and not (is_partner(user) and k == "cost_incurred" and d.get("contract_id") not in own)},
-                 "id": str(d["_id"])} for d in docs]
+        return [{**{k: v for k, v in d.items() if k != "_id"}, "id": str(d["_id"])} for d in docs]
 
     # ── Dashboard ──
     @router.get("/amc/dashboard")
-    async def amc_dashboard(request: Request, location_id: Optional[str] = None, org: Optional[str] = None):
-        """Numbers for one company: ours by default (partner work never counts towards ours), a partner, or all."""
+    async def amc_dashboard(request: Request, location_id: Optional[str] = None):
         user = await get_current_user(request)
-        loc_filter = location_scope_filter(user, location_id) if not is_partner(user) else {}
-        scope = scope_for(user, org)
-        contracts = await db.amc_contracts.find({**loc_filter, **scope}).to_list(5000)
+        loc_filter = location_scope_filter(user, location_id)
+        contracts = await db.amc_contracts.find(loc_filter).to_list(5000)
         active = [c for c in contracts if c.get("status") == "active"]
         capacity_by_type: Dict[str, float] = {}
         count_by_type: Dict[str, int] = {}
@@ -407,17 +360,9 @@ def create_router(db, get_current_user, require_role, create_audit_log, check_mo
             "status": "scheduled", "scheduled_date": {"$lt": today.isoformat()}, "contract_id": {"$in": [str(c["_id"]) for c in contracts]},
         })
 
-        # penetration = share of finished plants (ours: completed projects; a partner: its own projects) under an active AMC
-        if is_partner(user) or (org and org not in (OURS, ALL)):
-            commissioned_projects = await db.jv_projects.count_documents({"deleted_at": {"$exists": False}, **scope})
-            covered = sum(1 for c in active if c.get("jv_project_id"))
-        elif org == ALL:
-            commissioned_projects = await db.projects.count_documents({"status": "completed", "deleted_at": {"$exists": False}, **loc_filter}) + \
-                await db.jv_projects.count_documents({"deleted_at": {"$exists": False}})
-            covered = sum(1 for c in active if c.get("project_id") or c.get("jv_project_id"))
-        else:
-            commissioned_projects = await db.projects.count_documents({"status": "completed", "deleted_at": {"$exists": False}, **loc_filter})
-            covered = sum(1 for c in active if c.get("project_id"))
+        # penetration = share of finished plants (completed projects) under an active AMC
+        commissioned_projects = await db.projects.count_documents({"status": "completed", "deleted_at": {"$exists": False}, **loc_filter})
+        covered = sum(1 for c in active if c.get("project_id"))
         penetration_pct = round((covered / commissioned_projects) * 100, 1) if commissioned_projects else 0
 
         # ── more numbers: size, growth, service, sales ──
@@ -455,12 +400,12 @@ def create_router(db, get_current_user, require_role, create_audit_log, check_mo
             if k in monthly:
                 monthly[k]["visits"] += 1
         year_ago = (today - timedelta(days=365)).isoformat()
-        quotes = await db.amc_quotes.find(scope, {"status": 1, "calc": 1, "recommended_plan": 1, "created_at": 1}).to_list(5000)
+        quotes = await db.amc_quotes.find({}, {"status": 1, "calc": 1, "recommended_plan": 1, "created_at": 1}).to_list(5000)
         open_q = [q for q in quotes if q.get("status") in ("draft", "sent")]
         rec_total = lambda q: next((p.get("total", 0) for p in (q.get("calc") or {}).get("plans", []) if p.get("key") == q.get("recommended_plan")), 0)  # noqa: E731
         q12 = [q for q in quotes if str(q.get("created_at") or "") >= year_ago]
         won12 = sum(1 for q in q12 if q.get("status") == "accepted")
-        tickets_open = 0 if is_partner(user) else await db.support_tickets.count_documents({
+        tickets_open = await db.support_tickets.count_documents({
             "amc_contract_id": {"$in": ids}, "status": {"$in": ["open", "assigned", "in_progress", "pending_customer", "reopened"]}})
 
         return {
@@ -471,7 +416,7 @@ def create_router(db, get_current_user, require_role, create_audit_log, check_mo
             "total_collected": round(total_collected, 2), "outstanding": round(outstanding, 2),
             "visits_due": visits_due, "overdue_visits": overdue_visits,
             "penetration_pct": penetration_pct, "commissioned_projects": commissioned_projects,
-            "capacity_kw": round(total_kw, 1), "org": org or OURS,
+            "capacity_kw": round(total_kw, 1),
             "total_kw": round(total_kw, 1), "count_by_type": count_by_type,
             "avg_kw_per_contract": round(total_kw / len(active), 1) if active else 0,
             "value_per_kw": round(arr / total_kw) if total_kw else 0,
@@ -493,10 +438,10 @@ def create_router(db, get_current_user, require_role, create_audit_log, check_mo
         }
 
     @router.get("/amc/recurring-revenue-report")
-    async def recurring_revenue_report(request: Request, location_id: Optional[str] = None, org: Optional[str] = None):
+    async def recurring_revenue_report(request: Request, location_id: Optional[str] = None):
         user = await require_role("admin", "manager")(request)
         loc_filter = location_scope_filter(user, location_id)
-        contracts = await db.amc_contracts.find({**loc_filter, **org_query(org)}).to_list(5000)
+        contracts = await db.amc_contracts.find(loc_filter).to_list(5000)
         active = [c for c in contracts if c.get("status") == "active"]
         arr = sum((c.get("annual_value", 0) or 0) for c in active)
         mrr = arr / 12

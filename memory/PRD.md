@@ -327,3 +327,32 @@ See CHANGES.md for the full list. Highlights for the next agent:
 - Brand: `amc_settings.brand_company_id` → `brand_profile()`; `GET /amc/brand` (+ logo_base64, chosen); used by quote/report
   PDFs, WhatsApp text, reminders, `jv_me.ours`. Company profile "Use for AMC" (admin); deleting the profile clears the choice.
 - Tests: 5 more in backend/tests/test_amc_jv.py (67 total pass).
+
+## Iteration 68 — JV removed, Brands, vendors 2.0, purchase requests (3 quotes), org chart, event calendar, HR, loans (2026-10-24)
+- JV removed: `amc_jv.py` → `amc_sales.py` (Sensoper-only offers/quotes/brand/settings/report). One-time start-up
+  migration `remove_joint_venture()` (flag `migrations._id="jv_removed_v1"`) deletes partner-org contracts (+visits,
+  notifications), partner quotes, jv_projects, jv_partners, role=partner users and their role_permissions, unsets
+  org_id/jv_project_id, audit `joint_venture_removed`. Partner logic gone from amc.py, amc_ops.py, server.py, live_sync,
+  access_policy (`_policy_gate` now only admin/manager/staff). Test file `tests/test_amc_sales.py`.
+- `backend/notify.py`: planned bell notes (`notify_at` UTC ISO) — `plan`, `clear`, `users_who_can`, `today_ist`.
+- `backend/brands.py`: kinds own/dealership/distribution; trademarks (`renewal_date` = valid_until or filing + 10 y when
+  registered); item links (`inventory.brand_id`); `/brands/report` (rows + monthly counter/online/projects); reminders.
+- `backend/vendors.py`: tags, preferred, blocked(+reason), credit_days, lead_time_days, min_order_value; ratings
+  (quality/delivery/price/service), scorecard, price history, `/vendors/tags`; duplicate active names refused.
+- `backend/procurement.py`: `/purchase-requests` (PR-0001), quotes (one per vendor, blocked refused), compare
+  (cheapest/recommended/line_best), `/select` → PO via `insert_purchase_order` (vendor_id, rfq_id, freight line), savings;
+  `/procurement/settings` (min_quotes 3, require_quotes, skip_below_amount, low_rating). `create_po` enforces it:
+  non-admins need quotes; admin direct POs carry `direct_po` + `direct_reason`. Option `can_select_quote`.
+- `backend/hr.py`: people fields (designation, department, reports_to with loop check, joining_date, employee_code,
+  default_shift_id); openings/candidates/interviews/hire; covers; exits (`last_working_day`, `users.access_until`
+  enforced in get_current_user + login, `close_due_exits()` at start-up); shifts + weekly roster (late/missing);
+  settings (notice_days, departments, grace_minutes). Exits behind option `can_manage_exits` (manager off).
+- `backend/loans.py`: EMI maths (`emi_amount`, `schedule`, `apply_payments`), payments split interest/principal,
+  totals, next 12 months, by lender, missed EMIs, EMI reminders. Page `module_loans` (manager none by default).
+- `backend/calendar_events.py`: `/calendar?start&end&sources` (≤120 days) merges events (repeat weekly/monthly/yearly,
+  audience all/people, remind) with provider items (AMC, projects/crews, purchases, HR, loans, brands) filtered by page view.
+- `org_structure.chart_links()` → `chart` in /org/structure; UI `components/OrgChart.js` (dashed = guessed line).
+- `POST /upload/document` (pdf/png/jpg/webp/doc/docx ≤10 MB). New pages: BrandsPage, CalendarPage, HRPage, LoansPage,
+  `components/procurement/PurchaseRequests.js`, shared `components/kit/PageBits.js`. Money menu group = "Finance & insights".
+- Bell for every role (own notes via `/notifications` when the user has no module_alerts).
+- Tests: `tests/test_oct_batch3.py` (8) + test_amc_sales 13; 50 in-process tests pass.
