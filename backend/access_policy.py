@@ -51,6 +51,8 @@ SECTIONS: List[Dict[str, Any]] = [
               staff=(V, C, D, X), manager=(V, C, D, X)),
         _page("module_readings", "Readings", "Generation checks for finished sites.", staff=(V, C, E, X), manager=(V, C, E, D, X)),
         _page("module_audits", "Weekly audits", "The weekly operations checklist.", manager=(V, C, E, X)),
+        _page("module_calendar", "Event calendar", "Company events, plus the dated work from the pages each person can open.",
+              actions=(V, C, E, D), staff=(V, C), manager=(V, C, E, D)),
     ]},
     {"id": "sales", "label": "Sales & projects", "pages": [
         _page("module_projects", "New project & Projects", "Site visits, quotations and every project page.",
@@ -67,27 +69,33 @@ SECTIONS: List[Dict[str, Any]] = [
         _page("module_direct_sales", "Direct sales", "Counter and B2B sales with GST invoices.", staff=(V, C), manager=(V, C, E, X)),
         _page("module_ecommerce", "Online orders", "Marketplace products and orders.", manager=(V, C, E, D, X)),
         _page("module_amc", "AMC & service", "Maintenance contracts, visits, offers and quotes.", manager=(V, C, E, X)),
-        _page("module_support", "Customer support", "Problems and requests from any Sensoper customer — tickets, SLA and ratings. Never shown to partners.",
+        _page("module_support", "Customer support", "Problems and requests from any Sensoper customer — tickets, SLA and ratings.",
               manager=(V, C, E, X)),
     ]},
     {"id": "stock", "label": "Stock & purchase", "pages": [
         _page("module_inventory", "Inventory", "Everything in the store.", manager=(V, C, E, X)),
         _page("module_kits", "Solution kits", "Ready-made material bundles.", actions=(V, C, E, D), manager=(V, C, E, D)),
-        _page("module_purchase_inbound", "Purchases", "Purchase orders from order to stock.", manager=(V, C, E, X),
-              options=[_opt("can_approve_purchase", "Approve purchase orders", "Approve / Reject on a pending PO.")]),
+        _page("module_purchase_inbound", "Purchases", "Purchase requests with vendor quotes, and purchase orders from order to stock.", manager=(V, C, E, X),
+              options=[_opt("can_approve_purchase", "Approve purchase orders", "Approve / Reject on a pending PO."),
+                       _opt("can_select_quote", "Choose the vendor quote", "Pick the winning quote on a purchase request — this makes the PO.")]),
         _page("module_delivery_outbound", "Deliveries", "Material sent to sites.", manager=(V, C, E, X)),
         _page("module_returns", "Brand returns", "Material going back to suppliers.", manager=(V, C, E, D, X)),
-        _page("module_vendors", "Vendors", "Supplier directory.", manager=(V, C, E, D, X)),
+        _page("module_vendors", "Vendors", "Supplier directory, ratings, tags and scorecards.", manager=(V, C, E, D, X)),
+        _page("module_brands", "Brands", "Our brands and trademarks, the brands we deal or distribute, and brand-wise reports.", manager=(V, C, E, X)),
         _page("module_pricelist", "Price list", "Product prices, package slabs and service rates.", actions=(V, C, E, D, X)),
     ]},
     {"id": "people", "label": "People & field", "pages": [
-        _page("module_org", "Organisation", "Who works where, and who is in today.", actions=(V,)),
+        _page("module_org", "Organisation", "Org chart, who works where, and who is in today.", actions=(V,)),
+        _page("module_hr", "HR", "Hiring, cover for absent staff, shifts, exits and notice periods.", manager=(V, C, E, X),
+              options=[_opt("can_manage_exits", "Handle resignations and terminations", "Exits: notice periods, last working days and closing logins.",
+                            manager=False)]),
         _page("module_partners", "Subcontractors", "Crews, rate cards, assignments and payments.", manager=(V, C, E, X)),
         _page("module_teams", "Internal teams", "Our own installation teams.", manager=(V, C, E, X)),
         _page("module_assets", "Assets & tools", "Vehicles, tools and safety gear.", staff=(V, E), manager=(V, C, E, X)),
     ]},
-    {"id": "money", "label": "Money & insights", "pages": [
+    {"id": "money", "label": "Finance & insights", "pages": [
         _page("module_credits", "Accounts", "Money owed, payments, expenses and GST.", manager=(V, C, E, D, X)),
+        _page("module_loans", "Loans", "The company's loans: EMIs, interest and what is still owed."),
         _page("module_alerts", "Profit alerts", "Projects that may be losing money.", actions=(V, E, X), manager=(V, E, X)),
         _page("module_reports", "Reports", "Ready-made reports to download.", actions=(V, X), manager=(V, X)),
         _page("module_expansion", "Expansion", "Where to open the next branch.", actions=(V, C, E, D, X), manager=(V, C, E, D, X)),
@@ -379,6 +387,8 @@ rule("PUT", "/api/projects/{project_id}/reference", option("can_approve_quotatio
 rule("POST", "/api/deletion-requests/{request_id}/*", option("can_approve_deletion"))
 rule("PUT", "/api/purchase-orders/{po_id}/approve", option("can_approve_purchase"))
 rule("PUT", "/api/purchase-orders/{po_id}/reject", option("can_approve_purchase"))
+rule("POST", "/api/purchase-requests/{pr_id}/select", option("can_select_quote"))
+rule("*", "/api/hr/exits*", option("can_manage_exits"))
 
 # shared look-ups and admin-only odds and ends — no decision here
 for m, pat in [("GET", "/api/inventory/items*"), ("GET", "/api/inventory/alerts"), ("GET", "/api/inventory/categories"),
@@ -393,7 +403,10 @@ for m, pat in [("GET", "/api/inventory/items*"), ("GET", "/api/inventory/alerts"
                ("POST", "/api/audit-logs/archives/*"), ("GET", "/api/settings/thresholds"), ("GET", "/api/pricelist/items/{item_id}/history"),
                ("PUT", "/api/amc/interest/{project_id}"), ("GET", "/api/daily-reports/projects"), ("GET", "/api/daily-reports/options"),
                ("GET", "/api/integrations/google-drive"), ("GET", "/api/calculate/*"), ("GET", "/api/approvals/inbox/count"),
-               ("GET", "/api/expansion/config"), ("GET", "/api/drive/settings")]:
+               ("GET", "/api/expansion/config"), ("GET", "/api/drive/settings"),
+               ("GET", "/api/vendors/price-history"), ("GET", "/api/vendors/tags"), ("GET", "/api/brands"), ("GET", "/api/procurement/settings"),
+               ("GET", "/api/hr/shifts"), ("GET", "/api/hr/covers"), ("GET", "/api/hr/roster"), ("GET", "/api/hr/settings"),
+               ("PUT,DELETE", "/api/calendar/events/{event_id}")]:
     rule(m, pat, None)
 
 # pages
@@ -443,7 +456,6 @@ rule("DELETE", "/api/ecommerce/platforms/*", page("module_ecommerce", D, grant=F
 rule("*", "/api/ecommerce*", page("module_ecommerce"))
 rule("PUT", "/api/amc/settings", page("module_amc", E, grant=False))           # admin only (code checks)
 rule("DELETE", "/api/amc/contracts/{contract_id}", page("module_amc", D, grant=False))   # Sensoper admins only (code checks)
-rule("POST,PUT,DELETE", "/api/amc/jv/partners*", page("module_amc", E, grant=False))
 rule("POST", "/api/amc/quotes/preview", page("module_amc", V))
 rule("POST", "/api/amc/offers/{source_type}/{source_id}", page("module_amc", E))
 rule("POST", "/api/amc/contracts/{contract_id}/visits", page("module_amc", C))
@@ -465,13 +477,27 @@ rule("PUT", "/api/deliveries/*", page("module_delivery_outbound", E))
 rule("*", "/api/deliveries*", page("module_delivery_outbound"))
 rule("PUT", "/api/returns/*", page("module_returns", E))
 rule("*", "/api/returns*", page("module_returns"))
+rule("POST", "/api/vendors/{vendor_id}/ratings", page("module_vendors", E))
 rule("*", "/api/vendors*", page("module_vendors"))
+rule("*", "/api/brands*", page("module_brands"))
+rule("PUT", "/api/procurement/settings", page("module_purchase_inbound", E, grant=False))   # admin only (code checks)
+rule("GET", "/api/purchase-requests*", page("module_purchase_inbound", V))
+rule("POST", "/api/purchase-requests", page("module_purchase_inbound", C))
+rule("*", "/api/purchase-requests*", page("module_purchase_inbound", E))
 rule("POST", "/api/pricelist/items/*", page("module_pricelist", E))
 rule("*", "/api/pricelist*", page("module_pricelist"))
 rule("*", "/api/pricing-slabs*", page("module_pricelist"))
 rule("*", "/api/catalogue*", page("module_pricelist"))
 
 rule("GET", "/api/org-structure", page("module_org", V))
+rule("PUT", "/api/hr/settings", page("module_hr", E, grant=False))   # admin only (code checks)
+for _p in ("openings", "candidates", "covers", "shifts"):
+    rule("POST", f"/api/hr/{_p}", page("module_hr", C))
+rule("POST", "/api/hr/*", page("module_hr", E))
+rule("*", "/api/hr*", page("module_hr"))
+rule("GET", "/api/calendar", page("module_calendar", V))
+rule("GET", "/api/calendar/people", page("module_calendar", V))
+rule("POST", "/api/calendar/events", page("module_calendar", C))
 rule("*", "/api/partners/tags*", page("module_partners", E, grant=False))
 rule("POST", "/api/partners/{partner_id}/*", page("module_partners", E))
 rule("POST", "/api/partners/assignments/*", page("module_partners", E))
@@ -488,6 +514,10 @@ rule("POST", "/api/credits/{credit_id}/pay", page("module_credits", E))
 rule("PUT", "/api/credits*", page("module_credits", E))
 rule("*", "/api/credits*", page("module_credits"))
 rule("*", "/api/accounts*", page("module_credits"))
+rule("POST", "/api/loans/emi-preview", page("module_loans", V))
+rule("POST", "/api/loans", page("module_loans", C))
+rule("POST", "/api/loans/*", page("module_loans", E))
+rule("*", "/api/loans*", page("module_loans"))
 rule("GET", "/api/alerts/dashboard", page("module_alerts", V))
 rule("PUT", "/api/settings/thresholds", page("module_alerts", E))
 rule("GET", "/api/reports/*", page("module_reports", V))
@@ -569,44 +599,3 @@ def catalog() -> Dict[str, Any]:
                 {k: p[k] for k in ("key", "label", "what", "actions", "locked", "always")} | {"options": [{k: o[k] for k in ("key", "label", "what")} for o in p["options"]]}
                 for p in s["pages"]]} for s in SECTIONS],
             "recommended": {r: default_permissions(r) for r in ("manager", "staff")}}
-
-
-# ───────────────────────── joint-venture partners ─────────────────────────
-# People from the AMC joint-venture partner sign in with the "partner" role. They get the AMC page and
-# their own login settings — nothing else, whatever any other switch says. Each AMC route then keeps
-# them to their own company's records and hides our prices and money (see amc_jv.py).
-PARTNER_ROLE = "partner"
-_PARTNER = []
-
-
-def _allow(methods, pattern):
-    _PARTNER.append((set(methods.split(",")) if methods != "*" else None, re.compile("^" + re.escape(pattern).replace(r"\*", ".*") + "$")))
-
-
-for _m, _p in [
-    ("GET", "/api/auth/me"), ("POST", "/api/auth/logout"), ("POST", "/api/auth/refresh"), ("POST", "/api/auth/change-password"),
-    ("*", "/api/auth/2fa/*"), ("GET", "/api/permissions/me"), ("GET", "/api/company/logo-base64"), ("POST", "/api/upload/image"),
-    ("GET", "/api/notifications"), ("POST", "/api/notifications/{notif_id}/dismiss"), ("GET", "/api/sync/*"),
-    ("GET,POST", "/api/amc/contracts"), ("GET,PUT", "/api/amc/contracts/{contract_id}"),
-    ("POST", "/api/amc/contracts/{contract_id}/renew"), ("POST", "/api/amc/contracts/{contract_id}/cancel"),
-    ("POST", "/api/amc/contracts/{contract_id}/visits"), ("POST", "/api/amc/contracts/{contract_id}/schedule"),
-    ("PUT", "/api/amc/visits/{visit_id}/complete"), ("GET", "/api/amc/visits"), ("GET", "/api/amc/schedule"), ("GET", "/api/amc/dashboard"),
-    ("*", "/api/amc/jv/*"), ("*", "/api/amc/quotes*"), ("*", "/api/amc/offers*"), ("GET", "/api/amc/settings"), ("GET", "/api/amc/report"), ("GET", "/api/amc/brand"),
-]:
-    _allow(_m, _p)
-
-
-def partner_allows(method: str, path: str) -> bool:
-    return any((ms is None or method in ms) and rx.match(path) for ms, rx in _PARTNER)
-
-
-def partner_permissions() -> Dict[str, Any]:
-    """Fixed matrix for partner logins (not editable on the Permissions page)."""
-    out: Dict[str, Any] = {key: {a: False for a in ACTIONS} for key in PAGES}
-    out["module_amc"] = {V: True, C: True, E: True, D: False, X: True}
-    out["module_security"] = {a: a == V for a in ACTIONS}
-    for key in OPTIONS:
-        out[key] = False
-    for k in LEGACY_FLAGS:
-        out[k] = False
-    return out

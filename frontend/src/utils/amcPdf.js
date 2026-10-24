@@ -1,6 +1,6 @@
 /**
- * AMC quote PDF (three plans side by side, with what each plan protects) and the AMC report (PDF + Excel).
- * A quote for a joint-venture partner's customer carries both logos: Sensoper × Partner.
+ * AMC quote PDF (three plans side by side, with what each plan protects) and the AMC report (PDF + Excel),
+ * on the letterhead of the company chosen in AMC settings.
  */
 import autoTable from 'jspdf-autotable';
 import * as XLSX from 'xlsx';
@@ -25,23 +25,15 @@ function fitLogo(doc, dataUrl, x, y, maxW, maxH) {
   } catch { return 0; }
 }
 
-/** Header: our logo (and "× partner logo" for a JV quote), contacts on the right, brand rule. */
-function coBrandHeader(doc, ctx, { partner, partnerLogo, subtitle }) {
+/** Header: the company logo, its contacts on the right, brand rule. */
+function letterhead(doc, ctx, { subtitle }) {
   const { cp, FONT, logo, W, m, p } = ctx;
   doc.setFillColor(255, 255, 255); doc.rect(0, 0, W, 34, 'F');
   let x = m;
   const w1 = logo ? fitLogo(doc, logo, x, 6, 44, 22) : 0;
   if (!w1) { doc.setFont(FONT, 'bold'); doc.setFontSize(13); doc.setTextColor(...INK); doc.text(cp.company_name || 'Sensoper Controls & Renewables', x, 19); x += doc.getTextWidth(cp.company_name || 'Sensoper Controls & Renewables'); } else x += w1;
-  if (partner) {
-    doc.setFont(FONT, 'normal'); doc.setFontSize(16); doc.setTextColor(...MUTED); doc.text('×', x + 4, 20);
-    x += 11;
-    const w2 = partnerLogo ? fitLogo(doc, partnerLogo, x, 6, 44, 22) : 0;
-    if (!w2) { doc.setFont(FONT, 'bold'); doc.setFontSize(12); doc.setTextColor(...INK); doc.text(partner.name || 'Partner', x, 19); }
-  }
   doc.setFont(FONT, 'normal'); doc.setFontSize(7.5); doc.setTextColor(...MUTED);
-  const lines = partner
-    ? ['AMC joint venture', partner.name, partner.phone, partner.email].filter(Boolean)
-    : [cp.address ? doc.splitTextToSize(String(cp.address).replace(/\s+/g, ' '), 70)[0] : null, [cp.phone, cp.email].filter(Boolean).join(' · '), cp.website,
+  const lines = [cp.address ? doc.splitTextToSize(String(cp.address).replace(/\s+/g, ' '), 70)[0] : null, [cp.phone, cp.email].filter(Boolean).join(' · '), cp.website,
        cp.gst_number ? `GSTIN ${cp.gst_number}` : null].filter(Boolean);
   lines.forEach((t, i) => doc.text(t, W - m, 9.5 + i * 4.2, { align: 'right' }));
   doc.setDrawColor(...p); doc.setLineWidth(1.2); doc.line(m, 33, W - m, 33);
@@ -71,7 +63,7 @@ async function withOurLogo(ctx, brand) {
   } catch { /* text header instead */ }
 }
 
-export async function generateAmcQuotePDF({ quote, companyProfile, partner, partnerLogo }) {
+export async function generateAmcQuotePDF({ quote, companyProfile }) {
   const { doc, ctx } = await createBrandDoc(companyProfile || {}, API_URL);
   await withOurLogo(ctx, companyProfile);
   const { FONT, W, m, contentW, p } = ctx;
@@ -79,7 +71,7 @@ export async function generateAmcQuotePDF({ quote, companyProfile, partner, part
   const plans = calc.plans || [];
   const rec = quote.recommended_plan || 'standard';
   const sub = 'AMC quotation';
-  coBrandHeader(doc, ctx, { partner, partnerLogo, subtitle: sub });
+  letterhead(doc, ctx, { subtitle: sub });
 
   let y = 47;
   doc.setFont(FONT, 'bold'); doc.setFontSize(19); doc.setTextColor(...INK); doc.text('Annual Maintenance Plan', m, y);
@@ -156,7 +148,7 @@ export async function generateAmcQuotePDF({ quote, companyProfile, partner, part
   y += 7;
 
   // benefits
-  if (y > 225) { doc.addPage(); coBrandHeader(doc, ctx, { partner, partnerLogo, subtitle: sub }); y = 46; }
+  if (y > 225) { doc.addPage(); letterhead(doc, ctx, { subtitle: sub }); y = 46; }
   doc.setFont(FONT, 'bold'); doc.setFontSize(12); doc.setTextColor(...INK); doc.text('What you get', m, y);
   doc.setFillColor(...p); doc.rect(m, y + 2, 14, 1.1, 'F');
   y += 8;
@@ -171,7 +163,7 @@ export async function generateAmcQuotePDF({ quote, companyProfile, partner, part
   y += Math.ceil(BENEFITS.length / 2) * 15 + 2;
 
   // accept
-  if (y > 250) { doc.addPage(); coBrandHeader(doc, ctx, { partner, partnerLogo, subtitle: sub }); y = 46; }
+  if (y > 250) { doc.addPage(); letterhead(doc, ctx, { subtitle: sub }); y = 46; }
   doc.setDrawColor(...LINE); doc.setFillColor(...PAPER); doc.roundedRect(m, y, contentW, 26, 2, 2, 'FD');
   doc.setFont(FONT, 'bold'); doc.setFontSize(10); doc.setTextColor(...INK); doc.text('To start, tick a plan and sign', m + 4, y + 7);
   doc.setFont(FONT, 'normal'); doc.setFontSize(8.5); doc.setTextColor(...INK);
@@ -184,7 +176,7 @@ export async function generateAmcQuotePDF({ quote, companyProfile, partner, part
   // terms & conditions (from the quote — edited in the quote builder, default = the active AMC terms template)
   const termLines = String(quote.terms_text || '').split('\n').map((t) => t.trim());
   if (termLines.some(Boolean)) {
-    if (y > 245) { doc.addPage(); coBrandHeader(doc, ctx, { partner, partnerLogo, subtitle: sub }); y = 46; }
+    if (y > 245) { doc.addPage(); letterhead(doc, ctx, { subtitle: sub }); y = 46; }
     doc.setFont(FONT, 'bold'); doc.setFontSize(10.5); doc.setTextColor(...INK); doc.text('Terms & conditions', m, y);
     doc.setFillColor(...p); doc.rect(m, y + 1.8, 12, 1, 'F');
     y += 6;
@@ -192,20 +184,20 @@ export async function generateAmcQuotePDF({ quote, companyProfile, partner, part
     termLines.forEach((t) => {
       if (!t) { y += 1.5; return; }
       const lines = doc.splitTextToSize(t, contentW);
-      if (y + lines.length * 3.6 > ctx.H - 18) { doc.addPage(); coBrandHeader(doc, ctx, { partner, partnerLogo, subtitle: sub }); y = 46; doc.setFont(FONT, 'normal'); doc.setFontSize(7.8); doc.setTextColor(...MUTED); }
+      if (y + lines.length * 3.6 > ctx.H - 18) { doc.addPage(); letterhead(doc, ctx, { subtitle: sub }); y = 46; doc.setFont(FONT, 'normal'); doc.setFontSize(7.8); doc.setTextColor(...MUTED); }
       doc.text(lines, m, y); y += lines.length * 3.6 + 0.8;
     });
   }
 
-  const footer = partner ? `${companyProfile?.company_name || 'Sensoper Controls & Renewables'} × ${partner.name} — AMC joint venture` : (companyProfile?.company_name || 'Sensoper Controls & Renewables');
+  const footer = companyProfile?.company_name || 'Sensoper Controls & Renewables';
   drawFooters(doc, ctx, footer, 'Prices in ₹. GST as shown.', quote.quote_number);
   doc.save(`${quote.quote_number}_${(quote.customer_name || 'customer').replace(/[^\w]+/g, '_')}.pdf`);
 }
 
 /** Short text for WhatsApp / SMS. */
-export function amcQuoteMessage(quote, partner, brandName = 'Sensoper Controls & Renewables') {
+export function amcQuoteMessage(quote, brandName = 'Sensoper Controls & Renewables') {
   const plans = quote.calc?.plans || [];
-  const who = partner ? `${brandName} × ${partner.name}` : brandName;
+  const who = brandName || 'Sensoper Controls & Renewables';
   return [`Dear ${quote.customer_name},`, `Your ${quote.system_capacity_kw} kW solar plant is due for regular maintenance. Our AMC plans (per year, incl. GST):`,
     ...plans.map((p) => `• ${p.name}: ${inr(p.total)} — ${p.visits_per_year} visits, protects about ${inr(p.value_protected)} of power a year`),
     `Quote ${quote.quote_number}, valid until ${fmtDate(quote.valid_until)}. Reply to choose a plan. — ${who}`].join('\n');
@@ -220,19 +212,19 @@ const SUMMARY_LABELS = [
 ];
 const monthLabel = (k) => new Date(`${k}-01T00:00:00`).toLocaleDateString('en-IN', { month: 'short', year: '2-digit' });
 
-export async function amcReportPDF(rep, { companyProfile, partner, partnerLogo, hideMoney }) {
+export async function amcReportPDF(rep, { companyProfile }) {
   const { doc, ctx } = await createBrandDoc(companyProfile || {}, API_URL);
   await withOurLogo(ctx, companyProfile);
   const { FONT, m, contentW } = ctx;
   const sub = 'AMC report';
-  coBrandHeader(doc, ctx, { partner, partnerLogo, subtitle: sub });
+  letterhead(doc, ctx, { subtitle: sub });
   let y = 47;
-  doc.setFont(FONT, 'bold'); doc.setFontSize(18); doc.setTextColor(...INK); doc.text(`AMC report — ${rep.org_label}`, m, y);
+  doc.setFont(FONT, 'bold'); doc.setFontSize(18); doc.setTextColor(...INK); doc.text('AMC report', m, y);
   y += 6; doc.setFont(FONT, 'normal'); doc.setFontSize(9); doc.setTextColor(...MUTED);
   doc.text(`${fmtDate(rep.period.start)} to ${fmtDate(rep.period.end)} · made ${fmtDate(rep.generated_at)}`, m, y);
   y += 6;
   const s = rep.summary;
-  const tiles = SUMMARY_LABELS.filter(([k]) => !(hideMoney && k === 'yearly_value'));
+  const tiles = SUMMARY_LABELS;
   const cw = (contentW - 3 * 3) / 4;
   tiles.forEach(([k, label], i) => {
     const x = m + (i % 4) * (cw + 3); const yy = y + Math.floor(i / 4) * 15;
@@ -244,36 +236,32 @@ export async function amcReportPDF(rep, { companyProfile, partner, partnerLogo, 
   y += Math.ceil(tiles.length / 4) * 15 + 4;
   const table = (title, head, rows) => {
     if (!rows.length) return;
-    if (y > 250) { doc.addPage(); coBrandHeader(doc, ctx, { partner, partnerLogo, subtitle: sub }); y = 46; }
+    if (y > 250) { doc.addPage(); letterhead(doc, ctx, { subtitle: sub }); y = 46; }
     doc.setFont(FONT, 'bold'); doc.setFontSize(11); doc.setTextColor(...INK); doc.text(title, m, y); y += 2;
     autoTable(doc, { startY: y, head: [head], body: rows, margin: { left: m, right: m, top: 44 }, theme: 'striped',
       styles: { font: FONT, fontSize: 7.8, cellPadding: 1.6, textColor: INK }, headStyles: { fillColor: [30, 41, 59], textColor: 255, fontStyle: 'bold' },
-      didDrawPage: () => coBrandHeader(doc, ctx, { partner, partnerLogo, subtitle: sub }) });
+      didDrawPage: () => letterhead(doc, ctx, { subtitle: sub }) });
     y = doc.lastAutoTable.finalY + 8;
   };
-  if (rep.by_org?.length > 1) table('By company', ['Company', 'Active', 'kW', ...(hideMoney ? [] : ['Yearly value'])], rep.by_org.map((r) => [r.org_name, r.active, r.kw.toFixed(1), ...(hideMoney ? [] : [inr(r.yearly_value)])]));
-  table('Month by month', ['Month', 'New', 'Renewed', ...(hideMoney ? [] : ['New value']), 'Visits done', 'Quotes'],
-    rep.monthly.map((r) => [monthLabel(r.month), r.new_contracts, r.renewals, ...(hideMoney ? [] : [inr(r.new_value)]), r.visits_done, r.quotes]));
-  table('Renewals due in 60 days', ['Contract', 'Customer', 'Company', 'Ends', ...(hideMoney ? [] : ['Yearly value'])],
-    rep.renewals_due.map((r) => [r.contract_number, r.customer, r.company, r.end_date, ...(hideMoney ? [] : [inr(r.yearly_value)])]));
-  table('Customers to offer AMC', ['Customer', 'Company', 'kW', 'Running since', 'Due', 'Quote'], rep.offers_due.map((r) => [r.customer, r.company, r.kw, r.commissioned_on, r.due_on, r.quote || '—']));
-  table('Contracts', ['Contract', 'Company', 'Customer', 'kW', 'Plan', 'Start', 'End', 'Status', ...(hideMoney ? [] : ['Yearly value'])],
-    rep.contracts.map((r) => [r.contract_number, r.company, r.customer, r.kw, r.plan || '—', r.start_date, r.end_date, r.status, ...(hideMoney ? [] : [inr(r.yearly_value)])]));
+  table('Month by month', ['Month', 'New', 'Renewed', 'New value', 'Visits done', 'Quotes'],
+    rep.monthly.map((r) => [monthLabel(r.month), r.new_contracts, r.renewals, inr(r.new_value), r.visits_done, r.quotes]));
+  table('Renewals due in 60 days', ['Contract', 'Customer', 'Ends', 'Yearly value'],
+    rep.renewals_due.map((r) => [r.contract_number, r.customer, r.end_date, inr(r.yearly_value)]));
+  table('Customers to offer AMC', ['Customer', 'kW', 'Running since', 'Due', 'Quote'], rep.offers_due.map((r) => [r.customer, r.kw, r.commissioned_on, r.due_on, r.quote || '—']));
+  table('Contracts', ['Contract', 'Customer', 'kW', 'Plan', 'Start', 'End', 'Status', 'Yearly value'],
+    rep.contracts.map((r) => [r.contract_number, r.customer, r.kw, r.plan || '—', r.start_date, r.end_date, r.status, inr(r.yearly_value)]));
   table('Service visits', ['Date', 'Contract', 'Customer', 'Type', 'Technician', 'Status'], rep.visits.map((v) => [v.date, v.contract_number, v.customer, v.type, v.technician || '—', v.status]));
-  table('Quotes', ['Quote', 'Customer', 'Company', 'kW', 'Status', 'Plan', 'Date'], rep.quotes.map((q) => [q.number, q.customer, q.company, q.kw, q.status, q.plan || '—', q.date]));
-  drawFooters(doc, ctx, partner ? `${companyProfile?.company_name || 'Sensoper'} × ${partner.name} — AMC joint venture` : (companyProfile?.company_name || 'Sensoper Controls & Renewables'), null, 'AMC report');
-  doc.save(`AMC_report_${rep.org_label.replace(/[^\w]+/g, '_')}_${rep.period.start}_${rep.period.end}.pdf`);
+  table('Quotes', ['Quote', 'Customer', 'kW', 'Status', 'Plan', 'Date'], rep.quotes.map((q) => [q.number, q.customer, q.kw, q.status, q.plan || '—', q.date]));
+  drawFooters(doc, ctx, companyProfile?.company_name || 'Sensoper Controls & Renewables', null, 'AMC report');
+  doc.save(`AMC_report_${rep.period.start}_${rep.period.end}.pdf`);
 }
 
-export function amcReportExcel(rep, { hideMoney } = {}) {
+export function amcReportExcel(rep) {
   const wb = XLSX.utils.book_new();
-  const strip = (rows, keys) => rows.map((r) => Object.fromEntries(Object.entries(r).filter(([k]) => !(hideMoney && keys.includes(k)))));
-  const money = ['yearly_value', 'outstanding', 'new_value'];
-  const info = [[`AMC report — ${rep.org_label}`], [`${rep.period.start} to ${rep.period.end}`], [], ['Measure', 'Value'],
-    ...SUMMARY_LABELS.filter(([k]) => !(hideMoney && k === 'yearly_value')).map(([k, l]) => [l, rep.summary[k]])];
+  const info = [['AMC report'], [`${rep.period.start} to ${rep.period.end}`], [], ['Measure', 'Value'],
+    ...SUMMARY_LABELS.map(([k, l]) => [l, rep.summary[k]])];
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(info), 'Summary');
-  const add = (name, rows) => { if (rows.length) XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(strip(rows, money)), name); };
-  add('By company', rep.by_org || []);
+  const add = (name, rows) => { if (rows.length) XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), name); };
   add('Monthly', rep.monthly.map((r) => ({ ...r, month: monthLabel(r.month) })));
   add('Contracts', rep.contracts);
   add('Visits', rep.visits);
@@ -281,5 +269,5 @@ export function amcReportExcel(rep, { hideMoney } = {}) {
   add('Offer AMC to', rep.offers_due);
   add('Quotes', rep.quotes);
   const buf = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
-  saveAs(new Blob([buf], { type: 'application/octet-stream' }), `AMC_report_${rep.org_label.replace(/[^\w]+/g, '_')}_${rep.period.start}_${rep.period.end}.xlsx`);
+  saveAs(new Blob([buf], { type: 'application/octet-stream' }), `AMC_report_${rep.period.start}_${rep.period.end}.xlsx`);
 }

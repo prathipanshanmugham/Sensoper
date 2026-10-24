@@ -18,7 +18,6 @@ export function useLocationScope(storageKey) {
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    if (user?.role === 'partner') { setReady(true); return; }   // joint-venture partners have no branches here
     locationsAPI.list().then(r => {
       const locs = r.data || [];
       setLocations(locs);

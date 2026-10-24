@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { inventoryAPI, locationsAPI } from '../utils/api';
+import { inventoryAPI, locationsAPI, brandsAPI } from '../utils/api';
 import { useAuth, formatApiErrorDetail } from '../contexts/AuthContext';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
@@ -46,8 +46,10 @@ export default function InventoryManagement() {
     name: '', sku_code: '', category: '',
     zone: '', aisle: '', shelf: '', rack: '', bin_location: '',
     quantity: 0, unit_price: 0, supplier: '', gst_percentage: '', margin_pct: '', wattage_w: '', hsn_code: '', reorder_level: 10,
-    image_url: '', photos: [], active: true, qc_checklist: [], procurement_date: '', location_id: ''
+    image_url: '', photos: [], active: true, qc_checklist: [], procurement_date: '', location_id: '', brand_id: ''
   });
+  const [brands, setBrands] = useState([]);
+  useEffect(() => { brandsAPI.list().then((r) => setBrands(r.data || [])).catch(() => setBrands([])); }, []);
   const [showLink, setShowLink] = useState(false);
   const [viewMode, setViewMode] = useState('all');   // all | panels (Iter 52)
   const isPanelCategory = (slug) => /panel/i.test(slug || '');
@@ -165,7 +167,7 @@ export default function InventoryManagement() {
         active: item.active !== undefined ? item.active : true,
         qc_checklist: Array.isArray(item.qc_checklist) ? item.qc_checklist : [],
         procurement_date: item.procurement_date || '',
-        location_id: item.location_id || ''
+        location_id: item.location_id || '', brand_id: item.brand_id || ''
       });
     } else {
       setEditingItem(null);
@@ -173,7 +175,7 @@ export default function InventoryManagement() {
         name: '', sku_code: '', category: categories[0]?.slug || '',
         zone: '', aisle: '', shelf: '', rack: '', bin_location: '',
         quantity: 0, unit_price: 0, supplier: '', gst_percentage: '', margin_pct: '', wattage_w: '', hsn_code: '', reorder_level: 10,
-        image_url: '', photos: [], active: true, qc_checklist: [], procurement_date: '', location_id: user?.default_location_id || ''
+        image_url: '', photos: [], active: true, qc_checklist: [], procurement_date: '', location_id: user?.default_location_id || '', brand_id: ''
       });
     }
     setShowLink(!!item?.image_url);
@@ -211,7 +213,7 @@ export default function InventoryManagement() {
       const toPct = (v) => (v === '' || v === null || v === undefined ? null : parseFloat(v));
       const specs = { ...(editingItem?.specs || {}) };
       if (isPanelCategory(itemForm.category)) { if (wattage_w === '' || wattage_w === null) delete specs.wattage; else specs.wattage = parseFloat(wattage_w); }
-      const payload = { ...rest, gst_percentage: toPct(itemForm.gst_percentage), margin_pct: toPct(itemForm.margin_pct), specs, location_id: itemForm.location_id || '' };
+      const payload = { ...rest, gst_percentage: toPct(itemForm.gst_percentage), margin_pct: toPct(itemForm.margin_pct), specs, location_id: itemForm.location_id || '', brand_id: itemForm.brand_id || '' };
       if (editingItem) {
         await inventoryAPI.updateItem(editingItem.id, payload);
       } else {
@@ -552,6 +554,12 @@ export default function InventoryManagement() {
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2"><Label>Supplier</Label><Input value={itemForm.supplier} onChange={(e) => setItemForm(p => ({ ...p, supplier: e.target.value }))} placeholder="Supplier name" className="h-11" data-testid="item-supplier-input" /></div>
+              <div className="space-y-2"><Label>Brand</Label>
+                <Select value={itemForm.brand_id || 'none'} onValueChange={(v) => setItemForm(p => ({ ...p, brand_id: v === 'none' ? '' : v }))}>
+                  <SelectTrigger className="h-11" data-testid="item-brand-select"><SelectValue /></SelectTrigger>
+                  <SelectContent><SelectItem value="none">No brand</SelectItem>{brands.map((b) => <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>)}</SelectContent>
+                </Select>
+              </div>
               <div className="space-y-2"><Label>Reorder Level</Label><Input type="number" min="0" value={itemForm.reorder_level} onChange={(e) => setItemForm(p => ({ ...p, reorder_level: parseInt(e.target.value) || 0 }))} className="h-11" data-testid="item-reorder-input" /></div>
             </div>
 

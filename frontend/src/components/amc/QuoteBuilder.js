@@ -1,6 +1,6 @@
-/* Make an AMC quote: pick the customer (an offer, one of our finished projects, a partner project, or someone new),
+/* Make an AMC quote: pick the customer (an offer, one of our finished projects, or someone new),
  * check the plant details, and see Basic / Standard / Premium side by side with what each one protects. */
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { Check, Loader2, ShieldCheck, Sparkles, Star } from 'lucide-react';
 import { amcAPI, projectsAPI } from '../../utils/api';
@@ -9,9 +9,9 @@ import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
-import { inr, OrgChip, SYSTEM_TYPE_OPTIONS } from './jv';
+import { inr, SYSTEM_TYPE_OPTIONS } from './amcCommon';
 
-const blank = { source_type: 'manual', source_id: null, customer_name: '', phone: '', site_address: '', district: '', system_type: 'on-grid', system_type_other: '', system_capacity_kw: '', commissioning_date: '', tariff: '', notes: '', terms_text: '', recommended_plan: 'standard', org_id: null };
+const blank = { source_type: 'manual', source_id: null, customer_name: '', phone: '', site_address: '', district: '', system_type: 'on-grid', system_type_other: '', system_capacity_kw: '', commissioning_date: '', tariff: '', notes: '', terms_text: '', recommended_plan: 'standard' };
 
 export function PlanCards({ calc, recommended, onRecommend, chosen, onChoose, compact }) {
   if (!calc?.plans?.length) return null;
@@ -61,12 +61,10 @@ export function LifeStrip({ calc }) {
   );
 }
 
-export default function QuoteBuilder({ open, onOpenChange, jv, prefill, onSaved }) {
-  const isPartner = !!jv?.is_partner;
+export default function QuoteBuilder({ open, onOpenChange, prefill, onSaved }) {
   const [f, setF] = useState(blank);
-  const [who, setWho] = useState('manual');           // project | jv_project | manual
+  const [who, setWho] = useState('manual');           // project | manual
   const [projects, setProjects] = useState([]);
-  const [jvProjects, setJvProjects] = useState([]);
   const [calc, setCalc] = useState(null);
   const [saving, setSaving] = useState(false);
   const [terms, setTerms] = useState({ default_text: '', templates: [] });
@@ -78,13 +76,12 @@ export default function QuoteBuilder({ open, onOpenChange, jv, prefill, onSaved 
     const start = { ...blank, ...(prefill || {}) };
     setF(start); setWho(start.source_type || 'manual'); setCalc(null); setTermsOpen(false);
     amcAPI.quoteTerms().then((r) => { setTerms(r.data); setF((x) => ({ ...x, terms_text: x.terms_text || r.data.default_text || '' })); }).catch(() => {});
-    if (!isPartner) projectsAPI.getAll('completed').then((r) => setProjects(r.data || [])).catch(() => {});
-    if (isPartner || jv?.partners?.length) amcAPI.jvProjects().then((r) => setJvProjects(r.data || [])).catch(() => {});
-  }, [open, prefill, isPartner, jv?.partners?.length]);
+    projectsAPI.getAll('completed').then((r) => setProjects(r.data || [])).catch(() => {});
+  }, [open, prefill]);
 
   const fromProject = async (id) => {
     const slim = projects.find((x) => x.id === id);
-    setF((x) => ({ ...x, source_type: 'project', source_id: id, org_id: null, customer_name: slim?.customer?.name || '', system_capacity_kw: slim?.system_size_kw || '' }));
+    setF((x) => ({ ...x, source_type: 'project', source_id: id, customer_name: slim?.customer?.name || '', system_capacity_kw: slim?.system_size_kw || '' }));
     try {
       const p = (await projectsAPI.getOne(id)).data;
       const ps = p.custom_fields?.proposed_solution || {};
@@ -92,12 +89,6 @@ export default function QuoteBuilder({ open, onOpenChange, jv, prefill, onSaved 
         district: p.location?.district || '', system_type: ps.system_type || 'on-grid', system_capacity_kw: ps.system_size_kw || slim?.system_size_kw || '',
         system_type_other: '', commissioning_date: (p.commissioning_date || p.completed_at || '').slice(0, 10), tariff: ps.tariff_per_unit || p.electrical?.eb_tariff || '' }));
     } catch { /* the slim row is enough to quote */ }
-  };
-  const fromJv = (id) => {
-    const j = jvProjects.find((x) => x.id === id);
-    if (!j) return;
-    setF((x) => ({ ...x, source_type: 'jv_project', source_id: id, org_id: j.org_id, customer_name: j.customer_name, phone: j.phone || '', site_address: j.site_address || '', district: j.district || '',
-      system_type: j.system_type || 'on-grid', system_type_other: j.system_type_other || '', system_capacity_kw: j.system_capacity_kw || '', commissioning_date: j.commissioning_date || '', tariff: j.tariff || '' }));
   };
 
   // live price of the three plans
@@ -122,11 +113,7 @@ export default function QuoteBuilder({ open, onOpenChange, jv, prefill, onSaved 
     } catch (e) { toast.error(e.response?.data?.detail || 'Could not save the quote'); } finally { setSaving(false); }
   };
 
-  const choices = useMemo(() => [
-    !isPartner && ['project', 'Our customer'],
-    (isPartner || jv?.partners?.length) && ['jv_project', isPartner ? 'Your project' : 'Partner customer'],
-    ['manual', 'Someone new'],
-  ].filter(Boolean), [isPartner, jv?.partners?.length]);
+  const choices = [['project', 'Our customer'], ['manual', 'Someone new']];
   const fromOffer = !!prefill?.source_id;
   const ready = f.customer_name.trim() && parseFloat(f.system_capacity_kw) > 0 && (who === 'manual' || f.source_id) && (f.system_type !== 'others' || f.system_type_other.trim());
 
@@ -153,15 +140,9 @@ export default function QuoteBuilder({ open, onOpenChange, jv, prefill, onSaved 
                 <SelectContent>{projects.map((p) => <SelectItem key={p.id} value={p.id}>{p.customer?.name} — {p.reference_number}</SelectItem>)}</SelectContent>
               </Select>
             )}
-            {who === 'jv_project' && (
-              <Select value={f.source_id || ''} onValueChange={fromJv}>
-                <SelectTrigger className="h-11" data-testid="amc-quote-jvproject"><SelectValue placeholder={jvProjects.length ? 'Choose a partner project' : 'No partner projects yet'} /></SelectTrigger>
-                <SelectContent>{jvProjects.map((j) => <SelectItem key={j.id} value={j.id}>{j.customer_name} — {j.system_capacity_kw} kW{!isPartner ? ` · ${j.org_name}` : ''}</SelectItem>)}</SelectContent>
-              </Select>
-            )}
           </div>
         )}
-        {fromOffer && <p className="flex items-center gap-2 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-900"><Sparkles className="h-4 w-4" />Quote for <b>{f.customer_name}</b> {f.org_id !== undefined && <OrgChip jv={jv} orgId={f.org_id} />}</p>}
+        {fromOffer && <p className="flex items-center gap-2 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-900"><Sparkles className="h-4 w-4" />Quote for <b>{f.customer_name}</b></p>}
 
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
           <div className="col-span-2 space-y-1"><Label className="text-xs">Customer name *</Label><Input value={f.customer_name} onChange={set('customer_name')} className="h-11" data-testid="amc-quote-name" /></div>

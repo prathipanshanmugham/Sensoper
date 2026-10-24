@@ -1,4 +1,4 @@
-/* AMC report: pick the company and the period, read the numbers, download PDF / Excel. */
+/* AMC report: pick the period, read the numbers, download PDF / Excel. */
 import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { FileSpreadsheet, FileText, Loader2 } from 'lucide-react';
@@ -8,7 +8,7 @@ import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import Can from '../Can';
-import { ALL, imageDataUrl, inr, logoUrl, OrgSelect } from './jv';
+import { inr } from './amcCommon';
 import { amcReportExcel, amcReportPDF } from '../../utils/amcPdf';
 
 const BLUE = '#2a78d6', ORANGE = '#eb6834';
@@ -24,28 +24,24 @@ function Tile({ label, value, testid }) {
   );
 }
 
-export default function AmcReportTab({ jv, org: pageOrg }) {
+export default function AmcReportTab() {
   const today = new Date();
-  const [org, setOrg] = useState(pageOrg);
   const [start, setStart] = useState(iso(new Date(today.getFullYear(), today.getMonth() - 11, 1)));
   const [end, setEnd] = useState(iso(today));
   const [rep, setRep] = useState(null);
   const [busy, setBusy] = useState('');
-  useEffect(() => { setOrg(pageOrg); }, [pageOrg]);
   const load = useCallback(() => {
     setRep(null);
-    amcAPI.report({ org: jv?.is_partner ? undefined : org, start, end }).then((r) => setRep(r.data)).catch((e) => { toast.error(e.response?.data?.detail || 'Could not load the report'); setRep(false); });
-  }, [org, start, end, jv?.is_partner]);
+    amcAPI.report({ start, end }).then((r) => setRep(r.data)).catch((e) => { toast.error(e.response?.data?.detail || 'Could not load the report'); setRep(false); });
+  }, [start, end]);
   useEffect(() => { load(); }, [load]);
 
-  const partner = jv?.is_partner ? jv.partners?.[0] : (org !== ALL ? jv?.partners?.find((p) => p.id === org) : null);
   const pdf = async () => {
     setBusy('pdf');
     try {
-      let cp = { company_name: jv?.ours?.name };
+      let cp = {};
       try { cp = (await amcAPI.brand()).data || cp; } catch { /* name only */ }   // the company chosen in AMC settings
-      const partnerLogo = partner?.logo_path ? await imageDataUrl(logoUrl(partner.logo_path)) : null;
-      await amcReportPDF(rep, { companyProfile: cp, partner, partnerLogo });
+      await amcReportPDF(rep, { companyProfile: cp });
     } catch (e) { console.error(e); toast.error('Could not make the PDF'); } finally { setBusy(''); }
   };
 
@@ -54,7 +50,6 @@ export default function AmcReportTab({ jv, org: pageOrg }) {
   return (
     <div className="space-y-4" data-testid="amc-report-tab">
       <div className="flex flex-wrap items-end gap-2 rounded-xl border border-slate-200 bg-white p-3">
-        {!jv?.is_partner && jv?.partners?.length > 0 && <div className="w-full space-y-1 sm:w-56"><Label className="text-xs">Company</Label><OrgSelect jv={jv} value={org} onChange={setOrg} /></div>}
         <div className="space-y-1"><Label className="text-xs">From</Label><Input type="date" value={start} max={end} onChange={(e) => setStart(e.target.value)} className="h-10" data-testid="amc-report-start" /></div>
         <div className="space-y-1"><Label className="text-xs">To</Label><Input type="date" value={end} min={start} onChange={(e) => setEnd(e.target.value)} className="h-10" data-testid="amc-report-end" /></div>
         <div className="ml-auto flex gap-2">
@@ -65,7 +60,7 @@ export default function AmcReportTab({ jv, org: pageOrg }) {
       {rep === null && <div className="flex justify-center py-10"><Loader2 className="h-6 w-6 animate-spin text-slate-400" /></div>}
       {rep && (
         <>
-          <p className="text-sm text-slate-600"><b className="text-slate-900">{rep.org_label}</b> · {new Date(rep.period.start).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })} – {new Date(rep.period.end).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</p>
+          <p className="text-sm text-slate-600">{new Date(rep.period.start).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })} – {new Date(rep.period.end).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</p>
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
             <Tile label="Active contracts" value={s.active_contracts} testid="amc-rep-active" />
             <Tile label="Yearly value" value={inr(s.yearly_value)} testid="amc-rep-value" />
@@ -76,13 +71,6 @@ export default function AmcReportTab({ jv, org: pageOrg }) {
             <Tile label="Customers to offer AMC" value={s.offers_due} testid="amc-rep-offers" />
             <Tile label={`Quotes won (of ${s.quotes_made})`} value={`${s.quotes_accepted} · ${s.quote_win_pct}%`} />
           </div>
-          {rep.by_org?.length > 1 && (
-            <div className="overflow-hidden rounded-xl border border-slate-200 bg-white" data-testid="amc-rep-by-org">
-              <p className="border-b border-slate-100 px-4 py-2.5 text-sm font-semibold text-slate-900">By company</p>
-              <table className="w-full text-sm"><thead className="bg-slate-50 text-xs text-slate-500"><tr><th className="p-2 text-left">Company</th><th className="p-2 text-right">Active</th><th className="p-2 text-right">kW</th><th className="p-2 text-right">Yearly value</th></tr></thead>
-                <tbody className="divide-y divide-slate-100">{rep.by_org.map((r) => <tr key={r.org_id}><td className="p-2">{r.org_name}</td><td className="p-2 text-right tabular-nums">{r.active}</td><td className="p-2 text-right tabular-nums">{r.kw.toFixed(1)}</td><td className="p-2 text-right tabular-nums">{inr(r.yearly_value)}</td></tr>)}</tbody></table>
-            </div>
-          )}
           <div className="rounded-xl border border-slate-200 bg-white p-3">
             <p className="mb-2 text-sm font-semibold text-slate-900">Contracts started, month by month</p>
             <ResponsiveContainer width="100%" height={220}>
@@ -97,9 +85,9 @@ export default function AmcReportTab({ jv, org: pageOrg }) {
               </BarChart>
             </ResponsiveContainer>
           </div>
-          {[['Renewals due in the next 60 days', rep.renewals_due, ['contract_number', 'customer', 'company', 'end_date'], ['Contract', 'Customer', 'Company', 'Ends']],
-            ['Customers to offer AMC', rep.offers_due, ['customer', 'company', 'kw', 'due_on', 'quote'], ['Customer', 'Company', 'kW', 'Due', 'Quote']],
-            ['Contracts', rep.contracts.slice(0, 50), ['contract_number', 'company', 'customer', 'plan', 'end_date', 'status'], ['Contract', 'Company', 'Customer', 'Plan', 'Ends', 'Status']]]
+          {[['Renewals due in the next 60 days', rep.renewals_due, ['contract_number', 'customer', 'end_date'], ['Contract', 'Customer', 'Ends']],
+            ['Customers to offer AMC', rep.offers_due, ['customer', 'kw', 'due_on', 'quote'], ['Customer', 'kW', 'Due', 'Quote']],
+            ['Contracts', rep.contracts.slice(0, 50), ['contract_number', 'customer', 'plan', 'end_date', 'status'], ['Contract', 'Customer', 'Plan', 'Ends', 'Status']]]
             .filter(([, rows]) => rows.length).map(([title, rows, keys, heads]) => (
               <div key={title} className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
                 <p className="border-b border-slate-100 px-4 py-2.5 text-sm font-semibold text-slate-900">{title} <span className="font-normal text-slate-400">({rows.length})</span></p>

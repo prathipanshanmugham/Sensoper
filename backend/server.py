@@ -62,6 +62,13 @@ def init_storage():
     STORAGE_ROOT.mkdir(parents=True, exist_ok=True)
     return str(STORAGE_ROOT)
 
+def _delete_stored_file(path: str) -> None:
+    """Remove an uploaded file (and its content-type note) from local storage, if it is there."""
+    full_path = _storage_path(path)
+    for p in (full_path, full_path.with_suffix(full_path.suffix + ".meta")):
+        if p.is_file():
+            p.unlink()
+
 def put_object(path: str, data: bytes, content_type: str) -> dict:
     full_path = _storage_path(path)
     full_path.parent.mkdir(parents=True, exist_ok=True)
@@ -280,6 +287,7 @@ class InventoryItemCreate(BaseModel):
     location_id: Optional[str] = None
     specs: Dict[str, Any] = {}                        # Iter 45 — electrical specs (wattage_w, voc, rated_kw, ...) for calculator use
     photos: List[str] = []                            # uploaded pictures (storage paths); the first is the main one
+    brand_id: Optional[str] = None                    # Brands page (own / dealership / distribution brand)
 
 class InventoryItemUpdate(BaseModel):
     name: Optional[str] = None
@@ -304,6 +312,7 @@ class InventoryItemUpdate(BaseModel):
     location_id: Optional[str] = None
     specs: Optional[Dict[str, Any]] = None            # Iter 45
     photos: Optional[List[str]] = None
+    brand_id: Optional[str] = None                    # "" removes the brand
 
 class InventoryCategoryCreate(BaseModel):
     name: str
@@ -487,6 +496,8 @@ class PurchaseOrderCreate(BaseModel):
     notes: str = ""
     location_id: Optional[str] = None
     po_number: Optional[str] = None   # Iter 58 — manual override; blank = auto-generated
+    vendor_id: Optional[str] = None
+    skip_reason: Optional[str] = None  # why an admin buys without comparing vendor quotes
 
 class InboundEditLine(BaseModel):
     inventory_item_id: str
@@ -581,6 +592,8 @@ async def get_current_user(request: Request) -> dict:
         user = await db.users.find_one({"_id": ObjectId(payload["sub"])})
         if not user or user.get("active") is False:
             raise HTTPException(status_code=401, detail="User not found")
+        if user.get("access_until") and _today_ist() > str(user["access_until"])[:10]:
+            raise HTTPException(status_code=401, detail="Your last working day has passed — this login is closed")
         out = {
             "id": str(user["_id"]),
             "email": user["email"],
@@ -593,7 +606,6 @@ async def get_current_user(request: Request) -> dict:
             "must_reset_password": bool(user.get("must_reset_password")),
             "totp_enabled": bool(user.get("totp_enabled")),
             "daily_report_required": daily_report_required(user),
-            "partner_id": user.get("partner_id"),
         }
     except jwt.ExpiredSignatureError:
         raise HTTPException(status_code=401, detail="Token expired")
@@ -603,10 +615,12 @@ async def get_current_user(request: Request) -> dict:
     return out
 
 
+def _today_ist() -> str:
+    return (datetime.now(timezone.utc) + timedelta(hours=5, minutes=30)).date().isoformat()
+
+
 def daily_report_required(user: dict) -> bool:
     """Admins choose per person who must send a daily report; by default everyone except admins."""
-    if user.get("role") == "partner":
-        return False                                   # joint-venture partners aren't our staff
     v = user.get("daily_report_required")
     return bool(v) if v is not None else user.get("role") != "admin"
 
@@ -622,12 +636,8 @@ async def _policy_gate(request: Request, user: dict) -> None:
         return
     route = request.scope.get("route")
     path = getattr(route, "path", None) or request.url.path
-    if user.get("role") == access_policy.PARTNER_ROLE:
-        # joint-venture partners: the AMC page and their own login, nothing else (each AMC route scopes them further)
-        request.state.policy_grant = False
-        if not access_policy.partner_allows(request.method, path):
-            raise HTTPException(status_code=403, detail="Joint-venture partner logins can only use the AMC page")
-        return
+    if user.get("role") not in ("manager", "staff"):
+        raise HTTPException(status_code=403, detail="This login has no access")
     perms = await get_permissions(user["role"])
     ok, reason, grantable = access_policy.decide(perms, request.method, path)
     if ok is False:
@@ -682,8 +692,6 @@ DEFAULT_PERMISSIONS = {r: access_policy.default_permissions(r) for r in ("admin"
 
 async def get_permissions(role: str) -> dict:
     """A role's matrix from the DB, with anything missing filled from the recommended defaults (cached briefly)."""
-    if role == access_policy.PARTNER_ROLE:
-        return access_policy.partner_permissions()
     if role not in ("admin", "manager", "staff"):
         return {}
     hit = _PERM_CACHE.get(role)
@@ -969,6 +977,12 @@ async def login(credentials: UserLogin, response: Response, request: Request):
     await db.login_attempts.delete_one({"identifier": identifier})
     if user.get("active") is False:
         raise HTTPException(status_code=401, detail="This login is switched off — ask your admin")
+    if user.get("access_until") and _today_ist() > str(user["access_until"])[:10]:
+        try:
+            await _hr_router.close_due_exits()
+        except Exception:
+            pass
+        raise HTTPException(status_code=401, detail="Your last working day has passed — this login is closed")
     if user.get("totp_enabled"):
         # Iter 53: second factor required — no session until the authenticator code is verified
         return await _start_preauth(db, response, user)
@@ -992,7 +1006,6 @@ def _issue_session(response: Response, user: dict) -> dict:
         "created_at": user["created_at"],
         "must_reset_password": bool(user.get("must_reset_password")),
         "totp_enabled": bool(user.get("totp_enabled")),
-        "partner_id": user.get("partner_id"),
     }
 
 @api_router.post("/auth/logout")
@@ -1049,7 +1062,6 @@ async def get_users(request: Request):
             "location_ids": u.get("location_ids", []),
             "default_location_id": u.get("default_location_id"),
             "daily_report_required": daily_report_required(u),
-            "partner_id": u.get("partner_id"),
             "active": u.get("active", True),
         }
         for u in users
@@ -1105,8 +1117,8 @@ async def update_user(user_id: str, request: Request):
     if not target:
         raise HTTPException(status_code=404, detail="User not found")
     if "role" in body and body["role"] != target.get("role"):
-        if target.get("role") == "partner" or body["role"] not in ("admin", "manager", "staff"):
-            raise HTTPException(status_code=400, detail="Role must be admin, manager or staff (partner logins are managed on the AMC page)")
+        if body["role"] not in ("admin", "manager", "staff"):
+            raise HTTPException(status_code=400, detail="Role must be admin, manager or staff")
         update_data["role"] = body["role"]
     if "phone" in body:
         update_data["phone"] = body["phone"]
@@ -1702,6 +1714,27 @@ async def upload_media(request: Request, file: UploadFile = File(...)):
         logger.error(f"Media upload failed: {e}")
         raise HTTPException(status_code=500, detail="Media upload failed")
 
+DOC_TYPES = {"application/pdf": "pdf", "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp",
+             "application/msword": "doc", "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "docx"}
+
+@api_router.post("/upload/document")
+async def upload_document(request: Request, file: UploadFile = File(...)):
+    """PDF, Word or a picture (quotes from vendors, resumes, trademark certificates, loan papers) — up to 10 MB."""
+    await get_current_user(request)
+    ext = DOC_TYPES.get((file.content_type or "").split(";")[0].strip().lower())
+    if not ext:
+        raise HTTPException(status_code=400, detail="Attach a PDF, a Word file or a picture")
+    contents = await file.read()
+    if len(contents) > 10 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="File size must be under 10MB")
+    path = f"{APP_NAME}/documents/{uuid.uuid4()}.{ext}"
+    try:
+        result = put_object(path, contents, file.content_type)
+        return {"storage_path": result["path"], "filename": file.filename, "content_type": file.content_type, "size": len(contents)}
+    except Exception as e:
+        logger.error(f"Document upload failed: {e}")
+        raise HTTPException(status_code=500, detail="Upload failed")
+
 @api_router.get("/files/{path:path}")
 async def serve_file(path: str, request: Request):
     try:
@@ -1868,6 +1901,14 @@ async def get_inventory_item(item_id: str, request: Request):
         ]
     }
 
+async def _valid_brand_id(brand_id: Optional[str]) -> Optional[str]:
+    """'' / None → no brand; otherwise the brand must exist."""
+    if not brand_id:
+        return None
+    if not ObjectId.is_valid(brand_id) or not await db.brands.find_one({"_id": ObjectId(brand_id)}, {"_id": 1}):
+        raise HTTPException(status_code=400, detail="Brand not found")
+    return brand_id
+
 @api_router.post("/inventory/items")
 async def create_inventory_item(item: InventoryItemCreate, request: Request):
     current_user = await require_role("admin", "manager")(request)
@@ -1900,6 +1941,7 @@ async def create_inventory_item(item: InventoryItemCreate, request: Request):
         "location_id": item.location_id or None,
         "addon_group": item.addon_group,
         "specs": item.specs or {},
+        "brand_id": await _valid_brand_id(item.brand_id),
         "created_at": datetime.now(timezone.utc).isoformat(),
         "updated_at": datetime.now(timezone.utc).isoformat()
     }
@@ -1959,6 +2001,8 @@ async def update_inventory_item(item_id: str, updates: InventoryItemUpdate, requ
         update_data["addon_group"] = updates.addon_group
     if updates.specs is not None:
         update_data["specs"] = updates.specs
+    if updates.brand_id is not None:
+        update_data["brand_id"] = await _valid_brand_id(updates.brand_id)
     if updates.unit_price is not None:
         update_data["unit_price"] = updates.unit_price
     if updates.supplier is not None:
@@ -2466,10 +2510,10 @@ _amc_router = _create_amc_router(
 api_router.include_router(_amc_router)
 from amc_ops import create_router as _create_amc_ops_router  # noqa: E402
 api_router.include_router(_create_amc_ops_router(db=db, get_current_user=get_current_user, require_role=require_role, create_audit_log=create_audit_log))
-from amc_jv import create_router as _create_amc_jv_router, ours_query as _amc_ours_query  # noqa: E402
-_amc_jv_router = _create_amc_jv_router(db=db, get_current_user=get_current_user, require_role=require_role, create_audit_log=create_audit_log,
-                                       hash_password=hash_password, role_ok=role_ok)
-api_router.include_router(_amc_jv_router)
+from amc_sales import create_router as _create_amc_sales_router, remove_joint_venture as _remove_joint_venture  # noqa: E402
+_amc_sales_router = _create_amc_sales_router(db=db, get_current_user=get_current_user, require_role=require_role, create_audit_log=create_audit_log,
+                                             role_ok=role_ok)
+api_router.include_router(_amc_sales_router)
 from live_sync import create_router as _create_live_sync_router  # noqa: E402
 api_router.include_router(_create_live_sync_router(db, get_current_user))
 
@@ -2533,6 +2577,61 @@ from org_structure import create_router as _create_org_router  # noqa: E402
 from customer_portal import create_router as _create_portal_router  # noqa: E402
 api_router.include_router(_create_attendance_router(db, get_current_user, require_role, create_audit_log))
 api_router.include_router(_create_org_router(db, require_role))
+# Oct 2026: brands & trademarks, purchase requests with vendor quotes, HR, loans, and the event calendar
+from brands import create_router as _create_brands_router  # noqa: E402
+from procurement import create_router as _create_procurement_router  # noqa: E402
+from hr import create_router as _create_hr_router  # noqa: E402
+from loans import create_router as _create_loans_router  # noqa: E402
+from calendar_events import create_router as _create_calendar_router  # noqa: E402
+_brands_router = _create_brands_router(db, get_current_user, require_role, create_audit_log, get_permissions)
+_procurement_router = _create_procurement_router(db, get_current_user, require_role, create_audit_log, require_module, check_module_permission,
+                                                 insert_purchase_order=lambda *a, **k: insert_purchase_order(*a, **k))
+_hr_router = _create_hr_router(db, get_current_user, require_role, create_audit_log, hash_password, get_permissions, check_module_permission)
+_loans_router = _create_loans_router(db, get_current_user, require_role, create_audit_log, get_permissions, check_module_permission)
+for _r in (_brands_router, _procurement_router, _hr_router, _loans_router):
+    api_router.include_router(_r)
+
+
+async def _cal_amc(start, end, user):
+    out = []
+    async for v in db.amc_service_visits.find({"status": "scheduled", "scheduled_date": {"$gte": start.isoformat(), "$lte": end.isoformat()}}):
+        c = await db.amc_contracts.find_one({"_id": ObjectId(v["contract_id"])}, {"customer_name": 1, "contract_number": 1}) if ObjectId.is_valid(v.get("contract_id") or "") else None
+        out.append({"date": v["scheduled_date"][:10], "title": f"AMC visit: {(c or {}).get('customer_name', '')}", "detail": " · ".join(x for x in ((c or {}).get("contract_number"), v.get("technician_name")) if x),
+                    "source": "amc", "link": "/dashboard/amc?tab=contracts", "id": f"amcv-{v['_id']}"})
+    return out
+
+
+async def _cal_projects(start, end, user):
+    out = []
+    async for p in db.projects.find({"deleted_at": {"$exists": False}, "status": {"$in": ["approved", "submitted", "draft"]},
+                                     "installation_date": {"$gte": start.isoformat(), "$lte": end.isoformat() + "T23:59"}},
+                                    {"installation_date": 1, "customer.name": 1, "reference_number": 1}):
+        out.append({"date": str(p["installation_date"])[:10], "title": f"Installation: {(p.get('customer') or {}).get('name', '')}", "detail": p.get("reference_number"),
+                    "source": "projects", "link": f"/dashboard/projects/{p['_id']}", "id": f"inst-{p['_id']}"})
+    crews = {str(x["_id"]): x.get("name") async for x in db.partners.find({}, {"name": 1})}
+    refs = {}
+    async for a in db.partner_assignments.find({"status": {"$nin": ["completed", "cancelled"]}, "expected_completion": {"$gte": start.isoformat(), "$lte": end.isoformat()}}):
+        pid = a.get("project_id")
+        if pid and pid not in refs and ObjectId.is_valid(pid):
+            pr = await db.projects.find_one({"_id": ObjectId(pid)}, {"reference_number": 1, "customer.name": 1})
+            refs[pid] = " · ".join(x for x in ((pr or {}).get("reference_number"), ((pr or {}).get("customer") or {}).get("name")) if x)
+        out.append({"date": str(a["expected_completion"])[:10], "title": f"Crew work due: {crews.get(a.get('partner_id')) or 'subcontractor'}", "detail": refs.get(pid),
+                    "source": "projects", "link": f"/dashboard/partners/{a.get('partner_id')}", "id": f"asg-{a['_id']}"})
+    return out
+
+
+async def _cal_hr(start, end, user):
+    sees_hr = user["role"] == "admin" or await check_module_permission(user, "module_hr", "view")
+    sees_exits = user["role"] == "admin" or (sees_hr and bool((await get_permissions(user["role"])).get("can_manage_exits")))
+    return await _hr_router.calendar_items(start, end, user, sees_hr, sees_exits)
+
+
+_calendar_router = _create_calendar_router(db, get_current_user, create_audit_log, get_permissions, check_module_permission, providers=[
+    ("module_amc", _cal_amc), ("module_projects", _cal_projects), ("module_purchase_inbound", lambda s, e, u: _procurement_router.calendar_items(s, e)),
+    ("module_brands", lambda s, e, u: _brands_router.calendar_items(s, e)), ("module_loans", lambda s, e, u: _loans_router.calendar_items(s, e)),
+    ("", _cal_hr),
+])
+api_router.include_router(_calendar_router)
 api_router.include_router(_create_portal_router(db, get_current_user, require_role, create_audit_log, JWT_SECRET))
 
 # ═══════════ ECOMMERCE MARKETPLACES (Iter 46 Change 2) ═══════════
@@ -5269,7 +5368,7 @@ async def get_report(report_type: str, request: Request, date_from: str = None, 
 
     # === 14. AMC REPORT (Iter 43 Change 4) ===
     elif report_type == "amc":
-        contracts = await db.amc_contracts.find({**loc_filter, **_amc_ours_query()}).to_list(2000)  # partner (JV) contracts never count as ours
+        contracts = await db.amc_contracts.find(loc_filter).to_list(2000)
         active = [c for c in contracts if c.get("status") == "active"]
         arr = sum(c.get("annual_value", 0) or 0 for c in active)
         outstanding = sum(c.get("outstanding", 0) or 0 for c in contracts)
@@ -5429,7 +5528,7 @@ async def get_report(report_type: str, request: Request, date_from: str = None, 
 
     # === EMPLOYEE PERFORMANCE (Iter 44 Batch D) — auto activity + manual scores ===
     elif report_type == "employee_performance":
-        all_users = await db.users.find({"role": {"$ne": "partner"}}).to_list(500)
+        all_users = await db.users.find({}).to_list(500)
         team: Dict[str, Any] = defaultdict(lambda: {"name": "", "assigned": 0, "completed": 0, "revenue": 0.0})
         for p in projects:
             uid = p.get("created_by", "")
@@ -5782,7 +5881,7 @@ async def get_alerts_dashboard(request: Request):
             logger.warning(f"vault rotation alert sync skipped: {e}")
     if user["role"] in ("admin", "manager"):
         try:
-            await _amc_jv_router.sync_offer_notifications()  # plants old enough for an AMC offer → bell
+            await _amc_sales_router.sync_offer_notifications()  # plants old enough for an AMC offer → bell
         except Exception as e:
             logger.warning(f"AMC offer alert sync skipped: {e}")
     _nq = {"channel": "in_app", "user_id": user["id"], "status": "pending", "notify_at": {"$lte": datetime.now(timezone.utc).isoformat()}}
@@ -6595,39 +6694,60 @@ async def preview_po_number(request: Request, location_id: Optional[str] = None)
     counter = await db.counters.find_one({"_id": f"po_number_{loc_code or 'HO'}"}) or {}
     return {"po_number": f"PO-{loc_code or 'HO'}-{int(counter.get('seq', 0)) + 1:04d}"}
 
-@api_router.post("/purchase-orders")
-async def create_po(po: PurchaseOrderCreate, request: Request):
-    user = await require_module(request, "module_purchase_inbound", "create")
-    total = sum(i.get("qty",0) * i.get("unit_price",0) for i in po.items)
-    location_id = po.location_id or user.get("default_location_id")
+async def insert_purchase_order(user: dict, *, supplier_name: str, supplier_contact: str, items: list, expected_delivery: str,
+                                notes: str, location_id: Optional[str], po_number: Optional[str] = None, extra: Optional[dict] = None) -> dict:
+    """Number and save a purchase order (status pending → normal approval). Used by New PO and by a chosen vendor quote."""
+    total = sum(float(i.get("qty", 0) or 0) * float(i.get("unit_price", 0) or 0) for i in items)
+    location_id = location_id or user.get("default_location_id")
     loc_code = None
-    if location_id:
+    if location_id and ObjectId.is_valid(str(location_id)):
         loc = await db.locations.find_one({"_id": ObjectId(location_id)})
         loc_code = loc.get("code") if loc else None
     seq = await _next_doc_sequence(f"po_number_{loc_code or 'HO'}")
-    manual = (po.po_number or "").strip()
+    manual = (po_number or "").strip()
     if manual:
         if len(manual) > 40:
             raise HTTPException(status_code=400, detail="PO number must be 40 characters or fewer")
         clash = await db.purchase_orders.find_one({
             "po_number": {"$regex": f"^{re.escape(manual)}$", "$options": "i"},
-            "supplier_name": {"$regex": f"^{re.escape(po.supplier_name.strip())}$", "$options": "i"},
+            "supplier_name": {"$regex": f"^{re.escape(supplier_name.strip())}$", "$options": "i"},
         })
         if clash:
-            raise HTTPException(status_code=409, detail=f"PO number '{manual}' already exists for {po.supplier_name.strip()} (created {str(clash.get('created_at', ''))[:10]}, status {clash.get('status')}). Use a different number.")
+            raise HTTPException(status_code=409, detail=f"PO number '{manual}' already exists for {supplier_name.strip()} (created {str(clash.get('created_at', ''))[:10]}, status {clash.get('status')}). Use a different number.")
     doc = {
         "po_number": manual or f"PO-{loc_code or 'HO'}-{seq:04d}",
         "po_number_manual": bool(manual),
-        "supplier_name": po.supplier_name, "supplier_contact": po.supplier_contact,
-        "items": po.items, "total_amount": round(total, 2),
-        "expected_delivery": po.expected_delivery, "notes": po.notes,
+        "supplier_name": supplier_name, "supplier_contact": supplier_contact,
+        "items": items, "total_amount": round(total, 2),
+        "expected_delivery": expected_delivery, "notes": notes,
         "location_id": location_id,
         "status": "pending", "qc": None, "transport": None, "storage_location": None,
         "created_by": user["id"], "created_by_name": user["name"],
-        "created_at": datetime.now(timezone.utc).isoformat()
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        **(extra or {}),
     }
     result = await db.purchase_orders.insert_one(doc)
-    return {"id": str(result.inserted_id), "po_number": doc["po_number"], "message": "PO created"}
+    return {"id": str(result.inserted_id), "po_number": doc["po_number"], "total_amount": doc["total_amount"]}
+
+@api_router.post("/purchase-orders")
+async def create_po(po: PurchaseOrderCreate, request: Request):
+    user = await require_module(request, "module_purchase_inbound", "create")
+    # Procurement rule (Oct 2026): material is bought after comparing vendor quotes (Purchases → Purchase requests).
+    # Admins may still raise a PO directly; the reason is kept on the PO.
+    from procurement import merge_settings as _proc_settings  # noqa: E402
+    ps = _proc_settings(await db.procurement_settings.find_one({"key": "defaults"}))
+    total = sum(float(i.get("qty", 0) or 0) * float(i.get("unit_price", 0) or 0) for i in po.items)
+    direct = ps["require_quotes"] and total >= float(ps["skip_below_amount"] or 0)
+    if direct and user["role"] != "admin":
+        raise HTTPException(status_code=400, detail=f"Get {ps['min_quotes']} vendor quotes first: Purchases → Purchase requests. "
+                                                    "Only an admin can raise a PO without quotes.")
+    extra = {"direct_po": True, "direct_reason": (po.skip_reason or "").strip()[:300] or "No reason given"} if direct else {}
+    if po.vendor_id:
+        extra["vendor_id"] = po.vendor_id
+    out = await insert_purchase_order(user, supplier_name=po.supplier_name, supplier_contact=po.supplier_contact, items=po.items,
+                                      expected_delivery=po.expected_delivery, notes=po.notes, location_id=po.location_id,
+                                      po_number=po.po_number, extra=extra)
+    return {"id": out["id"], "po_number": out["po_number"], "message": "PO created"}
 
 @api_router.get("/purchase-orders")
 async def list_pos(request: Request, status: str = None, location_id: str = None):
@@ -7508,12 +7628,31 @@ async def startup_event():
     # Attendance / customer dashboard
     await db.attendance.create_index([("user_id", 1), ("date", 1)], unique=True)
     await db.attendance.create_index("date")
-    await db.amc_contracts.create_index("org_id")
     await db.amc_contracts.create_index("project_id")
-    await db.jv_projects.create_index("org_id")
-    await db.amc_quotes.create_index([("org_id", 1), ("created_at", -1)])
+    await db.amc_quotes.create_index("created_at")
     await db.amc_offer_flags.create_index([("source_type", 1), ("source_id", 1)], unique=True)
-    await db.users.create_index("partner_id")
+    # Oct 2026 pages
+    await db.brands.create_index("name")
+    await db.trademarks.create_index("brand_id")
+    await db.inventory_items.create_index("brand_id")
+    await db.vendor_ratings.create_index("vendor_id")
+    await db.purchase_requests.create_index([("status", 1), ("created_at", -1)])
+    await db.purchase_orders.create_index("vendor_id")
+    await db.hr_candidates.create_index([("opening_id", 1), ("stage", 1)])
+    await db.hr_covers.create_index([("start_date", 1), ("end_date", 1)])
+    await db.hr_exits.create_index([("status", 1), ("last_working_day", 1)])
+    await db.hr_roster.create_index([("user_id", 1), ("date", 1)], unique=True)
+    await db.loan_payments.create_index("loan_id")
+    await db.calendar_events.create_index("date")
+    await db.notifications.create_index([("kind", 1), ("source_type", 1), ("source_id", 1)])
+    try:
+        await _hr_router.close_due_exits()
+    except Exception as e:
+        logger.warning(f"HR exit check skipped: {e}")
+    # The AMC joint venture was removed (Oct 2026): erase partner companies, logins and their AMC work, once
+    _jv = await _remove_joint_venture(db, delete_file=_delete_stored_file)
+    if _jv is not None:
+        logger.info("Joint venture removed: %s", _jv)
     await db.customer_portal_links.create_index("token_hash")
     await db.customer_portal_links.create_index("project_id")
     await db.portal_attempts.create_index("at", expireAfterSeconds=24 * 3600)

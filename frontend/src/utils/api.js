@@ -431,6 +431,11 @@ export const uploadAPI = {
     formData.append('file', file);
     return api.post('/upload/image', formData, { headers: { 'Content-Type': undefined } });
   },
+  uploadDocument: (file) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return api.post('/upload/document', formData, { headers: { 'Content-Type': undefined }, timeout: 120000 });
+  },
   uploadMedia: (file) => {
     const formData = new FormData();
     formData.append('file', file);
@@ -647,21 +652,7 @@ export const amcAPI = {
   batching: (days = 30) => api.get('/amc/batching', { params: { days } }),
   outbox: (allPending = false) => api.get('/amc/outbox', { params: { all_pending: allPending } }),
   outboxSent: (id) => api.post(`/amc/outbox/${id}/sent`),
-  // joint venture, offers, quotes, report
-  jvMe: () => api.get('/amc/jv/me'),
-  partners: () => api.get('/amc/jv/partners'),
-  createPartner: (data) => api.post('/amc/jv/partners', data),
-  updatePartner: (id, data) => api.put(`/amc/jv/partners/${id}`, data),
-  setPartnerLogo: (id, logoPath) => api.put(`/amc/jv/partners/${id}/logo`, { logo_path: logoPath }),
-  partnerUsers: (id) => api.get(`/amc/jv/partners/${id}/users`),
-  addPartnerUser: (id, data) => api.post(`/amc/jv/partners/${id}/users`, data),
-  updatePartnerUser: (id, userId, data) => api.put(`/amc/jv/partners/${id}/users/${userId}`, data),
-  removePartnerUser: (id, userId) => api.delete(`/amc/jv/partners/${id}/users/${userId}`),
-  jvProjects: (params = {}) => api.get('/amc/jv/projects', { params }),
-  createJvProject: (data) => api.post('/amc/jv/projects', data),
-  updateJvProject: (id, data) => api.put(`/amc/jv/projects/${id}`, data),
-  deleteJvProject: (id) => api.delete(`/amc/jv/projects/${id}`),
-  contractFromJvProject: (id) => api.post(`/amc/jv/projects/${id}/contract`),
+  // offers, quotes, report, the AMC company
   settings: () => api.get('/amc/settings'),
   saveSettings: (data) => api.put('/amc/settings', data),
   offers: (params = {}) => api.get('/amc/offers', { params }),
@@ -697,7 +688,102 @@ export const vendorsAPI = {
   create: (data) => api.post('/vendors', data),
   update: (id, data) => api.put(`/vendors/${id}`, data),
   remove: (id) => api.delete(`/vendors/${id}`),
-  purchaseOrders: (id) => api.get(`/vendors/${id}/purchase-orders`)
+  purchaseOrders: (id) => api.get(`/vendors/${id}/purchase-orders`),
+  tags: () => api.get('/vendors/tags'),
+  scorecard: (id) => api.get(`/vendors/${id}/scorecard`),
+  rate: (id, data) => api.post(`/vendors/${id}/ratings`, data),
+  removeRating: (id, ratingId) => api.delete(`/vendors/${id}/ratings/${ratingId}`),
+  priceHistory: (params) => api.get('/vendors/price-history', { params }),
+};
+
+// Brands & trademarks (own brands, dealership / distribution brands)
+export const brandsAPI = {
+  list: (params = {}) => api.get('/brands', { params }),
+  get: (id) => api.get(`/brands/${id}`),
+  create: (data) => api.post('/brands', data),
+  update: (id, data) => api.put(`/brands/${id}`, data),
+  remove: (id) => api.delete(`/brands/${id}`),
+  report: (params = {}) => api.get('/brands/report', { params }),
+  trademarks: () => api.get('/brands/trademarks'),
+  addTrademark: (brandId, data) => api.post(`/brands/${brandId}/trademarks`, data),
+  updateTrademark: (id, data) => api.put(`/brands/trademarks/${id}`, data),
+  removeTrademark: (id) => api.delete(`/brands/trademarks/${id}`),
+  suggestItems: (id) => api.get(`/brands/${id}/suggest-items`),
+  linkItems: (id, itemIds) => api.post(`/brands/${id}/items`, { item_ids: itemIds }),
+  unlinkItem: (id, itemId) => api.delete(`/brands/${id}/items/${itemId}`),
+};
+
+// Purchase requests: ask vendors for quotes, compare, choose → PO
+export const procurementAPI = {
+  list: (params = {}) => api.get('/purchase-requests', { params }),
+  get: (id) => api.get(`/purchase-requests/${id}`),
+  create: (data) => api.post('/purchase-requests', data),
+  update: (id, data) => api.put(`/purchase-requests/${id}`, data),
+  addQuote: (id, data) => api.post(`/purchase-requests/${id}/quotes`, data),
+  editQuote: (id, quoteId, data) => api.put(`/purchase-requests/${id}/quotes/${quoteId}`, data),
+  removeQuote: (id, quoteId) => api.delete(`/purchase-requests/${id}/quotes/${quoteId}`),
+  select: (id, data) => api.post(`/purchase-requests/${id}/select`, data),
+  cancel: (id, reason) => api.post(`/purchase-requests/${id}/cancel`, { reason }),
+  savings: (params = {}) => api.get('/purchase-requests/savings', { params }),
+  settings: () => api.get('/procurement/settings'),
+  saveSettings: (data) => api.put('/procurement/settings', data),
+};
+
+// HR: people, hiring, cover, exits, shifts
+export const hrAPI = {
+  overview: () => api.get('/hr/overview'),
+  settings: () => api.get('/hr/settings'),
+  saveSettings: (data) => api.put('/hr/settings', data),
+  people: (params = {}) => api.get('/hr/people', { params }),
+  updatePerson: (id, data) => api.put(`/hr/people/${id}`, data),
+  openings: () => api.get('/hr/openings'),
+  addOpening: (data) => api.post('/hr/openings', data),
+  updateOpening: (id, data) => api.put(`/hr/openings/${id}`, data),
+  candidates: (params = {}) => api.get('/hr/candidates', { params }),
+  addCandidate: (data) => api.post('/hr/candidates', data),
+  updateCandidate: (id, data) => api.put(`/hr/candidates/${id}`, data),
+  moveStage: (id, stage, note) => api.post(`/hr/candidates/${id}/stage`, { stage, note }),
+  addInterview: (id, data) => api.post(`/hr/candidates/${id}/interviews`, data),
+  interviewResult: (id, ivId, data) => api.put(`/hr/candidates/${id}/interviews/${ivId}`, data),
+  hire: (id, data) => api.post(`/hr/candidates/${id}/hire`, data),
+  covers: (params = {}) => api.get('/hr/covers', { params }),
+  suggestCover: (params) => api.get('/hr/covers/suggest', { params }),
+  addCover: (data) => api.post('/hr/covers', data),
+  updateCover: (id, data) => api.put(`/hr/covers/${id}`, data),
+  cancelCover: (id) => api.post(`/hr/covers/${id}/cancel`),
+  exits: (params = {}) => api.get('/hr/exits', { params }),
+  addExit: (data) => api.post('/hr/exits', data),
+  updateExit: (id, data) => api.put(`/hr/exits/${id}`, data),
+  withdrawExit: (id) => api.post(`/hr/exits/${id}/withdraw`),
+  completeExit: (id) => api.post(`/hr/exits/${id}/complete`),
+  shifts: () => api.get('/hr/shifts'),
+  addShift: (data) => api.post('/hr/shifts', data),
+  updateShift: (id, data) => api.put(`/hr/shifts/${id}`, data),
+  roster: (week) => api.get('/hr/roster', { params: { week } }),
+  saveRoster: (entries) => api.put('/hr/roster', { entries }),
+  copyWeek: (fromWeek, toWeek) => api.post('/hr/roster/copy', { from_week: fromWeek, to_week: toWeek }),
+};
+
+// Company loans
+export const loansAPI = {
+  list: (params = {}) => api.get('/loans', { params }),
+  get: (id) => api.get(`/loans/${id}`),
+  create: (data) => api.post('/loans', data),
+  update: (id, data) => api.put(`/loans/${id}`, data),
+  remove: (id) => api.delete(`/loans/${id}`),
+  emiPreview: (data) => api.post('/loans/emi-preview', data),
+  addPayment: (id, data) => api.post(`/loans/${id}/payments`, data),
+  removePayment: (id, paymentId) => api.delete(`/loans/${id}/payments/${paymentId}`),
+  close: (id, data) => api.post(`/loans/${id}/close`, data),
+};
+
+// Event calendar
+export const calendarAPI = {
+  range: (start, end, sources) => api.get('/calendar', { params: { start, end, ...(sources ? { sources } : {}) } }),
+  people: () => api.get('/calendar/people'),
+  add: (data) => api.post('/calendar/events', data),
+  update: (id, data) => api.put(`/calendar/events/${id}`, data),
+  remove: (id) => api.delete(`/calendar/events/${id}`),
 };
 
 // Employee Performance manual scores (Iter 44 Batch C)

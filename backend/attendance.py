@@ -117,7 +117,7 @@ def create_router(db, get_current_user, require_role, create_audit_log):
 
     async def _people_for(viewer: Dict[str, Any]) -> List[Dict[str, Any]]:
         """Users the viewer may see: everyone for admins; for managers with locations, people sharing one."""
-        users = [u async for u in db.users.find({"role": {"$ne": "partner"}}, {"password_hash": 0})]
+        users = [u async for u in db.users.find({}, {"password_hash": 0})]
         scope = set(viewer.get("location_ids") or []) if viewer.get("role") != "admin" else set()
         out = []
         for u in users:

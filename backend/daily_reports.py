@@ -327,7 +327,7 @@ def create_router(db, get_current_user, require_role, create_audit_log, has_opti
     async def team_status(request: Request, date: str):
         user = await require_role(*MANAGERS)(request)
         day = _check_date(date)
-        uq: Dict[str, Any] = {"active": {"$ne": False}, "role": {"$ne": "partner"}}
+        uq: Dict[str, Any] = {"active": {"$ne": False}}
         scope = user.get("location_ids") or []
         users = await db.users.find(uq, {"name": 1, "role": 1, "email": 1, "location_ids": 1, "daily_report_required": 1}).to_list(1000)
         if user["role"] != "admin" and scope:

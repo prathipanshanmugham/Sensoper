@@ -1,5 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
-import { purchaseOrdersAPI, inventoryAPI, inboundApprovalsAPI, locationsAPI } from '../utils/api';
+import { useSearchParams } from 'react-router-dom';
+import { purchaseOrdersAPI, inventoryAPI, inboundApprovalsAPI, locationsAPI, procurementAPI } from '../utils/api';
+import PurchaseRequests from '../components/procurement/PurchaseRequests';
+import { PillTabs } from '../components/kit/PageBits';
 import { StorageLocationPicker } from '../components/StorageLocationPicker';
 import { useAuth } from '../contexts/AuthContext';
 import { Button } from '../components/ui/button';
@@ -28,7 +31,16 @@ export default function PurchaseInboundPage() {
   const [activeAction, setActiveAction] = useState(null); // {poId, type}
   const [saving, setSaving] = useState(false);
   const [filter, setFilter] = useState('all');
-  const [form, setForm] = useState({ supplier_name: '', supplier_contact: '', items: [{ name: '', qty: '', unit_price: '', inventory_item_id: '', sku_code: '' }], expected_delivery: '', notes: '', location_id: '', po_number: '' });
+  const [form, setForm] = useState({ supplier_name: '', supplier_contact: '', items: [{ name: '', qty: '', unit_price: '', inventory_item_id: '', sku_code: '' }], expected_delivery: '', notes: '', location_id: '', po_number: '', skip_reason: '' });
+  const [params, setParams] = useSearchParams();
+  const tab = params.get('tab') || 'requests';
+  const setTab = (t) => setParams((p) => { const n = new URLSearchParams(p); n.set('tab', t); return n; }, { replace: true });
+  const prId = params.get('pr');
+  const setPrId = (id) => setParams((p) => { const n = new URLSearchParams(p); if (id) n.set('pr', id); else n.delete('pr'); return n; }, { replace: true });
+  const [rules, setRules] = useState(null);
+  useEffect(() => { procurementAPI.settings().then(r => setRules(r.data)).catch(() => setRules({ require_quotes: false })); }, []);
+  const directNeedsReason = !!rules?.require_quotes;
+  const canDirect = !rules?.require_quotes || isAdmin;
   const [nextPo, setNextPo] = useState('');
   const [poError, setPoError] = useState('');
   useEffect(() => {
@@ -87,9 +99,9 @@ export default function PurchaseInboundPage() {
     setSaving(true); setPoError('');
     try {
       const items = form.items.filter(i => i.name).map(i => ({name: i.name, qty: parseFloat(i.qty) || 0, unit_price: parseFloat(i.unit_price) || 0, inventory_item_id: i.inventory_item_id || null, sku_code: i.sku_code || null}));
-      const r = await purchaseOrdersAPI.create({...form, po_number: form.po_number.trim() || null, items});
+      const r = await purchaseOrdersAPI.create({...form, po_number: form.po_number.trim() || null, skip_reason: form.skip_reason.trim() || null, items});
       toast.success(`PO ${r.data.po_number} created`);
-      setShowCreate(false); setForm({ supplier_name: '', supplier_contact: '', items: [{ name: '', qty: '', unit_price: '', inventory_item_id: '', sku_code: '' }], expected_delivery: '', notes: '', location_id: '', po_number: '' }); await fetch();
+      setShowCreate(false); setForm({ supplier_name: '', supplier_contact: '', items: [{ name: '', qty: '', unit_price: '', inventory_item_id: '', sku_code: '' }], expected_delivery: '', notes: '', location_id: '', po_number: '', skip_reason: '' }); await fetch();
     } catch (err) {
       const msg = err.response?.data?.detail || 'Could not create PO';
       if (err.response?.status === 409) setPoError(typeof msg === 'string' ? msg : 'PO number already used for this supplier');
@@ -139,10 +151,13 @@ export default function PurchaseInboundPage() {
   return (
     <div className="py-6 px-4">
       <div className="max-w-6xl mx-auto">
-        <div className="flex items-center justify-between mb-6">
-          <div><h1 className="text-2xl font-bold font-['Outfit'] text-slate-900" data-testid="po-title">Purchase Inbound</h1><p className="text-sm text-slate-500">Procurement lifecycle: PO → Approve → Arrival → QC → Inventory</p></div>
-          <Can module="module_purchase_inbound" action="create"><Button onClick={() => setShowCreate(true)} className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white" data-testid="new-po-btn"><Plus className="h-4 w-4" />New PO</Button></Can>
+        <div className="flex flex-wrap items-end justify-between gap-3 mb-4">
+          <div><h1 className="text-2xl font-bold font-['Outfit'] text-slate-900" data-testid="po-title">Purchases</h1><p className="text-sm text-slate-500">Request → {rules?.min_quotes || 3} vendor quotes → choose → PO → approve → arrival → QC → stock</p></div>
+          {tab === 'orders' && canDirect && <Can module="module_purchase_inbound" action="create"><Button onClick={() => setShowCreate(true)} variant={directNeedsReason ? 'outline' : 'default'} className={`gap-2 ${directNeedsReason ? '' : 'bg-emerald-600 hover:bg-emerald-700 text-white'}`} data-testid="new-po-btn"><Plus className="h-4 w-4" />{directNeedsReason ? 'PO without quotes' : 'New PO'}</Button></Can>}
         </div>
+        <div className="mb-4"><PillTabs value={tab} onChange={setTab} testid="purchases-tab" tabs={[['requests', 'Purchase requests'], ['orders', 'Purchase orders']]} /></div>
+        {tab === 'requests' && <PurchaseRequests openId={prId} onOpen={setPrId} />}
+        {tab === 'orders' && <>
 
         {/* Filter */}
         <div className="flex gap-2 mb-4 overflow-x-auto">
@@ -197,6 +212,13 @@ export default function PurchaseInboundPage() {
                   </Select>
                 </div>
               </div>
+              {directNeedsReason && (
+                <div className="space-y-1 rounded-lg border border-amber-200 bg-amber-50 p-3">
+                  <Label className="text-xs text-amber-900">Why buy without comparing {rules?.min_quotes || 3} quotes? *</Label>
+                  <Input value={form.skip_reason} onChange={(e) => setForm(p => ({...p, skip_reason: e.target.value}))} placeholder="Emergency repair, only supplier, rate contract…" className="h-9 bg-white" data-testid="po-skip-reason" />
+                  <p className="text-[11px] text-amber-800">Kept on the PO. For normal buying use Purchase requests.</p>
+                </div>
+              )}
               <div className="space-y-2">
                 <Label className="text-xs font-semibold">Items</Label>
                 {form.items.map((item, i) => (
@@ -216,7 +238,7 @@ export default function PurchaseInboundPage() {
               </div>
               <div className="flex gap-2 justify-end">
                 <Button variant="outline" size="sm" onClick={() => setShowCreate(false)}><X className="h-4 w-4 mr-1" />Cancel</Button>
-                <Button size="sm" onClick={handleCreate} disabled={saving} className="bg-emerald-600 text-white" data-testid="save-po-btn">{saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4 mr-1" />}Create PO</Button>
+                <Button size="sm" onClick={handleCreate} disabled={saving || (directNeedsReason && form.skip_reason.trim().length < 5)} className="bg-emerald-600 text-white" data-testid="save-po-btn">{saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4 mr-1" />}Create PO</Button>
               </div>
             </CardContent>
           </Card>
@@ -263,12 +285,14 @@ export default function PurchaseInboundPage() {
           {orders.map(po => (
             <Card key={po.id} className="border-slate-200" data-testid={`po-${po.id}`}>
               <CardContent className="p-4">
-                <div className="flex items-start justify-between">
-                  <div>
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
                       <h3 className="font-semibold text-slate-900">{po.supplier_name}</h3>
                       {po.po_number && <Badge variant="outline" className="text-[10px] font-mono" data-testid={`po-number-${po.id}`}>{po.po_number}</Badge>}
                       <Badge className={`text-[10px] ${STATUS_COLORS[po.status] || ''}`}>{STATUS_LABELS[po.status] || po.status}</Badge>
+                      {po.rfq_number && <button type="button" onClick={() => { setTab('requests'); setPrId(po.rfq_id); }} className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-800 ring-1 ring-emerald-200" data-testid={`po-rfq-${po.id}`}>From {po.rfq_number}</button>}
+                      {po.direct_po && <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-900 ring-1 ring-amber-200" title={po.direct_reason}>No quotes: {po.direct_reason}</span>}
                     </div>
                     <p className="text-xs text-slate-500 mt-1">{po.items?.length || 0} items | ₹{(po.total_amount || 0).toLocaleString('en-IN')} | {new Date(po.created_at).toLocaleDateString('en-IN')}</p>
                     {po.transport && <p className="text-xs text-slate-400 mt-1"><Truck className="inline h-3 w-3 mr-1" />{po.transport.transporter} | {po.transport.vehicle}</p>}
@@ -281,7 +305,7 @@ export default function PurchaseInboundPage() {
                       </div>
                     )}
                   </div>
-                  <div className="flex gap-1 shrink-0">
+                  <div className="flex flex-wrap gap-1 shrink-0">
                     {po.status === 'pending' && can('can_approve_purchase') && <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => { setActiveAction({ poId: po.id, type: 'approve' }); handleAction(); }} data-testid={`approve-${po.id}`}>Approve</Button>}
                     {po.status === 'pending' && <Button size="sm" variant="outline" className="h-7 text-xs gap-1 text-rose-600 border-rose-200" onClick={() => handleDeletePo(po)} data-testid={`delete-po-${po.id}`}><Trash2 className="h-3 w-3" />Delete</Button>}
                     {po.status === 'approved' && <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => setActiveAction({ poId: po.id, type: 'arrival' })} data-testid={`arrival-${po.id}`}>Record Arrival</Button>}
@@ -301,6 +325,7 @@ export default function PurchaseInboundPage() {
           ))}
           {orders.length === 0 && <p className="text-sm text-slate-400 text-center py-8">No purchase orders found</p>}
         </div>
+        </>}
       </div>
 
       {/* Edit Inbound Dialog */}

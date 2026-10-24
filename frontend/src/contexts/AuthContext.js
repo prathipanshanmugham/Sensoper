@@ -115,7 +115,6 @@ export function AuthProvider({ children }) {
     isAdmin: user?.role === 'admin',
     isManager: user?.role === 'manager',
     isStaff: user?.role === 'staff',
-    isPartner: user?.role === 'partner'   // joint-venture partner: the AMC page only
   }), [user, loading, perms, can, loadPerms, login, completeTwoFactor, register, logout, refreshToken]);
 
   return (

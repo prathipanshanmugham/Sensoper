@@ -12,7 +12,7 @@ import {
   ShoppingBag, RefreshCw, Package, Boxes, PackageOpen, Truck, Undo2, Store, Tags, HardHat, Users, Wrench,
   CreditCard, AlertTriangle, BarChart3, MapPin, Building2, UserCog, Shield, Map, SlidersHorizontal, ScrollText,
   Layers, History, KeyRound, LockKeyhole, FileText, UserRound, Clock, Network, Gift, Landmark,
-  LifeBuoy,
+  LifeBuoy, CalendarDays, BadgeCheck, IdCard, HandCoins,
 } from 'lucide-react';
 
 export const NAV_SECTIONS = [
@@ -83,6 +83,15 @@ export const NAV_SECTIONS = [
             'Close issues as they are fixed; export the audit as PDF from Reports.'],
         },
       },
+      {
+        href: '/dashboard/calendar', label: 'Event calendar', icon: CalendarDays, module: 'module_calendar',
+        keywords: 'calendar events meeting holiday training schedule emi interview visit',
+        help: {
+          what: 'Company events (meetings, holidays, training, deadlines) together with the dated work from the pages you can open: AMC visits, installations, deliveries, interviews, covers, EMIs and trademark renewals.',
+          steps: ['Tap a day to see everything on it; use “Show” to pick what to see.', 'Add event: choose everyone or just some people — they get a note in the bell.', 'Holidays can repeat every year.'],
+          tip: 'You can change the events you added yourself.',
+        },
+      },
     ],
   },
   {
@@ -143,18 +152,18 @@ export const NAV_SECTIONS = [
       },
       {
         href: '/dashboard/amc', label: 'AMC & service', icon: RefreshCw, module: 'module_amc',
-        keywords: 'maintenance contract amc offer quote renewal visit joint venture partner',
+        keywords: 'maintenance contract amc offer quote renewal visit',
         help: {
           what: 'Annual maintenance contracts: who to offer an AMC, quotes with three plans, contracts, visits and the AMC report.',
-          steps: ['Time to offer AMC: customers whose plant is old enough — make a quote in one tap.', 'Quotes: send the PDF or WhatsApp; when the customer says yes, the contract is made.', 'Contracts: plan visits, renew, cancel. A Sensoper admin can delete a cancelled contract for good.'],
-          tip: 'Use the Show dropdown to see Sensoper, the joint-venture partner, or both.',
+          steps: ['Time to offer AMC: customers whose plant is old enough — make a quote in one tap.', 'Quotes: send the PDF or WhatsApp; when the customer says yes, the contract is made.', 'Contracts: plan visits, renew, cancel. An admin can delete a cancelled contract for good.'],
+          tip: 'AMC settings (⋯ menu) choose the company whose logo and details go on AMC quotes and reports.',
         },
       },
       {
         href: '/dashboard/support', label: 'Customer support', icon: LifeBuoy, module: 'module_support',
         keywords: 'support ticket complaint problem service sla rating customer',
         help: {
-          what: 'Problems and requests from any Sensoper customer — with or without an AMC. Joint-venture partners never see this page.',
+          what: 'Problems and requests from any Sensoper customer — with or without an AMC.',
           steps: ['New ticket: who, what is wrong, how urgent.', 'Assign a technician and move it along: in progress → resolved → closed with the customer’s rating.'],
           tip: 'Tickets show red when they are past their response or fix deadline.',
         },
@@ -181,10 +190,12 @@ export const NAV_SECTIONS = [
       },
       {
         href: '/dashboard/purchase-inbound', label: 'Purchases', icon: PackageOpen, module: 'module_purchase_inbound',
-        keywords: 'purchase order po inbound grn',
+        keywords: 'purchase order po inbound grn request quote quotation rfq compare vendor',
         help: {
-          what: 'Purchase orders from order to arrival: create PO → approve → receive → quality check → into stock.',
-          steps: ['Create a purchase order for a vendor.', 'When goods arrive, record the received quantity and QC result.', 'Accepted items are added to inventory automatically.'],
+          what: 'Buying material: a purchase request gets quotes from at least 3 vendors, you compare and choose one, and the purchase order is made from it → approve → receive → QC → into stock.',
+          steps: ['Purchase requests: list what you need and by when.', 'Add each vendor’s quote (price per line, GST, freight, delivery days). The table shows the cheapest and what we paid last time.',
+            'Choose the vendor — if it isn’t the cheapest, say why. The PO is made for you.', 'Purchase orders: approve, record arrival and QC; accepted items go into stock.'],
+          tip: 'Only an admin can raise a PO without quotes (with a reason). The minimum number of quotes is in purchase settings.',
         },
       },
       {
@@ -207,8 +218,18 @@ export const NAV_SECTIONS = [
         href: '/dashboard/vendors', label: 'Vendors', icon: Store, module: 'module_vendors',
         keywords: 'supplier',
         help: {
-          what: 'Your suppliers with GSTIN, contacts, payment terms and purchase history.',
-          steps: ['Add a vendor once; pick it when you create purchase orders.', 'Open "PO history" to see everything bought from them.'],
+          what: 'Your suppliers: contacts, GSTIN, credit days, tags, ratings and a scorecard (spend, on-time delivery, QC, quotes won, prices against the best).',
+          steps: ['Filter with the dropdowns: state, district, category, tag, rating.', 'Rate a vendor after an order — quality, delivery, price and service.',
+            'Mark good suppliers Preferred; Block one (with a reason) to keep it out of purchase requests.'],
+        },
+      },
+      {
+        href: '/dashboard/brands', label: 'Brands', icon: BadgeCheck, module: 'module_brands',
+        keywords: 'brand trademark logo dealership distribution distributor nasol waaree registration renewal',
+        help: {
+          what: 'Our own brands with their logos and trademarks, and the brands we hold a dealership or distribution for — with brand-wise stock, purchases and sales.',
+          steps: ['Add a brand: our own, a dealership or a distribution (with the agreement dates, territory and target).', 'Trademarks: classes, application number, status and renewal — you get a note well before a renewal is due.',
+            'Link stock items to the brand (it suggests items whose name has the brand in it).', 'Report: sales by brand, by channel (counter, online, projects), and against the target.'],
         },
       },
       {
@@ -227,9 +248,19 @@ export const NAV_SECTIONS = [
         href: '/dashboard/org-structure', label: 'Organisation', icon: Network, module: 'module_org',
         keywords: 'org chart structure hierarchy branch location managers staff team',
         help: {
-          what: 'Who works where: every location with its managers, staff and field teams, and who has checked in today. Admins only.',
-          steps: ['Use "Find a person" to jump to someone.', 'People without a location are listed at the bottom — assign them under Users.'],
+          what: 'The org chart (who reports to whom) and who works where, with who has checked in today. Admins only.',
+          steps: ['Chart: the reporting lines. Dashed lines are a guess — set “reports to” in HR → People to fix them.', 'By branch: every location with its managers, staff and field teams.'],
           tip: 'Add branches under Settings → Locations.',
+        },
+      },
+      {
+        href: '/dashboard/hr', label: 'HR', icon: IdCard, module: 'module_hr',
+        keywords: 'hr hiring recruitment candidate interview proxy cover leave absent shift roster notice period resignation termination exit firing',
+        help: {
+          what: 'People details, hiring, cover for absent staff, shifts and exits with notice periods.',
+          steps: ['People: designation, department, reports-to (this draws the org chart) and default shift.', 'Hiring: openings and candidates from applied to hired; plan interviews.',
+            'Cover: when someone is away, choose who covers and write the handover — they get a note.', 'Shifts: set timings and the weekly roster; late check-ins show in red.',
+            'Exits: resignation or termination with the notice period; the login closes after the last working day.'],
         },
       },
       {
@@ -259,13 +290,22 @@ export const NAV_SECTIONS = [
     ],
   },
   {
-    id: 'money', label: 'Money & insights', items: [
+    id: 'money', label: 'Finance & insights', items: [
       {
         href: '/dashboard/credits', label: 'Accounts', icon: CreditCard, module: 'module_credits',
         keywords: 'credits receivables payments expenses',
         help: {
           what: 'Money owed to you, payments received and business expenses.',
           steps: ['Add a customer credit when an invoice is not fully paid.', 'Record payments against it as they come in.', 'Log expenses so the profit reports are accurate.'],
+        },
+      },
+      {
+        href: '/dashboard/loans', label: 'Loans', icon: HandCoins, module: 'module_loans',
+        keywords: 'loan emi interest bank borrowing od cc working capital term vehicle',
+        help: {
+          what: 'The company’s loans: what is still owed, EMIs, interest paid this year and the interest still to come.',
+          steps: ['Add a loan with the amount, rate and tenure — the EMI is worked out for you.', 'Record each EMI (or a prepayment); it is split into interest and principal.',
+            'The schedule shows every EMI left; you get a note 3 days before each one.'],
         },
       },
       {

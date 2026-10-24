@@ -7,7 +7,7 @@ import { Badge } from './ui/badge';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from './ui/sheet';
 import {
   LogOut, Menu, X, Bell, AlertTriangle, HelpCircle, Search, ChevronDown, Plus, Home, FolderKanban, CalendarCheck,
-  LayoutGrid, Lightbulb, KeyRound, RefreshCw,
+  LayoutGrid, Lightbulb, KeyRound,
 } from 'lucide-react';
 import { NAV_SECTIONS, canSee, routeInfo, activeHref } from '../lib/navigation';
 import { useLiveRefresh } from '../lib/liveSync';
@@ -177,7 +177,7 @@ function NotificationBell({ alertInfo, onRefresh }) {
         <div className="fixed inset-x-3 top-16 z-50 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg sm:absolute sm:inset-x-auto sm:right-0 sm:top-full sm:mt-2 sm:w-96" data-testid="notification-panel">
           <div className="border-b border-slate-100 px-4 py-3">
             <p className="flex items-center gap-1.5 text-sm font-semibold text-slate-900"><AlertTriangle className="h-4 w-4 text-red-500" />Alerts & notifications</p>
-            <p className="text-xs text-slate-500">{alertInfo?.total_alerts || 0} active · money at risk ₹{(alertInfo?.total_leakage || 0).toLocaleString('en-IN')}</p>
+            <p className="text-xs text-slate-500">{alertInfo?.ownOnly ? `${alertInfo?.total_alerts || 0} for you` : <>{alertInfo?.total_alerts || 0} active · money at risk ₹{(alertInfo?.total_leakage || 0).toLocaleString('en-IN')}</>}</p>
           </div>
           <div className="max-h-[60vh] overflow-y-auto">
             {alertInfo?.notifications?.length > 0 && (
@@ -209,11 +209,13 @@ function NotificationBell({ alertInfo, onRefresh }) {
                   </li>
                 ))}
               </ul>
+            ) : alertInfo?.ownOnly ? (
+              !alertInfo?.notifications?.length && <div className="py-10 text-center"><p className="text-sm font-medium text-slate-600">All clear</p><p className="text-xs text-slate-400">Nothing new for you.</p></div>
             ) : (
               <div className="py-10 text-center"><p className="text-sm font-medium text-slate-600">All clear</p><p className="text-xs text-slate-400">No projects are losing money right now.</p></div>
             )}
           </div>
-          <Link to="/dashboard/alerts" onClick={() => setOpen(false)} className="block border-t border-slate-100 bg-slate-50 px-4 py-2.5 text-center text-xs font-medium text-emerald-700 hover:bg-emerald-50" data-testid="notification-view-all">See all profit alerts →</Link>
+          {!alertInfo?.ownOnly && <Link to="/dashboard/alerts" onClick={() => setOpen(false)} className="block border-t border-slate-100 bg-slate-50 px-4 py-2.5 text-center text-xs font-medium text-emerald-700 hover:bg-emerald-50" data-testid="notification-view-all">See all profit alerts →</Link>}
         </div>
       )}
     </div>
@@ -231,14 +233,18 @@ export default function DashboardLayout({ children }) {
   const [nudge, setNudge] = useState(() => !readStore(HELP_SEEN_KEY, false));
   const seesAlerts = allowed('module_alerts');
 
-  const isPartner = user?.role === 'partner';
-  const fetchStats = useCallback(async () => { if (isPartner) return; try { setStats((await dashboardAPI.getStats()).data); } catch { /* the menu works without counts */ } }, [isPartner]);
+  const fetchStats = useCallback(async () => { try { setStats((await dashboardAPI.getStats()).data); } catch { /* the menu works without counts */ } }, []);
   const fetchAlerts = useCallback(async () => {
-    if (!seesAlerts) return;
-    try { setAlertInfo((await alertsAPI.getDashboard()).data); } catch { /* optional */ }
+    try {
+      if (seesAlerts) { setAlertInfo((await alertsAPI.getDashboard()).data); return; }
+      // everyone else still gets their own notes (covers, interviews, calendar events…)
+      const r = (await notificationsAPI.list()).data;
+      const rows = (r.rows || []).filter((n) => n.status === 'pending').slice(0, 8);
+      setAlertInfo({ total_alerts: rows.length, notifications: rows.map((n) => ({ ...n, link: n.link || '/dashboard' })), top_risks: [], total_leakage: 0, ownOnly: true });
+    } catch { /* optional */ }
   }, [seesAlerts]);
   useEffect(() => { fetchStats(); fetchAlerts(); }, [fetchStats, fetchAlerts]);
-  useLiveRefresh(['projects', 'approvals', 'inventory', 'purchases', 'amc', 'action-requests'], () => { fetchStats(); fetchAlerts(); }, { enabled: !!user && !isPartner });
+  useLiveRefresh(['projects', 'approvals', 'inventory', 'purchases', 'amc', 'action-requests', 'hr', 'calendar', 'loans', 'brands'], () => { fetchStats(); fetchAlerts(); }, { enabled: !!user });
   useEffect(() => { setDrawerOpen(false); window.scrollTo?.(0, 0); }, [location.pathname]);
 
   const sections = useMemo(() => NAV_SECTIONS
@@ -261,7 +267,6 @@ export default function DashboardLayout({ children }) {
   const sidebarProps = { sections, active, stats, user, onLogout: handleLogout };
   const bottomItems = [
     { href: '/dashboard', label: 'Home', icon: Home },
-    ...(isPartner ? [{ href: '/dashboard/amc', label: 'AMC', icon: RefreshCw }, { href: '/dashboard/security', label: 'Login', icon: KeyRound }] : []),
     { href: '/dashboard/projects', label: 'Projects', icon: FolderKanban },
     { href: '/dashboard/projects/new', label: 'New', icon: Plus, primary: true },
     { href: '/dashboard/daily-report', label: 'Report', icon: CalendarCheck },
@@ -299,7 +304,7 @@ export default function DashboardLayout({ children }) {
                 </div>
               )}
             </div>
-            {seesAlerts && <NotificationBell alertInfo={alertInfo} onRefresh={fetchAlerts} />}
+            <NotificationBell alertInfo={alertInfo} onRefresh={fetchAlerts} />
             {can('/dashboard/projects/new') && (
               <Link to="/dashboard/projects/new" className="hidden sm:block">
                 <Button size="sm" className="gap-1.5 bg-emerald-600 font-medium text-white hover:bg-emerald-700" data-testid="new-project-btn"><Plus className="h-4 w-4" />New project</Button>

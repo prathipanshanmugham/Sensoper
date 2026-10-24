@@ -1,5 +1,5 @@
 /* Customer support — Sensoper's own help desk for every customer (with or without an AMC).
- * Its own page and permission (module_support); joint-venture partner logins never reach it. */
+ * Its own page and permission (module_support). */
 import { LifeBuoy } from 'lucide-react';
 import SupportTicketsTab from './SupportTicketsTab';
 

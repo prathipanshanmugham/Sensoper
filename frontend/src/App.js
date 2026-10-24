@@ -39,6 +39,10 @@ import WeeklyAuditPage from "./pages/WeeklyAuditPage";
 import AssetsPage from "./pages/AssetsPage";
 import AMCDashboard from "./pages/AMCDashboard";
 import CustomerSupportPage from "./pages/CustomerSupportPage";
+import BrandsPage from "./pages/BrandsPage";
+import HRPage from "./pages/HRPage";
+import LoansPage from "./pages/LoansPage";
+import CalendarPage from "./pages/CalendarPage";
 import LocationsPage from "./pages/LocationsPage";
 import PartnersPage from "./pages/PartnersPage";
 import TeamsPage from "./pages/TeamsPage";
@@ -70,8 +74,7 @@ function ProtectedRoute({ children, allowedRoles = null, module = null, action =
     return <Navigate to="/login" replace />;
   }
 
-  // Joint-venture partner logins only have the AMC page (and their own login settings)
-  const home = user.role === 'partner' ? '/dashboard/amc' : '/dashboard';
+  const home = '/dashboard';
 
   if (allowedRoles && !allowedRoles.includes(user.role)) {
     return <Navigate to={home} replace />;
@@ -160,6 +163,10 @@ function AppRoutes() {
       <Route path="/dashboard/assets" element={<ProtectedRoute module="module_assets"><DashboardLayout><AssetsPage /></DashboardLayout></ProtectedRoute>} />
       <Route path="/dashboard/amc" element={<ProtectedRoute module="module_amc"><DashboardLayout><AMCDashboard /></DashboardLayout></ProtectedRoute>} />
       <Route path="/dashboard/support" element={<ProtectedRoute module="module_support"><DashboardLayout><CustomerSupportPage /></DashboardLayout></ProtectedRoute>} />
+      <Route path="/dashboard/brands" element={<ProtectedRoute module="module_brands"><DashboardLayout><BrandsPage /></DashboardLayout></ProtectedRoute>} />
+      <Route path="/dashboard/hr" element={<ProtectedRoute module="module_hr"><DashboardLayout><HRPage /></DashboardLayout></ProtectedRoute>} />
+      <Route path="/dashboard/loans" element={<ProtectedRoute module="module_loans"><DashboardLayout><LoansPage /></DashboardLayout></ProtectedRoute>} />
+      <Route path="/dashboard/calendar" element={<ProtectedRoute module="module_calendar"><DashboardLayout><CalendarPage /></DashboardLayout></ProtectedRoute>} />
       <Route path="/dashboard/locations" element={<ProtectedRoute module="module_locations"><DashboardLayout><LocationsPage /></DashboardLayout></ProtectedRoute>} />
       <Route path="/dashboard/partners" element={<ProtectedRoute module="module_partners"><DashboardLayout><PartnersPage /></DashboardLayout></ProtectedRoute>} />
       <Route path="/dashboard/partners/:id" element={<ProtectedRoute module="module_partners"><DashboardLayout><PartnerDetail /></DashboardLayout></ProtectedRoute>} />

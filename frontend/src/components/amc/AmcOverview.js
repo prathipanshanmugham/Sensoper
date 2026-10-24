@@ -3,7 +3,7 @@
 import { Link } from 'react-router-dom';
 import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { AlertTriangle, CalendarCheck2, CalendarClock, FileSignature, Gauge, IndianRupee, LifeBuoy, MapPin, RefreshCw, Sun, TrendingUp, Users, Wallet } from 'lucide-react';
-import { inr, SYSTEM_TYPE_OPTIONS } from './jv';
+import { inr, SYSTEM_TYPE_OPTIONS } from './amcCommon';
 
 const BLUE = '#2a78d6', ORANGE = '#eb6834';
 const GRID = '#e2e8f0', AXIS = '#64748b';
@@ -48,7 +48,7 @@ function HBars({ rows, valueKey, label, fmt, testid }) {
   );
 }
 
-export default function AmcOverview({ d, offerCount, isPartner, onTab }) {
+export default function AmcOverview({ d, offerCount, onTab }) {
   if (!d) return null;
   const types = Object.entries(d.capacity_by_type || {}).map(([t, v]) => ({ name: typeLabel(t), kw: Math.round(v * 10) / 10, count: (d.count_by_type || {})[t] || 0 })).sort((a, b) => b.kw - a.kw);
   const plans = Object.entries(d.plan_mix || {}).map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count);
@@ -81,9 +81,7 @@ export default function AmcOverview({ d, offerCount, isPartner, onTab }) {
         <Tile label="Billed" value={inr(d.total_billed)} sub={`collected ${d.collection_pct}%`} icon={Wallet} testid="amc-kpi-billed" />
         <Tile label="Outstanding" value={inr(d.outstanding)} sub="billed, not yet paid" icon={IndianRupee} tone={d.outstanding ? 'warn' : undefined} testid="amc-kpi-outstanding" />
         <Tile label="Plants under AMC" value={`${d.penetration_pct}%`} sub={`of ${d.commissioned_projects} finished plants`} icon={Sun} testid="amc-kpi-penetration" />
-        {!isPartner
-          ? <Tile label="Open support tickets" value={d.tickets_open} sub="on these contracts" icon={LifeBuoy} tone={d.tickets_open ? 'warn' : undefined} testid="amc-kpi-tickets" to="/dashboard/support" />
-          : <Tile label="New this month" value={d.new_this_month} sub={`${d.new_this_year} this year`} icon={Users} testid="amc-kpi-new-month" />}
+        <Tile label="Open support tickets" value={d.tickets_open} sub="on these contracts" icon={LifeBuoy} tone={d.tickets_open ? 'warn' : undefined} testid="amc-kpi-tickets" to="/dashboard/support" />
       </Section>
 
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">

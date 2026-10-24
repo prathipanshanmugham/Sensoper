@@ -4,6 +4,9 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Building2, Crown, Loader2, MapPin, Phone, Search, Users, UserX, Briefcase } from 'lucide-react';
 import { orgAPI } from '../utils/api';
+import { useAuth } from '../contexts/AuthContext';
+import OrgChart from '../components/OrgChart';
+import { PillTabs } from '../components/kit/PageBits';
 
 const DOT = { checked_in: 'bg-emerald-500', checked_out: 'bg-sky-500', absent: 'bg-slate-300' };
 const DOT_LABEL = { checked_in: 'Working now', checked_out: 'Checked out', absent: 'Not checked in' };
@@ -38,7 +41,10 @@ export default function OrgStructurePage() {
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
   const [q, setQ] = useState('');
-  useEffect(() => { orgAPI.structure().then((r) => setData(r.data)).catch((e) => setError(e.response?.status === 403 ? 'Only admins can see the organisation chart.' : 'Could not load the organisation chart.')); }, []);
+  const [view, setView] = useState('chart');
+  const { isAdmin, can } = useAuth();
+  const load = () => orgAPI.structure().then((r) => setData(r.data)).catch((e) => setError(e.response?.status === 403 ? 'Only admins can see the organisation chart.' : 'Could not load the organisation chart.'));
+  useEffect(() => { load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const match = useMemo(() => {
     const s = q.trim().toLowerCase();
@@ -58,11 +64,14 @@ export default function OrgStructurePage() {
           <h1 className="font-['Outfit'] text-2xl font-bold text-slate-900">Organisation</h1>
           <p className="text-sm text-slate-500">{t.locations} location{t.locations === 1 ? '' : 's'} · {t.managers} managers · {t.staff} staff · <span className="text-emerald-700">{t.present_today} checked in today</span></p>
         </div>
-        <div className="relative w-full sm:w-72">
+        {view === 'branches' && <div className="relative w-full sm:w-72">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Find a person" className="h-10 w-full rounded-lg border border-slate-200 bg-white pl-9 pr-3 text-sm outline-none focus:border-emerald-400" data-testid="org-search" />
-        </div>
+        </div>}
       </div>
+      <PillTabs value={view} onChange={setView} testid="org-view" tabs={[['chart', 'Org chart'], ['branches', 'By branch']]} />
+      {view === 'chart' && <OrgChart data={data} canEdit={isAdmin || can('module_hr', 'edit')} onChanged={load} />}
+      {view === 'branches' && <>
 
       <section className="rounded-2xl border border-slate-200 bg-gradient-to-br from-slate-900 to-slate-800 p-4 text-white" data-testid="org-leadership">
         <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-slate-300"><Crown className="h-3.5 w-3.5 text-amber-300" />Leadership · admins</p>
@@ -108,6 +117,7 @@ export default function OrgStructurePage() {
           <div className="mt-2 flex gap-3 text-xs"><Link to="/dashboard/locations" className="font-medium text-emerald-700 hover:underline">Locations</Link><Link to="/dashboard/users" className="font-medium text-emerald-700 hover:underline">Users</Link></div>
         </section>
       )}
+      </>}
       <p className="flex flex-wrap gap-4 text-[11px] text-slate-500">{Object.entries(DOT_LABEL).map(([k, v]) => <span key={k} className="flex items-center gap-1"><span className={`h-2.5 w-2.5 rounded-full ${DOT[k]}`} />{v}</span>)}</p>
     </div>
   );
