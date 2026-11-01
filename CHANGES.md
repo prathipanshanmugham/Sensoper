@@ -1,5 +1,35 @@
 # Sensoper — change log
 
+## November 2026 · AI agents (MCP, API keys, Claude / ChatGPT connectors) and vendor dropdown on purchase orders
+
+### Purchase orders: pick the vendor from a list
+- The PO form's supplier box is now a **vendor list** you search by name, category, district or tag. Preferred
+  vendors come first, then the best rated. Blocked and inactive vendors aren't offered.
+- Picking a vendor fills the contact and shows their terms (credit days, delivery time, minimum order).
+- People who may add vendors can **Add a new vendor** right from the list.
+- The server only accepts a PO on a real vendor, so every PO counts in that vendor's scorecard. The quote form in
+  Purchase requests uses the same list.
+
+### AI agents (Settings → AI agents, admins only)
+- **Off until you switch it on.** One switch stops every agent at once; a second one covers Claude / ChatGPT connectors.
+- **Each agent works as a login you choose**, so that login's permissions and branches apply. Access is
+  **Read only**, **Read & write** (no deleting) or **Full control**.
+- Two more switches, off by default: **Manage logins & permissions** and **Read saved passwords** (Company logins).
+  Agents can never sign in as a person, change passwords, or manage AI agents.
+- **Keys** for your own agents, n8n and scripts: shown once, stored only as a fingerprint. Pause, change, make a new
+  key, set an end date or remove an agent at any time. The page shows ready-made setup for Claude Code, Claude
+  Desktop, the Claude API / Agent SDK, n8n and plain REST.
+- **MCP server** at `/api/mcp`. Its tools are a map of the app, finding endpoints, describing them and calling them, so
+  an agent can reach every part of Sensoper that its access allows.
+- **Claude / ChatGPT connectors**: add `https://quote.sensoper.in/api/mcp` as a custom connector, sign in, choose what it
+  may do, Allow. It shows up in the list as a connector (secure sign-in with OAuth 2.1 + PKCE; tokens last an hour
+  and renew).
+- **Activity**: every call an agent makes, with the result, kept for 90 days. Changes also appear in the Activity
+  log as "<agent name> (AI agent)".
+
+### Fix
+- Signing in from a link (for example the connector approval page) now returns you to that page instead of Home.
+
 ## October 2026 · Sensoper only (no joint venture), Brands, better vendors & 3-quote buying, org chart, event calendar, HR, loans
 
 ### Joint venture removed — Sensoper only

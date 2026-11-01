@@ -13,6 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '../ui/dialog';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '../ui/sheet';
 import { useLiveRefresh } from '../../lib/liveSync';
+import VendorPicker from './VendorPicker';
 import { Chip, Empty, Field, FileAttach, Loading, Stars, Tile, Tiles, addDaysISO, errText, fmtDate, inputCls, inr, inrShort, todayISO } from '../kit/PageBits';
 
 const STATUS = { open: ['Waiting for quotes', 'amber'], quoting: ['Getting quotes', 'blue'], ordered: ['PO made', 'green'], cancelled: ['Cancelled', 'slate'] };
@@ -91,6 +92,7 @@ function QuoteDialog({ pr, quote, open, onOpenChange, onSaved }) {
   if (!f) return null;
   const taken = new Set((pr?.quotes || []).filter((q) => q.id !== quote?.id).map((q) => q.vendor_id));
   const choices = vendors.filter((v) => !taken.has(v.id));
+  const quotedIds = [...taken];
   const setLine = (i, k, v) => setF((x) => ({ ...x, lines: x.lines.map((l, j) => (j === i ? { ...l, [k]: v } : l)) }));
   const total = pr.lines.reduce((s, ln, i) => s + (Number(ln.qty) || 0) * (Number(f.lines[i]?.unit_price) || 0) * (1 + (Number(f.lines[i]?.gst_pct) || 0) / 100), 0) + (Number(f.freight) || 0);
   const save = async () => {
@@ -108,10 +110,10 @@ function QuoteDialog({ pr, quote, open, onOpenChange, onSaved }) {
         <DialogHeader><DialogTitle>{quote ? `Edit quote — ${quote.vendor_name}` : 'Add a vendor quote'}</DialogTitle><DialogDescription>Prices before GST. Leave a price blank if they can't supply that item.</DialogDescription></DialogHeader>
         <div className="space-y-3">
           <Field label="Vendor *">
-            <Select value={f.vendor_id || ''} onValueChange={(v) => { const vv = vendors.find((x) => x.id === v); setF((x) => ({ ...x, vendor_id: v, payment_terms: x.payment_terms || vv?.payment_terms || '', delivery_days: x.delivery_days !== '' ? x.delivery_days : (vv?.lead_time_days ?? '') })); }}>
-              <SelectTrigger className="h-11" data-testid="pr-quote-vendor"><SelectValue placeholder={choices.length ? 'Choose the vendor' : 'Every active vendor has quoted'} /></SelectTrigger>
-              <SelectContent className="max-h-72">{choices.map((v) => <SelectItem key={v.id} value={v.id}>{v.preferred ? '★ ' : ''}{v.name}{v.rating ? ` · ${v.rating}★` : ''}{v.district ? ` · ${v.district}` : ''}</SelectItem>)}</SelectContent>
-            </Select>
+            <VendorPicker value={f.vendor_id || ''} vendors={vendors} exclude={quotedIds} testid="pr-quote-vendor"
+              placeholder={choices.length ? 'Choose the vendor' : 'Every active vendor has quoted'}
+              onAdded={(vv) => setVendors((list) => [...(list || []), vv])}
+              onChange={(v, vv) => setF((x) => ({ ...x, vendor_id: v, payment_terms: x.payment_terms || vv?.payment_terms || '', delivery_days: x.delivery_days !== '' ? x.delivery_days : (vv?.lead_time_days ?? '') }))} />
           </Field>
           <div className="space-y-2">
             {pr.lines.map((ln, i) => (

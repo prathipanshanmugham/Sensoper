@@ -489,7 +489,7 @@ class CreditPaymentCreate(BaseModel):
     notes: str = ""
 
 class PurchaseOrderCreate(BaseModel):
-    supplier_name: str
+    supplier_name: str = ""         # filled from the chosen vendor (vendor_id); an exact vendor name still works for older callers
     supplier_contact: str = ""
     items: list  # [{name, qty, unit_price, inventory_item_id?, sku_code?}]
     expected_delivery: str = ""
@@ -577,7 +577,30 @@ def create_refresh_token(user_id: str) -> str:
     }
     return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
 
+def _user_out(user: dict) -> dict:
+    """The signed-in user as the API sees it (a person, or an AI agent working as that person)."""
+    return {
+        "id": str(user["_id"]),
+        "email": user["email"],
+        "name": user["name"],
+        "role": user["role"],
+        "phone": user.get("phone"),
+        "created_at": user["created_at"],
+        "location_ids": user.get("location_ids", []),
+        "default_location_id": user.get("default_location_id"),
+        "must_reset_password": bool(user.get("must_reset_password")),
+        "totp_enabled": bool(user.get("totp_enabled")),
+        "daily_report_required": daily_report_required(user),
+    }
+
+
 async def get_current_user(request: Request) -> dict:
+    auth = request.headers.get("Authorization", "")
+    if auth.startswith("Bearer " + _agents.PREFIX):
+        # An AI agent (Settings → AI agents): works as its chosen login, within the access the admin gave it.
+        out = await _agents_router.authenticate(request, auth[7:].strip())
+        await _policy_gate(request, out)
+        return out
     token = request.cookies.get("access_token")
     if not token:
         auth_header = request.headers.get("Authorization", "")
@@ -594,19 +617,7 @@ async def get_current_user(request: Request) -> dict:
             raise HTTPException(status_code=401, detail="User not found")
         if user.get("access_until") and _today_ist() > str(user["access_until"])[:10]:
             raise HTTPException(status_code=401, detail="Your last working day has passed — this login is closed")
-        out = {
-            "id": str(user["_id"]),
-            "email": user["email"],
-            "name": user["name"],
-            "role": user["role"],
-            "phone": user.get("phone"),
-            "created_at": user["created_at"],
-            "location_ids": user.get("location_ids", []),
-            "default_location_id": user.get("default_location_id"),
-            "must_reset_password": bool(user.get("must_reset_password")),
-            "totp_enabled": bool(user.get("totp_enabled")),
-            "daily_report_required": daily_report_required(user),
-        }
+        out = _user_out(user)
     except jwt.ExpiredSignatureError:
         raise HTTPException(status_code=401, detail="Token expired")
     except jwt.InvalidTokenError:
@@ -2632,6 +2643,11 @@ _calendar_router = _create_calendar_router(db, get_current_user, create_audit_lo
     ("", _cal_hr),
 ])
 api_router.include_router(_calendar_router)
+# AI agents (Nov 2026): API keys, the MCP server at /api/mcp and OAuth for Claude / ChatGPT connectors
+import agents as _agents  # noqa: E402
+_agents_router = _agents.create_router(db, get_current_user, require_role, create_audit_log, _user_out, get_permissions, lambda: app)
+api_router.include_router(_agents_router)
+app.include_router(_agents_router.root_router)
 api_router.include_router(_create_portal_router(db, get_current_user, require_role, create_audit_log, JWT_SECRET))
 
 # ═══════════ ECOMMERCE MARKETPLACES (Iter 46 Change 2) ═══════════
@@ -6729,6 +6745,27 @@ async def insert_purchase_order(user: dict, *, supplier_name: str, supplier_cont
     result = await db.purchase_orders.insert_one(doc)
     return {"id": str(result.inserted_id), "po_number": doc["po_number"], "total_amount": doc["total_amount"]}
 
+async def _po_vendor(vendor_id: Optional[str], supplier_name: str) -> dict:
+    """The vendor a PO is raised on (Nov 2026: picked from the Vendors list, never typed). Older callers that send only
+    supplier_name are matched to an active vendor of exactly that name."""
+    v = None
+    if vendor_id:
+        if not ObjectId.is_valid(vendor_id):
+            raise HTTPException(status_code=400, detail="That vendor was not found")
+        v = await db.vendors.find_one({"_id": ObjectId(vendor_id)})
+        if not v:
+            raise HTTPException(status_code=400, detail="That vendor was not found")
+    elif (supplier_name or "").strip():
+        v = await db.vendors.find_one({"name": {"$regex": f"^{re.escape(supplier_name.strip())}$", "$options": "i"}, "active": {"$ne": False}})
+    if not v:
+        raise HTTPException(status_code=400, detail="Pick the vendor from the list. A new supplier is added under Purchases → Vendors first.")
+    if v.get("active") is False:
+        raise HTTPException(status_code=400, detail=f"{v['name']} is marked inactive in Vendors")
+    if v.get("blocked"):
+        raise HTTPException(status_code=400, detail=f"{v['name']} is blocked: {v.get('blocked_reason') or 'see Vendors'}")
+    return v
+
+
 @api_router.post("/purchase-orders")
 async def create_po(po: PurchaseOrderCreate, request: Request):
     user = await require_module(request, "module_purchase_inbound", "create")
@@ -6741,10 +6778,11 @@ async def create_po(po: PurchaseOrderCreate, request: Request):
     if direct and user["role"] != "admin":
         raise HTTPException(status_code=400, detail=f"Get {ps['min_quotes']} vendor quotes first: Purchases → Purchase requests. "
                                                     "Only an admin can raise a PO without quotes.")
+    vendor = await _po_vendor(po.vendor_id, po.supplier_name)
     extra = {"direct_po": True, "direct_reason": (po.skip_reason or "").strip()[:300] or "No reason given"} if direct else {}
-    if po.vendor_id:
-        extra["vendor_id"] = po.vendor_id
-    out = await insert_purchase_order(user, supplier_name=po.supplier_name, supplier_contact=po.supplier_contact, items=po.items,
+    extra["vendor_id"] = str(vendor["_id"])
+    contact = (po.supplier_contact or "").strip() or " · ".join(x for x in (vendor.get("contact_person"), vendor.get("phone")) if x)
+    out = await insert_purchase_order(user, supplier_name=vendor["name"], supplier_contact=contact, items=po.items,
                                       expected_delivery=po.expected_delivery, notes=po.notes, location_id=po.location_id,
                                       po_number=po.po_number, extra=extra)
     return {"id": out["id"], "po_number": out["po_number"], "message": "PO created"}
@@ -7645,6 +7683,7 @@ async def startup_event():
     await db.loan_payments.create_index("loan_id")
     await db.calendar_events.create_index("date")
     await db.notifications.create_index([("kind", 1), ("source_type", 1), ("source_id", 1)])
+    await _agents_router.ensure_indexes()
     try:
         await _hr_router.close_due_exits()
     except Exception as e:
@@ -8610,6 +8649,7 @@ app.add_middleware(SecureCookieMiddleware)
 # Live refresh — every successful change bumps its area's counter; screens poll /api/sync/version (see live_sync.py)
 from live_sync import LiveSyncMiddleware  # noqa: E402
 app.add_middleware(LiveSyncMiddleware, db_getter=lambda: db)
+app.add_middleware(_agents.AgentActivityMiddleware, db_getter=lambda: db)
 
 # CORS — origins come from CORS_ORIGINS (comma-separated). "*" is expressed as an origin regex so the
 # exact requesting origin is echoed back, which is what cookie-based (credentialed) auth requires.

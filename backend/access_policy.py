@@ -111,6 +111,7 @@ SECTIONS: List[Dict[str, Any]] = [
         _page("module_form_builder", "Form builder", "Extra steps and fields on New project.", actions=(V, C, E, D)),
         _page("module_audit_logs", "Activity log", "Who changed what, and when.", actions=(V, X)),
         _page("module_vault", "Company logins", "Passwords for outside services.", locked=True),
+        _page("module_agents", "AI agents", "Connect AI agents (MCP, API keys, Claude / ChatGPT connectors) and see what they did.", locked=True),
         _page("module_security", "My login & 2FA", "Everyone can change their own password.", actions=(V,), always=True,
               staff=(V,), manager=(V,)),
     ]},
@@ -542,6 +543,8 @@ rule("*", "/api/terms*", page("module_terms"))
 rule("*", "/api/form-tabs*", page("module_form_builder"))
 rule("GET", "/api/audit-logs/archives/*", page("module_audit_logs", X))
 rule("*", "/api/audit-logs*", page("module_audit_logs"))
+rule("*", "/api/agents*", page("module_agents"))
+rule("*", "/api/oauth/requests*", page("module_agents"))
 RULES = list(_R)
 
 
