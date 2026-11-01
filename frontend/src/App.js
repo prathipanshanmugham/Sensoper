@@ -1,5 +1,5 @@
 import "@/App.css";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { Toaster } from "./components/ui/sonner";
 import PwaInstaller from "./components/PwaInstaller";
@@ -57,6 +57,9 @@ import OrgStructurePage from "./pages/OrgStructurePage";
 import CustomerOffersPage from "./pages/CustomerOffersPage";
 import InvestorsPage from "./pages/InvestorsPage";
 import InvestorPortal from "./pages/InvestorPortal";
+import AIAgentsPage from "./pages/AIAgentsPage";
+import ConnectAgentPage from "./pages/ConnectAgentPage";
+import { nextPath } from "./lib/nextPath";
 
 // Protected Route Component
 function ProtectedRoute({ children, allowedRoles = null, module = null, action = 'view' }) {
@@ -91,6 +94,7 @@ function ProtectedRoute({ children, allowedRoles = null, module = null, action =
 // Public Route - redirect if already logged in
 function PublicRoute({ children }) {
   const { user, loading } = useAuth();
+  const location = useLocation();   // the router's location: the address bar may already show the next page
 
   if (loading) {
     return (
@@ -101,7 +105,7 @@ function PublicRoute({ children }) {
   }
 
   if (user) {
-    return <Navigate to="/dashboard" replace />;
+    return <Navigate to={nextPath(location.search) || '/dashboard'} replace />;
   }
 
   return children;
@@ -172,6 +176,9 @@ function AppRoutes() {
       <Route path="/dashboard/partners/:id" element={<ProtectedRoute module="module_partners"><DashboardLayout><PartnerDetail /></DashboardLayout></ProtectedRoute>} />
       <Route path="/dashboard/teams" element={<ProtectedRoute module="module_teams"><DashboardLayout><TeamsPage /></DashboardLayout></ProtectedRoute>} />
       <Route path="/dashboard/security" element={<ProtectedRoute module="module_security"><DashboardLayout><CredentialsPage /></DashboardLayout></ProtectedRoute>} />
+      <Route path="/dashboard/ai-agents" element={<ProtectedRoute allowedRoles={["admin"]} module="module_agents"><DashboardLayout><AIAgentsPage /></DashboardLayout></ProtectedRoute>} />
+      {/* An AI app (Claude, ChatGPT…) asks to connect: an admin signs in and approves it here */}
+      <Route path="/connect-agent" element={<ConnectAgentPage />} />
       <Route path="/dashboard/vault" element={<ProtectedRoute allowedRoles={["admin"]} module="module_vault"><DashboardLayout><VaultPage /></DashboardLayout></ProtectedRoute>} />
       <Route path="/dashboard/ecommerce" element={<ProtectedRoute module="module_ecommerce"><DashboardLayout><EcommercePage /></DashboardLayout></ProtectedRoute>} />
       {/* Google sign-in comes back here (Settings → Google Drive → Connect). Public: the one-time state authorises it. */}

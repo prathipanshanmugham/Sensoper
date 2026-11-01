@@ -1,7 +1,8 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth, formatApiErrorDetail } from '../contexts/AuthContext';
 import { investorPortalAPI } from '../utils/api';
+import { nextPath } from '../lib/nextPath';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
@@ -23,13 +24,15 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const { login, completeTwoFactor } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const [needs2fa, setNeeds2fa] = useState(false);
   const [code, setCode] = useState('');
 
   const handleCode = async (e) => {
     e.preventDefault();
     setError(''); setLoading(true);
-    try { await completeTwoFactor(code); navigate('/dashboard'); }
+    const dest = nextPath(location.search) || '/dashboard';   // read before signing in: the route guard may move us first
+    try { await completeTwoFactor(code); navigate(dest, { replace: true }); }
     catch (err) { setError(formatApiErrorDetail(err.response?.data?.detail) || 'Invalid code'); }
     finally { setLoading(false); }
   };
@@ -38,10 +41,11 @@ export default function Login() {
     e.preventDefault();
     setError('');
     setLoading(true);
+    const dest = nextPath(location.search) || '/dashboard';   // read before signing in: the route guard may move us first
     try {
       const res = await login(email, password);
       if (res?.requires_2fa) { setNeeds2fa(true); return; }
-      navigate('/dashboard');
+      navigate(dest, { replace: true });
     } catch (err) {
       // Investors use the same page; their account lives apart from staff logins.
       if (err.response?.status === 401) {

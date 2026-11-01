@@ -4,7 +4,42 @@ Your server already has `/root/Sensoper/deploy.sh`. It pulls the code, installs 
 copies the build to `/var/www/sensoper`, restarts the `sensoper` service and checks the live bundle. This release needs
 nothing new installed.
 
-## This release: site photos → Google Drive, site GPS, simpler Settings
+## This release: AI agents (MCP) and vendor dropdown on purchase orders
+
+Nothing new to install. After `./deploy.sh`:
+
+### 1. nginx — one extra block (for Claude / ChatGPT connectors)
+Claude and ChatGPT look for Sensoper's sign-in details at the site root (`/.well-known/…`), which nginx currently sends
+to the frontend. Add this next to the `location /api/` block, then `nginx -t && systemctl reload nginx`:
+
+    location ~ ^/\.well-known/(oauth-|openid-configuration) {
+        proxy_pass http://127.0.0.1:8001;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    }
+
+Only these OAuth addresses go to the backend; `/.well-known/acme-challenge/` (SSL certificate renewal) is untouched.
+
+Check: `curl https://quote.sensoper.in/.well-known/oauth-authorization-server/api` returns JSON (not the app's HTML).
+API keys (Claude Code, the Claude API, n8n, scripts) work without this step.
+
+### 2. Switch it on
+Sign in as admin → **Settings → AI agents** → switch on **Let AI agents connect**. It is off after deploy, so no key or
+connector works until you do.
+
+- **Claude (web, desktop, phone)**: Claude → Settings → Connectors → Add custom connector → name *Sensoper*, address
+  `https://quote.sensoper.in/api/mcp` → Connect → Sensoper opens → choose what it may do → **Allow**.
+- **Your own agents / n8n / Claude Code**: Settings → AI agents → **Add an agent** → copy the key (shown once) and use
+  the ready-made setup on the next screen.
+
+### 3. Smoke test
+- Purchases → Purchase orders → *PO without quotes*: the Vendor box is a list you search and pick from.
+- Settings → AI agents → Activity lists every call an agent makes.
+
+---
+
+## Earlier release: site photos → Google Drive, site GPS, simpler Settings
 
 ### 1. Server settings
 Check `backend/.env` on the server (see `backend/.env.example`):

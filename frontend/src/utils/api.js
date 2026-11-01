@@ -696,6 +696,22 @@ export const vendorsAPI = {
   priceHistory: (params) => api.get('/vendors/price-history', { params }),
 };
 
+// AI agents (Settings → AI agents): keys, connectors, activity — and the approval page for Claude / ChatGPT connectors
+export const agentsAPI = {
+  settings: () => api.get('/agents/settings'),
+  saveSettings: (data) => api.put('/agents/settings', data),
+  list: () => api.get('/agents'),
+  users: () => api.get('/agents/users'),
+  create: (data) => api.post('/agents', data),
+  update: (id, data) => api.put(`/agents/${id}`, data),
+  rotate: (id) => api.post(`/agents/${id}/rotate`),
+  remove: (id) => api.delete(`/agents/${id}`),
+  activity: (params = {}) => api.get('/agents/activity', { params }),
+  request: (id) => api.get(`/oauth/requests/${id}`),
+  approve: (id, data) => api.post(`/oauth/requests/${id}/approve`, data),
+  deny: (id) => api.post(`/oauth/requests/${id}/deny`),
+};
+
 // Brands & trademarks (own brands, dealership / distribution brands)
 export const brandsAPI = {
   list: (params = {}) => api.get('/brands', { params }),

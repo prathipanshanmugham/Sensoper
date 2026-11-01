@@ -356,3 +356,24 @@ See CHANGES.md for the full list. Highlights for the next agent:
   `components/procurement/PurchaseRequests.js`, shared `components/kit/PageBits.js`. Money menu group = "Finance & insights".
 - Bell for every role (own notes via `/notifications` when the user has no module_alerts).
 - Tests: `tests/test_oct_batch3.py` (8) + test_amc_sales 13; 50 in-process tests pass.
+
+## Iteration 69 — AI agents (MCP / keys / OAuth connectors) and vendor dropdown on POs (2026-11-01)
+- POs: `_po_vendor()` in server.py — `vendor_id` (or an exact active vendor name for old callers) is required; blocked /
+  inactive refused; supplier_name/contact come from the vendor. UI `components/procurement/VendorPicker.js`
+  (cmdk search, preferred first, quick add) used by the PO form and the purchase-request quote dialog.
+- `backend/agents.py`: collections agents, agent_tokens (sha256 `hash`, kind key|access|refresh, TTL), agent_activity
+  (TTL 90 d), agent_settings (`enabled` default False, `allow_connectors`), oauth_clients/requests/codes.
+  `authenticate()` is called from `get_current_user` for `Bearer snp_…`; the user dict is the run-as login
+  (`_user_out`) with name "<agent> (AI agent)" and `agent{}`; `refusal()` blocks /api/agents, /api/oauth, /api/mcp,
+  /api/auth (except GET me), security / user / permission writes unless `manage_access`, vault reveal unless
+  `read_saved_logins`, and methods beyond the access level; then `_policy_gate` applies the role. 300 calls/min.
+- MCP: POST /api/mcp (JSON-RPC, stateless, JSON responses; protocol 2025-11-25…2024-11-05). Tools whoami, app_map,
+  list_endpoints, describe_endpoint (from app.openapi()), call_api (in-process httpx ASGITransport with the same token,
+  header x-sensoper-via: mcp). GET /api/mcp/openapi.json (agent-filtered OpenAPI).
+- OAuth 2.1: DCR /api/oauth/register, /api/oauth/authorize → /connect-agent (pages/ConnectAgentPage.js, admin
+  approves: run-as, access, switches) → code (5 min, PKCE S256) → /api/oauth/token (access 1 h, refresh 60 d,
+  rotating) and /api/oauth/revoke. Metadata at /api/.well-known/* and root /.well-known/* (nginx block in DEPLOY.md).
+  Authorize errors show a page (no open redirect).
+- `AgentActivityMiddleware` logs method/path/status/ms per agent call. Page `module_agents` (locked, admin).
+  UI pages/AIAgentsPage.js (`/dashboard/ai-agents`). `lib/nextPath.js` + Login/PublicRoute read ?next from the router location.
+- Tests: tests/test_ai_agents.py (5) — 55 in-process tests pass.

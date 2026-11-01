@@ -12,7 +12,7 @@ import {
   ShoppingBag, RefreshCw, Package, Boxes, PackageOpen, Truck, Undo2, Store, Tags, HardHat, Users, Wrench,
   CreditCard, AlertTriangle, BarChart3, MapPin, Building2, UserCog, Shield, Map, SlidersHorizontal, ScrollText,
   Layers, History, KeyRound, LockKeyhole, FileText, UserRound, Clock, Network, Gift, Landmark,
-  LifeBuoy, CalendarDays, BadgeCheck, IdCard, HandCoins,
+  LifeBuoy, CalendarDays, BadgeCheck, IdCard, HandCoins, Bot,
 } from 'lucide-react';
 
 export const NAV_SECTIONS = [
@@ -415,6 +415,16 @@ export const NAV_SECTIONS = [
         help: {
           what: 'A safe for the company’s logins to outside services (Google Workspace, hosting, domain, software).',
           steps: ['Add each service with its login and 2FA status.', 'Passwords are hidden until you press reveal; every reveal is logged.', 'You’re reminded when a password is due for change.'],
+        },
+      },
+      {
+        href: '/dashboard/ai-agents', label: 'AI agents', icon: Bot, module: 'module_agents',
+        keywords: 'ai agent mcp api key claude chatgpt connector n8n automation bot',
+        help: {
+          what: 'Let AI agents (Claude, ChatGPT, n8n or your own) read and work with Sensoper — each one as a chosen login, with only the access you give it.',
+          steps: ['Switch on “Let AI agents connect”.', 'For Claude or ChatGPT: add Sensoper as a custom connector with the MCP address, then approve it here.',
+            'For your own agents: Add an agent → copy its key once → paste it into the agent.', 'Check Activity to see every call an agent made.'],
+          tip: 'An agent works as the login you choose, so that login’s permissions and branches apply. Start with Read only.',
         },
       },
       {

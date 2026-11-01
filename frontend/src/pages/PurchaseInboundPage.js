@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { purchaseOrdersAPI, inventoryAPI, inboundApprovalsAPI, locationsAPI, procurementAPI } from '../utils/api';
 import PurchaseRequests from '../components/procurement/PurchaseRequests';
+import VendorPicker, { useVendorChoices } from '../components/procurement/VendorPicker';
 import { PillTabs } from '../components/kit/PageBits';
 import { StorageLocationPicker } from '../components/StorageLocationPicker';
 import { useAuth } from '../contexts/AuthContext';
@@ -19,6 +20,7 @@ import Can from '../components/Can';
 import { useLiveRefresh } from '../lib/liveSync';
 
 const STATUS_COLORS = { pending: 'bg-amber-100 text-amber-700', approved: 'bg-blue-100 text-blue-700', arrived: 'bg-violet-100 text-violet-700', qc_done: 'bg-teal-100 text-teal-700', completed: 'bg-emerald-100 text-emerald-700' };
+const BLANK_PO = { vendor_id: '', supplier_name: '', supplier_contact: '', items: [{ name: '', qty: '', unit_price: '', inventory_item_id: '', sku_code: '' }], expected_delivery: '', notes: '', location_id: '', po_number: '', skip_reason: '' };
 const STATUS_LABELS = { pending: 'Pending Approval', approved: 'Approved', arrived: 'Material Arrived', qc_done: 'QC Passed', completed: 'Completed' };
 
 export default function PurchaseInboundPage() {
@@ -31,7 +33,7 @@ export default function PurchaseInboundPage() {
   const [activeAction, setActiveAction] = useState(null); // {poId, type}
   const [saving, setSaving] = useState(false);
   const [filter, setFilter] = useState('all');
-  const [form, setForm] = useState({ supplier_name: '', supplier_contact: '', items: [{ name: '', qty: '', unit_price: '', inventory_item_id: '', sku_code: '' }], expected_delivery: '', notes: '', location_id: '', po_number: '', skip_reason: '' });
+  const [form, setForm] = useState(BLANK_PO);
   const [params, setParams] = useSearchParams();
   const tab = params.get('tab') || 'requests';
   const setTab = (t) => setParams((p) => { const n = new URLSearchParams(p); n.set('tab', t); return n; }, { replace: true });
@@ -41,6 +43,7 @@ export default function PurchaseInboundPage() {
   useEffect(() => { procurementAPI.settings().then(r => setRules(r.data)).catch(() => setRules({ require_quotes: false })); }, []);
   const directNeedsReason = !!rules?.require_quotes;
   const canDirect = !rules?.require_quotes || isAdmin;
+  const [vendors, , setVendors] = useVendorChoices(showCreate);
   const [nextPo, setNextPo] = useState('');
   const [poError, setPoError] = useState('');
   useEffect(() => {
@@ -95,13 +98,14 @@ export default function PurchaseInboundPage() {
 
 
   const handleCreate = async () => {
-    if (!form.supplier_name || form.items.length === 0) return;
+    if (!form.vendor_id) { toast.error('Choose the vendor'); return; }
+    if (form.items.length === 0) return;
     setSaving(true); setPoError('');
     try {
       const items = form.items.filter(i => i.name).map(i => ({name: i.name, qty: parseFloat(i.qty) || 0, unit_price: parseFloat(i.unit_price) || 0, inventory_item_id: i.inventory_item_id || null, sku_code: i.sku_code || null}));
       const r = await purchaseOrdersAPI.create({...form, po_number: form.po_number.trim() || null, skip_reason: form.skip_reason.trim() || null, items});
       toast.success(`PO ${r.data.po_number} created`);
-      setShowCreate(false); setForm({ supplier_name: '', supplier_contact: '', items: [{ name: '', qty: '', unit_price: '', inventory_item_id: '', sku_code: '' }], expected_delivery: '', notes: '', location_id: '', po_number: '', skip_reason: '' }); await fetch();
+      setShowCreate(false); setForm(BLANK_PO); await fetch();
     } catch (err) {
       const msg = err.response?.data?.detail || 'Could not create PO';
       if (err.response?.status === 409) setPoError(typeof msg === 'string' ? msg : 'PO number already used for this supplier');
@@ -193,7 +197,12 @@ export default function PurchaseInboundPage() {
             <CardHeader className="py-3"><CardTitle className="text-base">New Purchase Order</CardTitle></CardHeader>
             <CardContent className="p-4 space-y-3">
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                <div className="space-y-1"><Label className="text-xs">Supplier Name *</Label><Input value={form.supplier_name} onChange={(e) => setForm(p => ({...p, supplier_name: e.target.value}))} className="h-9" data-testid="po-supplier" /></div>
+                <div className="col-span-2 space-y-1 sm:col-span-1"><Label className="text-xs">Vendor *</Label>
+                  <VendorPicker value={form.vendor_id} vendors={vendors} testid="po-vendor"
+                    onAdded={(v) => setVendors((list) => [...(list || []), v])}
+                    onChange={(id, v) => { setForm(p => ({ ...p, vendor_id: id, supplier_name: v.name, supplier_contact: [v.contact_person, v.phone].filter(Boolean).join(' · ') })); setPoError(''); }} />
+                  {(() => { const v = (vendors || []).find(x => x.id === form.vendor_id); return v ? <p className="text-[11px] text-slate-500" data-testid="po-vendor-terms">{[v.payment_terms, v.credit_days ? `${v.credit_days} days credit` : null, v.lead_time_days ? `delivers in ${v.lead_time_days} days` : null, v.min_order_value ? `min order ₹${Number(v.min_order_value).toLocaleString('en-IN')}` : null].filter(Boolean).join(' · ') || 'No terms saved for this vendor'}</p> : null; })()}
+                </div>
                 <div className="space-y-1">
                   <Label className="text-xs">PO Number <span className="text-slate-400 font-normal">(blank = auto)</span></Label>
                   <Input value={form.po_number} onChange={(e) => { setForm(p => ({...p, po_number: e.target.value})); setPoError(''); }} placeholder={nextPo ? `Auto: ${nextPo}` : 'Auto-generated'} className={`h-9 font-mono ${poError ? 'border-red-400' : ''}`} maxLength={40} data-testid="po-number-input" />
