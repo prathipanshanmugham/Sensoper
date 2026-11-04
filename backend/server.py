@@ -2601,6 +2601,13 @@ _hr_router = _create_hr_router(db, get_current_user, require_role, create_audit_
 _loans_router = _create_loans_router(db, get_current_user, require_role, create_audit_log, get_permissions, check_module_permission)
 for _r in (_brands_router, _procurement_router, _hr_router, _loans_router):
     api_router.include_router(_r)
+# Nov 2026: payroll & benefits (salary, PF/ESI/PT/TDS, insurance, incentives, commission, payslips) and the staff help desk
+from payroll import create_router as _create_payroll_router  # noqa: E402
+from helpdesk import create_router as _create_helpdesk_router  # noqa: E402
+_payroll_router = _create_payroll_router(db, get_current_user, create_audit_log, get_permissions, check_module_permission)
+_helpdesk_router = _create_helpdesk_router(db, get_current_user, create_audit_log, check_module_permission)
+api_router.include_router(_payroll_router)
+api_router.include_router(_helpdesk_router)
 
 
 async def _cal_amc(start, end, user):
@@ -7684,6 +7691,8 @@ async def startup_event():
     await db.calendar_events.create_index("date")
     await db.notifications.create_index([("kind", 1), ("source_type", 1), ("source_id", 1)])
     await _agents_router.ensure_indexes()
+    await _payroll_router.ensure_indexes()
+    await _helpdesk_router.ensure_indexes()
     try:
         await _hr_router.close_due_exits()
     except Exception as e:

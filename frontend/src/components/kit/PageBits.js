@@ -1,6 +1,6 @@
 /* Small shared pieces for the Oct 2026 pages (Brands, HR, Loans, Calendar, Vendors, Purchase requests):
  * page header, pill tabs, number tiles, empty states, stars, chips and date / money formatting. */
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Loader2, Paperclip, Star, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { uploadAPI } from '../../utils/api';
@@ -34,8 +34,15 @@ export function PageHeader({ icon: Icon, title, sub, children, testid }) {
 }
 
 export function PillTabs({ tabs, value, onChange, label = 'Sections', testid = 'tab' }) {
+  const box = useRef(null);
+  useEffect(() => {   // keep the chosen tab in view on narrow screens
+    const el = box.current; const btn = el?.querySelector('[aria-selected="true"]');
+    if (!el || !btn) return;
+    const b = btn.getBoundingClientRect(); const c = el.getBoundingClientRect();
+    if (b.right > c.right || b.left < c.left) el.scrollLeft += b.left - c.left - 16;
+  }, [value]);
   return (
-    <div className="-mx-4 overflow-x-auto px-4" role="tablist" aria-label={label}>
+    <div ref={box} className="-mx-4 overflow-x-auto px-4" role="tablist" aria-label={label}>
       <div className="flex w-max gap-1.5">
         {tabs.filter(Boolean).map(([k, l, n]) => (
           <button key={k} type="button" role="tab" aria-selected={value === k} onClick={() => onChange(k)}

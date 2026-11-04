@@ -59,6 +59,12 @@ def test_pure_helpers():
         "type": "object", "properties": {"a": {"type": "string"}, "b": {"type": "integer", "nullable": True, "default": None}}, "required": ["a"]}
     assert agents.endpoint_area("POST", "/api/vendors") == "module_vendors"
     assert agents.header_text("Settings → AI agents — “on”") == "Settings -> AI agents - 'on'"
+    # the address AI apps are given is always https for a public host (connectors refuse http)
+    c = agents.clean_public_url
+    assert c("quote.sensoper.in") == c("http://quote.sensoper.in/") == c("https://Quote.Sensoper.in/api/mcp") == "https://quote.sensoper.in"
+    assert c("http://localhost:3000") == "http://localhost:3000" and c("http://192.168.1.20:8001/api") == "http://192.168.1.20:8001"
+    assert c("") == "" and c("ftp://x.example") == "" and c("https://u:p@x.example") == "" and c("https://x.example/?a=1") == ""
+    assert agents.is_local_host("127.0.0.1:8001") and agents.is_local_host("[::1]:8001") and not agents.is_local_host("quote.sensoper.in:443")
 
 
 # ───────────── API ─────────────
@@ -304,4 +310,29 @@ def test_oauth_connector_flow(app, loop, world):
         assert (await client(app, r2["access_token"]).post("/api/mcp", json={"jsonrpc": "2.0", "id": 1, "method": "ping"})).status_code == 401
         assert (await client(app, world["reader_key"]).get("/api/vendors")).status_code == 200       # keys still work
         await a.put("/api/agents/settings", json={"allow_connectors": True})
+    run(loop, go())
+
+
+def test_connector_address_is_https(app, loop, world):
+    """nginx without X-Forwarded-Proto (or without Host) must not hand Claude an http:// or 127.0.0.1 address."""
+    async def go():
+        a = world["admin"]
+        plain = httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://quote.example.in")   # no forwarded proto
+        assert (await plain.get("/api/.well-known/oauth-protected-resource")).json()["resource"] == "https://quote.example.in/api/mcp"
+        r = await plain.post("/api/mcp", json={"jsonrpc": "2.0", "id": 1, "method": "ping"})
+        assert r.status_code == 401 and 'resource_metadata="https://quote.example.in/api/' in r.headers["www-authenticate"]
+        behind = httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://127.0.0.1:8001")      # nginx dropped Host
+        assert (await behind.get("/api/.well-known/oauth-protected-resource")).json()["resource"] == "http://127.0.0.1:8001/api/mcp"
+        got = (await a.get("/api/agents/settings")).json()
+        assert got["base_url_source"] == "auto" and got["mcp_url"] == "https://quote.example.in/api/mcp" and got["base_url_https"]
+        assert (await a.put("/api/agents/settings", json={"public_url": "not a url at all"})).status_code == 400
+        saved = (await a.put("/api/agents/settings", json={"public_url": "http://quote.sensoper.in/api/mcp"})).json()
+        assert saved["public_url"] == "https://quote.sensoper.in" and saved["base_url_source"] == "saved" and saved["mcp_url"] == "https://quote.sensoper.in/api/mcp"
+        meta = (await behind.get("/api/.well-known/oauth-protected-resource")).json()
+        assert meta["resource"] == "https://quote.sensoper.in/api/mcp" and meta["authorization_servers"] == ["https://quote.sensoper.in/api"]
+        asm = (await behind.get("/.well-known/oauth-authorization-server/api")).json()
+        assert asm["issuer"] == "https://quote.sensoper.in/api" and asm["authorization_endpoint"].startswith("https://quote.sensoper.in/")
+        m = await login(app, "mgr9@example.com", PW)
+        assert (await m.put("/api/agents/settings", json={"public_url": "https://evil.example"})).status_code == 403
+        assert (await a.put("/api/agents/settings", json={"public_url": ""})).json()["base_url_source"] == "auto"
     run(loop, go())

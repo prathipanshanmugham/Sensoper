@@ -1,5 +1,66 @@
 # Sensoper — change log
 
+## November 2026 · Payroll & benefits, help desk, and the https fix for Claude connectors
+
+### Claude connector: "asks for https" fixed
+- The address shown in Settings → AI agents, and the sign-in details Claude reads, are always **https** for the live
+  site, even when nginx doesn't pass the right headers. The first time an admin opens the page it saves the address
+  their browser uses. **Change** sets it by hand, and `PUBLIC_BASE_URL` in `.env` still wins.
+
+### HR → Pay & benefits
+- **Salaries**:
+  - Basic, DA, HRA, conveyance, special and any other allowances, plus fixed deductions. Each change applies from a
+    month you choose, and the history is kept.
+  - A live preview shows take-home, the company's PF and ESI, and CTC.
+  - Each person's record holds UAN, PF member ID, ESI number, PAN and bank details, with switches for PF (including on
+    full wages), pension (EPS), ESI, professional tax and TDS (worked out, fixed, or none).
+  - Gratuity shows what's earned so far.
+- **PF / ESI / PT / TDS built in** (every rate is editable in Payroll settings):
+  - PF: 12% + 12% up to the ₹25,000 ceiling, with 8.33% to EPS, using labour-code wages.
+  - EDLI and admin charges.
+  - ESI: 0.75% + 3.25% up to ₹21,000. Someone covered stays covered until the contribution period ends.
+  - Tamil Nadu half-yearly professional tax.
+  - TDS on the new regime: rebate up to ₹12 lakh with marginal relief, spread over the months left in the year.
+- **Incentives & commission**:
+  - **Sales commission is worked out from customer payments** for whoever is credited with the project. Rules can be
+    % of payments (before or with GST), a slab rate on the month's collections, or ₹ per kW.
+  - HR checks it, then adds it to salary. Each payment only counts once.
+  - Incentive, bonus, reimbursement, arrears and one-off deductions all wait for approval. **Bonus for many** works
+    by % of basic, % of gross, or a fixed amount.
+  - **Salary advances** are recovered every month.
+- **Health insurance**:
+  - The company's policies, who is covered and which family members, member card numbers, and each person's monthly
+    share (taken from salary).
+  - Claims are tracked, and a reminder comes 30 and 7 days before renewal.
+- **Monthly payroll**:
+  - Prepare → check each person (unpaid days, TDS, adjustments, hold) → approve → mark paid.
+  - Unpaid days can come from attendance, minus free absences. Joiners and leavers are paid pro rata, and PT is taken
+    in a leaver's last month.
+  - Shows what to deposit: PF, ESI, PT and TDS.
+  - Downloads: **bank transfer file, salary register, PF ECR (EPFO format) and ESI contribution file**.
+  - Payslip PDFs, with net pay in words.
+- Payroll is admin-only unless given in Settings → Permissions (with a separate *Approve payroll* switch). Payroll
+  settings can narrow it to named people. Bank and ID numbers never appear in the activity log.
+
+### My pay (everyone)
+- Payslips (PDF), a normal month's take-home, pay and PF so far this year, and incentives and commission with their
+  status.
+- Salary advance left to repay.
+- UAN, ESI, PAN and bank (masked).
+- Insurance card number, family covered, and a one-tap helpline.
+
+### Help desk (internal support)
+- Anyone raises a request: laptop / phone, HR & salary, tools & vehicle, office & site, the app, stock, or anything else.
+  It goes to that category's handler, or to admins.
+- Each request has:
+  - a priority with an answer time, and Overdue when it passes
+  - replies with files, plus internal notes only handlers see
+  - assign, move category or priority
+  - statuses Open → Being worked on → Waiting for you → Solved → Closed
+  - a rating once solved
+- Bell notes go out for each step. A report shows raised, open, overdue, time to solve and rating by category.
+- My pay → "Question about pay?" opens an HR request.
+
 ## November 2026 · AI agents (MCP, API keys, Claude / ChatGPT connectors) and vendor dropdown on purchase orders
 
 ### Purchase orders: pick the vendor from a list

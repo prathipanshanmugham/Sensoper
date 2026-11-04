@@ -4,7 +4,52 @@ Your server already has `/root/Sensoper/deploy.sh`. It pulls the code, installs 
 copies the build to `/var/www/sensoper`, restarts the `sensoper` service and checks the live bundle. This release needs
 nothing new installed.
 
-## This release: AI agents (MCP) and vendor dropdown on purchase orders
+## This release: payroll & benefits, help desk, and the https fix for Claude connectors
+
+Nothing new to install. After `./deploy.sh`:
+
+### 1. Claude asked for https — fixed
+Sensoper used to build the connector address from what nginx passed on. Without `X-Forwarded-Proto` (or `Host`), it
+showed `http://…` or `http://127.0.0.1:8001`, and Claude refused it. Now a public address is always https. Opening
+**Settings → AI agents** once as admin also saves the address you use, and **Change** there sets it by hand.
+
+To make it certain, add this line to `backend/.env` and restart (`systemctl restart sensoper`):
+
+    PUBLIC_BASE_URL=https://quote.sensoper.in
+
+Then add the connector in Claude: Settings → Connectors → Add custom connector → `https://quote.sensoper.in/api/mcp`.
+If Claude says it can't find the sign-in page, add the nginx block from the earlier release below.
+
+### 2. Payroll — first steps (HR → Pay & benefits, admins)
+1. **Payroll settings**:
+   - Check the professional-tax slabs for your corporation or municipality (Coimbatore, Erode).
+   - Add the PF establishment code and the ESI employer code.
+   - The PF ceiling is already ₹25,000, from 17 Sep 2026.
+2. **Salaries**: set each person's salary, then their UAN, ESI number, PAN and bank account. Mark partners and directors
+   *not on payroll*. For anyone paid earlier this year outside Sensoper, enter that income and TDS so the tax estimate
+   is right.
+3. **Incentives & commission → Commission rules**: add a rule, for example 2% of payments before GST.
+4. **Payroll**:
+   - Prepare the month, check each line, then approve.
+   - Download the bank file, PF ECR and ESI file.
+   - Mark it paid. Payslips then appear for everyone under **My pay**.
+
+Payroll is admin-only by default. To give it to an HR person, switch on Payroll in **Settings → Permissions** for their
+role, plus *Approve payroll and mark it paid* if they should approve. **Payroll settings → Who can open payroll** can then
+limit it to named people.
+
+### 3. Help desk
+Everyone can open **Help desk**. As admin, open Help desk → **Settings** and choose who handles each category (IT, HR &
+salary, tools, office, app…). A category with one handler sends requests straight to that person; one with none goes to
+admins.
+
+### 4. Smoke test
+- HR → Pay & benefits → Payroll: prepare this month. Net pay, PF and ESI show, and the files download.
+- A staff login: **My pay** shows their payslip once the month is approved. **Help desk** → Ask for help.
+
+---
+
+## Earlier release: AI agents (MCP) and vendor dropdown on purchase orders
 
 Nothing new to install. After `./deploy.sh`:
 

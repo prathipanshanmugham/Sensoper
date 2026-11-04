@@ -1,10 +1,10 @@
 /* Settings → AI agents (admins). Each agent works as a chosen login with the access given here: read only, read &
  * write, or full control. Keys for your own agents and n8n; Claude / ChatGPT connect as a custom connector (MCP) and
  * are approved on /connect-agent. Every call an agent makes is listed under Activity. */
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
-import { AlertTriangle, Bot, Check, Copy, KeyRound, Loader2, Pause, Pencil, Play, Plug, Plus, RefreshCw, Trash2 } from 'lucide-react';
+import { AlertTriangle, Bot, Check, Copy, Globe, KeyRound, Loader2, Pause, Pencil, Play, Plug, Plus, RefreshCw, Trash2 } from 'lucide-react';
 import { agentsAPI } from '../utils/api';
 import { useAuth } from '../contexts/AuthContext';
 import { Button } from '../components/ui/button';
@@ -231,6 +231,39 @@ function ConfirmDialog({ confirm, onClose }) {
   );
 }
 
+/** The address this browser reaches Sensoper at — what AI apps should use too. */
+export const browserBase = () => (process.env.REACT_APP_BACKEND_URL || window.location.origin || '').replace(/\/+$/, '');
+
+function AddressBox({ data, onSaved }) {
+  const [editing, setEditing] = useState(false);
+  const [v, setV] = useState('');
+  const [busy, setBusy] = useState(false);
+  const bad = !data.base_url_https;
+  const save = async () => {
+    setBusy(true);
+    try { const r = await agentsAPI.saveSettings({ public_url: v }); onSaved(r.data); setEditing(false); toast.success('Address saved'); }
+    catch (e) { toast.error(errText(e, 'Could not save the address')); } finally { setBusy(false); }
+  };
+  return (
+    <div className={`rounded-xl border p-3 text-sm ${bad ? 'border-amber-300 bg-amber-50 text-amber-900' : 'border-slate-200 bg-white text-slate-700'}`} data-testid="agents-address">
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+        {bad ? <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600" /> : <Globe className="h-4 w-4 shrink-0 text-emerald-600" />}
+        <span className="min-w-0 flex-1">Sensoper’s web address for AI apps: <b className="break-all" data-testid="agents-address-value">{data.base_url}</b>
+          {data.base_url_source === 'env' && <span className="text-xs text-slate-500"> · set by PUBLIC_BASE_URL on the server</span>}</span>
+        {data.base_url_source !== 'env' && !editing && (
+          <Button variant="ghost" size="sm" className="h-8" onClick={() => { setV(data.base_url_https ? data.base_url : browserBase()); setEditing(true); }} data-testid="agents-address-edit">Change</Button>)}
+      </div>
+      {bad && <p className="mt-1 text-xs">Claude, ChatGPT and other connectors only accept an <b>https://</b> address. Press Change and enter the address you open Sensoper at, like https://quote.sensoper.in.</p>}
+      {editing && (
+        <div className="mt-2 flex flex-col gap-2 sm:flex-row">
+          <Input value={v} onChange={(e) => setV(e.target.value)} placeholder="https://quote.sensoper.in" className="h-10 bg-white" inputMode="url" autoFocus data-testid="agents-address-input" />
+          <div className="flex gap-2"><Button onClick={save} disabled={busy || !v.trim()} className="h-10 bg-emerald-600 text-white hover:bg-emerald-700" data-testid="agents-address-save">{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Save'}</Button>
+            <Button variant="outline" className="h-10" onClick={() => setEditing(false)}>Cancel</Button></div>
+        </div>)}
+    </div>
+  );
+}
+
 function ConnectTab({ links }) {
   return (
     <div className="grid gap-3 lg:grid-cols-2">
@@ -304,6 +337,16 @@ export default function AIAgentsPage() {
   const links = useMemo(() => (data ? { mcp_url: data.mcp_url, api_url: data.api_url, openapi_url: data.openapi_url } : {}), [data]);
   const { user } = useAuth();
   const meId = user?.id;
+  // First visit: remember the https address this browser uses, so AI apps are never sent to http:// or to the
+  // server's own 127.0.0.1 (which happens when nginx doesn't pass the Host / X-Forwarded-Proto headers).
+  const triedAddress = useRef(false);
+  useEffect(() => {
+    if (!data || data.base_url_source !== 'auto' || triedAddress.current) return;
+    const mine = browserBase();
+    if (!mine.startsWith('https://')) return;
+    triedAddress.current = true;
+    agentsAPI.saveSettings({ public_url: mine }).then((r) => setData((d) => ({ ...d, ...r.data }))).catch(() => {});
+  }, [data]);
   if (data === null) return <div className="px-4 py-6"><Loading /></div>;
   if (!data) return <div className="px-4 py-6"><Empty title="Could not load AI agents" /></div>;
   const toggleSetting = async (k, v) => {
@@ -330,6 +373,7 @@ export default function AIAgentsPage() {
             <Switch checked={!!data.allow_connectors} disabled={savingSwitch || !data.enabled} onCheckedChange={(v) => toggleSetting('allow_connectors', v)} aria-label="Allow connectors" data-testid="agents-connectors" />
           </div>
         </div>
+        {(tab === 'connect' || !data.base_url_https) && <AddressBox data={data} onSaved={(r) => setData((d) => ({ ...d, ...r }))} />}
         <PillTabs value={tab} onChange={(t) => setTab(t, { agent: null })} testid="agents-tab" tabs={[['agents', `Agents (${agents.length})`], ['connect', 'Connect'], ['activity', 'Activity']]} />
         {tab === 'agents' && (agents.length === 0
           ? <Empty icon={Plug} title="No AI agents yet" text="Add one for your own agent or n8n, or connect Claude / ChatGPT from the Connect tab." />
