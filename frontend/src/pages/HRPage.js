@@ -13,6 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '../components/ui/dialog';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '../components/ui/sheet';
 import { useLiveRefresh } from '../lib/liveSync';
+import PayTab from '../components/hr/PayTab';
 import { Card, Chip, Empty, Field, FileAttach, Loading, PageHeader, PillTabs, Stars, Tile, Tiles, addDaysISO, errText, fmtDate, inputCls, todayISO } from '../components/kit/PageBits';
 
 const STAGES = [['applied', 'Applied'], ['screening', 'Screening'], ['interview', 'Interview'], ['offer', 'Offer made'], ['hired', 'Hired'], ['rejected', 'Not selected'], ['withdrawn', 'Withdrew']];
@@ -632,16 +633,18 @@ export default function HRPage() {
   const { isAdmin, isManager, can } = useAuth();
   const canEdit = isAdmin || isManager || can('module_hr', 'edit');
   const seesExits = isAdmin || can('can_manage_exits');
+  const seesHR = isAdmin || can('module_hr');
+  const seesPay = isAdmin || can('module_payroll');
   const [params, setParams] = useSearchParams();
-  const tab = params.get('tab') || 'overview';
+  const tab = (seesHR ? params.get('tab') : 'pay') || 'overview';
   const setTab = (t) => setParams((p) => { const n = new URLSearchParams(p); n.set('tab', t); return n; }, { replace: true });
   const [people, setPeople] = useState(null);
   const [shifts, setShifts] = useState([]);
   const [settings, setSettings] = useState(null);
   const [setOpen, setSetOpen] = useState(false);
-  const loadPeople = useCallback(() => hrAPI.people().then((r) => setPeople(r.data)).catch(() => setPeople([])), []);
-  const loadShifts = useCallback(() => hrAPI.shifts().then((r) => setShifts(r.data)).catch(() => {}), []);
-  const loadSettings = useCallback(() => hrAPI.settings().then((r) => setSettings(r.data)).catch(() => {}), []);
+  const loadPeople = useCallback(() => (seesHR ? hrAPI.people().then((r) => setPeople(r.data)).catch(() => setPeople([])) : setPeople([])), [seesHR]);
+  const loadShifts = useCallback(() => (seesHR ? hrAPI.shifts().then((r) => setShifts(r.data)).catch(() => {}) : null), [seesHR]);
+  const loadSettings = useCallback(() => (seesHR ? hrAPI.settings().then((r) => setSettings(r.data)).catch(() => {}) : null), [seesHR]);
   useEffect(() => { loadPeople(); loadShifts(); loadSettings(); }, [loadPeople, loadShifts, loadSettings]);
   useLiveRefresh(['hr', 'users'], loadPeople);
   const activePeople = useMemo(() => (people || []).filter((p) => p.active), [people]);
@@ -649,16 +652,17 @@ export default function HRPage() {
   return (
     <div className="px-4 py-5 sm:py-6">
       <div className="mx-auto max-w-7xl space-y-4">
-        <PageHeader icon={IdCard} title="HR" sub="People, hiring, cover for absent staff, shifts and exits" testid="hr-page">
-          {isAdmin && <Button variant="outline" className="h-10 gap-1.5" onClick={() => setSetOpen(true)} data-testid="hr-settings-btn"><Settings2 className="h-4 w-4" />Settings</Button>}
+        <PageHeader icon={IdCard} title="HR" sub={seesHR ? 'People, hiring, cover, shifts, exits — and pay & benefits' : 'Pay & benefits'} testid="hr-page">
+          {isAdmin && tab !== 'pay' && <Button variant="outline" className="h-10 gap-1.5" onClick={() => setSetOpen(true)} data-testid="hr-settings-btn"><Settings2 className="h-4 w-4" />Settings</Button>}
         </PageHeader>
-        <PillTabs value={tab} onChange={setTab} testid="hr-tab" tabs={[['overview', 'Overview'], ['people', 'People'], ['hiring', 'Hiring'], ['cover', 'Cover'], ['shifts', 'Shifts'], seesExits && ['exits', 'Exits']]} />
+        {seesHR && <PillTabs value={tab} onChange={setTab} testid="hr-tab" tabs={[['overview', 'Overview'], ['people', 'People'], ['hiring', 'Hiring'], ['cover', 'Cover'], ['shifts', 'Shifts'], seesExits && ['exits', 'Exits'], seesPay && ['pay', 'Pay & benefits']]} />}
         {tab === 'overview' && <Overview onTab={setTab} />}
         {tab === 'people' && <People people={people} shifts={shifts} settings={settings} canEdit={canEdit} reload={loadPeople} />}
         {tab === 'hiring' && <Hiring people={activePeople} settings={settings} canEdit={canEdit} />}
         {tab === 'cover' && <Cover people={activePeople} shifts={shifts} canEdit={canEdit} />}
         {tab === 'shifts' && <Shifts shifts={shifts} canEdit={canEdit} reloadShifts={loadShifts} />}
         {tab === 'exits' && seesExits && <Exits people={activePeople} settings={settings} reloadPeople={loadPeople} />}
+        {tab === 'pay' && seesPay && <PayTab />}
       </div>
       {isAdmin && <SettingsDialog open={setOpen} settings={settings} onOpenChange={setSetOpen} onSaved={loadSettings} />}
     </div>

@@ -53,6 +53,9 @@ SECTIONS: List[Dict[str, Any]] = [
         _page("module_audits", "Weekly audits", "The weekly operations checklist.", manager=(V, C, E, X)),
         _page("module_calendar", "Event calendar", "Company events, plus the dated work from the pages each person can open.",
               actions=(V, C, E, D), staff=(V, C), manager=(V, C, E, D)),
+        _page("module_helpdesk", "Help desk", "Everyone asks for help here (laptop, HR & salary, tools, office, the app). Handlers are set per "
+              "category in Help desk → Settings. Edit = handle every request, not only your categories.", actions=(V, C, E), always=True,
+              staff=(V, C), manager=(V, C)),
     ]},
     {"id": "sales", "label": "Sales & projects", "pages": [
         _page("module_projects", "New project & Projects", "Site visits, quotations and every project page.",
@@ -89,6 +92,12 @@ SECTIONS: List[Dict[str, Any]] = [
         _page("module_hr", "HR", "Hiring, cover for absent staff, shifts, exits and notice periods.", manager=(V, C, E, X),
               options=[_opt("can_manage_exits", "Handle resignations and terminations", "Exits: notice periods, last working days and closing logins.",
                             manager=False)]),
+        _page("module_payroll", "Payroll & benefits", "Salaries, PF / ESI / PT / TDS, health insurance, incentives, sales commission, bonus, advances "
+              "and payslips. Payroll settings can narrow it further to named people.",
+              options=[_opt("can_approve_payroll", "Approve payroll and mark it paid", "Approve the month's payroll, incentives and commission, and mark salaries paid.",
+                            manager=False)]),
+        _page("module_my_pay", "My pay", "Everyone's own payslips, incentives, PF / ESI numbers and insurance cover.", actions=(V,), always=True,
+              staff=(V,), manager=(V,)),
         _page("module_partners", "Subcontractors", "Crews, rate cards, assignments and payments.", manager=(V, C, E, X)),
         _page("module_teams", "Internal teams", "Our own installation teams.", manager=(V, C, E, X)),
         _page("module_assets", "Assets & tools", "Vehicles, tools and safety gear.", staff=(V, E), manager=(V, C, E, X)),
@@ -390,6 +399,10 @@ rule("PUT", "/api/purchase-orders/{po_id}/approve", option("can_approve_purchase
 rule("PUT", "/api/purchase-orders/{po_id}/reject", option("can_approve_purchase"))
 rule("POST", "/api/purchase-requests/{pr_id}/select", option("can_select_quote"))
 rule("*", "/api/hr/exits*", option("can_manage_exits"))
+for _m, _pat in (("POST", "/api/payroll/runs/{month}/approve"), ("POST", "/api/payroll/runs/{month}/reopen"), ("POST", "/api/payroll/runs/{month}/paid"),
+                 ("DELETE", "/api/payroll/runs/{month}"), ("POST", "/api/payroll/extras/{extra_id}/approve"), ("POST", "/api/payroll/extras/{extra_id}/reject"),
+                 ("POST", "/api/payroll/extras/approve-all"), ("POST", "/api/payroll/commission/approve")):
+    rule(_m, _pat, option("can_approve_payroll"))
 
 # shared look-ups and admin-only odds and ends — no decision here
 for m, pat in [("GET", "/api/inventory/items*"), ("GET", "/api/inventory/alerts"), ("GET", "/api/inventory/categories"),
@@ -407,7 +420,7 @@ for m, pat in [("GET", "/api/inventory/items*"), ("GET", "/api/inventory/alerts"
                ("GET", "/api/expansion/config"), ("GET", "/api/drive/settings"),
                ("GET", "/api/vendors/price-history"), ("GET", "/api/vendors/tags"), ("GET", "/api/brands"), ("GET", "/api/procurement/settings"),
                ("GET", "/api/hr/shifts"), ("GET", "/api/hr/covers"), ("GET", "/api/hr/roster"), ("GET", "/api/hr/settings"),
-               ("PUT,DELETE", "/api/calendar/events/{event_id}")]:
+               ("PUT,DELETE", "/api/calendar/events/{event_id}"), ("GET", "/api/payroll/me"), ("GET", "/api/payroll/me/payslip/{month}")]:
     rule(m, pat, None)
 
 # pages
@@ -496,6 +509,15 @@ for _p in ("openings", "candidates", "covers", "shifts"):
     rule("POST", f"/api/hr/{_p}", page("module_hr", C))
 rule("POST", "/api/hr/*", page("module_hr", E))
 rule("*", "/api/hr*", page("module_hr"))
+rule("PUT", "/api/payroll/settings", page("module_payroll", E, grant=False))   # admin only (code checks)
+rule("GET", "/api/payroll/runs/{month}/export/{kind}", page("module_payroll", X))
+rule("POST", "/api/payroll/preview", page("module_payroll", V))
+rule("POST", "/api/payroll/people/*", page("module_payroll", E))
+rule("POST", "/api/payroll/runs/{month}/*", page("module_payroll", E))
+rule("POST", "/api/payroll/insurance/*", page("module_payroll", E))
+rule("*", "/api/payroll*", page("module_payroll"))
+rule("GET", "/api/helpdesk*", page("module_helpdesk", V))
+rule("*", "/api/helpdesk*", page("module_helpdesk", C))      # handlers are named per category; the code decides the rest
 rule("GET", "/api/calendar", page("module_calendar", V))
 rule("GET", "/api/calendar/people", page("module_calendar", V))
 rule("POST", "/api/calendar/events", page("module_calendar", C))

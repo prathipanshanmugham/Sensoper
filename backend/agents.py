@@ -13,6 +13,7 @@
 """
 import base64
 import hashlib
+import ipaddress
 import json
 import os
 import re
@@ -227,6 +228,60 @@ def area_label(area: str) -> str:
     return area.split(":", 1)[-1].replace("-", " ").replace("_", " ").capitalize()
 
 
+def host_name(host: str) -> str:
+    """'quote.sensoper.in:443' → 'quote.sensoper.in'; '[::1]:8001' → '::1'."""
+    h = (host or "").strip().lower()
+    if h.startswith("["):
+        return h[1:h.find("]")] if "]" in h else h[1:]
+    return h.rsplit(":", 1)[0] if h.count(":") == 1 else h
+
+
+def _is_ip(h: str) -> bool:
+    try:
+        ipaddress.ip_address(h)
+        return True
+    except ValueError:
+        return False
+
+
+def is_local_host(host: str) -> bool:
+    """This computer or the local network — the only places an http:// address is acceptable."""
+    h = host_name(host)
+    if not h or h == "localhost" or h.endswith(".localhost") or h.endswith(".local"):
+        return True
+    try:
+        ip = ipaddress.ip_address(h)
+    except ValueError:
+        return False
+    return ip.is_loopback or ip.is_private or ip.is_unspecified or ip.is_link_local
+
+
+def clean_public_url(value: Optional[str]) -> str:
+    """The address people open Sensoper at, tidied: 'quote.sensoper.in', 'http://quote.sensoper.in/api/mcp' →
+    'https://quote.sensoper.in'. A public address is always https — Claude, ChatGPT and other connectors refuse
+    anything else. '' when it isn't a usable address."""
+    v = (value or "").strip()
+    if not v:
+        return ""
+    if "://" not in v:
+        v = "https://" + v
+    try:
+        u = urlparse(v)
+        if u.scheme not in ("http", "https") or not u.hostname or u.username or u.password or u.query or u.fragment:
+            return ""
+        u.port  # raises on a bad port
+    except ValueError:
+        return ""
+    if not re.fullmatch(r"[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*", u.hostname) and not _is_ip(u.hostname):
+        return ""
+    scheme = u.scheme if is_local_host(u.netloc) else "https"
+    path = u.path.rstrip("/")
+    for tail in ("/api/mcp", "/api"):
+        if path.endswith(tail):
+            path = path[: -len(tail)]
+    return f"{scheme}://{u.netloc.lower()}{path}"
+
+
 def humanize(name: str) -> str:
     return (name or "").replace("_", " ").strip().capitalize()
 
@@ -239,6 +294,7 @@ def first_line(doc: Optional[str]) -> str:
 class AgentSettingsBody(BaseModel):
     enabled: Optional[bool] = None
     allow_connectors: Optional[bool] = None
+    public_url: Optional[str] = None      # the address people open Sensoper at; "" clears it
 
 
 class AgentBody(BaseModel):
@@ -364,17 +420,29 @@ def create_router(db, get_current_user, require_role, create_audit_log, user_out
         if _settings_cache["value"] is not None and time.monotonic() - _settings_cache["at"] < 5:
             return _settings_cache["value"]
         doc = await db.agent_settings.find_one({"key": "defaults"}) or {}
-        value = {k: bool(doc.get(k, v)) for k, v in DEFAULT_SETTINGS.items()}
+        value: Dict[str, Any] = {k: bool(doc.get(k, v)) for k, v in DEFAULT_SETTINGS.items()}
+        value["public_url"] = clean_public_url(doc.get("public_url"))
         _settings_cache.update(at=time.monotonic(), value=value)
         return value
 
-    def base_url(request: Request) -> str:
-        env = (os.environ.get("PUBLIC_BASE_URL") or "").strip().rstrip("/")
+    async def base_url_and_source(request: Request):
+        """Where AI apps reach Sensoper: PUBLIC_BASE_URL in .env, else the address saved in Settings → AI agents
+        (filled in from the admin's browser), else this request's own host. A public host is always https: behind
+        nginx the backend itself only sees http, and connectors refuse an http address."""
+        env = clean_public_url(os.environ.get("PUBLIC_BASE_URL"))
         if env:
-            return env
-        proto = (request.headers.get("x-forwarded-proto") or request.url.scheme or "https").split(",")[0].strip()
-        host = request.headers.get("host") or request.url.netloc     # nginx sets Host; X-Forwarded-Host isn't trusted
-        return f"{proto}://{host.split(',')[0].strip()}"
+            return env, "env"
+        saved = (await settings()).get("public_url")
+        if saved:
+            return saved, "saved"
+        host = (request.headers.get("host") or request.url.netloc).split(",")[0].strip()   # X-Forwarded-Host isn't trusted
+        proto = (request.headers.get("x-forwarded-proto") or request.url.scheme or "https").split(",")[0].strip().lower()
+        if not is_local_host(host) or proto not in ("http", "https"):
+            proto = "https"
+        return f"{proto}://{host}", "auto"
+
+    async def base_url(request: Request) -> str:
+        return (await base_url_and_source(request))[0]
 
     def client_ip(request: Request) -> str:
         fwd = request.headers.get("x-forwarded-for", "")
@@ -505,25 +573,31 @@ def create_router(db, get_current_user, require_role, create_audit_log, user_out
                         "last_ip": d.get("last_ip"), "calls_24h": counts.get(str(d["_id"]), 0)})
         return out
 
-    def links(request: Request) -> Dict[str, str]:
-        b = base_url(request)
-        return {"base_url": b, "mcp_url": f"{b}/api/mcp", "openapi_url": f"{b}/api/mcp/openapi.json", "api_url": f"{b}/api"}
+    async def links(request: Request) -> Dict[str, Any]:
+        b, source = await base_url_and_source(request)
+        return {"base_url": b, "base_url_source": source, "base_url_https": b.startswith("https://"),
+                "mcp_url": f"{b}/api/mcp", "openapi_url": f"{b}/api/mcp/openapi.json", "api_url": f"{b}/api"}
 
     # ── Settings → AI agents ──
     @router.get("/agents/settings")
     async def get_settings(request: Request):
         await admin(request)
-        return {**(await settings()), **links(request), "access_levels": [{"key": k, "label": ACCESS_LABEL[k]} for k in ACCESS_LEVELS]}
+        return {**(await settings()), **(await links(request)), "access_levels": [{"key": k, "label": ACCESS_LABEL[k]} for k in ACCESS_LEVELS]}
 
     @router.put("/agents/settings")
     async def put_settings(body: AgentSettingsBody, request: Request):
         user = await admin(request)
         update = {k: v for k, v in body.model_dump().items() if v is not None}
+        if "public_url" in update:
+            cleaned = clean_public_url(update["public_url"])
+            if update["public_url"].strip() and not cleaned:
+                raise HTTPException(400, "Enter the address people open Sensoper at, like https://quote.sensoper.in")
+            update["public_url"] = cleaned
         before = await settings()
         await db.agent_settings.update_one({"key": "defaults"}, {"$set": update}, upsert=True)
         _settings_cache["value"] = None
         await create_audit_log(user["id"], user["name"], "update", "ai_agent_settings", "defaults", before, update)
-        return {**(await settings()), **links(request)}
+        return {**(await settings()), **(await links(request))}
 
     @router.get("/agents/users")
     async def agent_user_choices(request: Request):
@@ -535,7 +609,7 @@ def create_router(db, get_current_user, require_role, create_audit_log, user_out
     async def list_agents(request: Request):
         await admin(request)
         docs = [d async for d in db.agents.find({}).sort("created_at", -1)]
-        return {"agents": await agent_rows(docs), **(await settings()), **links(request)}
+        return {"agents": await agent_rows(docs), **(await settings()), **(await links(request))}
 
     @router.post("/agents")
     async def create_agent(body: AgentBody, request: Request):
@@ -553,7 +627,7 @@ def create_router(db, get_current_user, require_role, create_audit_log, user_out
         await create_audit_log(user["id"], user["name"], "create", "ai_agent", str(res.inserted_id), None,
                                {k: doc[k] for k in ("name", "access", "manage_access", "read_saved_logins", "expires_on")} | {"works_as": runner["name"]})
         row = (await agent_rows([{**doc, "_id": res.inserted_id, "key_hint": key[-4:]}]))[0]
-        return {"agent": row, "key": key, **links(request)}
+        return {"agent": row, "key": key, **(await links(request))}
 
     @router.put("/agents/{agent_id}")
     async def update_agent(agent_id: str, body: AgentBody, request: Request):
@@ -579,7 +653,7 @@ def create_router(db, get_current_user, require_role, create_audit_log, user_out
         key = await issue(agent["_id"], "key")
         await db.agents.update_one({"_id": agent["_id"]}, {"$set": {"key_hint": key[-4:], "updated_at": now_utc().isoformat()}})
         await create_audit_log(user["id"], user["name"], "rotate_key", "ai_agent", agent_id, None, {"name": agent["name"]})
-        return {"key": key, **links(request)}
+        return {"key": key, **(await links(request))}
 
     @router.delete("/agents/{agent_id}")
     async def delete_agent(agent_id: str, request: Request):
@@ -648,7 +722,7 @@ def create_router(db, get_current_user, require_role, create_audit_log, user_out
         return {"agent": a["name"], "works_as": {"name": a["works_as"], "email": u.get("email"), "role": u["role"],
                                                  "branches": names or ("all branches" if u["role"] == "admin" else "none set")},
                 "access": ACCESS_LABEL[a["access"]], "can_manage_logins": a["manage_access"], "can_read_saved_passwords": a["read_saved_logins"],
-                "today_ist": today_ist(), "api_base": f"{base_url(request)}/api"}
+                "today_ist": today_ist(), "api_base": f"{await base_url(request)}/api"}
 
     async def tool_app_map(u: Dict[str, Any], args: Dict[str, Any], request: Request) -> Dict[str, Any]:
         eps = await visible(u)
@@ -740,7 +814,7 @@ def create_router(db, get_current_user, require_role, create_audit_log, user_out
         if not isinstance(query, dict):
             raise ValueError("query must be an object of name: value")
         query = {k: (json.dumps(v) if isinstance(v, (dict,)) else v) for k, v in query.items() if v is not None}
-        b = base_url(request)
+        b = await base_url(request)
         headers = {"authorization": f"Bearer {token}", "x-sensoper-via": "mcp", "x-forwarded-for": client_ip(request),
                    "x-forwarded-proto": b.split("://")[0], "accept": "application/json"}
         kwargs: Dict[str, Any] = {"params": query, "headers": headers}
@@ -772,8 +846,8 @@ def create_router(db, get_current_user, require_role, create_audit_log, user_out
     HANDLERS = {"whoami": tool_whoami, "app_map": tool_app_map, "list_endpoints": tool_list, "describe_endpoint": tool_describe}
 
     # ── MCP server ──
-    def unauthorized(request: Request, detail: str, error: str = "invalid_token") -> JSONResponse:
-        meta = f"{base_url(request)}/api/.well-known/oauth-protected-resource"
+    async def unauthorized(request: Request, detail: str, error: str = "invalid_token") -> JSONResponse:
+        meta = f"{await base_url(request)}/api/.well-known/oauth-protected-resource"
         plain = header_text(detail)
         return JSONResponse({"error": error, "error_description": detail}, status_code=401,
                             headers={"WWW-Authenticate": f'Bearer error="{error}", error_description="{plain}", resource_metadata="{meta}", scope="{SCOPE}"'})
@@ -830,15 +904,15 @@ def create_router(db, get_current_user, require_role, create_audit_log, user_out
     async def mcp(request: Request):
         auth = request.headers.get("authorization", "")
         if not auth.startswith("Bearer "):
-            return unauthorized(request, "Sign in: send this agent's key as Authorization: Bearer <key>, or connect with OAuth", "invalid_request")
+            return await unauthorized(request, "Sign in: send this agent's key as Authorization: Bearer <key>, or connect with OAuth", "invalid_request")
         token = auth[7:].strip()
         if not token.startswith(PREFIX):
-            return unauthorized(request, "That is not a Sensoper AI agent key")
+            return await unauthorized(request, "That is not a Sensoper AI agent key")
         try:
             u = await authenticate(request, token, check_route=False)
         except HTTPException as exc:
             if exc.status_code == 401:
-                return unauthorized(request, exc.detail)
+                return await unauthorized(request, exc.detail)
             return JSONResponse(rpc_error(None, -32000, exc.detail), status_code=exc.status_code)
         try:
             payload = await request.json()
@@ -885,20 +959,20 @@ def create_router(db, get_current_user, require_role, create_audit_log, user_out
             if keep:
                 paths[path] = keep
         sp["paths"] = paths
-        sp["servers"] = [{"url": base_url(request)}]
+        sp["servers"] = [{"url": await base_url(request)}]
         sp["components"] = {**(sp.get("components") or {}), "securitySchemes": {"agentKey": {"type": "http", "scheme": "bearer", "description": "A Sensoper AI agent key (Settings → AI agents)"}}}
         sp["security"] = [{"agentKey": []}]
         sp.setdefault("info", {})["description"] = INSTRUCTIONS
         return JSONResponse(sp)
 
     # ── OAuth 2.1 for Claude / ChatGPT connectors ──
-    def prm(request: Request) -> Dict[str, Any]:
-        b = base_url(request)
+    async def prm(request: Request) -> Dict[str, Any]:
+        b = await base_url(request)
         return {"resource": f"{b}/api/mcp", "authorization_servers": [f"{b}/api"], "scopes_supported": [SCOPE],
                 "bearer_methods_supported": ["header"], "resource_name": "Sensoper", "resource_documentation": f"{b}/dashboard/ai-agents"}
 
-    def asm(request: Request) -> Dict[str, Any]:
-        b = base_url(request)
+    async def asm(request: Request) -> Dict[str, Any]:
+        b = await base_url(request)
         return {"issuer": f"{b}/api", "authorization_endpoint": f"{b}/api/oauth/authorize", "token_endpoint": f"{b}/api/oauth/token",
                 "registration_endpoint": f"{b}/api/oauth/register", "revocation_endpoint": f"{b}/api/oauth/revoke",
                 "response_types_supported": ["code"], "response_modes_supported": ["query"], "grant_types_supported": ["authorization_code", "refresh_token"],
@@ -906,10 +980,10 @@ def create_router(db, get_current_user, require_role, create_audit_log, user_out
                 "revocation_endpoint_auth_methods_supported": ["none"], "scopes_supported": [SCOPE], "service_documentation": f"{b}/dashboard/ai-agents"}
 
     async def prm_route(request: Request):
-        return JSONResponse(prm(request))
+        return JSONResponse(await prm(request))
 
     async def asm_route(request: Request):
-        return JSONResponse(asm(request))
+        return JSONResponse(await asm(request))
 
     for p in ("/.well-known/oauth-protected-resource", "/.well-known/oauth-protected-resource/mcp", "/mcp/.well-known/oauth-protected-resource"):
         router.add_api_route(p, prm_route, methods=["GET"], include_in_schema=False)
@@ -976,7 +1050,7 @@ def create_router(db, get_current_user, require_role, create_audit_log, user_out
                                             "state": state, "code_challenge": q["code_challenge"], "scope": q.get("scope") or SCOPE,
                                             "resource": q.get("resource"), "created_at": now_utc().isoformat(), "expires_at": exp.isoformat(),
                                             "expires_dt": exp, "status": "waiting"})
-        return RedirectResponse(f"{base_url(request)}/connect-agent?request={rid}", status_code=302)
+        return RedirectResponse(f"{await base_url(request)}/connect-agent?request={rid}", status_code=302)
 
     async def pending(rid: str) -> Dict[str, Any]:
         r = await db.oauth_requests.find_one({"_id": rid})
@@ -1018,7 +1092,7 @@ def create_router(db, get_current_user, require_role, create_audit_log, user_out
         await db.oauth_clients.update_one({"client_id": r["client_id"]}, {"$set": {"used": True}})
         await create_audit_log(user["id"], user["name"], "connect", "ai_agent", str(res.inserted_id), None,
                                {"name": doc["name"], "app": r["client_name"], "access": doc["access"], "works_as": runner["name"]})
-        return {"redirect": with_query(r["redirect_uri"], {"code": code, "state": r.get("state"), "iss": f"{base_url(request)}/api"})}
+        return {"redirect": with_query(r["redirect_uri"], {"code": code, "state": r.get("state"), "iss": f"{await base_url(request)}/api"})}
 
     @router.post("/oauth/requests/{rid}/deny")
     async def oauth_deny(rid: str, request: Request):

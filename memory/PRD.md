@@ -377,3 +377,25 @@ See CHANGES.md for the full list. Highlights for the next agent:
 - `AgentActivityMiddleware` logs method/path/status/ms per agent call. Page `module_agents` (locked, admin).
   UI pages/AIAgentsPage.js (`/dashboard/ai-agents`). `lib/nextPath.js` + Login/PublicRoute read ?next from the router location.
 - Tests: tests/test_ai_agents.py (5) — 55 in-process tests pass.
+
+## Iteration 70 — payroll & benefits, help desk, https connector address (2026-11-05)
+- agents.py: `clean_public_url`, `is_local_host`; `base_url_and_source()` = PUBLIC_BASE_URL → agent_settings.public_url
+  (saved from the admin's browser on first visit, or Change) → Host with https forced for non-local hosts.
+  Settings/links return `base_url_source`, `base_url_https`. UI: AddressBox on AI agents page.
+- `backend/payroll.py` (router; pages `module_payroll` + option `can_approve_payroll`, `module_my_pay` always):
+  collections payroll_settings, payroll_profiles {user_id, ids, bank, flags, history[] structures, fy_opening},
+  pay_extras (pending → approved → in_payroll → paid | rejected), pay_advances, commission_rules, commission_links
+  (payment_id unique), insurance_policies {members[], claims[]}, payroll_runs {month unique, status draft|approved|paid,
+  edits{user}, lines[], totals}. Pure: compute_line, pf_split (ceiling 25,000; EPS 8.33% capped), pf_wages (labour
+  code ≥ half fixed gross), esi_covered (period start), tax_new_regime (87A + marginal relief, cess), slab_amount,
+  commission_line/total, gratuity_estimate, amount_words. Prior FY/half sums from approved runs; months not paid here
+  counted at their salary unless fy_opening set. Exports bank/register/pf_ecr/esi; payslip PDF (reportlab).
+  Settings `people_allowed` narrows access. Drafts recompute on GET.
+- `backend/helpdesk.py`: helpdesk_settings {categories[{key,label,handler_ids}], due_hours}, helpdesk_tickets
+  (HD-0001 via counters), replies (internal), history, moves per role, rating; page `module_helpdesk` (always; edit =
+  every request). Notifications kind helpdesk / payslip / insurance_renewal.
+- UI: components/hr/{payBits,PayDialogs,PaySalaries,PayrollRun,PayIncentives,PayInsurance,PayTab}.js (HR tab
+  `pay`, sub-tabs via ?pay=); pages/MyPayPage.js (/dashboard/my-pay), pages/HelpDeskPage.js (/dashboard/help-desk).
+  HR route accepts module_hr or module_payroll (ProtectedRoute anyModule). PillTabs scrolls the chosen tab into view.
+- Tests: tests/test_payroll_helpdesk.py (6) + https test in test_ai_agents — 62 in-process tests pass.
+

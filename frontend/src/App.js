@@ -59,13 +59,15 @@ import InvestorsPage from "./pages/InvestorsPage";
 import InvestorPortal from "./pages/InvestorPortal";
 import AIAgentsPage from "./pages/AIAgentsPage";
 import ConnectAgentPage from "./pages/ConnectAgentPage";
+import MyPayPage from "./pages/MyPayPage";
+import HelpDeskPage from "./pages/HelpDeskPage";
 import { nextPath } from "./lib/nextPath";
 
 // Protected Route Component
-function ProtectedRoute({ children, allowedRoles = null, module = null, action = 'view' }) {
+function ProtectedRoute({ children, allowedRoles = null, module = null, anyModule = null, action = 'view' }) {
   const { user, loading, perms, can } = useAuth();
 
-  if (loading || (user && module && user.role !== 'admin' && perms === null)) {
+  if (loading || (user && (module || anyModule) && user.role !== 'admin' && perms === null)) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-600"></div>
@@ -85,6 +87,9 @@ function ProtectedRoute({ children, allowedRoles = null, module = null, action =
 
   // Settings → Permissions decides who may open each page
   if (module && !can(module, action)) {
+    return <Navigate to={home} replace />;
+  }
+  if (anyModule && !anyModule.some((m) => can(m, action))) {
     return <Navigate to={home} replace />;
   }
 
@@ -168,7 +173,9 @@ function AppRoutes() {
       <Route path="/dashboard/amc" element={<ProtectedRoute module="module_amc"><DashboardLayout><AMCDashboard /></DashboardLayout></ProtectedRoute>} />
       <Route path="/dashboard/support" element={<ProtectedRoute module="module_support"><DashboardLayout><CustomerSupportPage /></DashboardLayout></ProtectedRoute>} />
       <Route path="/dashboard/brands" element={<ProtectedRoute module="module_brands"><DashboardLayout><BrandsPage /></DashboardLayout></ProtectedRoute>} />
-      <Route path="/dashboard/hr" element={<ProtectedRoute module="module_hr"><DashboardLayout><HRPage /></DashboardLayout></ProtectedRoute>} />
+      <Route path="/dashboard/hr" element={<ProtectedRoute anyModule={["module_hr", "module_payroll"]}><DashboardLayout><HRPage /></DashboardLayout></ProtectedRoute>} />
+      <Route path="/dashboard/my-pay" element={<ProtectedRoute module="module_my_pay"><DashboardLayout><MyPayPage /></DashboardLayout></ProtectedRoute>} />
+      <Route path="/dashboard/help-desk" element={<ProtectedRoute module="module_helpdesk"><DashboardLayout><HelpDeskPage /></DashboardLayout></ProtectedRoute>} />
       <Route path="/dashboard/loans" element={<ProtectedRoute module="module_loans"><DashboardLayout><LoansPage /></DashboardLayout></ProtectedRoute>} />
       <Route path="/dashboard/calendar" element={<ProtectedRoute module="module_calendar"><DashboardLayout><CalendarPage /></DashboardLayout></ProtectedRoute>} />
       <Route path="/dashboard/locations" element={<ProtectedRoute module="module_locations"><DashboardLayout><LocationsPage /></DashboardLayout></ProtectedRoute>} />

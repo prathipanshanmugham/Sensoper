@@ -12,7 +12,7 @@ import {
   ShoppingBag, RefreshCw, Package, Boxes, PackageOpen, Truck, Undo2, Store, Tags, HardHat, Users, Wrench,
   CreditCard, AlertTriangle, BarChart3, MapPin, Building2, UserCog, Shield, Map, SlidersHorizontal, ScrollText,
   Layers, History, KeyRound, LockKeyhole, FileText, UserRound, Clock, Network, Gift, Landmark,
-  LifeBuoy, CalendarDays, BadgeCheck, IdCard, HandCoins, Bot,
+  LifeBuoy, CalendarDays, BadgeCheck, IdCard, HandCoins, Bot, Wallet, Banknote, MessageCircleQuestion,
 } from 'lucide-react';
 
 export const NAV_SECTIONS = [
@@ -90,6 +90,16 @@ export const NAV_SECTIONS = [
           what: 'Company events (meetings, holidays, training, deadlines) together with the dated work from the pages you can open: AMC visits, installations, deliveries, interviews, covers, EMIs and trademark renewals.',
           steps: ['Tap a day to see everything on it; use “Show” to pick what to see.', 'Add event: choose everyone or just some people — they get a note in the bell.', 'Holidays can repeat every year.'],
           tip: 'You can change the events you added yourself.',
+        },
+      },
+      {
+        href: '/dashboard/help-desk', label: 'Help desk', icon: MessageCircleQuestion, module: 'module_helpdesk',
+        keywords: 'help desk internal support ticket request problem issue it laptop phone salary hr tools vehicle office complaint',
+        help: {
+          what: 'Ask for help inside the company: a laptop or phone problem, a salary or leave question, a tool or vehicle, the office or a site, or the Sensoper app. It goes to the person who handles that kind of request.',
+          steps: ['Ask for help: choose what it is about, write one line and the details, and how urgent it is.', 'You get a note in the bell when someone replies; answer in the same request.',
+            'Handlers: “To handle” lists your categories. Reply, add internal notes, assign, and mark it solved.', 'Admins: Settings sets the categories, who handles each, and the answer times.'],
+          tip: 'Rate the help once it’s solved — it shows in the Report.',
         },
       },
     ],
@@ -261,6 +271,26 @@ export const NAV_SECTIONS = [
           steps: ['People: designation, department, reports-to (this draws the org chart) and default shift.', 'Hiring: openings and candidates from applied to hired; plan interviews.',
             'Cover: when someone is away, choose who covers and write the handover — they get a note.', 'Shifts: set timings and the weekly roster; late check-ins show in red.',
             'Exits: resignation or termination with the notice period; the login closes after the last working day.'],
+        },
+      },
+      {
+        href: '/dashboard/hr?tab=pay', label: 'Payroll & benefits', icon: Banknote, module: 'module_payroll',
+        keywords: 'payroll salary pay slip payslip pf epf esi esic uan professional tax tds income tax bonus incentive commission advance insurance health gratuity bank ctc',
+        help: {
+          what: 'Salaries, PF / ESI / professional tax / TDS, health insurance, incentives, sales commission, bonus, advances and the monthly payroll with payslips.',
+          steps: ['Salaries: set each person’s pay (it shows the take-home and CTC as you type) and their UAN, ESI number, PAN and bank.',
+            'Incentives & commission: commission is worked out from customer payments for whoever made the project. Check it and add it to salary; add incentives and bonus.',
+            'Payroll: prepare the month, check each line (unpaid days, TDS, adjustments), approve, then mark paid. Download the bank file, PF ECR and ESI file.',
+            'Insurance: the company’s policies, who is covered with which family, renewals and claims.'],
+          tip: 'Rates (PF ceiling, ESI limit, PT slabs, tax slabs) are in Payroll settings — check them with your auditor.',
+        },
+      },
+      {
+        href: '/dashboard/my-pay', label: 'My pay', icon: Wallet, module: 'module_my_pay',
+        keywords: 'my pay salary payslip pf uan esi insurance card incentive commission advance',
+        help: {
+          what: 'Your own payslips, take-home, incentives and commission, salary advance, PF / ESI numbers and insurance cover.',
+          steps: ['Payslips: tap PDF to open or save one.', 'Insurance: your card number and the helpline to call.', 'Something wrong? “Question about pay?” raises a help desk request to HR.'],
         },
       },
       {
