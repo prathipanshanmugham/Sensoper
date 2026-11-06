@@ -1,5 +1,70 @@
 # Sensoper — change log
 
+## November 2026 · Error sweep and a cleaner, calmer look
+
+Every page was opened as admin, manager and staff on a phone and a laptop, plus the customer and investor portals,
+and 223 read-only checks ran against the live data. Nothing was removed.
+
+### Errors fixed
+- Opening a stock item that came in through the Excel import, or has no product code (SKU), crashed its page.
+- Opening a project with an old or incomplete record (no saved location or system details) crashed its page.
+- A mistyped or cut-off link to any record gave a server error. It now says "not found".
+- Managers' weekly audits, AMC and teams pages asked for the full user list (admin-only) and showed errors. They now
+  use a staff directory with names, roles and departments only.
+- Staff opening the site diary asked for partner data they can't see. Staff opening someone else's project for
+  editing now get a clear message.
+- On a phone, the AI agents "Connect" tab scrolled sideways. No grid on any page can push the page sideways now.
+- The project edit form warned about blank fields on older projects. Older projects with a blank roof type could not
+  be saved; now they can.
+
+### Numbers fixed (found in the live data)
+- **Quotes:** a margin over 300% (for example 24900 typed into the % box when ₹24,900 was meant) or a GST rate
+  outside 0–28% is now flagged and not used. Quotes already saved with one show a warning to correct it.
+- **Direct sales:** a sale's cost is taken from the stock item before the margin is worked out, so margins are real
+  instead of 100%. Earlier sales with no cost get it filled once from the item's current cost (marked
+  "cost filled later").
+- **Profit alerts** use the same margin as the project's Profit card, so they no longer say 0% on a profitable job.
+- **Approvals:** the two approval counts now always agree.
+- **Brand report:** unbranded stock is counted under "No brand set".
+- **AMC:**
+  - A visit that is both scheduled and overdue is listed once, as overdue.
+  - Contracts and offers for older projects read the system size and type from wherever the project kept them,
+    so they no longer show 0 kW or the wrong type.
+- **Reference sites:**
+  - Savings figures saved by an older calculator that are physically impossible (ROI over 1,000%, payback under a
+    year) are hidden until the project is re-run.
+  - Figures are rounded.
+  - The completion date is the real one.
+- **Expansion:** "TN", "Tamilnadu" and "Tamil Nadu" (and district spellings) count as one place.
+
+### Security
+- The customer's inverter-app password is no longer sent with every project. **Show** and **Copy** fetch it on
+  request, and each look is recorded in the activity log.
+
+### Look and feel
+- **Colours from the logo:**
+  - The app's green is now the logo's leaf green, deepened so text on it is easy to read.
+  - Green is kept for actions and the current selection.
+  - Hover and menu highlights are neutral instead of bright blue.
+  - Small grey labels replace the bright blue badges.
+- **One style of section tabs** everywhere (a neutral segmented bar), with underlined tabs for the second level.
+- **Header and sidebar:**
+  - The header shows "Section / Page" on one line.
+  - The sidebar marks the current page with a green bar.
+  - Section names are in plain case.
+  - Only one "New project" button shows on the projects pages.
+- **Labels:** all-caps labels are now in plain case, and tiny 9–10px labels are a little larger.
+- **Buttons, fields and cards:**
+  - Buttons and fields are 40px tall, which is easier to tap.
+  - Cards have a lighter border and shadow.
+  - Dialogs have a softer backdrop.
+- **Notices and confirmations:**
+  - Browser pop-ups are gone. Errors and confirmations appear as in-app notices at the top.
+  - "Are you sure?" questions use an in-app box whose button names the action ("Delete", "Archive", "Relieve").
+  - Error notices give the server's reason in words, even for form-validation errors that used to read
+    "[object Object]". They say plainly when the internet connection is down.
+- **Numbers line up** in tables, and charts use the brand green.
+
 ## November 2026 · Payroll & benefits, help desk, and the https fix for Claude connectors
 
 ### Claude connector: "asks for https" fixed

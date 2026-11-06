@@ -12,6 +12,7 @@ import { Badge } from '../ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 import { SYSTEM_TYPE_OPTIONS, inr, systemLabel } from './amcCommon';
 
+import { errText } from '../kit/PageBits';
 const fmt = (d) => (d ? new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '—');
 const STATUS = { active: 'bg-emerald-100 text-emerald-700', renewed: 'bg-blue-100 text-blue-700', cancelled: 'bg-slate-200 text-slate-600', expired: 'bg-rose-100 text-rose-700' };
 
@@ -30,7 +31,7 @@ export default function ContractSheet({ contractId, onOpenChange, canChange, isA
   const save = async (patch, msg) => {
     setBusy('save');
     try { await amcAPI.update(c.id, patch); toast.success(msg); setEdit(null); load(); onChanged?.(); }
-    catch (e) { toast.error(e.response?.data?.detail || 'Could not save'); } finally { setBusy(''); }
+    catch (e) { toast.error(errText(e, 'Could not save')); } finally { setBusy(''); }
   };
   const saveEdit = () => {
     if (edit.system_type === 'others' && !(edit.system_type_other || '').trim()) { toast.error('Say what the system is'); return; }
@@ -46,7 +47,7 @@ export default function ContractSheet({ contractId, onOpenChange, canChange, isA
       await amcAPI.hardDelete(c.id, del);
       toast.success(`${c.contract_number} deleted for good`);
       onOpenChange(false); onChanged?.();
-    } catch (e) { toast.error(e.response?.data?.detail || 'Could not delete'); } finally { setBusy(''); }
+    } catch (e) { toast.error(errText(e, 'Could not delete')); } finally { setBusy(''); }
   };
 
   const open = !!contractId;
@@ -110,7 +111,7 @@ export default function ContractSheet({ contractId, onOpenChange, canChange, isA
             </div>
 
             <div className="space-y-1.5">
-              <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Visits</p>
+              <p className="text-xs font-semibold text-slate-500">Visits</p>
               {(c.visit_history || []).length === 0 ? <p className="text-xs text-slate-400">No visits yet.</p> : (
                 <ul className="divide-y divide-slate-100 rounded-xl border border-slate-200 text-sm">
                   {c.visit_history.map((v) => (

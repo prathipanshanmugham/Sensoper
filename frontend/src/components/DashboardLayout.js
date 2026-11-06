@@ -26,10 +26,11 @@ function NavLink({ item, active, badge, onNavigate }) {
       to={item.href}
       onClick={onNavigate}
       aria-current={active ? 'page' : undefined}
-      className={`group flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors ${active ? 'bg-emerald-50 text-emerald-800 font-semibold' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'}`}
+      className={`group relative flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors ${active ? 'bg-emerald-50 font-medium text-emerald-900' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'}`}
       data-testid={`nav-${item.label.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`}
     >
-      <Icon className={`h-[18px] w-[18px] shrink-0 ${active ? 'text-emerald-600' : 'text-slate-400 group-hover:text-slate-600'}`} />
+      {active && <span className="absolute inset-y-1.5 left-0 w-[3px] rounded-r-full bg-emerald-600" aria-hidden="true" />}
+      <Icon className={`h-[18px] w-[18px] shrink-0 ${active ? 'text-emerald-700' : 'text-slate-400 group-hover:text-slate-600'}`} />
       <span className="flex-1 truncate">{item.label}</span>
       {badge > 0 && <span className="min-w-[20px] rounded-full bg-red-500 px-1.5 text-center text-[11px] font-semibold leading-5 text-white">{badge > 99 ? '99+' : badge}</span>}
     </Link>
@@ -89,7 +90,7 @@ function SidebarContent({ sections, active, stats, user, onNavigate, onLogout, o
                   <button
                     type="button"
                     onClick={() => toggle(s.id)}
-                    className="flex w-full items-center gap-2 rounded-md px-3 py-1 text-[11px] font-semibold uppercase tracking-wider text-slate-400 hover:text-slate-600"
+                    className="flex w-full items-center gap-2 rounded-md px-3 py-1 text-xs font-medium text-slate-500 hover:text-slate-800"
                     aria-expanded={!isCollapsed}
                     data-testid={`nav-section-${s.id}`}
                   >
@@ -129,7 +130,7 @@ function HelpPanel({ open, onOpenChange, info }) {
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-md" data-testid="help-panel">
         <SheetHeader className="text-left">
-          <p className="text-[11px] font-semibold uppercase tracking-wider text-emerald-700">{info?.section || 'Help'}</p>
+          <p className="text-xs font-medium text-emerald-700">{info?.section || 'Help'}</p>
           <SheetTitle className="font-['Outfit'] text-xl">{info?.label}</SheetTitle>
           <SheetDescription className="text-[15px] leading-relaxed text-slate-600">{help?.what || 'Help for this screen is coming soon.'}</SheetDescription>
         </SheetHeader>
@@ -286,12 +287,12 @@ export default function DashboardLayout({ children }) {
       </aside>
 
       <div className="lg:pl-64">
-        <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/90 backdrop-blur" style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}>
+        <header className="sticky top-0 z-30 border-b border-slate-200/80 bg-white/90 backdrop-blur-md" style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}>
           <div className="flex h-14 items-center gap-2 px-3 sm:px-6">
             <button type="button" className="-ml-1 rounded-md p-2 text-slate-600 hover:bg-slate-100 lg:hidden" onClick={() => setDrawerOpen(true)} aria-label="Open menu" data-testid="mobile-menu-btn"><Menu className="h-5 w-5" /></button>
-            <div className="min-w-0 flex-1">
-              <p className="hidden text-[11px] font-medium uppercase tracking-wider text-slate-400 sm:block">{info?.section}</p>
-              <p className="truncate font-['Outfit'] text-base font-semibold leading-tight text-slate-900 sm:text-[15px]" data-testid="page-title">{info?.label}</p>
+            <div className="flex min-w-0 flex-1 items-baseline gap-2 leading-tight" data-testid="page-crumb">
+              {info?.section && info.section !== info.label && <><span className="hidden shrink-0 text-sm text-slate-500 sm:inline">{info.section}</span><span className="hidden text-slate-300 sm:inline" aria-hidden="true">/</span></>}
+              <p className="truncate font-['Outfit'] text-base font-semibold text-slate-900 sm:text-[15px]" data-testid="page-title">{info?.label}</p>
             </div>
             <div className="relative">
               <Button variant="ghost" size="sm" onClick={openHelp} className="gap-1.5 px-2.5 text-slate-600" data-testid="help-btn" aria-label="Help for this screen">
@@ -305,9 +306,9 @@ export default function DashboardLayout({ children }) {
               )}
             </div>
             <NotificationBell alertInfo={alertInfo} onRefresh={fetchAlerts} />
-            {can('/dashboard/projects/new') && (
+            {can('/dashboard/projects/new') && !['/dashboard/projects', '/dashboard/projects/new'].includes(location.pathname) && (
               <Link to="/dashboard/projects/new" className="hidden sm:block">
-                <Button size="sm" className="gap-1.5 bg-emerald-600 font-medium text-white hover:bg-emerald-700" data-testid="new-project-btn"><Plus className="h-4 w-4" />New project</Button>
+                <Button size="sm" className="h-9 gap-1.5 px-3.5" data-testid="new-project-btn"><Plus className="h-4 w-4" />New project</Button>
               </Link>
             )}
           </div>

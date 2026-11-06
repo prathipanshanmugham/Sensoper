@@ -10,6 +10,7 @@ import { Badge } from './ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Plus, Pencil, Trash2, Loader2, Layers, X, Check } from 'lucide-react';
 
+import { confirmAction } from './kit/confirm';
 const inr = (v) => `₹${Math.round(v || 0).toLocaleString('en-IN')}`;
 const UNIT_LABEL = { kw: 'kW', hp: 'HP', unit: 'unit' };
 const DEFAULT_UNIT = { 'on-grid': 'kw', 'off-grid': 'kw', hybrid: 'kw', 'solar-pump': 'hp' };
@@ -33,7 +34,7 @@ export function SlabRatesCard() {
   useEffect(() => { load(); }, [load]);
 
   const remove = async (d) => {
-    if (!window.confirm(`Remove all slab rates for ${d.category_label}?`)) return;
+    if (!await confirmAction(`Remove all slab rates for ${d.category_label}?`)) return;
     try { await pricingSlabsAPI.remove(d.id); toast.success('Removed'); load(); } catch (e) { toast.error(err(e, 'Remove failed')); }
   };
   const free = cats.filter(c => !docs.some(d => d.category === c.slug));
@@ -60,7 +61,7 @@ export function SlabRatesCard() {
                 <Button size="sm" variant="outline" className="h-7 gap-1 text-xs" onClick={() => setEditing({ ...d, gst_pct: d.gst_pct ?? '', slabs: d.slabs.map(s => ({ ...s, _key: Math.random().toString(36).slice(2), to_value: s.to_value ?? '' })) })} data-testid={`slab-edit-${d.category}`}><Pencil className="h-3 w-3" />Edit table</Button>
                 <Button size="icon" variant="ghost" className="h-7 w-7 text-red-500" onClick={() => remove(d)} data-testid={`slab-remove-${d.category}`}><Trash2 className="h-3.5 w-3.5" /></Button>
               </div>
-              <table className="w-full text-xs"><thead className="text-[10px] uppercase tracking-wider text-slate-400"><tr><th className="text-left py-1">From</th><th className="text-left py-1">To</th><th className="text-left py-1">₹ per {UNIT_LABEL[d.unit]}</th><th className="text-left py-1">Effective from</th></tr></thead>
+              <table className="w-full text-xs"><thead className="text-[11px] text-slate-400"><tr><th className="text-left py-1">From</th><th className="text-left py-1">To</th><th className="text-left py-1">₹ per {UNIT_LABEL[d.unit]}</th><th className="text-left py-1">Effective from</th></tr></thead>
                 <tbody>{d.slabs.map((s, i) => <tr key={i} className={`border-t border-slate-100 ${String(s.effective_from) > today() ? 'text-slate-400' : 'text-slate-700'}`} data-testid={`slab-chip-${d.category}-${i}`}><td className="py-1">{s.from_value}</td><td className="py-1">{s.to_value ?? '∞'}</td><td className="py-1 tabular-nums">{inr(s.rate_per_unit)}</td><td className="py-1">{s.effective_from}{String(s.effective_from) > today() ? ' (scheduled)' : ''}</td></tr>)}</tbody></table>
             </div>
           ))}
@@ -104,7 +105,7 @@ function SlabEditor({ doc, cats, isNew, onClose, onSaved }) {
           <div className="space-y-1"><Label className="text-xs">GST % on package</Label><Input type="number" step="0.1" value={form.gst_pct} onChange={e => setForm(f => ({ ...f, gst_pct: e.target.value }))} placeholder="required" className="h-9" data-testid="slab-gst-input" /></div>
         </div>
         <div className="space-y-1.5">
-          <div className="grid grid-cols-[1fr_1fr_1.3fr_1.3fr_28px] gap-2 text-[10px] uppercase tracking-wider text-slate-400 px-0.5"><span>From</span><span>To (blank = ∞)</span><span>₹ per {UNIT_LABEL[form.unit]}</span><span>Effective from</span><span /></div>
+          <div className="grid grid-cols-[1fr_1fr_1.3fr_1.3fr_28px] gap-2 text-[11px] text-slate-400 px-0.5"><span>From</span><span>To (blank = ∞)</span><span>₹ per {UNIT_LABEL[form.unit]}</span><span>Effective from</span><span /></div>
           {form.slabs.map((s, i) => (
             <div key={s._key} className="grid grid-cols-[1fr_1fr_1.3fr_1.3fr_28px] gap-2 items-center" data-testid={`slab-row-${i}`}>
               <Input type="number" step="0.5" value={s.from_value} onChange={e => setRow(i, 'from_value', e.target.value)} className="h-9" data-testid={`slab-from-${i}`} />

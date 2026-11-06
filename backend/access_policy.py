@@ -416,11 +416,12 @@ for m, pat in [("GET", "/api/inventory/items*"), ("GET", "/api/inventory/alerts"
                ("*", "/api/support/sla-config"), ("*", "/api/integrations/google-drive/client-secret"), ("*", "/api/audit-logs/archive-config"),
                ("POST", "/api/audit-logs/archives/*"), ("GET", "/api/settings/thresholds"), ("GET", "/api/pricelist/items/{item_id}/history"),
                ("PUT", "/api/amc/interest/{project_id}"), ("GET", "/api/daily-reports/projects"), ("GET", "/api/daily-reports/options"),
-               ("GET", "/api/integrations/google-drive"), ("GET", "/api/calculate/*"), ("GET", "/api/approvals/inbox/count"),
+               ("GET", "/api/integrations/google-drive"), ("GET", "/api/calculate/*"), ("GET", "/api/approvals/inbox/count"), ("GET", "/api/approvals/pending-count"),
                ("GET", "/api/expansion/config"), ("GET", "/api/drive/settings"),
                ("GET", "/api/vendors/price-history"), ("GET", "/api/vendors/tags"), ("GET", "/api/brands"), ("GET", "/api/procurement/settings"),
                ("GET", "/api/hr/shifts"), ("GET", "/api/hr/covers"), ("GET", "/api/hr/roster"), ("GET", "/api/hr/settings"),
-               ("PUT,DELETE", "/api/calendar/events/{event_id}"), ("GET", "/api/payroll/me"), ("GET", "/api/payroll/me/payslip/{month}")]:
+               ("PUT,DELETE", "/api/calendar/events/{event_id}"), ("GET", "/api/payroll/me"), ("GET", "/api/payroll/me/payslip/{month}"),
+               ("GET", "/api/users/directory")]:
     rule(m, pat, None)
 
 # pages

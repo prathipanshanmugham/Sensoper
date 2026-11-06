@@ -134,15 +134,16 @@ def create_router(db, get_current_user, require_role, create_audit_log, check_mo
         duration_months = 12
         seq = await _next_sequence(db, "amc_contract_number")
         # priced like the Standard plan in AMC settings, so a quick contract and a quote agree
-        kw = float(ps.get("system_size_kw") or 0)
+        from project_numbers import project_kw, project_system_type
+        kw = project_kw(project)
         plan = next(p for p in quote_plans(kw, merge_settings(await db.amc_settings.find_one({"key": "defaults"})), ps.get("tariff_per_unit"))["plans"] if p["key"] == "standard")
         doc = {
             "project_id": project_id, "customer_id": customer.get("id"), "customer_name": customer.get("name", "Customer"),
             "contact": customer.get("phone"), "site_address": customer.get("address"),
             "district": project.get("location", {}).get("district") if isinstance(project.get("location"), dict) else project.get("district"),
             "state": project.get("location", {}).get("state") if isinstance(project.get("location"), dict) else project.get("state"),
-            "location_id": project.get("location_id"), "system_type": ps.get("system_type", "on-grid"),
-            "system_capacity_kw": float(ps.get("system_size_kw") or 0), "pump_hp": ps.get("pump_hp"),
+            "location_id": project.get("location_id"), "system_type": project_system_type(project),
+            "system_capacity_kw": kw, "pump_hp": ps.get("pump_hp"),
             "commissioning_date": project.get("completed_at", now_iso)[:10],
             "contract_type": "comprehensive", "start_date": start_date, "end_date": _end_date(start_date, duration_months),
             "duration_months": duration_months, "annual_value": plan["price"], "plan_key": plan["key"], "plan_name": plan["name"],

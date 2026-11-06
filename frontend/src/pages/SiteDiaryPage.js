@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
 import { toast } from 'sonner';
+import { useAuth } from '../contexts/AuthContext';
 import { siteDiaryAPI, dailyReportsAPI, partnersAPI, inventoryAPI, uploadAPI, companyAPI } from '../utils/api';
 import { Button } from '../components/ui/button';
 import { DateNav, Section, Stepper, Chip, Field, ProjectPicker, inputCls, textareaCls } from '../components/FormBits';
@@ -12,6 +13,7 @@ import { Plus, Trash2, Loader2, Download, Save, Sun, Cloud, CloudRain, CloudDriz
 import Can from '../components/Can';
 import { useLiveRefresh } from '../lib/liveSync';
 
+import { errText } from '../components/kit/PageBits';
 export const STAGES = ['Site survey', 'Material delivered', 'Structure erected', 'Panels mounted', 'DC wiring done', 'Inverter installed', 'AC wiring & earthing', 'Testing & commissioning', 'Net-meter applied', 'Handover done'];
 const WEATHER = [['Sunny', Sun], ['Cloudy', Cloud], ['Light rain', CloudDrizzle], ['Heavy rain', CloudRain]];
 const PCT = [10, 25, 40, 50, 60, 75, 90, 100];
@@ -80,7 +82,7 @@ function DiaryForm({ projectId, date, projects, partners, items, onSaved }) {
       const r = await siteDiaryAPI.save(projectId, date, payload);
       setData((d) => ({ ...d, ...r.data })); setDirty(false);
       toast.success('Site diary saved'); onSaved?.();
-    } catch (e) { toast.error(e.response?.data?.detail || 'Could not save'); }
+    } catch (e) { toast.error(errText(e, 'Could not save')); }
     finally { setSaving(false); }
   };
   const pdf = async (all) => {
@@ -196,6 +198,8 @@ function DiaryForm({ projectId, date, projects, partners, items, onSaved }) {
 }
 
 export default function SiteDiaryPage() {
+  const { can } = useAuth();
+  const seesPartners = can('module_partners');
   const [params, setParams] = useSearchParams();
   const [projects, setProjects] = useState([]);
   const [partners, setPartners] = useState([]);
@@ -213,9 +217,9 @@ export default function SiteDiaryPage() {
   const loadRecent = useCallback(() => siteDiaryAPI.list({ limit: 40, ...(projectId ? { project_id: projectId } : {}) }).then((r) => setRecent(r.data)).catch(() => setRecent({ diaries: [], project_info: {} })), [projectId]);
   useEffect(() => {
     dailyReportsAPI.projects().then((r) => setProjects(r.data || [])).catch(() => {});
-    partnersAPI.list().then((r) => setPartners(Array.isArray(r.data) ? r.data : (r.data?.partners || []))).catch(() => {});
+    if (seesPartners) partnersAPI.list().then((r) => setPartners(Array.isArray(r.data) ? r.data : (r.data?.partners || []))).catch(() => {});
     inventoryAPI.getItems().then((r) => setItems(Array.isArray(r.data) ? r.data : (r.data?.items || []))).catch(() => {});
-  }, []);
+  }, [seesPartners]);
   useEffect(() => { loadRecent(); }, [loadRecent]);
   useLiveRefresh(['site-diaries', 'site-diary'], loadRecent);
 
@@ -247,7 +251,7 @@ export default function SiteDiaryPage() {
         <div className="space-y-4">
           {active.length > 0 && (
             <div>
-              <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-400">Active sites</p>
+              <p className="mb-2 text-xs font-semibold text-slate-400">Active sites</p>
               <div className="flex flex-wrap gap-2">{active.map((p) => <button key={p.id} type="button" onClick={() => update({ project: p.id })} className="rounded-full border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:border-emerald-300 hover:text-emerald-800" data-testid={`diary-quick-${p.id}`}>{p.customer?.name}</button>)}</div>
             </div>
           )}
@@ -273,7 +277,7 @@ function RecentList({ recent, onOpen, showProject, title = 'Latest diary entries
   );
   return (
     <div>
-      <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-400">{title}</p>
+      <p className="mb-2 text-xs font-semibold text-slate-400">{title}</p>
       <ul className="overflow-hidden rounded-xl border border-slate-200 bg-white divide-y divide-slate-100" data-testid="diary-recent">
         {recent.diaries.map((d) => (
           <li key={d.id}>

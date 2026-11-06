@@ -10,6 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { toast } from 'sonner';
 import { PackagePlus, AlertTriangle, Loader2, Boxes, Link2, CheckCircle2 } from 'lucide-react';
 
+import { errText } from './kit/PageBits';
 /** Iter 55 — ad-hoc lines on a confirmed project: promote to inventory (+ invoice), then optionally feed a Solution Kit. */
 export default function AdhocLinesCard({ projectId, canManage, onChanged }) {
   const [data, setData] = useState(null);
@@ -34,7 +35,7 @@ export default function AdhocLinesCard({ projectId, canManage, onChanged }) {
       let inv = null;
       if (!data.invoice_number) {
         try { const ir = await invoicingAPI.generateInvoice(projectId); inv = ir.data.invoice_number; toast.success(`Invoice ${inv} generated with SKU/HSN references`); }
-        catch (e) { toast.error(e.response?.data?.detail || 'Promoted, but invoice could not be generated yet'); }
+        catch (e) { toast.error(errText(e, 'Promoted, but invoice could not be generated yet')); }
       } else {
         toast.message(`Invoice ${data.invoice_number} already exists — it keeps the originally quoted lines (price lock)`);
       }
@@ -43,7 +44,7 @@ export default function AdhocLinesCard({ projectId, canManage, onChanged }) {
       setKitPrompt({ promoted: created });
       setKitSel(Object.fromEntries(created.map(c => [c.line_id, { kit_id: '', quantity: 1, qty_formula: '', done: false }])));
       await load(); onChanged?.();
-    } catch (e) { toast.error(e.response?.data?.detail || 'Promotion failed'); }
+    } catch (e) { toast.error(errText(e, 'Promotion failed')); }
     finally { setBusy(false); }
   };
 
@@ -54,7 +55,7 @@ export default function AdhocLinesCard({ projectId, canManage, onChanged }) {
       const r = await adhocAPI.addToKit(projectId, line.line_id, { kit_id: sel.kit_id, quantity: parseFloat(sel.quantity) || 1, qty_formula: sel.qty_formula || null });
       toast.success(r.data.message);
       setKitSel(p => ({ ...p, [line.line_id]: { ...p[line.line_id], done: true } }));
-    } catch (e) { toast.error(e.response?.data?.detail || 'Could not add to kit'); }
+    } catch (e) { toast.error(errText(e, 'Could not add to kit')); }
   };
 
   return (

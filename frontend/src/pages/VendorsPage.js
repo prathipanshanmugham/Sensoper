@@ -15,6 +15,7 @@ import Can from '../components/Can';
 import { useLiveRefresh } from '../lib/liveSync';
 import { Chip, Empty, Field, Loading, PageHeader, PillTabs, StarInput, Stars, Tile, errText, fmtDate, inr, inrShort } from '../components/kit/PageBits';
 
+import { confirmAction } from '../components/kit/confirm';
 const CATEGORIES = ['panels', 'inverters', 'batteries', 'structure', 'cables', 'transport', 'services', 'other'];
 const SOUTH = ['Tamil Nadu', 'Kerala', 'Karnataka', 'Andhra Pradesh', 'Telangana', 'Puducherry'];
 const blankForm = { name: '', contact_person: '', phone: '', email: '', gstin: '', address: '', state: 'Tamil Nadu', district: '', payment_terms: '', category: 'other', notes: '',
@@ -88,7 +89,7 @@ function VendorSheet({ vendorId, onOpenChange, canEdit, isAdmin, onChanged }) {
     vendorsAPI.purchaseOrders(vendorId).then((r) => setPos(r.data)).catch(() => setPos({ purchase_orders: [] }));
   }, [vendorId]);
   useEffect(() => { setSc(null); setPos(null); setTab('score'); load(); }, [load]);
-  const removeRating = async (id) => { if (!window.confirm('Remove this rating?')) return; try { await vendorsAPI.removeRating(vendorId, id); load(); onChanged(); } catch (e) { toast.error(errText(e)); } };
+  const removeRating = async (id) => { if (!await confirmAction('Remove this rating?')) return; try { await vendorsAPI.removeRating(vendorId, id); load(); onChanged(); } catch (e) { toast.error(errText(e)); } };
   const v = sc?.vendor;
   return (
     <Sheet open={!!vendorId} onOpenChange={onOpenChange}>
@@ -213,7 +214,7 @@ export default function VendorsPage() {
     } catch (e) { toast.error(errText(e, 'Save failed')); } finally { setSaving(false); }
   };
   const handleDelete = async (v) => {
-    if (!window.confirm(`Archive ${v.name}?`)) return;
+    if (!await confirmAction(`Archive ${v.name}?`)) return;
     try { await vendorsAPI.remove(v.id); fetchAll(); } catch (e) { toast.error(errText(e, 'Could not archive')); }
   };
 

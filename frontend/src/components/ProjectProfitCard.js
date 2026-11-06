@@ -3,6 +3,7 @@ import { invoicingAPI } from '../utils/api';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Loader2, TrendingUp, Lock } from 'lucide-react';
 
+import { errText } from './kit/PageBits';
 const CATEGORY_LABELS = { material: 'Material', labour_subcontractor: 'Labour / Subcontractor' };
 
 /** Admin-only profit breakdown — reads the same cost_estimation as everything else, never
@@ -16,7 +17,7 @@ export default function ProjectProfitCard({ projectId, isAdmin }) {
     if (!isAdmin) { setLoading(false); return; }
     setLoading(true);
     try { const r = await invoicingAPI.getProfit(projectId); setData(r.data); }
-    catch (e) { setError(e.response?.data?.detail || 'Could not load profit data'); }
+    catch (e) { setError(errText(e, 'Could not load profit data')); }
     finally { setLoading(false); }
   }, [projectId, isAdmin]);
   useEffect(() => { fetchData(); }, [fetchData]);

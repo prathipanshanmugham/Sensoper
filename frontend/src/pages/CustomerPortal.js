@@ -35,7 +35,7 @@ function Ring({ pct, children }) {
       <svg viewBox="0 0 120 120" className="h-full w-full -rotate-90" aria-hidden="true">
         <circle cx="60" cy="60" r={r} fill="none" stroke="#e2e8f0" strokeWidth="10" />
         <circle cx="60" cy="60" r={r} fill="none" stroke="url(#ringGrad)" strokeWidth="10" strokeLinecap="round" strokeDasharray={c} strokeDashoffset={c * (1 - p / 100)} />
-        <defs><linearGradient id="ringGrad" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stopColor="#22c55e" /><stop offset="100%" stopColor="#0ea5e9" /></linearGradient></defs>
+        <defs><linearGradient id="ringGrad" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stopColor="#58A024" /><stop offset="100%" stopColor="#1068D0" /></linearGradient></defs>
       </svg>
       <div className="absolute inset-0 flex flex-col items-center justify-center text-center">{children}</div>
     </div>
@@ -201,7 +201,7 @@ function Dashboard({ token, d, reload, onLogout }) {
             {m.price > 0 && <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-emerald-500" style={{ width: `${m.paid_pct || 0}%` }} /></div>}
             {m.price > 0 && <p className="mt-1 text-[11px] text-slate-500">Total {inr(m.price)}{m.subsidy > 0 ? ` after ${inr(m.subsidy)} subsidy` : ''}</p>}
             {m.payments.length > 0 && (
-              <ul className="mt-3 divide-y divide-slate-100 text-sm">{m.payments.map((p, i) => <li key={i} className="flex justify-between py-1.5"><span className="text-slate-600">{fmtDate(p.date)}{p.method ? <span className="ml-1 text-xs uppercase text-slate-400">{p.method.replace('_', ' ')}</span> : null}</span><span className="font-medium tabular-nums text-slate-900">{inr(p.amount)}</span></li>)}</ul>
+              <ul className="mt-3 divide-y divide-slate-100 text-sm">{m.payments.map((p, i) => <li key={i} className="flex justify-between py-1.5"><span className="text-slate-600">{fmtDate(p.date)}{p.method ? <span className="ml-1 text-xs text-slate-400">{payMethod(p.method)}</span> : null}</span><span className="font-medium tabular-nums text-slate-900">{inr(p.amount)}</span></li>)}</ul>
             )}
           </Card>
         )}
@@ -243,7 +243,7 @@ function Dashboard({ token, d, reload, onLogout }) {
           <RaiseTicket token={token} categories={d.ticket_categories} onRaised={reload} />
           {d.tickets.length > 0 && (
             <div className="mt-4">
-              <p className="mb-1 text-xs font-semibold uppercase tracking-wider text-slate-500">Your requests</p>
+              <p className="mb-1 text-xs font-semibold text-slate-500">Your requests</p>
               <ul className="divide-y divide-slate-100" data-testid="portal-tickets">
                 {d.tickets.map((t) => { const [label, cls] = TICKET_STATUS[t.status] || [t.status, 'bg-slate-100 text-slate-600']; return (
                   <li key={t.id} className="py-2.5">
@@ -271,6 +271,9 @@ function Dashboard({ token, d, reload, onLogout }) {
     </div>
   );
 }
+
+const PAY_METHODS = { upi: 'UPI', neft: 'NEFT', rtgs: 'RTGS', imps: 'IMPS', cash: 'Cash', cheque: 'Cheque', card: 'Card', bank_transfer: 'Bank transfer', online: 'Online' };
+const payMethod = (m) => PAY_METHODS[String(m).toLowerCase()] || String(m).replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase());
 
 export default function CustomerPortal() {
   const { token } = useParams();

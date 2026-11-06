@@ -84,7 +84,7 @@ export default function InvestorPortal() {
           <>
             <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
               <div>
-                <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-emerald-700"><ShieldCheck className="h-3.5 w-3.5" />Investor dashboard</p>
+                <p className="flex items-center gap-1.5 text-xs font-semibold text-emerald-700"><ShieldCheck className="h-3.5 w-3.5" />Investor dashboard</p>
                 <h1 className="font-['Outfit'] text-2xl font-bold text-slate-900" data-testid="investor-hello">Hello, {me.name?.split(' ')[0]}</h1>
                 <p className="text-sm text-slate-500">How {me.company?.name || 'the company'} is doing{me.organisation ? ` · ${me.organisation}` : ''}</p>
               </div>

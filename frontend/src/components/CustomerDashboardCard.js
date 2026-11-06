@@ -6,6 +6,7 @@ import { customerDashboardAPI } from '../utils/api';
 import { formatApiErrorDetail } from '../contexts/AuthContext';
 import { Button } from './ui/button';
 
+import { confirmAction } from './kit/confirm';
 export default function CustomerDashboardCard({ project }) {
   const [link, setLink] = useState(null);
   const [busy, setBusy] = useState('');
@@ -17,14 +18,14 @@ export default function CustomerDashboardCard({ project }) {
   const message = `Hi ${first}, here is your solar dashboard from Sensoper — see your savings, breakeven, CO₂ saved, payments and service, and raise a request anytime:\n${url}\n\nOpen it and enter this mobile number to sign in.`;
 
   const create = async (rotate) => {
-    if (rotate && !window.confirm('Make a new link? The old link will stop working.')) return;
+    if (rotate && !await confirmAction('Make a new link? The old link will stop working.')) return;
     setBusy('create');
     try { const r = await customerDashboardAPI.createLink(project.id); setLink(r.data); toast.success(rotate ? 'New link ready — share it again' : 'Link ready to share'); }
     catch (e) { toast.error(formatApiErrorDetail(e.response?.data?.detail) || 'Could not create the link'); }
     finally { setBusy(''); }
   };
   const revoke = async () => {
-    if (!window.confirm('Turn off this customer\'s dashboard link?')) return;
+    if (!await confirmAction('Turn off this customer\'s dashboard link?')) return;
     setBusy('revoke');
     try { await customerDashboardAPI.revokeLink(project.id); setLink({ active: false }); toast.success('Link turned off'); }
     catch (e) { toast.error('Could not turn it off'); } finally { setBusy(''); }

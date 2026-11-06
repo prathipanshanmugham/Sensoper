@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Badge } from './ui/badge';
 import { Loader2, PackageCheck, Save, AlertTriangle } from 'lucide-react';
 
+import { errText } from './kit/PageBits';
 /** Excess Material Report — reconciliation form shown once a project is completed (Iter 42 Change 4). */
 export default function MaterialReconciliationCard({ projectId }) {
   const [data, setData] = useState(null);
@@ -35,7 +36,7 @@ export default function MaterialReconciliationCard({ projectId }) {
       }));
       await reconciliationAPI.submit(projectId, { lines, status });
       setSaved(true); await fetchData();
-    } catch (e) { setError(e.response?.data?.detail || 'Could not save'); } finally { setSaving(false); }
+    } catch (e) { setError(errText(e, 'Could not save')); } finally { setSaving(false); }
   };
 
   if (loading) return <Card className="border-slate-200"><CardContent className="p-6 flex justify-center"><Loader2 className="h-5 w-5 animate-spin text-emerald-600" /></CardContent></Card>;
@@ -57,7 +58,7 @@ export default function MaterialReconciliationCard({ projectId }) {
         <div className="overflow-x-auto">
           <table className="w-full text-xs" data-testid="reconciliation-table">
             <thead>
-              <tr className="text-slate-400 uppercase text-[10px]">
+              <tr className="text-slate-400 text-[11px]">
                 <th className="text-left p-1.5">Item</th>
                 <th className="text-right p-1.5">Issued</th>
                 <th className="text-right p-1.5">Consumed</th>

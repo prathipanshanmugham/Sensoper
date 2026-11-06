@@ -8,6 +8,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Plus, Upload, Trash2, AlertTriangle, CheckCircle2, Scale } from 'lucide-react';
 import { RecordOrderDialog, ImportOrdersDialog } from './OrderDialogs';
 
+import { errText } from '../kit/PageBits';
+import { confirmAction } from '../kit/confirm';
 const ORDER_STATUS_COLORS = { placed: 'bg-blue-100 text-blue-800', shipped: 'bg-indigo-100 text-indigo-800', delivered: 'bg-emerald-100 text-emerald-800', returned: 'bg-orange-100 text-orange-800', cancelled: 'bg-slate-100 text-slate-600', refunded: 'bg-red-100 text-red-800' };
 const ORDER_STATUSES = ['placed', 'shipped', 'delivered', 'returned', 'cancelled', 'refunded'];
 const inr = (v) => `₹${(v ?? 0).toLocaleString('en-IN')}`;
@@ -33,18 +35,18 @@ export function OrdersTab({ orders, recon, platforms, products, items, canManage
 
   const setOrderStatus = async (o, order_status) => {
     try { await ecommerceAPI.orders.update(o.id, { order_status }); toast.success(`Order ${o.platform_order_id} → ${order_status}`); refresh(); }
-    catch (err) { toast.error(err.response?.data?.detail || 'Failed to update order status'); }
+    catch (err) { toast.error(errText(err, 'Failed to update order status')); }
   };
   const setPaymentStatus = async (o, payment_status) => {
     try {
       const payload = { payment_status };
       if (payment_status === 'settled') payload.net_payout = o.net_payout;
       await ecommerceAPI.orders.update(o.id, payload); refresh();
-    } catch (err) { toast.error(err.response?.data?.detail || 'Failed to update payment status'); }
+    } catch (err) { toast.error(errText(err, 'Failed to update payment status')); }
   };
   const remove = async (o) => {
-    if (!window.confirm(`Delete order ${o.platform_order_id}? Stock will be restored if it was still active.`)) return;
-    try { await ecommerceAPI.orders.remove(o.id); toast.success('Order deleted'); refresh(); } catch (err) { toast.error(err.response?.data?.detail || 'Failed to delete order'); }
+    if (!await confirmAction(`Delete order ${o.platform_order_id}? Stock will be restored if it was still active.`)) return;
+    try { await ecommerceAPI.orders.remove(o.id); toast.success('Order deleted'); refresh(); } catch (err) { toast.error(errText(err, 'Failed to delete order')); }
   };
 
   return (
@@ -65,10 +67,10 @@ export function OrdersTab({ orders, recon, platforms, products, items, canManage
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4" data-testid="orders-summary">
-        <Card className="border-slate-200"><CardContent className="p-3"><p className="text-[11px] uppercase tracking-wide text-slate-400">Orders</p><p className="text-lg font-bold text-slate-900" data-testid="orders-count">{orders.length}</p><p className="text-[11px] text-slate-500">{active.length} active</p></CardContent></Card>
-        <Card className="border-slate-200"><CardContent className="p-3"><p className="text-[11px] uppercase tracking-wide text-slate-400">Revenue (active)</p><p className="text-lg font-bold text-slate-900" data-testid="orders-revenue">{inr(totals.revenue)}</p><p className="text-[11px] text-slate-500">commission {inr(totals.commission)}</p></CardContent></Card>
-        <Card className="border-slate-200"><CardContent className="p-3"><p className="text-[11px] uppercase tracking-wide text-slate-400">Awaiting settlement</p><p className="text-lg font-bold text-amber-700" data-testid="orders-pending-count">{totals.pending}</p></CardContent></Card>
-        <Card className={`border-slate-200 ${recon?.mismatch_count ? 'border-red-200 bg-red-50/40' : ''}`}><CardContent className="p-3"><p className="text-[11px] uppercase tracking-wide text-slate-400">Payout mismatches</p><p className={`text-lg font-bold ${recon?.mismatch_count ? 'text-red-700' : 'text-emerald-700'}`} data-testid="orders-mismatch-count">{recon?.mismatch_count ?? 0}</p><p className="text-[11px] text-slate-500">{recon?.mismatch_count ? <span className="flex items-center gap-1"><AlertTriangle className="h-3 w-3" />settled ≠ expected</span> : <span className="flex items-center gap-1"><CheckCircle2 className="h-3 w-3" />all settled payouts match</span>}</p></CardContent></Card>
+        <Card className="border-slate-200"><CardContent className="p-3"><p className="text-[11px] text-slate-400">Orders</p><p className="text-lg font-bold text-slate-900" data-testid="orders-count">{orders.length}</p><p className="text-[11px] text-slate-500">{active.length} active</p></CardContent></Card>
+        <Card className="border-slate-200"><CardContent className="p-3"><p className="text-[11px] text-slate-400">Revenue (active)</p><p className="text-lg font-bold text-slate-900" data-testid="orders-revenue">{inr(totals.revenue)}</p><p className="text-[11px] text-slate-500">commission {inr(totals.commission)}</p></CardContent></Card>
+        <Card className="border-slate-200"><CardContent className="p-3"><p className="text-[11px] text-slate-400">Awaiting settlement</p><p className="text-lg font-bold text-amber-700" data-testid="orders-pending-count">{totals.pending}</p></CardContent></Card>
+        <Card className={`border-slate-200 ${recon?.mismatch_count ? 'border-red-200 bg-red-50/40' : ''}`}><CardContent className="p-3"><p className="text-[11px] text-slate-400">Payout mismatches</p><p className={`text-lg font-bold ${recon?.mismatch_count ? 'text-red-700' : 'text-emerald-700'}`} data-testid="orders-mismatch-count">{recon?.mismatch_count ?? 0}</p><p className="text-[11px] text-slate-500">{recon?.mismatch_count ? <span className="flex items-center gap-1"><AlertTriangle className="h-3 w-3" />settled ≠ expected</span> : <span className="flex items-center gap-1"><CheckCircle2 className="h-3 w-3" />all settled payouts match</span>}</p></CardContent></Card>
       </div>
 
       <Card className="border-slate-200"><CardContent className="p-0 overflow-x-auto">

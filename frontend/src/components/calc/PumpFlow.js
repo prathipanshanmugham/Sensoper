@@ -6,6 +6,7 @@ import { Button } from '../ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 import { Loader2, IndianRupee, Gauge, Zap, AlertTriangle, Calculator } from 'lucide-react';
 
+import { errText } from '../kit/PageBits';
 const num = (v) => { const n = parseFloat(v); return Number.isFinite(n) ? n : 0; };
 const inr = (v) => `₹${Math.round(v || 0).toLocaleString('en-IN')}`;
 
@@ -44,7 +45,7 @@ export function PumpFlow({ data, set, onChange }) {
         _derived: { annual_savings: res.annual_saving, payback_years: res.payback_years, roi_pct: res.net_cost > 0 ? Math.round((res.annual_saving / res.net_cost) * 1000) / 10 : 0 },
         _pump_result: res, _pump_warnings: r.data.warnings || [],
       });
-    } catch (e) { setError(e.response?.data?.detail || 'Could not calculate pump sizing'); }
+    } catch (e) { setError(errText(e, 'Could not calculate pump sizing')); }
     finally { setLoading(false); }
   };
   const res = data._pump_result;
@@ -73,10 +74,10 @@ export function PumpFlow({ data, set, onChange }) {
       {res && (
         <div className="rounded-lg border border-sky-200 bg-sky-50/40 p-3 space-y-2" data-testid="pump-result-strip">
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
-            <div><p className="text-[9px] uppercase tracking-wider text-slate-500 flex items-center justify-center gap-1"><Gauge className="h-3 w-3" />Array</p><p className="text-sm font-bold text-slate-800">{res.system_size_kw} kWp</p></div>
-            <div><p className="text-[9px] uppercase tracking-wider text-slate-500 flex items-center justify-center gap-1"><Zap className="h-3 w-3" />Pump</p><p className="text-sm font-bold text-slate-800">{res.pump_hp_selected} HP</p></div>
-            <div><p className="text-[9px] uppercase tracking-wider text-slate-500 flex items-center justify-center gap-1"><IndianRupee className="h-3 w-3" />Cost</p><p className="text-sm font-bold text-slate-800">{inr(data.total_cost)}</p></div>
-            <div><p className="text-[9px] uppercase tracking-wider text-emerald-600">Net cost</p><p className="text-sm font-bold text-emerald-700">{inr(data.net_cost)}</p></div>
+            <div><p className="text-[11px] text-slate-500 flex items-center justify-center gap-1"><Gauge className="h-3 w-3" />Array</p><p className="text-sm font-bold text-slate-800">{res.system_size_kw} kWp</p></div>
+            <div><p className="text-[11px] text-slate-500 flex items-center justify-center gap-1"><Zap className="h-3 w-3" />Pump</p><p className="text-sm font-bold text-slate-800">{res.pump_hp_selected} HP</p></div>
+            <div><p className="text-[11px] text-slate-500 flex items-center justify-center gap-1"><IndianRupee className="h-3 w-3" />Cost</p><p className="text-sm font-bold text-slate-800">{inr(data.total_cost)}</p></div>
+            <div><p className="text-[11px] text-emerald-600">Net cost</p><p className="text-sm font-bold text-emerald-700">{inr(data.net_cost)}</p></div>
           </div>
           <p className="text-[11px] text-slate-500 text-center">Subsidy (PM-KUSUM): {inr(data.subsidy)} · Payback: {data._derived?.payback_years ? `${data._derived.payback_years} yrs` : '—'}</p>
           {(data._pump_warnings || []).map((w, i) => <p key={i} className="text-[11px] text-amber-700 flex items-start gap-1" data-testid={`pump-warning-${i}`}><AlertTriangle className="h-3 w-3 mt-0.5 flex-shrink-0" />{w}</p>)}

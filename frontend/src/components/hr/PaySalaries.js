@@ -40,9 +40,9 @@ export function PersonPaySheet({ personId, people, canEdit, onOpenChange, onChan
               action={canEdit && <Button size="sm" className="h-8 gap-1 bg-emerald-600 text-white hover:bg-emerald-700" onClick={() => setDlg('salary')} data-testid="pay-person-salary"><Wallet className="h-3.5 w-3.5" />{d.structure ? 'Change' : 'Set salary'}</Button>}>
               {d.estimate ? (
                 <div className="grid gap-3 sm:grid-cols-2">
-                  <div><p className="mb-1 text-[11px] font-medium uppercase text-slate-500">Earnings</p><MoneyRows rows={d.estimate.earnings} total={d.estimate.gross} totalLabel="Gross" /></div>
-                  <div><p className="mb-1 text-[11px] font-medium uppercase text-slate-500">Deductions (normal month)</p><MoneyRows rows={d.estimate.deductions} total={d.estimate.net} totalLabel="Take-home" tone="green" /></div>
-                  <div className="sm:col-span-2"><p className="mb-1 text-[11px] font-medium uppercase text-slate-500">Company pays on top</p><MoneyRows rows={d.estimate.employer} total={d.estimate.cost} totalLabel="Cost to company / month" /></div>
+                  <div><p className="mb-1 text-[11px] font-medium text-slate-500">Earnings</p><MoneyRows rows={d.estimate.earnings} total={d.estimate.gross} totalLabel="Gross" /></div>
+                  <div><p className="mb-1 text-[11px] font-medium text-slate-500">Deductions (normal month)</p><MoneyRows rows={d.estimate.deductions} total={d.estimate.net} totalLabel="Take-home" tone="green" /></div>
+                  <div className="sm:col-span-2"><p className="mb-1 text-[11px] font-medium text-slate-500">Company pays on top</p><MoneyRows rows={d.estimate.employer} total={d.estimate.cost} totalLabel="Cost to company / month" /></div>
                 </div>) : <p className="text-sm text-slate-500">Set a salary to put {d.name.split(' ')[0]} on payroll.</p>}
               {d.history.length > 0 && (
                 <details className="mt-3 text-sm"><summary className="cursor-pointer text-xs font-medium text-emerald-700">Salary history ({d.history.length})</summary>

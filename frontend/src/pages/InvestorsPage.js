@@ -15,6 +15,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '../components/ui/sheet';
 import BusinessView, { PeriodPicker, inr, inrShort } from '../components/investor/BusinessView';
 
+import { confirmAction } from '../components/kit/confirm';
 const inputCls = 'h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none focus:border-emerald-400';
 const when = (iso) => (iso ? new Date(iso).toLocaleString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' }) : 'Never');
 const today = () => new Date().toISOString().slice(0, 10);
@@ -111,7 +112,7 @@ function Ledger({ meta, investor, onChanged }) {
     } catch (e) { toast.error(formatApiErrorDetail(e.response?.data?.detail) || 'Could not save'); } finally { setBusy(false); }
   };
   const remove = async (e) => {
-    if (!window.confirm(`Remove ${e.type_label.toLowerCase()} of ${inr(e.amount)} on ${e.date}?`)) return;
+    if (!await confirmAction(`Remove ${e.type_label.toLowerCase()} of ${inr(e.amount)} on ${e.date}?`)) return;
     await investorsAPI.removeEntry(investor.id, e.id).catch(() => toast.error('Could not remove'));
     load(); onChanged();
   };
@@ -156,7 +157,7 @@ function InvestorSheet({ meta, investor, onClose, onChanged, onPreview }) {
   const [activity, setActivity] = useState(null);
   useEffect(() => { if (tab === 'signins') investorsAPI.activity(investor.id).then((r) => setActivity(r.data)).catch(() => setActivity([])); }, [tab, investor.id]);
   const remove = async () => {
-    if (!window.confirm(`Remove ${investor.name}? Their login and every money entry will be deleted.`)) return;
+    if (!await confirmAction(`Remove ${investor.name}? Their login and every money entry will be deleted.`)) return;
     await investorsAPI.remove(investor.id).then(() => { toast.success('Investor removed'); onChanged(); onClose(); }).catch(() => toast.error('Could not remove'));
   };
   return (

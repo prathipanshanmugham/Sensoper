@@ -7,7 +7,7 @@ import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Textarea } from '../components/ui/textarea';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
 import { Switch } from '../components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
@@ -28,6 +28,8 @@ import {
 } from 'lucide-react';
 import Can from '../components/Can';
 
+import { errText } from '../components/kit/PageBits';
+import { confirmAction } from '../components/kit/confirm';
 export default function CompanyProfile() {
   const [profiles, setProfiles] = useState([]);
   const [locations, setLocations] = useState([]);
@@ -74,7 +76,7 @@ export default function CompanyProfile() {
     try {
       const r = await invoicingAPI.updateSettings(invoiceSettings);
       setInvoiceSettings(r.data);
-    } catch (e) { alert(e.response?.data?.detail || 'Could not save invoice settings'); }
+    } catch (e) { toast.error(errText(e, 'Could not save invoice settings')); }
     finally { setSavingInvoiceSettings(false); }
   };
 
@@ -218,13 +220,13 @@ export default function CompanyProfile() {
   };
 
   const handleDelete = async (profile) => {
-    if (!window.confirm('Delete this company profile?')) return;
+    if (!await confirmAction('Delete this company profile?')) return;
     
     try {
       await companyAPI.delete(profile.id);
       fetchProfiles();
     } catch (err) {
-      alert(err.response?.data?.detail || 'Cannot delete active profile');
+      toast.error(errText(err, 'Cannot delete active profile'));
     }
   };
 

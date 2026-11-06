@@ -13,6 +13,12 @@ module.exports = {
   			sm: 'calc(var(--radius) - 4px)'
   		},
   		colors: {
+  			/* Sensoper leaf green, taken from the logo (#48A818) and deepened so white text on 600 passes AA.
+  			   It replaces Tailwind's emerald everywhere, so every emerald-* class in the app uses the brand green. */
+  			emerald: {
+  				50: '#F3F9EC', 100: '#E4F2D4', 200: '#C9E5AB', 300: '#A3D274', 400: '#7BBA44', 500: '#58A024',
+  				600: '#43851A', 700: '#366C16', 800: '#2D5716', 900: '#264815', 950: '#122808'
+  			},
   			background: 'hsl(var(--background))',
   			foreground: 'hsl(var(--foreground))',
   			card: {

@@ -7,6 +7,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../ui/dialog';
 import { Loader2, Plus, Pencil, Check, X, Store } from 'lucide-react';
 
+import { errText } from '../kit/PageBits';
+import { confirmAction } from '../kit/confirm';
 const EMPTY = { name: '', platform_type: 'marketplace', seller_id: '', store_url: '', commission_pct: '' };
 
 function PlatformForm({ value, onChange, onSubmit, onCancel, saving, error, submitLabel }) {
@@ -46,11 +48,11 @@ export function PlatformsDialog({ open, onOpenChange, platforms, onChanged, isAd
       const payload = { ...form, commission_pct: parseFloat(form.commission_pct) || 0 };
       if (editingId) await ecommerceAPI.platforms.update(editingId, payload); else await ecommerceAPI.platforms.create(payload);
       reset(); onChanged();
-    } catch (e) { setError(e.response?.data?.detail || 'Failed to save platform'); } finally { setSaving(false); }
+    } catch (e) { setError(errText(e, 'Failed to save platform')); } finally { setSaving(false); }
   };
   const archive = async (p) => {
-    if (!window.confirm(`Archive "${p.name}"? Its listings stay in history but it disappears from the Products grid.`)) return;
-    try { await ecommerceAPI.platforms.remove(p.id); onChanged(); } catch (e) { setError(e.response?.data?.detail || 'Failed to archive'); }
+    if (!await confirmAction(`Archive "${p.name}"? Its listings stay in history but it disappears from the Products grid.`)) return;
+    try { await ecommerceAPI.platforms.remove(p.id); onChanged(); } catch (e) { setError(errText(e, 'Failed to archive')); }
   };
 
   return (

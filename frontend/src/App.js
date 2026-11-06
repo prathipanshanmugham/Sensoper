@@ -2,6 +2,7 @@ import "@/App.css";
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { Toaster } from "./components/ui/sonner";
+import { ConfirmHost } from "./components/kit/confirm";
 import PwaInstaller from "./components/PwaInstaller";
 
 // Pages
@@ -213,6 +214,7 @@ function App() {
           <AppRoutes />
           <PwaInstaller />
           <Toaster />
+          <ConfirmHost />
         </AuthProvider>
       </BrowserRouter>
     </div>

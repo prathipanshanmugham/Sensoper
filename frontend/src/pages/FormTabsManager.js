@@ -11,10 +11,11 @@ import { Checkbox } from '../components/ui/checkbox';
 import { Badge } from '../components/ui/badge';
 import {
   ArrowLeft, Plus, Trash2, GripVertical, Pencil, ChevronUp, ChevronDown,
-  Save, X, Loader2, ToggleLeft, ToggleRight, Eye, EyeOff, Layers
+  Save, X, Loader2, ToggleLeft, ToggleRight
 } from 'lucide-react';
 import Can from '../components/Can';
 
+import { confirmAction } from '../components/kit/confirm';
 const FIELD_TYPES = [
   { value: 'text', label: 'Text' },
   { value: 'number', label: 'Number' },
@@ -162,7 +163,7 @@ export default function FormTabsManager() {
   };
 
   const handleDelete = async (tab) => {
-    if (!window.confirm(`Delete tab "${tab.name}"? This won't remove data from existing projects.`)) return;
+    if (!await confirmAction(`Delete tab "${tab.name}"? This won't remove data from existing projects.`)) return;
     try {
       await formTabsAPI.delete(tab.id);
       await fetchTabs();

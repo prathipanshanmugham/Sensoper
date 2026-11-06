@@ -17,7 +17,7 @@ export function OverridableNumber({ label, unit, autoValue, value, onChange, ste
             Manually set <RotateCcw className="h-3 w-3" /> reset
           </button>
         ) : (
-          <span className="text-[10px] uppercase tracking-wider text-emerald-700 font-semibold" data-testid={`${testid}-auto-badge`}>auto</span>
+          <span className="text-[11px] text-emerald-700 font-semibold" data-testid={`${testid}-auto-badge`}>auto</span>
         )}
       </div>
       <Input type="number" inputMode="decimal" min={min} step={step} value={shown} placeholder={placeholder} disabled={disabled}

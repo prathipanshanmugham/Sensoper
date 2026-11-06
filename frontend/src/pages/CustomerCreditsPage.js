@@ -3,7 +3,7 @@ import { creditsAPI } from '../utils/api';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
-import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
+import { Card, CardContent } from '../components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Badge } from '../components/ui/badge';
 import { Loader2, Plus, IndianRupee, X, Save, Trash2 } from 'lucide-react';
@@ -86,10 +86,10 @@ export default function CustomerCreditsPage() {
          section === 'gst' ? <GstSection /> : (<>
         {/* KPIs */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6" data-testid="credit-kpis">
-          <Card className="border-slate-200"><CardContent className="p-4 text-center"><p className="text-[10px] uppercase tracking-wider text-slate-400">Total Outstanding</p><p className="text-xl font-bold text-slate-900">₹{totalOutstanding.toLocaleString('en-IN')}</p></CardContent></Card>
-          <Card className="border-red-200 bg-red-50"><CardContent className="p-4 text-center"><p className="text-[10px] uppercase tracking-wider text-red-400">Overdue</p><p className="text-xl font-bold text-red-700">{overdue}</p></CardContent></Card>
-          <Card className="border-slate-200"><CardContent className="p-4 text-center"><p className="text-[10px] uppercase tracking-wider text-slate-400">0-30 Days</p><p className="text-lg font-bold text-slate-700">₹{aging['0_30'].toLocaleString('en-IN')}</p></CardContent></Card>
-          <Card className="border-amber-200"><CardContent className="p-4 text-center"><p className="text-[10px] uppercase tracking-wider text-amber-500">60+ Days</p><p className="text-lg font-bold text-amber-700">₹{aging['60_plus'].toLocaleString('en-IN')}</p></CardContent></Card>
+          <Card className="border-slate-200"><CardContent className="p-4 text-center"><p className="text-[11px] text-slate-400">Total Outstanding</p><p className="text-xl font-bold text-slate-900">₹{totalOutstanding.toLocaleString('en-IN')}</p></CardContent></Card>
+          <Card className="border-red-200 bg-red-50"><CardContent className="p-4 text-center"><p className="text-[11px] text-red-400">Overdue</p><p className="text-xl font-bold text-red-700">{overdue}</p></CardContent></Card>
+          <Card className="border-slate-200"><CardContent className="p-4 text-center"><p className="text-[11px] text-slate-400">0-30 Days</p><p className="text-lg font-bold text-slate-700">₹{aging['0_30'].toLocaleString('en-IN')}</p></CardContent></Card>
+          <Card className="border-amber-200"><CardContent className="p-4 text-center"><p className="text-[11px] text-amber-500">60+ Days</p><p className="text-lg font-bold text-amber-700">₹{aging['60_plus'].toLocaleString('en-IN')}</p></CardContent></Card>
         </div>
 
         {/* Filter */}

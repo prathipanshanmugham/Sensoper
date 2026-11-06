@@ -9,6 +9,9 @@ import { Badge } from '../components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Loader2, Plus, Save, Trash2, Edit, Wallet, Banknote, Megaphone, TrendingUp } from 'lucide-react';
 
+import { errText } from './kit/PageBits';
+import { toast } from 'sonner';
+import { confirmAction } from './kit/confirm';
 const ENTRY_META = {
   cash_on_hand:      { label: 'Cash on Hand',      icon: Wallet,    color: 'emerald', accent: 'border-emerald-200 bg-emerald-50/40' },
   account_balance:   { label: 'Account Balance',   icon: Banknote,  color: 'violet',  accent: 'border-violet-200 bg-violet-50/40' },
@@ -113,9 +116,9 @@ export default function AccountsSection() {
   };
 
   const remove = async (id) => {
-    if (!window.confirm('Delete this account entry?')) return;
+    if (!await confirmAction('Delete this account entry?')) return;
     try { await accountsAPI.delete(id); await load(); }
-    catch (e) { alert(e.response?.data?.detail || 'Delete failed'); }
+    catch (e) { toast.error(errText(e, 'Delete failed')); }
   };
 
   const isMarketing = form.entry_type === 'marketing_expense';
@@ -132,7 +135,7 @@ export default function AccountsSection() {
               <CardContent className="p-4">
                 <div className="flex items-center gap-2 mb-1">
                   <Icon className={`h-4 w-4 text-${meta.color}-600`} />
-                  <p className="text-xs uppercase tracking-wider text-slate-500">{meta.label}</p>
+                  <p className="text-xs text-slate-500">{meta.label}</p>
                 </div>
                 <p className="text-2xl font-bold text-slate-900" data-testid={`accounts-amount-${key}`}>₹{(s?.amount || 0).toLocaleString('en-IN')}</p>
                 <p className="text-[11px] text-slate-500 mt-1">
@@ -152,23 +155,23 @@ export default function AccountsSection() {
           <CardContent className="p-3">
             <div className="flex items-center gap-2 mb-2">
               <TrendingUp className="h-4 w-4 text-rose-600" />
-              <p className="text-xs uppercase tracking-wider text-rose-700 font-semibold">Marketing — last 90 days</p>
+              <p className="text-xs text-rose-700 font-semibold">Marketing — last 90 days</p>
             </div>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
               <div>
-                <p className="text-[10px] uppercase text-slate-500">Total Spend</p>
+                <p className="text-[11px] text-slate-500">Total Spend</p>
                 <p className="text-lg font-bold text-slate-900">₹{(marketingSummary.total_spend || 0).toLocaleString('en-IN')}</p>
               </div>
               <div>
-                <p className="text-[10px] uppercase text-slate-500">Entries</p>
+                <p className="text-[11px] text-slate-500">Entries</p>
                 <p className="text-lg font-bold text-slate-900">{marketingSummary.entry_count || 0}</p>
               </div>
               <div>
-                <p className="text-[10px] uppercase text-slate-500">Channels Used</p>
+                <p className="text-[11px] text-slate-500">Channels Used</p>
                 <p className="text-lg font-bold text-slate-900">{Object.keys(marketingSummary.by_channel || {}).length}</p>
               </div>
               <div>
-                <p className="text-[10px] uppercase text-slate-500">Top Channel</p>
+                <p className="text-[11px] text-slate-500">Top Channel</p>
                 <p className="text-sm font-semibold text-slate-900 truncate">
                   {Object.entries(marketingSummary.by_channel || {}).sort((a, b) => b[1] - a[1])[0]?.[0] || '—'}
                 </p>

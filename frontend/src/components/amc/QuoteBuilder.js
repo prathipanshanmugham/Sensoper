@@ -11,6 +11,7 @@ import { Label } from '../ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 import { inr, SYSTEM_TYPE_OPTIONS } from './amcCommon';
 
+import { errText } from '../kit/PageBits';
 const blank = { source_type: 'manual', source_id: null, customer_name: '', phone: '', site_address: '', district: '', system_type: 'on-grid', system_type_other: '', system_capacity_kw: '', commissioning_date: '', tariff: '', notes: '', terms_text: '', recommended_plan: 'standard' };
 
 export function PlanCards({ calc, recommended, onRecommend, chosen, onChoose, compact }) {
@@ -110,7 +111,7 @@ export default function QuoteBuilder({ open, onOpenChange, prefill, onSaved }) {
       toast.success(`Quote ${r.data.quote_number} saved`);
       onSaved?.(r.data);
       onOpenChange(false);
-    } catch (e) { toast.error(e.response?.data?.detail || 'Could not save the quote'); } finally { setSaving(false); }
+    } catch (e) { toast.error(errText(e, 'Could not save the quote')); } finally { setSaving(false); }
   };
 
   const choices = [['project', 'Our customer'], ['manual', 'Someone new']];

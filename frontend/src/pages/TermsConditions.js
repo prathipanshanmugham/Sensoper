@@ -7,7 +7,7 @@ import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Textarea } from '../components/ui/textarea';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card';
+import { Card, CardContent } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../components/ui/dialog';
@@ -22,6 +22,9 @@ import {
 } from 'lucide-react';
 import Can from '../components/Can';
 
+import { errText } from '../components/kit/PageBits';
+import { toast } from 'sonner';
+import { confirmAction } from '../components/kit/confirm';
 export default function TermsConditions() {
   const [terms, setTerms] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -102,18 +105,18 @@ export default function TermsConditions() {
       await termsAPI.update(term.id, { is_active: true });
       fetchTerms();
     } catch (err) {
-      alert(err.response?.data?.detail || 'Failed to activate terms');
+      toast.error(errText(err, 'Failed to activate terms'));
     }
   };
 
   const handleDelete = async (term) => {
-    if (!window.confirm('Are you sure you want to delete this version?')) return;
+    if (!await confirmAction('Are you sure you want to delete this version?')) return;
     
     try {
       await termsAPI.delete(term.id);
       fetchTerms();
     } catch (err) {
-      alert(err.response?.data?.detail || 'Failed to delete terms');
+      toast.error(errText(err, 'Failed to delete terms'));
     }
   };
 

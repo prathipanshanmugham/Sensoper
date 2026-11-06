@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Label } from './ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 
+import { errText } from './kit/PageBits';
 /** Iter 53 — pick which T&C template prints on the Quotation / Detailed PDF (terms_id) and the GST Invoice (invoice_terms_id). */
 export default function ProjectTermsCard({ projectId, project, canManage, onSaved }) {
   const [quoteList, setQuoteList] = useState([]);
@@ -24,7 +25,7 @@ export default function ProjectTermsCard({ projectId, project, canManage, onSave
       await projectsAPI.update(projectId, { [field]: value === 'none' ? '' : value });
       toast.success(field === 'terms_id' ? 'Quotation terms updated' : 'Invoice terms updated');
       onSaved?.();
-    } catch (e) { toast.error(e.response?.data?.detail || 'Could not save terms selection'); }
+    } catch (e) { toast.error(errText(e, 'Could not save terms selection')); }
     finally { setSaving(''); }
   };
 

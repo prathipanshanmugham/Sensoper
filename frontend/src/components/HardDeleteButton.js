@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { Button } from './ui/button';
-import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Textarea } from './ui/textarea';
 import { Checkbox } from './ui/checkbox';
@@ -9,6 +8,7 @@ import { hardDeleteAPI, approvalsAPI } from '../utils/api';
 import { useAuth } from '../contexts/AuthContext';
 import { AlertTriangle, Loader2, Trash2 } from 'lucide-react';
 
+import { errText } from './kit/PageBits';
 /**
  * Admin-only permanent-deletion button. Wraps a confirmation dialog that captures a reason
  * and, when the backend flags GST-reporting risk, a second acknowledgement checkbox.
@@ -44,7 +44,7 @@ export default function HardDeleteButton({ type, id, label = 'Hard Delete', onDe
       onDeleted && onDeleted();
     } catch (e) {
       if (e.response?.status === 409) { setNeedsGstAck(true); setError(e.response.data?.detail || 'Please acknowledge the GST warning'); }
-      else setError(e.response?.data?.detail || 'Delete failed');
+      else setError(errText(e, 'Delete failed'));
     } finally { setBusy(false); }
   };
 

@@ -6,6 +6,7 @@ import { driveAPI } from '../utils/api';
 import { formatApiErrorDetail } from '../contexts/AuthContext';
 import { Button } from './ui/button';
 
+import { confirmAction } from './kit/confirm';
 const when = (iso) => (iso ? new Date(iso).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—');
 
 /** Paste-a-secret box: never shows the saved value, only replaces it. */
@@ -54,7 +55,7 @@ export function DriveConnectCard() {
     }
   };
   const disconnect = async () => {
-    if (!window.confirm('Disconnect Google Drive? Photos already in Drive stay there; new photos wait here until you connect again.')) return;
+    if (!await confirmAction('Disconnect Google Drive? Photos already in Drive stay there; new photos wait here until you connect again.')) return;
     setBusy('disconnect');
     try { await driveAPI.disconnect(); toast.success('Google Drive disconnected'); await load(); }
     catch (e) { toast.error(formatApiErrorDetail(e.response?.data?.detail) || 'Could not disconnect'); }

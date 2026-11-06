@@ -13,6 +13,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Textarea } from '../components/ui/textarea';
 import { Loader2, ArrowLeft, Star, Plus, ShieldCheck, Clock, Wallet, Pencil, Trash2 } from 'lucide-react';
 
+import { errText } from '../components/kit/PageBits';
 const STATUS_COLORS = { active: 'bg-emerald-100 text-emerald-800', inactive: 'bg-slate-100 text-slate-600', blacklisted: 'bg-red-100 text-red-800' };
 const ASSIGN_STATUS_COLORS = { assigned: 'bg-blue-100 text-blue-800', in_progress: 'bg-amber-100 text-amber-800', completed: 'bg-emerald-100 text-emerald-800', payment_pending: 'bg-orange-100 text-orange-800', closed: 'bg-slate-100 text-slate-600' };
 
@@ -93,13 +94,13 @@ export default function PartnerDetail() {
     try {
       await partnersAPI.createAssignment(id, { ...assignForm, activities: assignForm.activities.map(a => ({ activity: a.activity, quantity: parseFloat(a.quantity) || 0 })) });
       setShowAssign(false); fetchPartner();
-    } catch (err) { setError(err.response?.data?.detail || 'Failed to create assignment'); } finally { setSaving(false); }
+    } catch (err) { setError(errText(err, 'Failed to create assignment')); } finally { setSaving(false); }
   };
 
   const submitRateCard = async () => {
     setSaving(true);
     try { await partnersAPI.addRateCard(id, { ...rateForm, rate: parseFloat(rateForm.rate) }); setShowRate(false); fetchPartner(); }
-    catch (err) { setError(err.response?.data?.detail || 'Failed'); } finally { setSaving(false); }
+    catch (err) { setError(errText(err, 'Failed')); } finally { setSaving(false); }
   };
 
   const submitPayment = async () => {
@@ -107,7 +108,7 @@ export default function PartnerDetail() {
     try {
       await partnersAPI.recordPayment(id, { assignment_id: showPayment.id, amount: parseFloat(paymentForm.amount), mode: paymentForm.mode, type: paymentForm.type, reference: paymentForm.reference, notes: paymentForm.notes });
       setShowPayment(null); setPaymentForm({ amount: '', mode: 'bank_transfer', type: 'advance', reference: '', notes: '' }); fetchPartner();
-    } catch (err) { setError(err.response?.data?.detail || 'Failed to record payment'); } finally { setSaving(false); }
+    } catch (err) { setError(errText(err, 'Failed to record payment')); } finally { setSaving(false); }
   };
 
   const submitQuality = async () => {
@@ -121,12 +122,12 @@ export default function PartnerDetail() {
       if (qualityForm.delay_reason) payload.delay_reason = qualityForm.delay_reason;
       await partnersAPI.updateAssignment(showQuality.id, payload);
       setShowQuality(null); fetchPartner();
-    } catch (err) { setError(err.response?.data?.detail || 'Failed to update'); } finally { setSaving(false); }
+    } catch (err) { setError(errText(err, 'Failed to update')); } finally { setSaving(false); }
   };
 
   const handleReleaseRetention = async (assignmentId) => {
     try { await partnersAPI.releaseRetention(assignmentId); fetchPartner(); }
-    catch (err) { alert(err.response?.data?.detail || 'Failed to release retention'); }
+    catch (err) { toast.error(errText(err, 'Failed to release retention')); }
   };
 
   // Edit-partner (Iter 47)
@@ -138,7 +139,7 @@ export default function PartnerDetail() {
     if (deleteReason.trim().length < 3) { setDeleteErr('Please give a reason (at least 3 characters)'); return; }
     setDeleting(true); setDeleteErr('');
     try { await partnersAPI.remove(id, deleteReason.trim()); toast.success('Partner deleted'); navigate('/dashboard/partners'); }
-    catch (e) { setDeleteErr(e.response?.data?.detail || 'Delete failed'); }
+    catch (e) { setDeleteErr(errText(e, 'Delete failed')); }
     finally { setDeleting(false); }
   };
 
@@ -170,7 +171,7 @@ export default function PartnerDetail() {
       await partnersAPI.update(id, payload);
       setShowEdit(false); setNeedsStatusOverride(false); fetchPartner();
     } catch (e) {
-      const detail = e.response?.data?.detail || 'Failed to update';
+      const detail = errText(e, 'Failed to update');
       if (detail.includes('active assignment')) {
         setNeedsStatusOverride(true);
         setError('This partner has active job(s). Enter an override reason below and press "Override & Save" — the jobs will keep running but no new assignments can be created.');
@@ -183,7 +184,7 @@ export default function PartnerDetail() {
     try {
       await partnersAPI.editRateCard(id, { index: rateEditIndex, ...rateEditForm, rate: parseFloat(rateEditForm.rate) });
       setRateEditIndex(null); fetchPartner();
-    } catch (e) { alert(e.response?.data?.detail || 'Failed'); }
+    } catch (e) { toast.error(errText(e, 'Failed')); }
   };
 
   if (loading) return <div className="flex justify-center py-24"><Loader2 className="h-8 w-8 animate-spin text-emerald-600" /></div>;

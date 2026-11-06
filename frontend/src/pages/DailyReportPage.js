@@ -14,6 +14,7 @@ import { Switch } from '../components/ui/switch';
 import Can from '../components/Can';
 import { useLiveRefresh } from '../lib/liveSync';
 
+import { errText } from '../components/kit/PageBits';
 const WORK_CHIPS = ['Site survey', 'Material delivered', 'Structure erected', 'Panels mounted', 'DC wiring done', 'Inverter installed', 'AC wiring & earthing', 'Testing & commissioning', 'Net-meter applied', 'Handover done'];
 const PCT = [10, 25, 50, 75, 90, 100];
 const PAY = [['upi', 'UPI'], ['cash', 'Cash'], ['bank_transfer', 'Bank'], ['cheque', 'Cheque'], ['emi', 'EMI']];
@@ -62,7 +63,7 @@ function ReportView({ r, info }) {
   const name = (id, fb) => (id && info?.[id] ? `${info[id].customer} · ${info[id].reference_number}` : fb || '—');
   const paid = (r.payments || []).reduce((s, p) => s + (Number(p.amount) || 0), 0);
   const leads = r.leads || {};
-  const block = (title, children) => <div className="space-y-2"><h4 className="text-xs font-semibold uppercase tracking-wider text-slate-400">{title}</h4>{children}</div>;
+  const block = (title, children) => <div className="space-y-2"><h4 className="text-xs font-semibold text-slate-400">{title}</h4>{children}</div>;
   return (
     <div className="space-y-5 text-sm">
       <div className="grid grid-cols-4 gap-2 text-center">
@@ -178,7 +179,7 @@ function MyReport({ date, projects }) {
       const r = await dailyReportsAPI.saveMine(date, toPayload(form, submit));
       setMeta(r.data); setForm(toForm(r.data)); setDirty(false);
       toast.success(submit ? 'Report submitted — thank you!' : 'Draft saved');
-    } catch (e) { toast.error(e.response?.data?.detail || 'Could not save'); }
+    } catch (e) { toast.error(errText(e, 'Could not save')); }
     finally { setSaving(false); }
   };
   const pdf = async () => {
@@ -355,7 +356,7 @@ function WhoReports({ rows, onChanged }) {
       await usersAPI.update(r.user_id, { daily_report_required: !r.required });
       toast.success(r.required ? `${r.name} no longer needs to send a daily report` : `${r.name} now sends a daily report`);
       onChanged();
-    } catch (e) { toast.error(e.response?.data?.detail || 'Could not change this'); } finally { setSaving(null); }
+    } catch (e) { toast.error(errText(e, 'Could not change this')); } finally { setSaving(null); }
   };
   return (
     <details className="rounded-xl border border-slate-200 bg-white" data-testid="who-reports">
@@ -413,7 +414,7 @@ function TeamView({ date }) {
       </ul>
       {optional.length > 0 && (
         <div data-testid="team-optional">
-          <p className="mb-1 flex items-center gap-1.5 px-1 text-[11px] font-semibold uppercase tracking-wider text-slate-500"><UserMinus className="h-3.5 w-3.5" />Don’t need to report · {optional.length}</p>
+          <p className="mb-1 flex items-center gap-1.5 px-1 text-[11px] font-semibold text-slate-500"><UserMinus className="h-3.5 w-3.5" />Don’t need to report · {optional.length}</p>
           <p className="px-1 text-xs text-slate-500">{optional.map((r) => r.name).join(', ')}</p>
         </div>
       )}

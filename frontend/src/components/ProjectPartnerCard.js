@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from './ui/dialog';
 import { Loader2, HardHat, Plus } from 'lucide-react';
 
+import { errText } from './kit/PageBits';
 const ASSIGN_STATUS_COLORS = { assigned: 'bg-blue-100 text-blue-800', in_progress: 'bg-amber-100 text-amber-800', completed: 'bg-emerald-100 text-emerald-800', payment_pending: 'bg-orange-100 text-orange-800', closed: 'bg-slate-100 text-slate-600' };
 
 /** Inline "Assign Partner" card on Project Details — reuses the same rate-card /
@@ -70,7 +71,7 @@ export default function ProjectPartnerCard({ projectId, canManage }) {
         activities: form.activities.map(a => ({ activity: a.activity, quantity: parseFloat(a.quantity) || 0 })),
       });
       setShowAssign(false); fetchAssignments();
-    } catch (err) { setError(err.response?.data?.detail || 'Failed to create assignment'); } finally { setSaving(false); }
+    } catch (err) { setError(errText(err, 'Failed to create assignment')); } finally { setSaving(false); }
   };
 
   return (

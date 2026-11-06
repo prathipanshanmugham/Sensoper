@@ -5,6 +5,7 @@ import { Badge } from '../ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 import { Check, X, Pencil, Plus, Loader2 } from 'lucide-react';
 
+import { errText } from '../kit/PageBits';
 export const LISTING_STATUS_COLORS = { draft: 'bg-slate-100 text-slate-600', live: 'bg-emerald-100 text-emerald-800', paused: 'bg-amber-100 text-amber-800', delisted: 'bg-red-100 text-red-800', out_of_stock: 'bg-orange-100 text-orange-800' };
 const STATUSES = ['draft', 'live', 'paused', 'out_of_stock', 'delisted'];
 
@@ -28,7 +29,7 @@ export function ListingCell({ itemId, platformId, listing, canManage, onSave }) 
         status: form.status,
       });
       setEditing(false);
-    } catch (e) { setErr(e.response?.data?.detail || 'Save failed'); } finally { setSaving(false); }
+    } catch (e) { setErr(errText(e, 'Save failed')); } finally { setSaving(false); }
   };
 
   if (editing) {

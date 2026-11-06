@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useAuth, formatApiErrorDetail } from '../contexts/AuthContext';
-import { projectsAPI, termsAPI, companyAPI, marginAPI, uploadAPI, inventoryAPI, siteGeoAPI } from '../utils/api';
+import { projectsAPI, termsAPI, companyAPI, marginAPI, inventoryAPI, siteGeoAPI } from '../utils/api';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
@@ -13,7 +13,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { 
   ArrowLeft, Loader2, User, MapPin, Zap, Sun, Clock, CheckCircle2, XCircle, 
   AlertCircle, Download, Share2, Trash2, Send, AlertTriangle, Package, Percent, 
-  Video, Upload, Film, Pencil, Save, X, MessageSquare, QrCode, FolderOpen, Camera, Ruler,
+  Video, Film, Pencil, Save, X, MessageSquare, QrCode, FolderOpen, Ruler,
   ExternalLink, Copy, FileSpreadsheet, Lock, Eye, EyeOff, ChevronDown, FileText, NotebookPen, LocateFixed
 } from 'lucide-react';
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator } from '../components/ui/dropdown-menu';
@@ -67,6 +67,8 @@ import ProjectPartnerCard from '../components/ProjectPartnerCard';
 import Can from '../components/Can';
 import { useLiveRefresh, savedHereRecently } from '../lib/liveSync';
 
+import { errText } from '../components/kit/PageBits';
+import { confirmAction } from '../components/kit/confirm';
 const money = (v) => `₹${Math.round(Number(v) || 0).toLocaleString('en-IN')}`;
 
 const CATEGORY_LABELS = { solar_panels: 'Solar Panels', inverters: 'Inverters', batteries: 'Batteries', mounting_structures: 'Mounting Structures', cables_accessories: 'Cables & Accessories' };
@@ -94,6 +96,13 @@ export default function ProjectDetails() {
   const [completionDriveLink, setCompletionDriveLink] = useState('');
   const [inverterLogin, setInverterLogin] = useState({ url: '', username: '', password: '', notes: '' });
   const [showInverterPwd, setShowInverterPwd] = useState(false);
+  const [inverterPwd, setInverterPwd] = useState(null);   // fetched only when someone asks to see or copy it (the view is logged)
+  useEffect(() => { setInverterPwd(null); setShowInverterPwd(false); }, [id]);   // never carry one project's password to the next
+  const loadInverterPwd = async () => {
+    if (inverterPwd) return inverterPwd;
+    try { const r = await projectsAPI.inverterPassword(id); setInverterPwd(r.data.password); return r.data.password; }
+    catch (e) { toast.error(errText(e, 'Could not load the password')); return null; }
+  };
   const [customerFeedback, setCustomerFeedback] = useState('');
   // Editable ref and status
   const [editingRef, setEditingRef] = useState(false);
@@ -176,18 +185,18 @@ export default function ProjectDetails() {
 
   const fetchCompanyProfile = async () => { try { const res = await companyAPI.getActive(); setCompanyProfile(res.data); } catch (e) { console.error('Failed to fetch company profile:', e); } };
 
-  const handleSubmit = async () => { setActionLoading(true); try { await projectsAPI.submit(id); fetchProject(); } catch (e) { alert(e.response?.data?.detail || 'Failed'); } finally { setActionLoading(false); } };
-  const handleApprove = async () => { setActionLoading(true); try { await projectsAPI.approve(id); fetchProject(); } catch (e) { alert(e.response?.data?.detail || 'Failed'); } finally { setActionLoading(false); } };
-  const handleReject = async () => { setActionLoading(true); try { await projectsAPI.reject(id, rejectReason); setShowRejectDialog(false); setRejectReason(''); fetchProject(); } catch (e) { alert(e.response?.data?.detail || 'Failed'); } finally { setActionLoading(false); } };
+  const handleSubmit = async () => { setActionLoading(true); try { await projectsAPI.submit(id); fetchProject(); } catch (e) { toast.error(errText(e, 'Failed')); } finally { setActionLoading(false); } };
+  const handleApprove = async () => { setActionLoading(true); try { await projectsAPI.approve(id); fetchProject(); } catch (e) { toast.error(errText(e, 'Failed')); } finally { setActionLoading(false); } };
+  const handleReject = async () => { setActionLoading(true); try { await projectsAPI.reject(id, rejectReason); setShowRejectDialog(false); setRejectReason(''); fetchProject(); } catch (e) { toast.error(errText(e, 'Failed')); } finally { setActionLoading(false); } };
 
   const handleSaveRef = async () => {
     try { await projectsAPI.updateReference(id, refValue); setEditingRef(false); fetchProject(); }
-    catch (e) { alert(e.response?.data?.detail || 'Failed'); }
+    catch (e) { toast.error(errText(e, 'Failed')); }
   };
 
   const handleSaveStatus = async () => {
     try { await projectsAPI.updateStatus(id, statusValue); setEditingStatus(false); fetchProject(); }
-    catch (e) { alert(e.response?.data?.detail || 'Failed'); }
+    catch (e) { toast.error(errText(e, 'Failed')); }
   };
 
   // ---------- Universal project notes ----------
@@ -203,7 +212,7 @@ export default function ProjectDetails() {
       setEditingNotes(false);
       fetchProject();
     } catch (e) {
-      alert(e.response?.data?.detail || 'Failed to save notes');
+      toast.error(errText(e, 'Failed to save notes'));
     } finally { setNotesSaving(false); }
   };
   const handleAppendNote = async () => {
@@ -215,14 +224,14 @@ export default function ProjectDetails() {
       setNewNoteText('');
       fetchProject();
     } catch (e) {
-      alert(e.response?.data?.detail || 'Failed to append note');
+      toast.error(errText(e, 'Failed to append note'));
     } finally { setAppendingNote(false); }
   };
 
   const handleComplete = async () => {
     const link = completionDriveLink.trim();
-    if (!link) { alert('Please enter the Completion Google Drive link.'); return; }
-    if (!(link.startsWith('http://') || link.startsWith('https://'))) { alert('Drive link must start with http:// or https://'); return; }
+    if (!link) { toast.error('Please enter the Completion Google Drive link.'); return; }
+    if (!(link.startsWith('http://') || link.startsWith('https://'))) { toast.error('Drive link must start with http:// or https://'); return; }
     setActionLoading(true);
     try {
       await projectsAPI.complete(id, {
@@ -235,12 +244,12 @@ export default function ProjectDetails() {
       setInverterLogin({ url: '', username: '', password: '', notes: '' });
       setCustomerFeedback('');
       fetchProject();
-    } catch (e) { alert(e.response?.data?.detail || 'Failed'); }
+    } catch (e) { toast.error(errText(e, 'Failed')); }
     finally { setActionLoading(false); }
   };
 
-  const handleRequestDeletion = async () => { setActionLoading(true); try { await projectsAPI.requestDeletion(id, deletionReason); setShowDeleteDialog(false); setDeletionReason(''); fetchProject(); } catch (e) { alert(e.response?.data?.detail || 'Failed'); } finally { setActionLoading(false); } };
-  const handleForceDelete = async () => { if (!window.confirm('Permanently delete this project?')) return; setActionLoading(true); try { await projectsAPI.forceDelete(id); navigate('/dashboard/projects'); } catch (e) { alert(e.response?.data?.detail || 'Failed'); } finally { setActionLoading(false); } };
+  const handleRequestDeletion = async () => { setActionLoading(true); try { await projectsAPI.requestDeletion(id, deletionReason); setShowDeleteDialog(false); setDeletionReason(''); fetchProject(); } catch (e) { toast.error(errText(e, 'Failed')); } finally { setActionLoading(false); } };
+  const handleForceDelete = async () => { if (!await confirmAction('Permanently delete this project?')) return; setActionLoading(true); try { await projectsAPI.forceDelete(id); navigate('/dashboard/projects'); } catch (e) { toast.error(errText(e, 'Failed')); } finally { setActionLoading(false); } };
 
   const handleMarginUpdate = async () => {
     const updates = Object.entries(itemMargins).map(([idx, pct]) => ({ index: parseInt(idx), margin_percentage: parseFloat(pct) || 0 }));
@@ -249,7 +258,7 @@ export default function ProjectDetails() {
     try {
       const res = await marginAPI.update(id, updates);
       setProject(prev => ({ ...prev, cost_estimation: res.data.cost_estimation, selected_items: res.data.selected_items }));
-    } catch (e) { alert(e.response?.data?.detail || 'Failed'); }
+    } catch (e) { toast.error(errText(e, 'Failed')); }
     finally { setMarginLoading(false); }
   };
 
@@ -428,7 +437,7 @@ export default function ProjectDetails() {
                 <Button className="gap-2 bg-emerald-600 text-white hover:bg-emerald-700" data-testid="documents-menu-btn"><Download className="h-4 w-4" />Documents<ChevronDown className="h-4 w-4 opacity-80" /></Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="start" className="w-72">
-                <DropdownMenuLabel className="text-xs font-semibold uppercase tracking-wider text-slate-400">For the customer</DropdownMenuLabel>
+                <DropdownMenuLabel className="text-xs font-semibold text-slate-400">For the customer</DropdownMenuLabel>
                 <DropdownMenuItem onSelect={() => generatePDF('list')} data-testid="download-pdf-btn"><FileText className="mr-2 h-4 w-4" /><span className="flex-1">Detailed quotation — itemised</span>{quoteLayout === 'list' && <span className="text-[10px] text-slate-400">default</span>}</DropdownMenuItem>
                 <DropdownMenuItem onSelect={() => generatePDF('combined')} data-testid="download-pdf-combined-btn"><FileText className="mr-2 h-4 w-4" /><span className="flex-1">Detailed quotation — grouped</span>{quoteLayout === 'combined' && <span className="text-[10px] text-slate-400">default</span>}</DropdownMenuItem>
                 <DropdownMenuItem onSelect={async () => {
@@ -441,7 +450,7 @@ export default function ProjectDetails() {
                   <DropdownMenuItem onSelect={shareViaWhatsApp} data-testid="share-whatsapp-btn"><Share2 className="mr-2 h-4 w-4" />Share on WhatsApp</DropdownMenuItem>
                 )}
                 <DropdownMenuSeparator />
-                <DropdownMenuLabel className="text-xs font-semibold uppercase tracking-wider text-slate-400">Internal</DropdownMenuLabel>
+                <DropdownMenuLabel className="text-xs font-semibold text-slate-400">Internal</DropdownMenuLabel>
                 <Can module="module_projects" action="export"><DropdownMenuItem onSelect={generateExcel} data-testid="download-excel-btn"><FileSpreadsheet className="mr-2 h-4 w-4" />Cost sheet (Excel)</DropdownMenuItem></Can>
                 <DropdownMenuItem onSelect={() => setShowKitExplainer(true)} data-testid="explain-kit-price-btn"><Eye className="mr-2 h-4 w-4" />Explain the kit price</DropdownMenuItem>
                 {(isAdmin || isManager) && (
@@ -525,7 +534,7 @@ export default function ProjectDetails() {
                   if (st === 'solar-pump') {
                     return (
                       <div className="mt-3 pt-3 border-t border-slate-200" data-testid="pump-details-block">
-                        <p className="text-[10px] uppercase tracking-wider text-cyan-700 font-semibold mb-2">Solar Pump Details</p>
+                        <p className="text-[11px] text-cyan-700 font-semibold mb-2">Solar Pump Details</p>
                         <InfoRow label="Pump Rating" value={ps.pump_hp ? `${ps.pump_hp} HP` : '-'} />
                         <InfoRow label="Pump Type" value={ps.pump_type || '-'} />
                         <InfoRow label="Total Head" value={ps.pump_head_m ? `${ps.pump_head_m} m` : '-'} />
@@ -538,7 +547,7 @@ export default function ProjectDetails() {
                   if (st === 'on-grid') {
                     return (
                       <div className="mt-3 pt-3 border-t border-slate-200" data-testid="ongrid-details-block">
-                        <p className="text-[10px] uppercase tracking-wider text-blue-700 font-semibold mb-2">On-Grid Details</p>
+                        <p className="text-[11px] text-blue-700 font-semibold mb-2">On-Grid Details</p>
                         <InfoRow label="Net Metering" value={ps.net_metering === false ? 'Gross' : 'Bi-directional'} />
                         {ps.export_limit_kw && <InfoRow label="Export Limit" value={`${ps.export_limit_kw} kW`} />}
                       </div>
@@ -547,7 +556,7 @@ export default function ProjectDetails() {
                   if (st === 'off-grid') {
                     return (
                       <div className="mt-3 pt-3 border-t border-slate-200" data-testid="offgrid-details-block">
-                        <p className="text-[10px] uppercase tracking-wider text-orange-700 font-semibold mb-2">Off-Grid Details</p>
+                        <p className="text-[11px] text-orange-700 font-semibold mb-2">Off-Grid Details</p>
                         <InfoRow label="Charge Controller" value={ps.charge_controller_type || '-'} />
                         <InfoRow label="Depth of Discharge" value={ps.battery_dod_pct ? `${ps.battery_dod_pct}%` : '-'} />
                         <InfoRow label="Autonomy" value={ps.autonomy_days ? `${ps.autonomy_days} day(s)` : '-'} />
@@ -557,7 +566,7 @@ export default function ProjectDetails() {
                   if (st === 'hybrid') {
                     return (
                       <div className="mt-3 pt-3 border-t border-slate-200" data-testid="hybrid-details-block">
-                        <p className="text-[10px] uppercase tracking-wider text-violet-700 font-semibold mb-2">Hybrid Details</p>
+                        <p className="text-[11px] text-violet-700 font-semibold mb-2">Hybrid Details</p>
                         <InfoRow label="Battery Chemistry" value={ps.battery_chemistry || '-'} />
                         <InfoRow label="Grid Charging" value={ps.grid_charge_enabled === false ? 'Solar-only' : 'Allowed'} />
                         <InfoRow label="Depth of Discharge" value={ps.battery_dod_pct ? `${ps.battery_dod_pct}%` : '-'} />
@@ -610,7 +619,7 @@ export default function ProjectDetails() {
 
                 {/* Append a timestamped update */}
                 <div className="space-y-2 pt-2 border-t border-slate-100">
-                  <Label className="text-xs uppercase tracking-wider text-slate-500">Append timestamped update</Label>
+                  <Label className="text-xs text-slate-500">Append timestamped update</Label>
                   <div className="flex flex-col sm:flex-row gap-2">
                     <Textarea
                       rows={2}
@@ -636,7 +645,7 @@ export default function ProjectDetails() {
                 {/* History */}
                 {(project.notes_history && project.notes_history.length > 0) && (
                   <div className="pt-2 border-t border-slate-100">
-                    <Label className="text-xs uppercase tracking-wider text-slate-500 mb-2 block">History ({project.notes_history.length})</Label>
+                    <Label className="text-xs text-slate-500 mb-2 block">History ({project.notes_history.length})</Label>
                     <div className="space-y-2 max-h-64 overflow-y-auto pr-1" data-testid="notes-history-list">
                       {[...project.notes_history].reverse().map((h) => (
                         <div key={h.id || h.timestamp} className="p-2.5 bg-indigo-50/50 border border-indigo-100 rounded-md" data-testid={`notes-history-entry-${h.id || h.timestamp}`}>
@@ -654,7 +663,7 @@ export default function ProjectDetails() {
                 {/* Legacy display: original shadow_analysis_notes if no migrated notes yet */}
                 {!project.notes && project.additional?.shadow_analysis_notes && (
                   <div className="mt-2 p-3 bg-amber-50 border border-amber-200 rounded-lg">
-                    <p className="text-[10px] uppercase tracking-wider font-semibold text-amber-800 mb-1">Legacy shadow notes (auto-migrated)</p>
+                    <p className="text-[11px] font-semibold text-amber-800 mb-1">Legacy shadow notes (auto-migrated)</p>
                     <p className="text-sm text-slate-700">{project.additional.shadow_analysis_notes}</p>
                   </div>
                 )}
@@ -836,7 +845,7 @@ export default function ProjectDetails() {
                 <CardContent className="space-y-4">
                   {project.completion_drive_link && (
                     <div>
-                      <p className="text-xs uppercase tracking-wider text-slate-500 mb-1">Completion Photos / Videos (Drive)</p>
+                      <p className="text-xs text-slate-500 mb-1">Completion Photos / Videos (Drive)</p>
                       <a href={project.completion_drive_link} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 text-sm text-blue-700 hover:text-blue-900 hover:underline break-all" data-testid="completion-drive-link">
                         <FolderOpen className="h-4 w-4 shrink-0" />{project.completion_drive_link}
                         <ExternalLink className="h-3 w-3 shrink-0" />
@@ -845,19 +854,19 @@ export default function ProjectDetails() {
                   )}
                   {project.inverter_login && (project.inverter_login.url || project.inverter_login.username || project.inverter_login.notes) && (
                     <div className="rounded-lg bg-slate-50 border border-slate-200 p-3 space-y-1.5" data-testid="inverter-login-display">
-                      <p className="text-xs uppercase tracking-wider text-slate-500 mb-1 flex items-center gap-1"><Lock className="h-3.5 w-3.5" />Inverter Login Details</p>
+                      <p className="text-xs text-slate-500 mb-1 flex items-center gap-1"><Lock className="h-3.5 w-3.5" />Inverter Login Details</p>
                       {project.inverter_login.url && (
                         <p className="text-sm text-slate-700"><span className="font-medium text-slate-500 inline-block w-24">URL:</span> <a href={project.inverter_login.url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline" data-testid="inverter-login-url">{project.inverter_login.url}</a></p>
                       )}
                       {project.inverter_login.username && (
                         <p className="text-sm text-slate-700"><span className="font-medium text-slate-500 inline-block w-24">Username:</span> <span className="font-mono" data-testid="inverter-login-username">{project.inverter_login.username}</span></p>
                       )}
-                      {project.inverter_login.password && (
+                      {(project.inverter_login.has_password || project.inverter_login.password) && (
                         <p className="text-sm text-slate-700 flex items-center gap-2"><span className="font-medium text-slate-500 inline-block w-24">Password:</span>
-                          <span className="font-mono" data-testid="inverter-login-password">{showInverterPwd ? project.inverter_login.password : '••••••••'}</span>
-                          <button type="button" onClick={() => setShowInverterPwd(s => !s)} className="text-slate-400 hover:text-slate-700" aria-label={showInverterPwd ? 'Hide password' : 'Show password'} data-testid="reveal-inverter-pwd">{showInverterPwd ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}</button>
-                          <button type="button" onClick={() => { navigator.clipboard.writeText(project.inverter_login.password); setLinkCopied(true); setTimeout(() => setLinkCopied(false), 1500); }} className="text-slate-400 hover:text-slate-700" aria-label="Copy password" data-testid="copy-inverter-pwd"><Copy className="h-3.5 w-3.5" /></button>
-                          {linkCopied && <span className="text-[10px] text-emerald-600">Copied!</span>}
+                          <span className="font-mono" data-testid="inverter-login-password">{showInverterPwd && inverterPwd ? inverterPwd : '••••••••'}</span>
+                          <button type="button" onClick={async () => { if (showInverterPwd) { setShowInverterPwd(false); return; } if (await loadInverterPwd()) setShowInverterPwd(true); }} className="text-slate-400 hover:text-slate-700" aria-label={showInverterPwd ? 'Hide password' : 'Show password'} data-testid="reveal-inverter-pwd">{showInverterPwd ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}</button>
+                          <button type="button" onClick={async () => { const pw = await loadInverterPwd(); if (!pw) return; try { await navigator.clipboard.writeText(pw); setLinkCopied(true); setTimeout(() => setLinkCopied(false), 1500); } catch { toast.error('Could not copy — press Show and copy it by hand'); } }} className="text-slate-400 hover:text-slate-700" aria-label="Copy password" data-testid="copy-inverter-pwd"><Copy className="h-3.5 w-3.5" /></button>
+                          {linkCopied && <span className="text-[11px] text-emerald-700">Copied</span>}
                         </p>
                       )}
                       {project.inverter_login.notes && (

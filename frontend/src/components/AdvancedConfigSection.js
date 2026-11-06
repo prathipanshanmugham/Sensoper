@@ -14,6 +14,8 @@ import { Button } from './ui/button';
 import { Loader2, Save, RefreshCw, Wand2, AlertTriangle, CheckCircle2, Zap, Activity, MapPin } from 'lucide-react';
 
 
+import { toast } from 'sonner';
+import { confirmAction } from './kit/confirm';
 function NumberField({ label, value, onChange, suffix, step = 1 }) {
   return (
     <div className="space-y-1">
@@ -76,7 +78,7 @@ export default function AdvancedConfigSection({ only }) {
       const r = await calcAPI.updateConfig(calc);
       setCalc(r.data); setCalcSaved(true);
       setTimeout(() => setCalcSaved(false), 2000);
-    } catch { alert('Save failed'); }
+    } catch { toast.error('Save failed'); }
     finally { setCalcSaving(false); }
   };
   const setCalcField = (path, val) => setCalc(prev => {
@@ -106,7 +108,7 @@ export default function AdvancedConfigSection({ only }) {
   const saveHealth = async () => {
     setHealthSaving(true);
     try { const r = await healthAPI.updateConfig(health); setHealth(r.data); setHealthSaved(true); setTimeout(() => setHealthSaved(false), 2000); }
-    catch { alert('Save failed'); }
+    catch { toast.error('Save failed'); }
     finally { setHealthSaving(false); }
   };
   const setHealthField = (path, val) => setHealth(prev => {
@@ -134,7 +136,7 @@ export default function AdvancedConfigSection({ only }) {
   const saveExp = async () => {
     setExpSaving(true);
     try { const r = await expansionAPI.updateConfig(exp); setExp(r.data); setExpSaved(true); setTimeout(() => setExpSaved(false), 2000); }
-    catch { alert('Save failed'); }
+    catch { toast.error('Save failed'); }
     finally { setExpSaving(false); }
   };
   const setExpField = (path, val) => setExp(prev => {
@@ -149,12 +151,12 @@ export default function AdvancedConfigSection({ only }) {
   // ── Utility actions ──────────────────────────────────────────────
   const [seeding, setSeeding] = useState(false);
   const runSeedDefaults = async () => {
-    if (!window.confirm('Seed default DISCOMs (TANGEDCO / KSEB / BESCOM / FALLBACK) and 18 sample pincodes? Existing rows are preserved.')) return;
+    if (!await confirmAction('Seed default DISCOMs (TANGEDCO / KSEB / BESCOM / FALLBACK) and 18 sample pincodes? Existing rows are preserved.')) return;
     setSeeding(true);
     try {
       const r = await calcAPI.seedDefaults();
-      alert(`Seeded ${r.data.discoms_created} DISCOMs + ${r.data.pincodes_created} pincodes.\nTotals: ${r.data.total_discoms} DISCOMs, ${r.data.total_pincodes} pincodes.`);
-    } catch { alert('Seed failed'); }
+      toast.success(`Seeded ${r.data.discoms_created} DISCOMs + ${r.data.pincodes_created} pincodes.\nTotals: ${r.data.total_discoms} DISCOMs, ${r.data.total_pincodes} pincodes.`);
+    } catch { toast.error('Seed failed'); }
     finally { setSeeding(false); }
   };
 
@@ -162,7 +164,7 @@ export default function AdvancedConfigSection({ only }) {
   const [importResult, setImportResult] = useState(null);
   const importCsv = async (file) => {
     if (!file) return;
-    if (file.size > 20 * 1024 * 1024) { alert('CSV must be under 20 MB'); return; }
+    if (file.size > 20 * 1024 * 1024) { toast.error('CSV must be under 20 MB'); return; }
     setImporting(true); setImportResult(null);
     try {
       const fd = new FormData();
@@ -173,7 +175,7 @@ export default function AdvancedConfigSection({ only }) {
       const data = await res.json();
       if (!res.ok) throw new Error(data?.detail || 'Import failed');
       setImportResult(data);
-    } catch (e) { alert(e.message || 'Import failed'); }
+    } catch (e) { toast.error(e.message || 'Import failed'); }
     finally { setImporting(false); }
   };
 
@@ -184,7 +186,7 @@ export default function AdvancedConfigSection({ only }) {
     try {
       const r = await projectsAPI.backfillLocations({ dry_run: dryRun, only_missing: true });
       setBackfillResult(r.data);
-    } catch { alert('Backfill failed'); }
+    } catch { toast.error('Backfill failed'); }
     finally { setBackfilling(false); }
   };
 
@@ -251,7 +253,7 @@ export default function AdvancedConfigSection({ only }) {
                     loading={calcLoading} saving={calcSaving} saved={calcSaved} onSave={saveCalc} onReload={loadCalc}>
         {calc && (
           <div className="space-y-3">
-            <p className="text-[11px] uppercase tracking-wider text-slate-500 font-semibold">Cost per kWp (₹) by System Type</p>
+            <p className="text-[11px] text-slate-500 font-semibold">Cost per kWp (₹) by System Type</p>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               <NumberField label="On-Grid" step={1000} value={calc.cost_per_kwp?.['on-grid']} onChange={(v) => setCalcField('cost_per_kwp.on-grid', v)} suffix="₹" />
               <NumberField label="Hybrid" step={1000} value={calc.cost_per_kwp?.hybrid} onChange={(v) => setCalcField('cost_per_kwp.hybrid', v)} suffix="₹" />
@@ -259,7 +261,7 @@ export default function AdvancedConfigSection({ only }) {
               <NumberField label="Solar Pump" step={1000} value={calc.cost_per_kwp?.['solar-pump']} onChange={(v) => setCalcField('cost_per_kwp.solar-pump', v)} suffix="₹" />
             </div>
 
-            <p className="text-[11px] uppercase tracking-wider text-slate-500 font-semibold pt-2 border-t">Generation &amp; Battery Defaults</p>
+            <p className="text-[11px] text-slate-500 font-semibold pt-2 border-t">Generation &amp; Battery Defaults</p>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               <NumberField label="Default Specific Yield" step={0.05} value={calc.default_specific_yield} onChange={(v) => setCalcField('default_specific_yield', v)} suffix="kWh/kWp/day" />
               <NumberField label="Battery Unit Size" step={0.5} value={calc.battery_unit_kwh} onChange={(v) => setCalcField('battery_unit_kwh', v)} suffix="kWh" />
@@ -269,7 +271,7 @@ export default function AdvancedConfigSection({ only }) {
               <NumberField label="Battery Benchmark" step={1000} value={calc.battery_benchmark_per_kwh} onChange={(v) => setCalcField('battery_benchmark_per_kwh', v)} suffix="₹/kWh" />
             </div>
 
-            <p className="text-[11px] uppercase tracking-wider text-slate-500 font-semibold pt-2 border-t">PM Surya Ghar (Residential On-Grid)</p>
+            <p className="text-[11px] text-slate-500 font-semibold pt-2 border-t">PM Surya Ghar (Residential On-Grid)</p>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               <NumberField label="Subsidy Cap" step={1000} value={calc.pm_surya_ghar?.cap} onChange={(v) => setCalcField('pm_surya_ghar.cap', v)} suffix="₹" />
               <NumberField label="Slab: 1 kW" step={1000} value={calc.pm_surya_ghar?.slabs?.[0]?.amount} onChange={(v) => setCalcField('pm_surya_ghar.slabs.0.amount', v)} suffix="₹" />
@@ -277,7 +279,7 @@ export default function AdvancedConfigSection({ only }) {
               <NumberField label="Slab: 3+ kW" step={1000} value={calc.pm_surya_ghar?.slabs?.[2]?.amount} onChange={(v) => setCalcField('pm_surya_ghar.slabs.2.amount', v)} suffix="₹" />
             </div>
 
-            <p className="text-[11px] uppercase tracking-wider text-slate-500 font-semibold pt-2 border-t">PM-KUSUM (Solar Pump) &amp; Diesel Baseline</p>
+            <p className="text-[11px] text-slate-500 font-semibold pt-2 border-t">PM-KUSUM (Solar Pump) &amp; Diesel Baseline</p>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
               <NumberField label="PM-KUSUM benchmark" step={1000} value={calc.pm_kusum?.benchmark_per_kw} onChange={(v) => setCalcField('pm_kusum.benchmark_per_kw', v)} suffix="₹/kW" />
               <NumberField label="Diesel Price" step={0.5} value={calc.diesel_price_per_liter} onChange={(v) => setCalcField('diesel_price_per_liter', v)} suffix="₹/L" />
@@ -292,7 +294,7 @@ export default function AdvancedConfigSection({ only }) {
                     loading={healthLoading} saving={healthSaving} saved={healthSaved} onSave={saveHealth} onReload={loadHealth}>
         {health && (
           <div className="space-y-3">
-            <p className="text-[11px] uppercase tracking-wider text-slate-500 font-semibold">Pillar Weights (must sum to 100)</p>
+            <p className="text-[11px] text-slate-500 font-semibold">Pillar Weights (must sum to 100)</p>
             <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
               <NumberField label="Sales & Growth"      value={health.weights?.sales_growth}     onChange={(v) => setHealthField('weights.sales_growth', v)} suffix="%" />
               <NumberField label="Profitability"        value={health.weights?.profitability}    onChange={(v) => setHealthField('weights.profitability', v)} suffix="%" />
@@ -306,7 +308,7 @@ export default function AdvancedConfigSection({ only }) {
               </strong>
             </p>
 
-            <p className="text-[11px] uppercase tracking-wider text-slate-500 font-semibold pt-2 border-t">Targets</p>
+            <p className="text-[11px] text-slate-500 font-semibold pt-2 border-t">Targets</p>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               <NumberField label="Monthly Revenue Target" step={10000} value={health.targets?.monthly_revenue_target} onChange={(v) => setHealthField('targets.monthly_revenue_target', v)} suffix="₹" />
               <NumberField label="Target Margin"         value={health.targets?.target_margin_pct}          onChange={(v) => setHealthField('targets.target_margin_pct', v)} suffix="%" />
@@ -320,7 +322,7 @@ export default function AdvancedConfigSection({ only }) {
 
             {orgLocations.length > 0 && (
               <>
-                <p id="location-targets-table" className="text-[11px] uppercase tracking-wider text-slate-500 font-semibold pt-2 border-t" data-testid="location-targets-table">Per-Location Monthly Revenue Targets</p>
+                <p id="location-targets-table" className="text-[11px] text-slate-500 font-semibold pt-2 border-t" data-testid="location-targets-table">Per-Location Monthly Revenue Targets</p>
                 <p className="text-[11px] text-slate-500">Overrides the company-wide target for that branch everywhere a target is shown — Monthly Target panel, CEO Dashboard and Health Score. Blank = use the company-wide target. Leave blank to fall back to the company-wide target above.</p>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3" data-testid="location-targets-grid">
                   {orgLocations.map(l => (
@@ -330,7 +332,7 @@ export default function AdvancedConfigSection({ only }) {
               </>
             )}
 
-            <p className="text-[11px] uppercase tracking-wider text-slate-500 font-semibold pt-2 border-t">Band Thresholds</p>
+            <p className="text-[11px] text-slate-500 font-semibold pt-2 border-t">Band Thresholds</p>
             <div className="grid grid-cols-3 gap-3">
               <NumberField label="Strong ≥"    value={health.bands?.strong}    onChange={(v) => setHealthField('bands.strong', v)} />
               <NumberField label="Healthy ≥"   value={health.bands?.healthy}   onChange={(v) => setHealthField('bands.healthy', v)} />
@@ -345,7 +347,7 @@ export default function AdvancedConfigSection({ only }) {
                     loading={expLoading} saving={expSaving} saved={expSaved} onSave={saveExp} onReload={loadExp}>
         {exp && (
           <div className="space-y-3">
-            <p className="text-[11px] uppercase tracking-wider text-slate-500 font-semibold">Component Weights (must sum to 100)</p>
+            <p className="text-[11px] text-slate-500 font-semibold">Component Weights (must sum to 100)</p>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               <NumberField label="Demand Density"     value={exp.weights?.demand_density}       onChange={(v) => setExpField('weights.demand_density', v)} suffix="%" />
               <NumberField label="Revenue Share"       value={exp.weights?.revenue_contribution} onChange={(v) => setExpField('weights.revenue_contribution', v)} suffix="%" />
@@ -362,7 +364,7 @@ export default function AdvancedConfigSection({ only }) {
               </strong>
             </p>
 
-            <p className="text-[11px] uppercase tracking-wider text-slate-500 font-semibold pt-2 border-t">Thresholds &amp; Simulator Defaults</p>
+            <p className="text-[11px] text-slate-500 font-semibold pt-2 border-t">Thresholds &amp; Simulator Defaults</p>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
               <NumberField label="Min Projects for Score"     value={exp.thresholds?.minimum_projects_for_score} onChange={(v) => setExpField('thresholds.minimum_projects_for_score', v)} />
               <NumberField label="Default Branch Cost/month"  step={10000} value={exp.thresholds?.default_branch_monthly_cost} onChange={(v) => setExpField('thresholds.default_branch_monthly_cost', v)} suffix="₹" />
@@ -373,7 +375,7 @@ export default function AdvancedConfigSection({ only }) {
 
             {orgLocations.length > 0 && (
               <>
-                <p className="text-[11px] uppercase tracking-wider text-slate-500 font-semibold pt-2 border-t">Per-Location Monthly Revenue Targets</p>
+                <p className="text-[11px] text-slate-500 font-semibold pt-2 border-t">Per-Location Monthly Revenue Targets</p>
                 <p className="text-[11px] text-slate-500">Used by the main dashboard's Monthly Target panel for users scoped to a location. Leave blank to fall back to the company-wide target above.</p>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3" data-testid="location-targets-grid">
                   {orgLocations.map(l => (
@@ -383,7 +385,7 @@ export default function AdvancedConfigSection({ only }) {
               </>
             )}
 
-            <p className="text-[11px] uppercase tracking-wider text-slate-500 font-semibold pt-2 border-t">Band Thresholds</p>
+            <p className="text-[11px] text-slate-500 font-semibold pt-2 border-t">Band Thresholds</p>
             <div className="grid grid-cols-3 gap-3">
               <NumberField label="Strong ≥"  value={exp.bands?.strong} onChange={(v) => setExpField('bands.strong', v)} />
               <NumberField label="Watch ≥"   value={exp.bands?.watch}  onChange={(v) => setExpField('bands.watch', v)} />

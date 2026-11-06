@@ -11,6 +11,8 @@ import { Switch } from '../components/ui/switch';
 import { toast } from 'sonner';
 import { KeyRound, Plus, Eye, EyeOff, Copy, Edit, Trash2, History, ShieldAlert, Clock, Loader2, Search, Save } from 'lucide-react';
 
+import { errText } from '../components/kit/PageBits';
+import { confirmAction } from '../components/kit/confirm';
 const CATEGORIES = ['email', 'hosting', 'domain', 'financial', 'software', 'other'];
 const METHODS = [['authenticator_app', 'Authenticator app'], ['sms', 'SMS'], ['backup_codes', 'Backup codes'], ['none', 'None']];
 const blank = { service_name: '', account_identifier: '', password: '', associated_phone: '', two_fa_enabled: false, two_fa_method: 'none', notes: '', category: 'other', owner: '', url: '', rotation_days: '' };
@@ -21,7 +23,7 @@ function RevealCell({ item, onRevealed }) {
   const reveal = async () => {
     setBusy(true);
     try { const r = await vaultAPI.reveal(item.id); setPlain(r.data.password); onRevealed?.(item.id, r.data.revealed_at); setTimeout(() => setPlain(null), 30000); }
-    catch (e) { toast.error(e.response?.data?.detail || 'Reveal failed'); }
+    catch (e) { toast.error(errText(e, 'Reveal failed')); }
     finally { setBusy(false); }
   };
   return (
@@ -58,7 +60,7 @@ export default function VaultPage() {
     try {
       const [l, d] = await Promise.all([vaultAPI.list({ search: search || undefined, category }), vaultAPI.dashboard()]);
       setItems(l.data); setDash(d.data); setRotationDays(String(d.data.rotation_days));
-    } catch (e) { toast.error(e.response?.data?.detail || 'Could not load vault'); }
+    } catch (e) { toast.error(errText(e, 'Could not load vault')); }
     finally { setLoading(false); }
   }, [search, category]);
   useEffect(() => { const t = setTimeout(load, 250); return () => clearTimeout(t); }, [load]);
@@ -81,12 +83,12 @@ export default function VaultPage() {
       delete payload.id; delete payload.last_updated; delete payload.last_rotated; delete payload.rotation_stale; delete payload.view_count; delete payload.last_viewed;
       if (editingId) await vaultAPI.update(editingId, payload); else await vaultAPI.create(payload);
       toast.success(editingId ? 'Credential updated' : 'Credential stored (encrypted)'); setOpen(false); load();
-    } catch (e) { toast.error(e.response?.data?.detail || 'Save failed'); }
+    } catch (e) { toast.error(errText(e, 'Save failed')); }
     finally { setSaving(false); }
   };
-  const remove = async (it) => { if (!window.confirm(`Delete ${it.service_name}? This is logged.`)) return; try { await vaultAPI.remove(it.id); toast.success('Deleted'); load(); } catch (e) { toast.error(e.response?.data?.detail || 'Delete failed'); } };
+  const remove = async (it) => { if (!await confirmAction(`Delete ${it.service_name}? This is logged.`)) return; try { await vaultAPI.remove(it.id); toast.success('Deleted'); load(); } catch (e) { toast.error(errText(e, 'Delete failed')); } };
   const showLog = async (it) => { setLogFor(it); try { const r = await vaultAPI.accessLog(it.id); setLog(r.data); } catch { setLog([]); } };
-  const saveRotation = async () => { try { await vaultAPI.setConfig(parseInt(rotationDays, 10)); toast.success('Rotation period saved'); load(); } catch (e) { toast.error(e.response?.data?.detail || 'Failed'); } };
+  const saveRotation = async () => { try { await vaultAPI.setConfig(parseInt(rotationDays, 10)); toast.success('Rotation period saved'); load(); } catch (e) { toast.error(errText(e, 'Failed')); } };
 
   return (
     <div className="p-4 max-w-6xl mx-auto space-y-4" data-testid="vault-page">
@@ -125,12 +127,12 @@ export default function VaultPage() {
       {dash && (
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3" data-testid="vault-dashboard">
           <Card className="border-red-200 bg-red-50/40"><CardContent className="p-3">
-            <p className="text-xs uppercase tracking-wider text-red-600 flex items-center gap-1"><ShieldAlert className="h-3.5 w-3.5" />2FA disabled</p>
+            <p className="text-xs text-red-600 flex items-center gap-1"><ShieldAlert className="h-3.5 w-3.5" />2FA disabled</p>
             <p className="text-2xl font-bold text-red-700" data-testid="vault-2fa-disabled-count">{dash.two_fa_disabled.length}</p>
             <p className="text-[11px] text-slate-500 truncate">{dash.two_fa_disabled.map(i => i.service_name).join(', ') || 'All services protected'}</p>
           </CardContent></Card>
           <Card className="border-amber-200 bg-amber-50/40"><CardContent className="p-3">
-            <p className="text-xs uppercase tracking-wider text-amber-700 flex items-center gap-1"><Clock className="h-3.5 w-3.5" />Overdue rotation (default {dash.rotation_days}d)</p>
+            <p className="text-xs text-amber-700 flex items-center gap-1"><Clock className="h-3.5 w-3.5" />Overdue rotation (default {dash.rotation_days}d)</p>
             <p className="text-2xl font-bold text-amber-700" data-testid="vault-rotation-overdue-count">{dash.rotation_overdue.length}</p>
             <div className="flex items-center gap-1 mt-1">
               <Input value={rotationDays} onChange={e => setRotationDays(e.target.value)} type="number" className="h-7 w-20 text-xs" data-testid="vault-rotation-days" />
@@ -138,7 +140,7 @@ export default function VaultPage() {
             </div>
           </CardContent></Card>
           <Card className="border-slate-200"><CardContent className="p-3">
-            <p className="text-xs uppercase tracking-wider text-slate-500">Encryption at rest</p>
+            <p className="text-xs text-slate-500">Encryption at rest</p>
             <p className="text-sm font-semibold text-slate-800">{dash.encryption.scheme}</p>
             <p className="text-[11px] text-slate-500">Key: {dash.encryption.key_source} · {dash.encryption.configured ? 'configured' : 'MISSING'} · {dash.total} records</p>
             <p className="text-[10px] text-amber-700 mt-1" data-testid="vault-encryption-limits">{dash.encryption.limitations}</p>

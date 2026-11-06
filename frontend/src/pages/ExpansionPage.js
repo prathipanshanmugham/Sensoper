@@ -27,6 +27,8 @@ import { saveAs } from 'file-saver';
 import { LocationReviewPanel } from '../components/LocationReviewPanel';
 import Can from '../components/Can';
 
+import { toast } from 'sonner';
+import { confirmAction } from '../components/kit/confirm';
 const BAND_STYLES = {
   strong:   { color: 'text-emerald-700', bg: 'bg-emerald-100 border-emerald-200', label: 'Strong Case' },
   watch:    { color: 'text-amber-700',   bg: 'bg-amber-100 border-amber-200',      label: 'Watch' },
@@ -34,9 +36,9 @@ const BAND_STYLES = {
   no_case:  { color: 'text-rose-700',    bg: 'bg-rose-100 border-rose-200',        label: 'No Case' },
 };
 
-const CHART_COLORS = ['#10b981', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#84cc16'];
+const CHART_COLORS = ['#58A024', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#84cc16'];
 const SYSTEM_TYPE_COLORS = {
-  'on-grid':    '#10b981',
+  'on-grid':    '#58A024',
   'off-grid':   '#3b82f6',
   'hybrid':     '#f59e0b',
   'solar-pump': '#8b5cf6',
@@ -88,7 +90,7 @@ function CapacityCharts({ overview, districts }) {
   const funnel = [
     { name: 'Quoted (all)', value: Math.round(total_quoted), fill: '#94a3b8' },
     { name: 'Pipeline (approved)', value: Math.round(total_pipeline), fill: '#3b82f6' },
-    { name: 'Installed (completed)', value: Math.round(total_installed), fill: '#10b981' },
+    { name: 'Installed (completed)', value: Math.round(total_installed), fill: '#58A024' },
   ];
 
   // Stacked area (proxy for growth over time) — we don't have monthly here; synthesise from
@@ -114,7 +116,7 @@ function CapacityCharts({ overview, districts }) {
                 <YAxis tick={{ fontSize: 10 }} label={{ value: 'kWp', angle: -90, position: 'insideLeft', fontSize: 10 }} />
                 <Tooltip formatter={(v) => `${v.toLocaleString('en-IN')} kWp`} />
                 <Legend wrapperStyle={{ fontSize: 10 }} />
-                <Bar dataKey="installed" name="Installed" stackId="k" fill="#10b981" />
+                <Bar dataKey="installed" name="Installed" stackId="k" fill="#58A024" />
                 <Bar dataKey="pipeline"  name="Pipeline"  stackId="k" fill="#3b82f6" />
               </BarChart>
             </ResponsiveContainer>
@@ -150,7 +152,7 @@ function CapacityCharts({ overview, districts }) {
                 <YAxis tick={{ fontSize: 10 }} />
                 <Tooltip formatter={(v) => `${v.toLocaleString('en-IN')} kWp`} />
                 <Legend wrapperStyle={{ fontSize: 10 }} />
-                <Line type="monotone" dataKey="cumulative" name="Cumulative" stroke="#10b981" strokeWidth={2} dot={{ r: 3 }} />
+                <Line type="monotone" dataKey="cumulative" name="Cumulative" stroke="#58A024" strokeWidth={2} dot={{ r: 3 }} />
                 <Line type="monotone" dataKey="installed" name="Per-district" stroke="#3b82f6" strokeWidth={1.5} dot={{ r: 2 }} />
               </LineChart>
             </ResponsiveContainer>
@@ -245,8 +247,8 @@ function Radar({ components }) {
         <line key={i} x1={cx} y1={cy} x2={cx + R * Math.cos(p.angle)} y2={cy + R * Math.sin(p.angle)} stroke="#e2e8f0" strokeWidth="0.5" />
       ))}
       {/* Filled polygon */}
-      <polygon points={points.map(p => `${p.x},${p.y}`).join(' ')} fill="#10b981" fillOpacity="0.25" stroke="#059669" strokeWidth="1.5" />
-      {points.map((p, i) => <circle key={i} cx={p.x} cy={p.y} r="2.5" fill="#059669" />)}
+      <polygon points={points.map(p => `${p.x},${p.y}`).join(' ')} fill="#58A024" fillOpacity="0.25" stroke="#43851A" strokeWidth="1.5" />
+      {points.map((p, i) => <circle key={i} cx={p.x} cy={p.y} r="2.5" fill="#43851A" />)}
       {/* Labels */}
       {points.map((p, i) => {
         const lx = cx + (R + 18) * Math.cos(p.angle);
@@ -338,12 +340,12 @@ export default function ExpansionPage() {
       await expansionAPI.createBranch(payload);
       setNewBranch({ name: '', state: '', district: '', latitude: '', longitude: '', monthly_cost: 250000, address: '', opened_date: '', staff_count: '', districts_served: '' });
       const r = await expansionAPI.listBranches(); setBranches(r.data);
-    } catch (e) { alert('Failed to add branch'); }
+    } catch (e) { toast.error('Failed to add branch'); }
   };
   const removeBranch = async (id) => {
-    if (!window.confirm('Remove this branch?')) return;
+    if (!await confirmAction('Remove this branch?')) return;
     try { await expansionAPI.deleteBranch(id); const r = await expansionAPI.listBranches(); setBranches(r.data); }
-    catch { alert('Failed'); }
+    catch { toast.error('Failed'); }
   };
   const openEditBranch = (b) => setEditingBranch({ ...b, monthly_cost: b.monthly_cost || 0, staff_count: b.staff_count || '', districts_served: b.districts_served || '' });
   const saveEditBranch = async () => {
@@ -360,7 +362,7 @@ export default function ExpansionPage() {
       });
       setEditingBranch(null);
       const r = await expansionAPI.listBranches(); setBranches(r.data);
-    } catch (e) { alert('Failed to save branch'); }
+    } catch (e) { toast.error('Failed to save branch'); }
   };
 
   const meta = (b) => BAND_STYLES[b] || BAND_STYLES.no_case;
@@ -420,10 +422,10 @@ export default function ExpansionPage() {
             <Card className="border-slate-200 mb-4" data-testid="expansion-summary">
               <CardContent className="p-4">
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-center">
-                  <div><p className="text-[10px] uppercase text-slate-500">Districts Analysed</p><p className="text-xl font-bold">{overview?.districts?.length || 0}</p></div>
-                  <div><p className="text-[10px] uppercase text-slate-500">Total Projects</p><p className="text-xl font-bold">{overview?.totals?.projects_all_districts || 0}</p></div>
-                  <div><p className="text-[10px] uppercase text-slate-500">Total Revenue</p><p className="text-xl font-bold">₹{(overview?.totals?.revenue_all_districts || 0).toLocaleString('en-IN')}</p></div>
-                  <div><p className="text-[10px] uppercase text-slate-500">Company Avg Margin</p><p className="text-xl font-bold">{overview?.company_avg_margin_pct?.toFixed(1) || 0}%</p></div>
+                  <div><p className="text-[11px] text-slate-500">Districts Analysed</p><p className="text-xl font-bold">{overview?.districts?.length || 0}</p></div>
+                  <div><p className="text-[11px] text-slate-500">Total Projects</p><p className="text-xl font-bold">{overview?.totals?.projects_all_districts || 0}</p></div>
+                  <div><p className="text-[11px] text-slate-500">Total Revenue</p><p className="text-xl font-bold">₹{(overview?.totals?.revenue_all_districts || 0).toLocaleString('en-IN')}</p></div>
+                  <div><p className="text-[11px] text-slate-500">Company Avg Margin</p><p className="text-xl font-bold">{overview?.company_avg_margin_pct?.toFixed(1) || 0}%</p></div>
                 </div>
                 <p className="text-[10px] text-slate-500 mt-3 flex items-center gap-1"><Info className="h-3 w-3" /> Districts with fewer than {overview?.min_projects_for_score || 10} projects are flagged as low-confidence.</p>
               </CardContent>
@@ -453,7 +455,7 @@ export default function ExpansionPage() {
               </CardHeader>
               <CardContent className="p-0 overflow-x-auto">
                 <table className="w-full text-sm">
-                  <thead className="text-[10px] uppercase tracking-wider text-slate-500 bg-slate-50">
+                  <thead className="text-[11px] text-slate-500 bg-slate-50">
                     <tr><th className="text-left px-3 py-2">District</th><th className="text-left px-3 py-2">State</th><th className="text-right px-3 py-2">Score</th><th className="text-right px-3 py-2">Projects</th><th className="text-right px-3 py-2">Revenue</th><th className="text-right px-3 py-2">Margin</th><th className="text-right px-3 py-2">Nearest Branch</th><th></th></tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -522,7 +524,7 @@ export default function ExpansionPage() {
               <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
                 {Object.entries(selectedDistrict.metrics).map(([k, v]) => (
                   <div key={k} className="rounded p-2 bg-slate-50">
-                    <p className="text-[9px] uppercase text-slate-500">{k.replace(/_/g, ' ')}</p>
+                    <p className="text-[11px] text-slate-500">{k.replace(/_pct$/, ' %').replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase())}</p>
                     <p className="font-bold text-slate-800 mt-0.5">{typeof v === 'number' && k.includes('revenue') ? `₹${v.toLocaleString('en-IN')}` : v?.toString() || '—'}</p>
                   </div>
                 ))}

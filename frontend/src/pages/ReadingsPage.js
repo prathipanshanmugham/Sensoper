@@ -11,6 +11,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Loader2, Plus, Save, Trash2, Edit, Activity, AlertTriangle, CheckCircle2, Clock, MapPin, User, Cpu, Zap, X } from 'lucide-react';
 import Can from '../components/Can';
 
+import { errText } from '../components/kit/PageBits';
+import { toast } from 'sonner';
+import { confirmAction } from '../components/kit/confirm';
 const STATUS_META = {
   active: { label: 'Active', color: 'bg-blue-100 text-blue-700 border-blue-200', icon: Clock },
   completed: { label: 'Completed', color: 'bg-emerald-100 text-emerald-700 border-emerald-200', icon: CheckCircle2 },
@@ -95,14 +98,14 @@ export default function ReadingsPage() {
   };
 
   const handleDelete = async (id) => {
-    if (!window.confirm('Delete this reading entry?')) return;
+    if (!await confirmAction('Delete this reading entry?')) return;
     try { await readingsAPI.delete(id); await fetchAll(); }
-    catch (e) { alert(e.response?.data?.detail || 'Delete failed'); }
+    catch (e) { toast.error(errText(e, 'Delete failed')); }
   };
 
   const markComplete = async (r) => {
     try { await readingsAPI.update(r.id, { status: 'completed' }); await fetchAll(); }
-    catch (e) { alert(e.response?.data?.detail || 'Failed'); }
+    catch (e) { toast.error(errText(e, 'Failed')); }
   };
 
   const openGenDialog = (r) => { setGenFor(r); setGenForm({ date: new Date().toISOString().slice(0, 7), kwh: '' }); };
@@ -114,7 +117,7 @@ export default function ReadingsPage() {
       await readingsAPI.logGeneration(genFor.id, { date: genForm.date, kwh: parseFloat(genForm.kwh) });
       setGenFor(null);
       await fetchAll();
-    } catch (e) { alert(e.response?.data?.detail || 'Failed to log generation'); }
+    } catch (e) { toast.error(errText(e, 'Failed to log generation')); }
     finally { setGenSaving(false); }
   };
 
@@ -133,10 +136,10 @@ export default function ReadingsPage() {
 
         {/* Summary cards */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5" data-testid="readings-summary">
-          <Card className="border-slate-200"><CardContent className="p-4 text-center"><p className="text-[10px] uppercase tracking-wider text-slate-400">Total</p><p className="text-2xl font-bold text-slate-900">{summary.total}</p></CardContent></Card>
-          <Card className="border-blue-200 bg-blue-50/40"><CardContent className="p-4 text-center"><p className="text-[10px] uppercase tracking-wider text-blue-500 flex items-center justify-center gap-1"><Activity className="h-3 w-3" />Active</p><p className="text-2xl font-bold text-blue-700" data-testid="summary-active">{summary.active}</p></CardContent></Card>
-          <Card className="border-red-200 bg-red-50/40"><CardContent className="p-4 text-center"><p className="text-[10px] uppercase tracking-wider text-red-500 flex items-center justify-center gap-1"><AlertTriangle className="h-3 w-3" />Overdue</p><p className="text-2xl font-bold text-red-700" data-testid="summary-overdue">{summary.overdue}</p></CardContent></Card>
-          <Card className="border-emerald-200 bg-emerald-50/40"><CardContent className="p-4 text-center"><p className="text-[10px] uppercase tracking-wider text-emerald-500 flex items-center justify-center gap-1"><CheckCircle2 className="h-3 w-3" />Completed</p><p className="text-2xl font-bold text-emerald-700" data-testid="summary-completed">{summary.completed}</p></CardContent></Card>
+          <Card className="border-slate-200"><CardContent className="p-4 text-center"><p className="text-[11px] text-slate-400">Total</p><p className="text-2xl font-bold text-slate-900">{summary.total}</p></CardContent></Card>
+          <Card className="border-blue-200 bg-blue-50/40"><CardContent className="p-4 text-center"><p className="text-[11px] text-blue-500 flex items-center justify-center gap-1"><Activity className="h-3 w-3" />Active</p><p className="text-2xl font-bold text-blue-700" data-testid="summary-active">{summary.active}</p></CardContent></Card>
+          <Card className="border-red-200 bg-red-50/40"><CardContent className="p-4 text-center"><p className="text-[11px] text-red-500 flex items-center justify-center gap-1"><AlertTriangle className="h-3 w-3" />Overdue</p><p className="text-2xl font-bold text-red-700" data-testid="summary-overdue">{summary.overdue}</p></CardContent></Card>
+          <Card className="border-emerald-200 bg-emerald-50/40"><CardContent className="p-4 text-center"><p className="text-[11px] text-emerald-500 flex items-center justify-center gap-1"><CheckCircle2 className="h-3 w-3" />Completed</p><p className="text-2xl font-bold text-emerald-700" data-testid="summary-completed">{summary.completed}</p></CardContent></Card>
         </div>
 
         {/* Filters */}
@@ -310,7 +313,7 @@ export default function ReadingsPage() {
             </div>
             {genFor?.generation_logs?.length > 0 && (
               <div className="border-t border-slate-100 pt-2 space-y-1 max-h-32 overflow-y-auto" data-testid="generation-log-list">
-                <p className="text-[10px] uppercase text-slate-400">Logged so far</p>
+                <p className="text-[11px] text-slate-400">Logged so far</p>
                 {genFor.generation_logs.map((l, i) => (
                   <div key={`${l.date}-${i}`} className="flex justify-between text-xs text-slate-600"><span>{l.date}</span><span>{l.kwh} kWh</span></div>
                 ))}

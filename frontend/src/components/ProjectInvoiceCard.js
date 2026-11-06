@@ -5,6 +5,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import { Loader2, Receipt, Download } from 'lucide-react';
 import { generateGstInvoicePDF } from '../utils/gstInvoicePDF';
 
+import { errText } from './kit/PageBits';
 const FORMAT_STORAGE_KEY = 'sensoper_invoice_format_pref';
 
 /** GST Tax Invoice — separate legal document from the sales quotation PDF (Iter 44 Batch A).
@@ -25,7 +26,7 @@ export default function ProjectInvoiceCard({ projectId, companyProfile, terms })
       const r = await invoicingAPI.generateInvoice(projectId);
       setInvoice(r.data);
       setShowPreview(true);
-    } catch (e) { setError(e.response?.data?.detail || 'Could not generate invoice'); }
+    } catch (e) { setError(errText(e, 'Could not generate invoice')); }
     finally { setLoading(false); }
   };
 

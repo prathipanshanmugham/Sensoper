@@ -87,6 +87,15 @@ def get_object(path: str):
 # Create the main app
 app = FastAPI(title="Sensoper Solar Estimator API")
 
+
+from bson.errors import InvalidId as _InvalidId
+
+
+@app.exception_handler(_InvalidId)
+async def _bad_record_id(request: Request, exc: _InvalidId):
+    """A link to a record that can't exist (a mistyped or cut-off id) is "not found", not a server error."""
+    return JSONResponse(status_code=404, content={"detail": "Not found — that record doesn't exist or the link is incomplete."})
+
 # Create a router with the /api prefix
 api_router = APIRouter(prefix="/api")
 
@@ -767,8 +776,17 @@ def _system_from_custom_fields(custom_fields: Optional[dict]) -> dict:
         except (TypeError, ValueError):
             return 0.0
     quick = ps.get("_quick") or {}
+    issues = list(quick.get("pricing_issues") or [])
+    lines = quick.get("lines")
+    # Quotes saved before the calculator checked its inputs can carry an amount typed into a margin % box (e.g. 24900%).
+    for key, ln in (lines.items() if isinstance(lines, dict) else []):
+        m = _f((ln or {}).get("margin_pct")) if isinstance(ln, dict) else 0.0
+        if m > 300:
+            msg = f"{str(key).capitalize()}: margin {m:g}% isn't a sensible percentage — open the calculator, enter it as a %, and save again."
+            if msg not in issues:
+                issues.append(msg)
     return {"system_cost": _f(ps.get("total_cost")), "subsidy": _f(ps.get("subsidy")), "system_size_kw": _f(ps.get("system_size_kw")),
-            "lines": quick.get("lines"), "system_gst": quick.get("total_gst"), "pricing_issues": list(quick.get("pricing_issues") or [])}
+            "lines": lines, "system_gst": quick.get("total_gst"), "pricing_issues": issues}
 
 
 def _pct_or_none(v):
@@ -806,9 +824,13 @@ def calculate_cost_estimation(selected_items: list, manual_costs: list, custom_f
         item_cost = item["unit_price"] * item["quantity"]
         gst_pct = _pct_or_none(item.get("gst_percentage"))
         margin_pct = _pct_or_none(item.get("margin_percentage"))
+        bad_margin = margin_pct is not None and not (0 <= margin_pct <= 300)
+        if bad_margin:
+            pricing_issues.append(f"Add-on '{item['name']}': margin {margin_pct:g}% isn't a sensible percentage — enter it as a % (0–300).")
+            margin_pct = None
         if gst_pct is None:
             pricing_issues.append(f"Add-on '{item['name']}': GST% missing.")
-        if margin_pct is None:
+        if margin_pct is None and not bad_margin:
             pricing_issues.append(f"Add-on '{item['name']}': margin% missing.")
         item_margin = item_cost * ((margin_pct or 0) / 100)
         # GST is charged on what the customer pays for the line — cost + margin (same rule as other charges and
@@ -1057,6 +1079,17 @@ async def refresh_token(request: Request, response: Response):
         raise HTTPException(status_code=401, detail="Invalid refresh token")
 
 # ================== USER MANAGEMENT (Admin Only) ==================
+
+@api_router.get("/users/directory")
+async def users_directory(request: Request):
+    """Names, roles and departments of active staff — for pickers (team members, technicians, auditors,
+    help-desk handlers). Open to every staff login; no contact details."""
+    await require_role("admin", "manager", "staff")(request)
+    rows = await db.users.find({"active": {"$ne": False}, "role": {"$in": ["admin", "manager", "staff"]}},
+                               {"name": 1, "role": 1, "department": 1, "designation": 1}).sort("name", 1).to_list(2000)
+    return [{"id": str(u["_id"]), "name": u.get("name") or "", "role": u.get("role"), "department": u.get("department"),
+             "designation": u.get("designation"), "active": True} for u in rows]
+
 
 @api_router.get("/users")
 async def get_users(request: Request):
@@ -1873,9 +1906,9 @@ async def get_inventory_item(item_id: str, request: Request):
     
     return {
         "id": str(item["_id"]),
-        "name": item["name"],
-        "sku_code": item["sku_code"],
-        "category": item["category"],
+        "name": item.get("name") or "",
+        "sku_code": item.get("sku_code"),
+        "category": item.get("category") or "other",
         "location_id": item.get("location_id"),
         "addon_group": item.get("addon_group"),
         "specs": item.get("specs", {}),
@@ -1884,8 +1917,8 @@ async def get_inventory_item(item_id: str, request: Request):
         "shelf": item.get("shelf", ""),
         "rack": item.get("rack", ""),
         "bin_location": item.get("bin_location", ""),
-        "quantity": item["quantity"],
-        "unit_price": item["unit_price"],
+        "quantity": item.get("quantity", 0),
+        "unit_price": item.get("unit_price", 0),
         "supplier": item.get("supplier"),
         "gst_percentage": item.get("gst_percentage"),
         "hsn_code": item.get("hsn_code"),
@@ -1896,17 +1929,18 @@ async def get_inventory_item(item_id: str, request: Request):
         "active": item.get("active", True),
         "qc_checklist": item.get("qc_checklist", []),
         "procurement_date": item.get("procurement_date"),
-        "created_at": item["created_at"],
+        "created_at": item.get("created_at"),
         "updated_at": item.get("updated_at"),
         "transactions": [
             {
                 "id": str(t["_id"]),
-                "type": t["type"],
-                "quantity": t["quantity"],
+                # bulk imports used to save transaction_type / performed_by_name — read both shapes
+                "type": t.get("type") or t.get("transaction_type") or "adjustment",
+                "quantity": t.get("quantity", 0),
                 "project_id": t.get("project_id"),
                 "notes": t.get("notes"),
-                "user_name": t.get("user_name"),
-                "timestamp": t["timestamp"]
+                "user_name": t.get("user_name") or t.get("performed_by_name"),
+                "timestamp": t.get("timestamp") or t.get("created_at")
             }
             for t in transactions
         ]
@@ -2224,12 +2258,12 @@ async def inventory_import(request: Request, file: UploadFile = File(...),
             res = await db.inventory_items.insert_one(doc)
             await db.inventory_transactions.insert_one({
                 "item_id": str(res.inserted_id),
-                "transaction_type": "purchase",
+                "type": "initial_stock",
                 "quantity": doc["quantity"],
                 "previous_quantity": 0,
                 "new_quantity": doc["quantity"],
-                "performed_by_id": current_user["id"],
-                "performed_by_name": current_user["name"],
+                "user_id": current_user["id"],
+                "user_name": current_user["name"],
                 "notes": "Bulk import",
                 "timestamp": now_iso,
             })
@@ -3617,6 +3651,38 @@ async def create_project(project: ProjectCreate, request: Request):
         "message": "Project created successfully"
     }
 
+def _completed_on(p: dict) -> Optional[str]:
+    """When the project was completed: the completion stamp, else its commissioning date; never a draft's edit time."""
+    if p.get("status") != "completed":
+        return None
+    return p.get("completed_at") or p.get("commissioning_date") or p.get("updated_at")
+
+
+def _reference_metrics(derived: dict, system_kw: Any, system_type: Any = None) -> dict:
+    """Savings figures shown on reference sites, rounded — and dropped when they're physically impossible
+    (quotes saved by an older calculator could add fuel savings to a grid system: ROI 2,900%, payback 0.8 years)."""
+    d = dict(derived or {})
+    def f(v):
+        try:
+            return float(v)
+        except (TypeError, ValueError):
+            return None
+    kw = f(system_kw) or 0.0
+    payback, roi, monthly = f(d.get("payback_years")), f(d.get("roi_pct")), f(d.get("monthly_savings"))
+    pump = "pump" in str(system_type or "").lower()   # a pump replacing diesel can genuinely pay back inside a year
+    implausible = (roi is not None and roi > 1000) or (not pump and (
+        (payback is not None and 0 < payback < 1) or
+        (kw > 0 and monthly is not None and monthly > kw * 2500)))   # > ₹2,500 a month per kW isn't possible from grid savings alone
+    if implausible:
+        for k in ("monthly_savings", "annual_savings", "lifetime_savings", "roi_pct", "payback_years"):
+            d[k] = None
+        d["figures_need_refresh"] = True
+    for k, v in list(d.items()):
+        if isinstance(v, float):
+            d[k] = round(v, 2) if abs(v) < 100 else round(v)
+    return d
+
+
 def compute_till_date_metrics(project: dict, derived: dict) -> dict:
     """Calculate live 'savings till date' metrics for a project based on its
     installation/commissioning date. Returns None if neither explicit date is set —
@@ -3680,6 +3746,7 @@ async def get_reference_candidates(request: Request, q: Optional[str] = None):
         # Pull system size from proposed_solution or legacy solar_report
         sr = p.get("solar_report", {}) or {}
         system_size = ps.get("system_size_kw") or (sr.get("sizing") or {}).get("kwp_recommended") or None
+        derived = _reference_metrics(derived, system_size, ps.get("system_type"))
         # Image preference: completion_media first, then site_images, then drive folder
         image_url = None
         for m in (p.get("completion_media") or []):
@@ -3699,7 +3766,7 @@ async def get_reference_candidates(request: Request, q: Optional[str] = None):
             "location": loc.get("address", ""),
             "system_size_kw": system_size,
             "image_url": image_url,
-            "completed_at": p.get("updated_at"),
+            "completed_at": _completed_on(p),
             "installation_date": p.get("installation_date"),
             "commissioning_date": p.get("commissioning_date"),
             "till_date": till,
@@ -3740,7 +3807,7 @@ async def get_reference_summary(project_id: str, request: Request):
     loc = p.get("location", {}) or {}
     cf = p.get("custom_fields", {}) or {}
     ps = cf.get("proposed_solution", {}) or {}
-    derived = ps.get("_derived", {}) or {}
+    derived = _reference_metrics(ps.get("_derived", {}) or {}, ps.get("system_size_kw") or ((p.get("solar_report") or {}).get("sizing") or {}).get("kwp_recommended"), ps.get("system_type"))
     image_url = None
     for m in (p.get("completion_media") or []):
         if m.get("type") == "image" and m.get("url"):
@@ -3760,7 +3827,7 @@ async def get_reference_summary(project_id: str, request: Request):
         "inverter_kw": ps.get("inverter_kw"),
         "total_cost": ps.get("total_cost"),
         "subsidy": ps.get("subsidy"),
-        "completed_at": p.get("updated_at"),
+        "completed_at": _completed_on(p),
         "installation_date": p.get("installation_date"),
         "commissioning_date": p.get("commissioning_date"),
         "till_date": compute_till_date_metrics(p, derived),
@@ -3807,6 +3874,24 @@ async def get_projects(request: Request, status: Optional[str] = None, location_
         for p in projects
     ]
 
+@api_router.get("/projects/{project_id}/inverter-password")
+async def get_inverter_password(project_id: str, request: Request):
+    """The customer's inverter-app password for this project — shown on request and recorded in the activity log."""
+    user = await get_current_user(request)
+    project = await db.projects.find_one({"_id": ObjectId(project_id), "deleted_at": {"$exists": False}}, {"created_by": 1, "inverter_login": 1, "reference_number": 1})
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    if user["role"] != "admin" and not await check_module_permission(user, "module_projects", "view"):
+        raise HTTPException(status_code=403, detail="Your role can’t open projects. An admin can change this in Settings → Permissions.")
+    if user["role"] == "staff" and project.get("created_by") != user["id"]:
+        raise HTTPException(status_code=403, detail="Access denied")
+    pwd = (project.get("inverter_login") or {}).get("password") or ""
+    if not pwd:
+        raise HTTPException(status_code=404, detail="No inverter password saved for this project")
+    await create_audit_log(user["id"], user["name"], "inverter_password_viewed", "project", project_id, None, {"reference": project.get("reference_number")})
+    return {"password": pwd}
+
+
 @api_router.get("/projects/{project_id}")
 async def get_project(project_id: str, request: Request):
     user = await get_current_user(request)
@@ -3835,12 +3920,12 @@ async def get_project(project_id: str, request: Request):
     return {
         "id": str(project["_id"]),
         "reference_number": project.get("reference_number", f"SCR-{str(project['_id'])[-6:].upper()}"),
-        "customer": project["customer"],
-        "location": project["location"],
-        "electrical": project["electrical"],
-        "solar_system": project["solar_system"],
-        "mounting": project["mounting"],
-        "additional": project["additional"],
+        "customer": project.get("customer") or {},
+        "location": project.get("location") or {},
+        "electrical": project.get("electrical") or {},
+        "solar_system": project.get("solar_system") or {},
+        "mounting": project.get("mounting") or {},
+        "additional": project.get("additional") or {},
         "selected_items": project.get("selected_items", []),
         "manual_costs": project.get("manual_costs", []),
         "site_images": project.get("site_images", []),
@@ -3866,14 +3951,16 @@ async def get_project(project_id: str, request: Request):
         "notes_history": project.get("notes_history", []),
         "completion_media": project.get("completion_media", []),
         "completion_drive_link": project.get("completion_drive_link", ""),
-        "inverter_login": project.get("inverter_login", {}),
+        # the password itself is sent only on request (GET …/inverter-password), and every look is logged
+        "inverter_login": {**{k: v for k, v in (project.get("inverter_login") or {}).items() if k != "password"},
+                           "has_password": bool((project.get("inverter_login") or {}).get("password"))},
         "customer_feedback": project.get("customer_feedback"),
-        "status": project["status"],
+        "status": project.get("status") or "draft",
         "cost_estimation": project.get("cost_estimation", {}),
         "created_by": project["created_by"],
         "created_by_name": project.get("created_by_name", "Unknown"),
-        "created_at": project["created_at"],
-        "updated_at": project["updated_at"],
+        "created_at": project.get("created_at"),
+        "updated_at": project.get("updated_at") or project.get("created_at"),
         "approved_by": project.get("approved_by"),
         "approved_at": project.get("approved_at"),
         "rejection_reason": project.get("rejection_reason"),
@@ -5813,10 +5900,16 @@ async def _get_thresholds():
 async def _generate_project_alerts(project, thresholds):
     alerts = []
     pid = str(project["_id"])
-    ce = project.get("cost_estimation", {})
-    selling = ce.get("total_cost", 0)
-    margin = ce.get("margin_total", 0)
-    margin_pct = round((margin / selling) * 100, 1) if selling else 0
+    ce = project.get("cost_estimation") or {}
+    selling = float(ce.get("total_cost", 0) or 0)
+    # Same margin as the project's Profit card (calculator system + lines + direct costs), so the two never disagree.
+    from invoicing import _cost_breakdown as _profit_breakdown
+    pb = _profit_breakdown(ce)
+    if pb.get("revenue"):
+        margin_pct = round(float(pb.get("gross_margin_pct") or 0), 1)
+    else:
+        margin = float(ce.get("margin_total", 0) or 0)
+        margin_pct = round((margin / selling) * 100, 1) if selling else 0
     created_str = project.get("created_at", "")
     now = datetime.now(timezone.utc)
 
@@ -5997,14 +6090,6 @@ async def list_approvals(request: Request, status: str = None, type: str = None,
         }
         for a in approvals
     ]
-
-@api_router.get("/approvals/pending-count")
-async def get_pending_approvals_count(request: Request):
-    user = await get_current_user(request)
-    if user["role"] == "staff":
-        return {"count": 0}
-    count = await db.approvals.count_documents({"status": "pending"})
-    return {"count": count}
 
 @api_router.post("/approvals")
 async def create_approval(request: Request):
@@ -7697,6 +7782,13 @@ async def startup_event():
         await _hr_router.close_due_exits()
     except Exception as e:
         logger.warning(f"HR exit check skipped: {e}")
+    try:   # direct sales saved before costs were copied in showed a 100% margin — fill the cost once
+        from sales import backfill_missing_costs as _sales_costs
+        _n = await _sales_costs(db)
+        if _n:
+            logger.info(f"Direct sales: filled the missing stock cost on {_n} sale(s)")
+    except Exception as e:
+        logger.warning(f"Direct-sale cost repair skipped: {e}")
     # The AMC joint venture was removed (Oct 2026): erase partner companies, logins and their AMC work, once
     _jv = await _remove_joint_venture(db, delete_file=_delete_stored_file)
     if _jv is not None:

@@ -16,14 +16,13 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../co
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Checkbox } from '../components/ui/checkbox';
 import { Progress } from '../components/ui/progress';
-import { ComboInput } from '../components/ui/combo-input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '../components/ui/dialog';
 import ProposedSolutionSection from '../components/ProposedSolutionSection';
 import { AdhocLineForm, AdhocTag } from '../components/AdhocLine';
 import { 
   User, MapPin, Zap, ArrowRight, ArrowLeft, Loader2, CheckCircle2,
   Sparkles, Plus, Trash2, Package, FolderOpen, X, Percent, FolderPlus, ExternalLink, CheckCircle, Link2,
-  Ruler, ChevronDown, ChevronRight, Home, Compass, Eye, PlugZap, Settings2, HardHat, Shield, Layers,
+  ChevronDown, ChevronRight, Home, Compass, Eye, PlugZap, Settings2, HardHat, Shield, Layers,
   AlertCircle, FileText, Wand2, RefreshCw, Bolt, LocateFixed
 } from 'lucide-react';
 import { Badge } from '../components/ui/badge';
@@ -73,6 +72,9 @@ const toMetres = (val, unit) => {
   return unit === 'ft' ? +(n * 0.3048).toFixed(2) : n;
 };
 
+
+/** Saved projects can hold null in text fields; inputs need '' (except the keys listed). */
+const blankNulls = (o, keep = []) => Object.fromEntries(Object.entries(o || {}).map(([k, v]) => [k, v === null && !keep.includes(k) ? '' : v]));
 
 export default function SiteVisitForm() {
   const navigate = useNavigate();
@@ -153,8 +155,8 @@ export default function SiteVisitForm() {
       const res = await projectsAPI.getOne(editId);
       const p = res.data;
       setFormData({
-        customer: p.customer || { name: '', phone: '', address: '', email: '' },
-        location: p.location || { latitude: null, longitude: null, address: '' },
+        customer: { name: '', phone: '', address: '', email: '', ...blankNulls(p.customer) },
+        location: p.location ? { address: '', ...blankNulls(p.location, ['latitude', 'longitude', 'discom_id']) } : { latitude: null, longitude: null, address: '' },
         electrical: {
           sanction_load_kw: p.electrical?.sanction_load_kw || '',
           connected_load_kw: p.electrical?.connected_load_kw || '',
@@ -164,8 +166,8 @@ export default function SiteVisitForm() {
           connection_phase: p.electrical?.connection_phase || '',
           _prefilled: p.electrical?._prefilled || {}
         },
-        solar_system: p.solar_system || { system_type: 'on-grid', inverter_model: '', panel_wattage: 540, battery_required: false, battery_capacity_ah: '' },
-        mounting: p.mounting || { roof_type: '', tilt_angle: 15, structure_type: '' },
+        solar_system: p.solar_system ? blankNulls(p.solar_system) : { system_type: 'on-grid', inverter_model: '', panel_wattage: 540, battery_required: false, battery_capacity_ah: '' },
+        mounting: p.mounting ? blankNulls(p.mounting) : { roof_type: '', tilt_angle: 15, structure_type: '' },
         additional: {
           cable_length_meters: p.additional?.cable_length_meters || 15,
           cable_length_unit: p.additional?.cable_length_unit || 'm',
@@ -206,8 +208,9 @@ export default function SiteVisitForm() {
           : (p.additional?.shadow_analysis_notes || '')
       });
     } catch (err) {
-      setError('Failed to load project for editing');
-      console.error(err);
+      const st = err?.response?.status;
+      setError(st === 403 ? 'You can only edit projects you created or were given. Ask a manager if you need this one.'
+        : st === 404 ? 'This project no longer exists.' : (err?.response?.data?.detail || 'Could not load the project. Check your connection and try again.'));
     } finally {
       setLoadingProject(false);
     }
@@ -802,7 +805,7 @@ export default function SiteVisitForm() {
     };
     return (
       <div className="mt-4 pt-4 border-t border-slate-200 space-y-4" data-testid={`extra-fields-${slug}`}>
-        <p className="text-xs font-medium uppercase tracking-wider text-slate-400">Additional Fields</p>
+        <p className="text-xs font-medium text-slate-400">Additional Fields</p>
         {extraFields.map((field, fIdx) => (
           <div key={field.name || fIdx} className="space-y-1.5">
             <Label className="text-sm">{field.label}{field.required && ' *'}</Label>
@@ -1116,7 +1119,7 @@ export default function SiteVisitForm() {
                       </div>
 
                       <div className="pt-3 border-t border-slate-100 space-y-3">
-                        <p className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold">Wiring runs — stored in metres, prints on PDF as metres</p>
+                        <p className="text-[11px] text-slate-400 font-semibold">Wiring runs — stored in metres, prints on PDF as metres</p>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                           <div className="space-y-1">
                             <Label className="text-xs">Cable Length (roof → DB)</Label>
@@ -1254,7 +1257,7 @@ export default function SiteVisitForm() {
                           <Layers className="h-5 w-5" />
                         </div>
                         <div className="flex-1 min-w-0">
-                          <p className="text-xs uppercase tracking-wider text-emerald-700 font-semibold">Matched Solution Kit</p>
+                          <p className="text-xs text-emerald-700 font-semibold">Matched Solution Kit</p>
                           <p className="font-semibold text-slate-900 text-sm truncate">{suggestedKit.name}</p>
                           <p className="text-[11px] text-slate-500 mt-0.5">{suggestedKit.lines.length} material lines · fits your {suggestedKit.system_type} @ {suggestedKit.capacity_kw} kW</p>
                           {suggestedKit.description && <p className="text-[11px] text-slate-500 mt-1 line-clamp-2">{suggestedKit.description}</p>}
@@ -1349,7 +1352,7 @@ export default function SiteVisitForm() {
                     {/* Quick-add strip: 6 most recent items */}
                     {inventoryItems.length > 0 && (
                       <div className="pt-1">
-                        <p className="text-[10px] uppercase text-slate-400 mb-1">Quick add</p>
+                        <p className="text-[11px] text-slate-400 mb-1">Quick add</p>
                         <div className="flex flex-wrap gap-1.5">
                           {inventoryItems.slice(0, 6).map(item => (
                             <button
@@ -1737,14 +1740,14 @@ export default function SiteVisitForm() {
             </DialogHeader>
             <div className="space-y-3 text-sm" data-testid="review-summary">
               <div className="rounded-lg border border-slate-200 p-3">
-                <p className="text-[10px] uppercase tracking-wider text-slate-500 font-semibold mb-1">Customer</p>
+                <p className="text-[11px] text-slate-500 font-semibold mb-1">Customer</p>
                 <p className="font-medium text-slate-900">{formData.customer.name || '—'}</p>
                 {formData.project_date && <p className="text-xs text-slate-500" data-testid="review-project-date">Project date: {new Date(`${formData.project_date}T00:00:00`).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</p>}
                 <p className="text-xs text-slate-500">{formData.customer.phone} · {formData.customer.email || 'no email'}</p>
                 <p className="text-xs text-slate-500 mt-0.5 truncate">{formData.customer.address}</p>
               </div>
               <div className="rounded-lg border border-slate-200 p-3">
-                <p className="text-[10px] uppercase tracking-wider text-slate-500 font-semibold mb-1">Location</p>
+                <p className="text-[11px] text-slate-500 font-semibold mb-1">Location</p>
                 <p className="text-xs text-slate-800 truncate">{formData.location.address || ((formData.location.latitude && formData.location.longitude) ? `GPS ${Number(formData.location.latitude).toFixed(5)}, ${Number(formData.location.longitude).toFixed(5)}` : '—')}</p>
                 {(formData.location.latitude && formData.location.longitude) && <p className="text-[11px] text-slate-500">{Number(formData.location.latitude).toFixed(4)}, {Number(formData.location.longitude).toFixed(4)}</p>}
                 {formData.location.pincode && formData.location.district ? (
@@ -1760,7 +1763,7 @@ export default function SiteVisitForm() {
                 if (!ps.system_type) return null;
                 return (
                   <div className="rounded-lg border border-emerald-200 bg-emerald-50/40 p-3">
-                    <p className="text-[10px] uppercase tracking-wider text-emerald-700 font-semibold mb-1">Proposed Solution</p>
+                    <p className="text-[11px] text-emerald-700 font-semibold mb-1">Proposed Solution</p>
                     <p className="text-xs text-slate-800"><strong>{ps.system_type}</strong> · {ps.system_size_kw ? `${ps.system_size_kw} kW` : '—'} · {ps.panel_count || '—'} panels</p>
                     {ps._derived?.annual_savings > 0 && (
                       <p className="text-[11px] text-emerald-700 mt-0.5">
@@ -1774,12 +1777,12 @@ export default function SiteVisitForm() {
                 );
               })()}
               <div className="rounded-lg border border-slate-200 p-3">
-                <p className="text-[10px] uppercase tracking-wider text-slate-500 font-semibold mb-1">Materials</p>
+                <p className="text-[11px] text-slate-500 font-semibold mb-1">Materials</p>
                 <p className="text-xs text-slate-800">{formData.selected_items.length} items selected {appliedKitId && suggestedKit ? `(from kit: ${suggestedKit.name})` : ''}</p>
                 <p className="text-[11px] text-slate-500">Total: ₹{totals.total.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</p>
               </div>
               <div className="rounded-lg border border-slate-200 p-3">
-                <p className="text-[10px] uppercase tracking-wider text-slate-500 font-semibold mb-1">Documentation</p>
+                <p className="text-[11px] text-slate-500 font-semibold mb-1">Documentation</p>
                 <p className="text-xs text-slate-800">Photos: {Object.values(formData.site_photos || {}).flat().length || '— none yet'} · Drive: {formData.drive_folder_link ? '✓ linked' : 'auto folder'} · T&amp;C: {formData.terms_id ? '✓ selected' : '— default'} · Reference: {formData.reference_project_id ? '✓ attached' : '— none'}</p>
               </div>
             </div>

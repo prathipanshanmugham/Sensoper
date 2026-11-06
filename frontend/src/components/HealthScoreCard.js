@@ -5,7 +5,7 @@
 import { useMemo } from 'react';
 import { Card, CardContent } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
-import { AlertTriangle, TrendingUp, TrendingDown, Activity, ChevronRight } from 'lucide-react';
+import { AlertTriangle, TrendingUp, TrendingDown, Activity } from 'lucide-react';
 
 const BAND_COLORS = {
   strong:    { bg: 'from-emerald-500 to-emerald-600', text: 'text-emerald-700', badge: 'bg-emerald-100 text-emerald-700 border-emerald-200' },
@@ -34,7 +34,7 @@ function Gauge({ score, band }) {
             <stop offset="0"    stopColor="#ef4444" />
             <stop offset="0.4"  stopColor="#f59e0b" />
             <stop offset="0.65" stopColor="#38bdf8" />
-            <stop offset="0.85" stopColor="#10b981" />
+            <stop offset="0.85" stopColor="#58A024" />
           </linearGradient>
         </defs>
         {/* Background arc */}
@@ -50,7 +50,7 @@ function Gauge({ score, band }) {
       </svg>
       <div className="absolute inset-0 flex flex-col items-center justify-end pb-2">
         <p className={`text-4xl font-bold font-['Outfit'] leading-none ${colors.text}`}>{score?.toFixed(1) ?? '—'}</p>
-        <p className="text-[10px] uppercase tracking-wider text-slate-500">out of 100</p>
+        <p className="text-[11px] text-slate-500">out of 100</p>
       </div>
     </div>
   );
@@ -78,7 +78,7 @@ function PillarBar({ pillarKey, pillar, onClick }) {
       <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
         <div className={`h-full ${barColor} rounded-full transition-all`} style={{ width: `${Math.max(4, Math.min(100, score || 0))}%` }} />
       </div>
-      <p className="text-[9px] uppercase tracking-wider text-slate-400 mt-1">{pillar.weight}% weight</p>
+      <p className="text-[11px] text-slate-400 mt-1">{pillar.weight}% weight</p>
     </button>
   );
 }
@@ -101,7 +101,7 @@ export default function HealthScoreCard({ health, onSnapshot, sparkline = [], on
     <Card className="border-slate-200 overflow-hidden" data-testid="health-score-card">
       <div className={`bg-gradient-to-br ${colors.bg} text-white px-4 py-3 flex items-center justify-between`}>
         <div>
-          <p className="text-[10px] uppercase tracking-wider opacity-90">Company Health</p>
+          <p className="text-[11px] opacity-90">Company Health</p>
           <p className="text-lg font-semibold font-['Outfit']">{health.verdict}</p>
         </div>
         <Badge className="bg-white/20 text-white border-white/30">{band.toUpperCase()}</Badge>
@@ -117,7 +117,7 @@ export default function HealthScoreCard({ health, onSnapshot, sparkline = [], on
               <div className="flex items-start gap-2">
                 <AlertTriangle className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
                 <div className="flex-1 min-w-0">
-                  <p className="text-[10px] uppercase tracking-wider text-slate-500 font-semibold">What's dragging the score</p>
+                  <p className="text-[11px] text-slate-500 font-semibold">What's dragging the score</p>
                   <ul className="mt-1 space-y-1">
                     {(health.dragging || []).slice(0, 3).map((d, i) => (
                       <li key={i} className="text-xs text-slate-700 flex items-center gap-2">
@@ -149,14 +149,14 @@ export default function HealthScoreCard({ health, onSnapshot, sparkline = [], on
         {/* 90-day sparkline */}
         {sparkline?.length > 1 && (
           <div className="pt-2 border-t border-slate-100" data-testid="health-sparkline">
-            <p className="text-[10px] uppercase tracking-wider text-slate-500 font-semibold mb-1">Score Trend</p>
+            <p className="text-[11px] text-slate-500 font-semibold mb-1">Score Trend</p>
             <svg viewBox={`0 0 ${sparkline.length * 20} 40`} className="w-full h-10">
               <polyline
-                fill="none" stroke="#10b981" strokeWidth="2"
+                fill="none" stroke="#58A024" strokeWidth="2"
                 points={sparkline.map((s, i) => `${i * 20},${40 - (s.score / 100) * 34 - 3}`).join(' ')}
               />
               {sparkline.map((s, i) => (
-                <circle key={i} cx={i * 20} cy={40 - (s.score / 100) * 34 - 3} r="2" fill="#10b981" />
+                <circle key={i} cx={i * 20} cy={40 - (s.score / 100) * 34 - 3} r="2" fill="#58A024" />
               ))}
             </svg>
             <div className="flex justify-between text-[9px] text-slate-400 mt-0.5">

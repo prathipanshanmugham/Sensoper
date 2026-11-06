@@ -163,7 +163,7 @@ export default function PermissionsPage() {
 
           {sections.map((sec) => (
             <section key={sec.id} className="overflow-hidden rounded-xl border border-slate-200 bg-white" data-testid={`perm-section-${sec.id}`}>
-              <h2 className="border-b border-slate-100 bg-slate-50 px-4 py-2 text-[11px] font-semibold uppercase tracking-wider text-slate-500">{sec.label}</h2>
+              <h2 className="border-b border-slate-100 bg-slate-50 px-4 py-2 text-[11px] font-semibold text-slate-500">{sec.label}</h2>
               <ul className="divide-y divide-slate-100">
                 {sec.pages.map((p) => <PageRow key={p.key} page={p} row={perms[p.key]} opts={perms} onRow={setRow} onOpt={setOpt} disabled={saving} />)}
               </ul>

@@ -14,6 +14,7 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '
 import { useLiveRefresh } from '../lib/liveSync';
 import { Card, Chip, Empty, Field, FileAttach, Loading, PageHeader, PillTabs, Tile, Tiles, errText, fmtDate, inputCls, inr, inrShort, todayISO } from '../components/kit/PageBits';
 
+import { confirmAction } from '../components/kit/confirm';
 const TYPES = [['term_loan', 'Term loan'], ['working_capital', 'Working capital'], ['od_cc', 'OD / CC limit'], ['vehicle', 'Vehicle loan'], ['equipment', 'Equipment loan'],
   ['business', 'Business loan'], ['property', 'Property loan'], ['other', 'Other']];
 const REVOLVING = ['working_capital', 'od_cc'];
@@ -118,11 +119,11 @@ function LoanSheet({ loanId, onOpenChange, onChanged, canEdit, isAdmin }) {
   const changed = (d) => { if (d?.id) setL(d); else load(); onChanged(); };
   const close = async () => {
     const how = l.outstanding > 1 ? 'foreclosed' : 'closed';
-    if (!window.confirm(how === 'closed' ? 'Mark this loan as closed?' : `₹${Math.round(l.outstanding).toLocaleString('en-IN')} is still outstanding. Mark it foreclosed (paid off early)?`)) return;
+    if (!await confirmAction(how === 'closed' ? 'Mark this loan as closed?' : `₹${Math.round(l.outstanding).toLocaleString('en-IN')} is still outstanding. Mark it foreclosed (paid off early)?`)) return;
     try { await loansAPI.close(l.id, { closed_on: todayISO(), how }); load(); onChanged(); } catch (e) { toast.error(errText(e)); }
   };
-  const removePay = async (p) => { if (!window.confirm('Remove this payment?')) return; try { await loansAPI.removePayment(l.id, p.id); load(); onChanged(); } catch (e) { toast.error(errText(e)); } };
-  const removeLoan = async () => { if (!window.confirm(`Delete ${l.lender} and all its payments?`)) return; try { await loansAPI.remove(l.id); onOpenChange(false); onChanged(); } catch (e) { toast.error(errText(e)); } };
+  const removePay = async (p) => { if (!await confirmAction('Remove this payment?')) return; try { await loansAPI.removePayment(l.id, p.id); load(); onChanged(); } catch (e) { toast.error(errText(e)); } };
+  const removeLoan = async () => { if (!await confirmAction(`Delete ${l.lender} and all its payments?`)) return; try { await loansAPI.remove(l.id); onOpenChange(false); onChanged(); } catch (e) { toast.error(errText(e)); } };
   const paidPct = l ? Math.min(100, Math.round((l.principal_paid / (l.disbursed_amount || l.principal || 1)) * 100)) : 0;
   return (
     <Sheet open={!!loanId} onOpenChange={onOpenChange}>

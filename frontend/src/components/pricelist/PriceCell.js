@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Check, Loader2, RotateCcw } from 'lucide-react';
 
+import { errText } from '../kit/PageBits';
 /** Inline numeric/text price cell — Enter/blur saves, Esc reverts, shows saving/saved states. */
 export function PriceCell({ value, onSave, testId, suffix, prefix, width = 'w-24', type = 'number', muted = false, missing = false, disabled = false, placeholder }) {
   const [draft, setDraft] = useState(value ?? '');
@@ -15,7 +16,7 @@ export function PriceCell({ value, onSave, testId, suffix, prefix, width = 'w-24
     try {
       await onSave(type === 'number' ? (draft === '' ? null : parseFloat(draft)) : draft);
       setState('saved'); setTimeout(() => setState('idle'), 1200);
-    } catch (e) { setState('idle'); setError(e.response?.data?.detail || 'Save failed'); }
+    } catch (e) { setState('idle'); setError(errText(e, 'Save failed')); }
   };
 
   return (

@@ -11,6 +11,8 @@ import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '../components/ui/dialog';
 
+import { errText } from '../components/kit/PageBits';
+import { confirmAction } from '../components/kit/confirm';
 const fmt = (iso) => (iso ? new Date(iso).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—');
 
 /** Iter 53 — Credentials Management (admin) + personal 2FA / password section. */
@@ -24,23 +26,23 @@ export default function CredentialsPage() {
     if (!isAdmin) { setLoading(false); return; }
     setLoading(true);
     try { const r = await securityAPI.credentials(); setData(r.data); setDays(String(r.data.config.password_rotation_days)); }
-    catch (e) { toast.error(e.response?.data?.detail || 'Failed to load credentials'); }
+    catch (e) { toast.error(errText(e, 'Failed to load credentials')); }
     finally { setLoading(false); }
   }, [isAdmin]);
   useEffect(() => { load(); }, [load]);
 
   const saveDays = async () => {
     try { await securityAPI.updateConfig({ password_rotation_days: parseInt(days) }); toast.success('Rotation threshold saved'); load(); }
-    catch (e) { toast.error(e.response?.data?.detail || 'Save failed'); }
+    catch (e) { toast.error(errText(e, 'Save failed')); }
   };
   const requireReset = async (u) => {
     try { await securityAPI.requireReset(u.id); toast.success(`${u.name} must reset their password at next login`); load(); }
-    catch (e) { toast.error(e.response?.data?.detail || 'Failed'); }
+    catch (e) { toast.error(errText(e, 'Failed')); }
   };
   const adminDisable = async (u) => {
-    if (!window.confirm(`Turn off 2FA for ${u.name}? Use only if they lost their phone and backup codes.`)) return;
+    if (!await confirmAction(`Turn off 2FA for ${u.name}? Use only if they lost their phone and backup codes.`)) return;
     try { await securityAPI.adminDisable2fa(u.id); toast.success('2FA disabled'); load(); }
-    catch (e) { toast.error(e.response?.data?.detail || 'Failed'); }
+    catch (e) { toast.error(errText(e, 'Failed')); }
   };
 
   return (
@@ -74,7 +76,7 @@ export default function CredentialsPage() {
               <Stat label="Reset pending" value={data.summary.reset_pending} testid="cred-summary-reset" />
             </div>
             <div className="overflow-x-auto"><table className="w-full min-w-[640px] text-sm">
-              <thead className="bg-slate-50 border-y border-slate-200 text-[10px] uppercase text-slate-500">
+              <thead className="bg-slate-50 border-y border-slate-200 text-[11px] text-slate-500">
                 <tr><th className="text-left px-3 py-2">User</th><th className="text-left px-3 py-2">Role</th><th className="text-left px-3 py-2">Password changed</th><th className="text-left px-3 py-2">Age</th><th className="text-left px-3 py-2">2FA</th><th className="text-left px-3 py-2">Last login</th><th className="text-right px-3 py-2">Actions</th></tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -103,7 +105,7 @@ export default function CredentialsPage() {
 }
 
 function Stat({ label, value, warn, testid }) {
-  return <div className="rounded-md bg-slate-50 py-2"><p className={`text-lg font-bold ${warn ? 'text-amber-700' : 'text-slate-900'}`} data-testid={testid}>{value}</p><p className="text-[10px] uppercase tracking-wide text-slate-400">{label}</p></div>;
+  return <div className="rounded-md bg-slate-50 py-2"><p className={`text-lg font-bold ${warn ? 'text-amber-700' : 'text-slate-900'}`} data-testid={testid}>{value}</p><p className="text-[11px] text-slate-400">{label}</p></div>;
 }
 
 export function MySecurity({ onChanged }) {
@@ -117,10 +119,10 @@ export function MySecurity({ onChanged }) {
   const load = useCallback(() => authAPI.twoFaStatus().then(r => setStatus(r.data)).catch(() => {}), []);
   useEffect(() => { load(); }, [load]);
 
-  const start = async () => { setBusy('setup'); try { const r = await authAPI.twoFaSetup(); setSetup(r.data); } catch (e) { toast.error(e.response?.data?.detail || 'Setup failed'); } finally { setBusy(''); } };
-  const enable = async () => { setBusy('enable'); try { await authAPI.twoFaEnable(code); toast.success('Two-factor authentication enabled'); setSetup(null); setCode(''); load(); onChanged?.(); } catch (e) { toast.error(e.response?.data?.detail || 'Invalid code'); } finally { setBusy(''); } };
-  const doDisable = async () => { setBusy('disable'); try { await authAPI.twoFaDisable(disable.password, disable.code); toast.success('2FA disabled'); setDisable(null); load(); onChanged?.(); } catch (e) { toast.error(e.response?.data?.detail || 'Failed'); } finally { setBusy(''); } };
-  const changePw = async () => { setBusy('pw'); try { await authAPI.changePassword(pw.current_password, pw.new_password); toast.success('Password changed'); setPw({ current_password: '', new_password: '' }); load(); onChanged?.(); } catch (e) { toast.error(e.response?.data?.detail || 'Failed'); } finally { setBusy(''); } };
+  const start = async () => { setBusy('setup'); try { const r = await authAPI.twoFaSetup(); setSetup(r.data); } catch (e) { toast.error(errText(e, 'Setup failed')); } finally { setBusy(''); } };
+  const enable = async () => { setBusy('enable'); try { await authAPI.twoFaEnable(code); toast.success('Two-factor authentication enabled'); setSetup(null); setCode(''); load(); onChanged?.(); } catch (e) { toast.error(errText(e, 'Invalid code')); } finally { setBusy(''); } };
+  const doDisable = async () => { setBusy('disable'); try { await authAPI.twoFaDisable(disable.password, disable.code); toast.success('2FA disabled'); setDisable(null); load(); onChanged?.(); } catch (e) { toast.error(errText(e, 'Failed')); } finally { setBusy(''); } };
+  const changePw = async () => { setBusy('pw'); try { await authAPI.changePassword(pw.current_password, pw.new_password); toast.success('Password changed'); setPw({ current_password: '', new_password: '' }); load(); onChanged?.(); } catch (e) { toast.error(errText(e, 'Failed')); } finally { setBusy(''); } };
 
   return (
     <Card data-testid="my-security-card">

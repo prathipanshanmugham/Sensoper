@@ -11,6 +11,7 @@ import Can from '../Can';
 import { inr } from './amcCommon';
 import { amcReportExcel, amcReportPDF } from '../../utils/amcPdf';
 
+import { errText } from '../kit/PageBits';
 const BLUE = '#2a78d6', ORANGE = '#eb6834';
 const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;  // local date, not UTC
 const monthLabel = (k) => new Date(`${k}-01T00:00:00`).toLocaleDateString('en-IN', { month: 'short' });
@@ -32,7 +33,7 @@ export default function AmcReportTab() {
   const [busy, setBusy] = useState('');
   const load = useCallback(() => {
     setRep(null);
-    amcAPI.report({ start, end }).then((r) => setRep(r.data)).catch((e) => { toast.error(e.response?.data?.detail || 'Could not load the report'); setRep(false); });
+    amcAPI.report({ start, end }).then((r) => setRep(r.data)).catch((e) => { toast.error(errText(e, 'Could not load the report')); setRep(false); });
   }, [start, end]);
   useEffect(() => { load(); }, [load]);
 

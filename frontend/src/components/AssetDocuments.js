@@ -5,6 +5,8 @@ import { assetsAPI } from '../utils/api';
 import { Button } from './ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 
+import { errText } from './kit/PageBits';
+import { confirmAction } from './kit/confirm';
 const API_URL = process.env.REACT_APP_BACKEND_URL;
 const DOC_TYPES = [['calibration_report', 'Calibration report'], ['service_report', 'Service report'], ['invoice', 'Purchase invoice'], ['warranty', 'Warranty'], ['insurance', 'Insurance'], ['certificate', 'Certificate'], ['other', 'Other']];
 const fmtSize = (b) => (b > 1024 * 1024 ? `${(b / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(b / 1024))} KB`);
@@ -31,13 +33,13 @@ export function AssetDocuments({ assetId, canManage }) {
     try {
       await assetsAPI.uploadDocument(assetId, file, docType, '', (ev) => setProgress(ev.total ? Math.round(ev.loaded / ev.total * 100) : 50));
       toast.success(`${file.name} attached`); await load();
-    } catch (err) { toast.error(err.response?.data?.detail || 'Upload failed'); }
+    } catch (err) { toast.error(errText(err, 'Upload failed')); }
     finally { setProgress(null); e.target.value = ''; }
   };
   const remove = async (d) => {
-    if (!window.confirm(`Remove "${d.filename}"?`)) return;
+    if (!await confirmAction(`Remove "${d.filename}"?`)) return;
     try { await assetsAPI.deleteDocument(assetId, d.id); toast.success('Document removed'); await load(); }
-    catch (err) { toast.error(err.response?.data?.detail || 'Delete failed'); }
+    catch (err) { toast.error(errText(err, 'Delete failed')); }
   };
 
   return (

@@ -31,7 +31,7 @@ function Person({ p, accent }) {
 function Group({ title, people, accent, icon: I, empty }) {
   return (
     <div>
-      <p className="mb-1 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-slate-500"><I className="h-3.5 w-3.5" />{title} <span className="font-normal text-slate-400">· {people.length}</span></p>
+      <p className="mb-1 flex items-center gap-1.5 text-[11px] font-semibold text-slate-500"><I className="h-3.5 w-3.5" />{title} <span className="font-normal text-slate-400">· {people.length}</span></p>
       {people.length ? <ul>{people.map((p) => <Person key={p.id} p={p} accent={accent} />)}</ul> : <p className="px-2 py-1 text-xs text-slate-400">{empty}</p>}
     </div>
   );
@@ -74,7 +74,7 @@ export default function OrgStructurePage() {
       {view === 'branches' && <>
 
       <section className="rounded-2xl border border-slate-200 bg-gradient-to-br from-slate-900 to-slate-800 p-4 text-white" data-testid="org-leadership">
-        <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-slate-300"><Crown className="h-3.5 w-3.5 text-amber-300" />Leadership · admins</p>
+        <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold text-slate-300"><Crown className="h-3.5 w-3.5 text-amber-300" />Leadership · admins</p>
         <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
           {data.leadership.filter(match).map((p) => (
             <li key={p.id} className="flex items-center gap-3 rounded-lg bg-white/5 px-3 py-2">
@@ -100,7 +100,7 @@ export default function OrgStructurePage() {
               <Group title="Team" people={b.staff} accent="bg-emerald-100 text-emerald-800" icon={Users} empty="No staff assigned yet." />
               {b.teams.length > 0 && (
                 <div>
-                  <p className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-slate-500">Field teams</p>
+                  <p className="mb-1 text-[11px] font-semibold text-slate-500">Field teams</p>
                   <div className="flex flex-wrap gap-1.5">{b.teams.map((tm) => <span key={tm.id} className="rounded-full border border-slate-200 px-2.5 py-1 text-xs text-slate-700">{tm.name}{tm.lead ? ` · lead ${tm.lead}` : ''} · {tm.member_count}</span>)}</div>
                 </div>
               )}

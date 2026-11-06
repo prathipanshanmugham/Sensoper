@@ -93,6 +93,7 @@ def create_router(db, get_current_user, require_role, handlers: Dict[str, Callab
         return {"items": items, "counts": counts, "total": len(items)}
 
     @router.get("/approvals/inbox/count")
+    @router.get("/approvals/pending-count")   # older name — same number as the inbox, so they never disagree
     async def inbox_count(request: Request):
         user = await get_current_user(request)
         if user["role"] == "staff":

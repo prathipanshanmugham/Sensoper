@@ -113,6 +113,33 @@ def _round(v):
     except Exception: return 0
 
 
+async def _with_costs(db, lines: List[dict]) -> List[dict]:
+    """Copy the stock item's cost onto lines that don't carry one, before margins are worked out
+    (otherwise a missing cost reads as a 100% margin)."""
+    for ln in lines:
+        if not float(ln.get("cost_price") or 0) and ln.get("inventory_item_id") and ObjectId.is_valid(str(ln.get("inventory_item_id"))):
+            it = await db.inventory_items.find_one({"_id": ObjectId(str(ln["inventory_item_id"]))}, {"unit_price": 1})
+            if it and float(it.get("unit_price") or 0) > 0:
+                ln["cost_price"] = float(it["unit_price"])
+    return lines
+
+
+async def backfill_missing_costs(db) -> int:
+    """One-time repair: sales saved before costs were copied in show a 100% margin. Fill the cost from the
+    linked stock item (its current cost) and work the margin out again. Only lines with no cost are touched."""
+    fixed = 0
+    async for sale in db.sales.find({"lines": {"$elemMatch": {"inventory_item_id": {"$nin": [None, ""]}, "$or": [{"cost_price": 0}, {"cost_price": None}, {"cost_price": {"$exists": False}}]}}}):
+        lines = [dict(l) for l in sale.get("lines") or []]
+        before = [float(l.get("cost_price") or 0) for l in lines]
+        await _with_costs(db, lines)
+        if [float(l.get("cost_price") or 0) for l in lines] == before:
+            continue
+        lines = [_compute_line({**l, "cost_filled_later": True} if float(l.get("cost_price") or 0) != b else l) for l, b in zip(lines, before)]
+        await db.sales.update_one({"_id": sale["_id"]}, {"$set": {"lines": lines}})
+        fixed += 1
+    return fixed
+
+
 def _compute_line(line: dict) -> dict:
     qty = float(line.get("quantity") or 0)
     price = float(line.get("unit_price") or 0)
@@ -336,8 +363,8 @@ def create_router(db, get_current_user, require_role, generate_pdf=None, company
     @router.post("")
     async def create_sale(payload: SaleCreate, request: Request):
         user = await get_current_user(request)
-        # Compute lines
-        lines = [_compute_line(l.model_dump()) for l in payload.lines]
+        # Compute lines (stock cost first, so the margin is real)
+        lines = [_compute_line(l) for l in await _with_costs(db, [l.model_dump() for l in payload.lines])]
 
         location_id = payload.location_id or user.get("default_location_id")
 
@@ -507,7 +534,7 @@ def create_router(db, get_current_user, require_role, generate_pdf=None, company
         now = datetime.now(timezone.utc).isoformat()
         old_lines = sale.get("lines", [])
         new_lines_in = payload.lines if payload.lines is not None else old_lines
-        new_lines = [_compute_line(dict(l) if isinstance(l, dict) else l.model_dump()) for l in new_lines_in]
+        new_lines = [_compute_line(l) for l in await _with_costs(db, [dict(l) if isinstance(l, dict) else l.model_dump() for l in new_lines_in])]
 
         # Delta per inventory_item_id: positive delta = more sold now = further stock decrement
         old_by_item: Dict[str, float] = {}

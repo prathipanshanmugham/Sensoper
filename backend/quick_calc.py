@@ -47,6 +47,9 @@ def _num(v, default=0.0) -> float:
         return default
 
 
+MAX_MARGIN_PCT = 300.0   # above this a "margin %" is almost certainly an amount typed in the wrong box
+
+
 def _pct(v) -> Optional[float]:
     """Explicit percentage or None. Iter 52: there is NO blanket default — None means 'missing'."""
     if v is None or v == "":
@@ -221,6 +224,15 @@ def compute_quick(inputs: Dict[str, Any], config: Dict[str, Any],
         cost = _num(manual_cost) if manual_cost not in (None, "") else auto_cost
         g, m = _pct(overrides.get(f"{key}_gst_pct")), _pct(overrides.get(f"{key}_margin_pct"))
         label = key.capitalize()
+        if m is not None and not (0 <= m <= MAX_MARGIN_PCT):
+            # e.g. 24900 typed into the % box when ₹24,900 was meant — pricing with it makes the quote ~250× too high
+            pricing_issues.append(f"{label}: margin {m:g}% isn't a sensible percentage — enter the margin as a % (0–{MAX_MARGIN_PCT:g}).")
+            warn(f"{key}_margin_pct", f"{label} margin must be a percentage between 0 and {MAX_MARGIN_PCT:g}.")
+            m = None
+        if g is not None and not (0 <= g <= 28):
+            pricing_issues.append(f"{label}: GST {g:g}% isn't a GST rate — use 0, 5, 12, 18 or 28.")
+            warn(f"{key}_gst_pct", f"{label} GST must be between 0 and 28%.")
+            g = None
         if kw > 0 and g is None:
             pricing_issues.append(f"{label}: GST% not set.")
             warn(f"{key}_gst_pct", f"{label} line needs its own GST%.")

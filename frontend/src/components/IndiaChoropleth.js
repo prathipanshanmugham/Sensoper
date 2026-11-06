@@ -65,7 +65,7 @@ const STATE_CENTROIDS = Object.fromEntries(
 
 function scoreColor(score) {
   if (score == null || score === 0) return { fill: '#e2e8f0', text: '#94a3b8' };  // no data
-  if (score >= 80) return { fill: '#10b981', text: 'white' };      // strong
+  if (score >= 80) return { fill: '#58A024', text: 'white' };      // strong
   if (score >= 60) return { fill: '#f59e0b', text: 'white' };      // watch
   if (score >= 40) return { fill: '#38bdf8', text: 'white' };      // serve
   return { fill: '#f43f5e', text: 'white' };                        // no case

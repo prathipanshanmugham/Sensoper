@@ -7,6 +7,9 @@ import { Label } from '../components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Loader2, Plus, Save, Trash2, Edit, Receipt, TrendingDown } from 'lucide-react';
 
+import { errText } from './kit/PageBits';
+import { toast } from 'sonner';
+import { confirmAction } from './kit/confirm';
 const blank = { entry_type: 'operational_expense', entry_date: new Date().toISOString().slice(0,10), amount: '', description: '' };
 
 export default function ExpensesSection() {
@@ -60,9 +63,9 @@ export default function ExpensesSection() {
   };
 
   const remove = async (id) => {
-    if (!window.confirm('Delete this expense entry?')) return;
+    if (!await confirmAction('Delete this expense entry?')) return;
     try { await accountsAPI.delete(id); await load(); }
-    catch (e) { alert(e.response?.data?.detail || 'Delete failed'); }
+    catch (e) { toast.error(errText(e, 'Delete failed')); }
   };
 
   const opExpMtd = summary?.operational_expense_mtd || 0;
@@ -77,7 +80,7 @@ export default function ExpensesSection() {
           <CardContent className="p-4">
             <div className="flex items-center gap-2 mb-1">
               <Receipt className="h-4 w-4 text-amber-600" />
-              <p className="text-xs uppercase tracking-wider text-slate-500">Operational Expense (MTD)</p>
+              <p className="text-xs text-slate-500">Operational Expense (MTD)</p>
             </div>
             <p className="text-2xl font-bold text-slate-900" data-testid="exp-op-amount">₹{opExpMtd.toLocaleString('en-IN')}</p>
             <p className="text-[11px] text-slate-500 mt-1">Rent, salaries, utilities, etc.</p>
@@ -87,7 +90,7 @@ export default function ExpensesSection() {
           <CardContent className="p-4">
             <div className="flex items-center gap-2 mb-1">
               <TrendingDown className="h-4 w-4 text-slate-600" />
-              <p className="text-xs uppercase tracking-wider text-slate-500">Entries This Month</p>
+              <p className="text-xs text-slate-500">Entries This Month</p>
             </div>
             <p className="text-2xl font-bold text-slate-900" data-testid="exp-count">{monthCount}</p>
             <p className="text-[11px] text-slate-500 mt-1">Operational expense entries logged this month</p>

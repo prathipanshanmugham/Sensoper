@@ -72,7 +72,7 @@ export default function Login() {
         <div className="relative z-10 flex w-full flex-col justify-between px-14 py-12">
           <img src={LOGO_URL} alt="Sensoper Controls & Renewables" className="h-20 w-auto self-start object-contain" />
           <div className="max-w-lg">
-            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-700">Sensoper Controls &amp; Renewables</p>
+            <p className="text-xs font-semibold text-emerald-700">Sensoper Controls &amp; Renewables</p>
             <h1 className="mt-3 font-['Outfit'] text-5xl font-bold leading-tight text-slate-900">Welcome to <span className="text-[#2D9BF0]">Sensoper</span></h1>
             <p className="mt-4 text-lg leading-relaxed text-slate-600">Engineering clean, dependable solar power — and running every project, team and customer relationship from one secure workspace.</p>
             <ul className="mt-10 space-y-5">

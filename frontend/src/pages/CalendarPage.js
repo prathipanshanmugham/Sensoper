@@ -14,6 +14,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { useLiveRefresh } from '../lib/liveSync';
 import { Chip, Field, PageHeader, addDaysISO, errText, fmtDate, inputCls, todayISO } from '../components/kit/PageBits';
 
+import { confirmAction } from '../components/kit/confirm';
 // one colour per kind of entry (categorical slots, fixed order) — every entry also carries its text label
 const SOURCES = {
   event: ['Events', '#2a78d6'], amc: ['AMC visits', '#1baf7a'], projects: ['Installations & crews', '#eb6834'], purchases: ['Purchases', '#eda100'],
@@ -134,7 +135,7 @@ export default function CalendarPage() {
   const month = new Date(`${first}T00:00:00`).toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
   const todays = byDay[day] || [];
   const upcoming = (items || []).filter((it) => it.date > day).slice(0, 8);
-  const remove = async (it) => { if (!window.confirm(`Delete “${it.title}”${it.repeat && it.repeat !== 'none' ? ' (every repeat)' : ''}?`)) return; try { await calendarAPI.remove(it.event_id); load(); } catch (e) { toast.error(errText(e)); } };
+  const remove = async (it) => { if (!await confirmAction(`Delete “${it.title}”${it.repeat && it.repeat !== 'none' ? ' (every repeat)' : ''}?`)) return; try { await calendarAPI.remove(it.event_id); load(); } catch (e) { toast.error(errText(e)); } };
   const edit = (it) => setDlg({ ...blankEvent(it.series_date), title: it.title, type: it.type, event_id: it.event_id, date: it.series_date, end_date: it.series_end || '',
     all_day: !it.time, start_time: it.time || '10:00', end_time: it.end_time || '', location: it.location || '', description: it.description || '', audience: it.audience || 'everyone',
     attendee_ids: it.attendee_ids || [], repeat: it.repeat || 'none', repeat_until: it.repeat_until || '', remind: it.remind !== false });
@@ -154,7 +155,7 @@ export default function CalendarPage() {
                 {day.slice(0, 7) !== today.slice(0, 7) && <button type="button" onClick={() => setDay(today)} className="text-xs text-emerald-700 underline">Back to today</button>}</div>
               <Button variant="ghost" size="icon" onClick={() => setDay(shiftMonth(day, 1))} aria-label="Next month" data-testid="cal-next"><ChevronRight className="h-5 w-5" /></Button>
             </div>
-            <div className="grid grid-cols-7 text-center text-[11px] font-medium uppercase tracking-wide text-slate-400">{WEEK.map((w) => <div key={w} className="py-1">{w}</div>)}</div>
+            <div className="grid grid-cols-7 text-center text-[11px] font-medium text-slate-400">{WEEK.map((w) => <div key={w} className="py-1">{w}</div>)}</div>
             <div className="grid grid-cols-7 gap-px overflow-hidden rounded-lg bg-slate-100">
               {days.map((d) => {
                 const list = byDay[d] || [];
@@ -185,7 +186,7 @@ export default function CalendarPage() {
               <ul className="space-y-2">{todays.map((it) => <Entry key={it.id} it={it} onEdit={edit} onDelete={remove} />)}</ul>
             )}
             {upcoming.length > 0 && <>
-              <p className="pt-2 text-xs font-semibold uppercase tracking-wider text-slate-500">Coming up</p>
+              <p className="pt-2 text-xs font-semibold text-slate-500">Coming up</p>
               <ul className="space-y-1.5">{upcoming.map((it) => (
                 <li key={it.id}><button type="button" onClick={() => setDay(it.date)} className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm hover:bg-white">
                   <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: (SOURCES[it.source] || SOURCES.event)[1] }} />

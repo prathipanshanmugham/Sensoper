@@ -9,6 +9,7 @@ import { ListingCell } from './ListingCell';
 import { PlatformsDialog } from './PlatformsDialog';
 import { AddProductDialog } from './AddProductDialog';
 
+import { confirmAction } from '../kit/confirm';
 const STATUS_FILTERS = ['all', 'live', 'draft', 'paused', 'out_of_stock', 'delisted'];
 
 export function ProductsTab({ products, platforms, items, canManage, isAdmin, refresh }) {
@@ -30,7 +31,7 @@ export function ProductsTab({ products, platforms, items, canManage, isAdmin, re
 
   const saveCell = async (itemId, platformId, payload) => { await ecommerceAPI.products.upsertListing(itemId, platformId, payload); refresh(); };
   const delist = async (r) => {
-    if (!window.confirm(`Delist "${r.item_name}" from every platform? Listings are kept in history as delisted.`)) return;
+    if (!await confirmAction(`Delist "${r.item_name}" from every platform? Listings are kept in history as delisted.`)) return;
     await ecommerceAPI.products.delist(r.inventory_item_id); refresh();
   };
 
