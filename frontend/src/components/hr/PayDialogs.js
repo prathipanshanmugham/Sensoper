@@ -89,7 +89,7 @@ export function SalaryDialog({ person, current, profile, onOpenChange, onSaved }
             <Field label="Note (why it changed)"><Input value={f.note} onChange={set('note')} placeholder="e.g. Annual increment" className="h-11" /></Field>
           </div>
           <aside className="space-y-3 rounded-xl border border-emerald-100 bg-emerald-50/50 p-3 md:self-start" data-testid="pay-salary-preview">
-            <p className="text-xs font-semibold uppercase tracking-wide text-emerald-800">A normal month</p>
+            <p className="text-xs font-semibold text-emerald-800">A normal month</p>
             {!prev ? <p className="text-xs text-slate-500">Enter the basic to see the take-home.</p> : (<>
               <MoneyRows rows={[{ label: 'Gross pay', amount: prev.gross }, ...prev.deductions.map((d) => ({ label: `− ${d.label}`, amount: d.amount }))]}
                 total={prev.net} totalLabel="Take-home" tone="green" />

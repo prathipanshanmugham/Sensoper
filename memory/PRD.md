@@ -399,3 +399,26 @@ See CHANGES.md for the full list. Highlights for the next agent:
   HR route accepts module_hr or module_payroll (ProtectedRoute anyModule). PillTabs scrolls the chosen tab into view.
 - Tests: tests/test_payroll_helpdesk.py (6) + https test in test_ai_agents — 62 in-process tests pass.
 
+
+
+## Iteration 71 — error sweep, live-data fixes, design pass (2026-11-06)
+- server.py: global `InvalidId` → 404 handler; item detail and project detail use `.get` for optional fields;
+  item history reads both `type`/`transaction_type` and `user_name`/`performed_by_name`, and the bulk import writes
+  the standard keys. New GET `/api/users/directory` (any staff login, names/roles only; shared rule). `/approvals/pending-count`
+  moved into approvals_inbox (same number as inbox/count). Alerts margin = invoicing._cost_breakdown gross_margin_pct.
+  `_system_from_custom_fields` flags saved line margins > 300%; add-on margins outside 0–300 are flagged and ignored.
+  `_reference_metrics` (drops impossible savings, rounds) and `_completed_on` for reference candidates/summary.
+  Project GET strips `inverter_login.password` (adds `has_password`); GET `/api/projects/{id}/inverter-password` (audit
+  `inverter_password_viewed`). Startup: `sales.backfill_missing_costs` (idempotent; lines marked `cost_filled_later`).
+- quick_calc.py: `MAX_MARGIN_PCT` 300 and GST 0–28 guards on structure/cabling/installation lines.
+- sales.py `_with_costs` before `_compute_line` on create/edit. brands.py: unbranded stock counted. amc_sales.py: visits
+  de-duplicated (status overdue). project_numbers.py: `project_kw`, `project_system_type` (legacy shapes) used by amc.py /
+  amc_sales.py. expansion.py: `_state` / `_place` normalise spellings.
+- Frontend: tailwind `emerald` remapped to the logo leaf scale (600 #43851A); theme tokens (primary leaf, accent/secondary
+  neutral, ring leaf); index.css `.grid > * {min-width:0}`, tabular numerals. ui/button|card|input|select|textarea|tabs|badge|
+  dialog|sheet|alert-dialog|sonner restyled (toasts top-center). kit/PageBits: PillTabs segmented, Tile/Chip sentence case,
+  `errText` handles 422 lists, network and 5xx. New kit/confirm.js (`confirmAction`, `ConfirmHost` in App.js) replaces every
+  window.confirm; every alert() is a toast. All-caps small labels removed (inputs that capitalise kept). DashboardLayout:
+  one-line breadcrumb, active bar, single New project button. SiteVisitForm `blankNulls` on load; SiteDiary partners only with
+  module_partners; Teams/WeeklyAudit/AmcOps use usersAPI.directory. ProjectDetails fetches the inverter password on demand.
+- Tests: tests/test_qa_nov.py (11) — 107 in-process tests pass.

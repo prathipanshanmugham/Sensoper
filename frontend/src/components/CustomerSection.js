@@ -67,25 +67,25 @@ export default function CustomerSection() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-5" data-testid="customer-kpis">
         <Card className="border-emerald-200 bg-emerald-50/40">
           <CardContent className="p-4">
-            <div className="flex items-center gap-2 mb-1"><Users className="h-4 w-4 text-emerald-600" /><p className="text-xs uppercase tracking-wider text-slate-500">Total Customers</p></div>
+            <div className="flex items-center gap-2 mb-1"><Users className="h-4 w-4 text-emerald-600" /><p className="text-xs text-slate-500">Total Customers</p></div>
             <p className="text-2xl font-bold text-slate-900" data-testid="customer-count">{totalCustomers}</p>
           </CardContent>
         </Card>
         <Card className="border-slate-200">
           <CardContent className="p-4">
-            <div className="flex items-center gap-2 mb-1"><IndianRupee className="h-4 w-4 text-slate-600" /><p className="text-xs uppercase tracking-wider text-slate-500">Lifetime Revenue</p></div>
+            <div className="flex items-center gap-2 mb-1"><IndianRupee className="h-4 w-4 text-slate-600" /><p className="text-xs text-slate-500">Lifetime Revenue</p></div>
             <p className="text-2xl font-bold text-slate-900" data-testid="customer-revenue">₹{totalRevenue.toLocaleString('en-IN')}</p>
           </CardContent>
         </Card>
         <Card className="border-blue-200 bg-blue-50/40">
           <CardContent className="p-4">
-            <div className="flex items-center gap-2 mb-1"><IndianRupee className="h-4 w-4 text-blue-600" /><p className="text-xs uppercase tracking-wider text-slate-500">Total Outstanding</p></div>
+            <div className="flex items-center gap-2 mb-1"><IndianRupee className="h-4 w-4 text-blue-600" /><p className="text-xs text-slate-500">Total Outstanding</p></div>
             <p className="text-2xl font-bold text-slate-900" data-testid="customer-outstanding">₹{totalOutstanding.toLocaleString('en-IN')}</p>
           </CardContent>
         </Card>
         <Card className="border-red-200 bg-red-50/40">
           <CardContent className="p-4">
-            <div className="flex items-center gap-2 mb-1"><AlertCircle className="h-4 w-4 text-red-600" /><p className="text-xs uppercase tracking-wider text-slate-500">Overdue Customers</p></div>
+            <div className="flex items-center gap-2 mb-1"><AlertCircle className="h-4 w-4 text-red-600" /><p className="text-xs text-slate-500">Overdue Customers</p></div>
             <p className="text-2xl font-bold text-red-700" data-testid="customer-overdue">{totalOverdueCustomers}</p>
           </CardContent>
         </Card>

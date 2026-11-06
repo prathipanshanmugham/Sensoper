@@ -208,7 +208,7 @@ export function GridSolarFlow({ data, r, set, config, panels, inverters, batteri
         {needsBattery && <CostLine label={`Battery${r?.battery_count ? ` · ${r.battery_count} nos` : ''}`} line={r?.lines?.battery} testid="line-battery" />}
         <div className="px-3 py-2.5 space-y-2" data-testid="line-services">
           <div className="flex items-center justify-between gap-3">
-            <span className="text-slate-700">Structure, cabling &amp; installation{svcMissing && <span className="ml-2 rounded bg-amber-100 text-amber-800 px-1.5 py-0.5 text-[10px] uppercase tracking-wider" data-testid="line-services-missing">needs GST% / margin%</span>}</span>
+            <span className="text-slate-700">Structure, cabling &amp; installation{svcMissing && <span className="ml-2 rounded bg-amber-100 text-amber-800 px-1.5 py-0.5 text-[11px]" data-testid="line-services-missing">needs GST% / margin%</span>}</span>
             <span className="font-medium text-slate-900 whitespace-nowrap" data-testid="line-services-amount">{inr(svcTotal)}</span>
           </div>
           <div className="grid grid-cols-2 gap-2">
@@ -260,10 +260,10 @@ function CostLine({ label, line, testid }) {
   return (
     <div className="flex items-center justify-between gap-3 px-3 py-2" data-testid={testid}>
       <span className="text-slate-700">{label}
-        {line?.benchmark && <span className="ml-2 rounded bg-slate-100 text-slate-500 px-1.5 py-0.5 text-[10px] uppercase tracking-wider" data-testid={`${testid}-benchmark`}>market rate</span>}
-        {line?.custom && <span className="ml-2 rounded bg-sky-50 text-sky-700 px-1.5 py-0.5 text-[10px] uppercase tracking-wider" data-testid={`${testid}-custom`}>typed in</span>}
+        {line?.benchmark && <span className="ml-2 rounded bg-slate-100 text-slate-500 px-1.5 py-0.5 text-[11px]" data-testid={`${testid}-benchmark`}>market rate</span>}
+        {line?.custom && <span className="ml-2 rounded bg-sky-50 text-sky-700 px-1.5 py-0.5 text-[11px]" data-testid={`${testid}-custom`}>typed in</span>}
         {line && !line.benchmark && !line.custom && !missing && <span className="ml-2 text-[10px] text-slate-400">margin {line.margin_pct}% · GST {line.gst_pct}%</span>}
-        {missing && <span className="ml-2 rounded bg-amber-100 text-amber-800 px-1.5 py-0.5 text-[10px] uppercase tracking-wider" data-testid={`${testid}-missing`}>{line.margin_pct === null ? 'margin' : ''}{line.margin_pct === null && line.gst_pct === null ? ' + ' : ''}{line.gst_pct === null ? 'GST' : ''} missing</span>}
+        {missing && <span className="ml-2 rounded bg-amber-100 text-amber-800 px-1.5 py-0.5 text-[11px]" data-testid={`${testid}-missing`}>{line.margin_pct === null ? 'margin' : ''}{line.margin_pct === null && line.gst_pct === null ? ' + ' : ''}{line.gst_pct === null ? 'GST' : ''} missing</span>}
       </span>
       <span className="font-medium text-slate-900 whitespace-nowrap">{inr(line?.amount)}</span>
     </div>
@@ -278,7 +278,7 @@ function ServiceLine({ keyName, line, ov, setOv, warnFor }) {
   return (
     <div className="space-y-1.5" data-testid={`line-${keyName}`}>
       <div className="flex items-center justify-between gap-3">
-        <span className="text-slate-700 text-sm">{label}{missing && <span className="ml-2 rounded bg-amber-100 text-amber-800 px-1.5 py-0.5 text-[10px] uppercase tracking-wider" data-testid={`line-${keyName}-missing`}>needs GST% / margin%</span>}</span>
+        <span className="text-slate-700 text-sm">{label}{missing && <span className="ml-2 rounded bg-amber-100 text-amber-800 px-1.5 py-0.5 text-[11px]" data-testid={`line-${keyName}-missing`}>needs GST% / margin%</span>}</span>
         <span className="font-medium text-slate-900 whitespace-nowrap" data-testid={`line-${keyName}-amount`}>{inr(line?.amount)}</span>
       </div>
       <div className="grid grid-cols-3 gap-2">

@@ -262,11 +262,11 @@ def create_router(db, get_current_user, require_role, create_audit_log, get_perm
         async for it in db.inventory_items.find({}, {"brand_id": 1, "quantity": 1, "unit_price": 1, "name": 1}):
             bid = it.get("brand_id") or ""
             item_brand[str(it["_id"])] = bid
+            r = row(bid)   # unbranded stock counts under "No brand set", like its sales do
+            r["items"] += 1
+            r["stock_qty"] += _f(it.get("quantity"))
+            r["stock_value"] += _f(it.get("quantity")) * _f(it.get("unit_price"))
             if bid:
-                r = row(bid)
-                r["items"] += 1
-                r["stock_qty"] += _f(it.get("quantity"))
-                r["stock_value"] += _f(it.get("quantity")) * _f(it.get("unit_price"))
                 names_by_brand[bid].add(str(it.get("name") or "").strip().lower())
 
         def add_sale(item_id: Optional[str], qty: float, value: float, when: str, channel: str, margin: float = 0.0) -> None:
@@ -343,7 +343,7 @@ def create_router(db, get_current_user, require_role, create_audit_log, get_perm
         out = []
         for r in rows.values():
             sales = r["counter_sales"] + r["online_sales"] + r["project_sales"]
-            if r["brand_id"] is None and not sales:
+            if r["brand_id"] is None and not sales and not r["items"]:
                 continue
             r = {k: (round(v, 2) if isinstance(v, float) else v) for k, v in r.items()}
             r["sales"] = round(sales, 2)

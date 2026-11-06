@@ -60,3 +60,20 @@ def project_margin(p: Dict[str, Any]) -> float:
 
 def project_gst(p: Dict[str, Any]) -> float:
     return _f((p.get("cost_estimation") or {}).get("total_gst"))
+
+
+def project_kw(p: Dict[str, Any]) -> float:
+    """System size in kW, from wherever this project's generation of the form kept it (newest first)."""
+    ps = ((p.get("custom_fields") or {}).get("proposed_solution") or {})
+    sizing = ((p.get("solar_report") or {}).get("sizing") or {})
+    ce = p.get("cost_estimation") or {}
+    for v in (ps.get("system_size_kw"), ce.get("system_size_kw"), sizing.get("kwp_recommended"), (p.get("solar_system") or {}).get("system_size_kw")):
+        if _f(v) > 0:
+            return _f(v)
+    return 0.0
+
+
+def project_system_type(p: Dict[str, Any]) -> str:
+    """on-grid / off-grid / hybrid / solar-pump … as recorded on the project (older projects keep it under solar_system)."""
+    ps = ((p.get("custom_fields") or {}).get("proposed_solution") or {})
+    return str(ps.get("system_type") or (p.get("solar_system") or {}).get("system_type") or "on-grid")

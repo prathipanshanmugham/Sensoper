@@ -16,6 +16,7 @@ import { useLiveRefresh } from '../../lib/liveSync';
 import VendorPicker from './VendorPicker';
 import { Chip, Empty, Field, FileAttach, Loading, Stars, Tile, Tiles, addDaysISO, errText, fmtDate, inputCls, inr, inrShort, todayISO } from '../kit/PageBits';
 
+import { confirmAction } from '../kit/confirm';
 const STATUS = { open: ['Waiting for quotes', 'amber'], quoting: ['Getting quotes', 'blue'], ordered: ['PO made', 'green'], cancelled: ['Cancelled', 'slate'] };
 const blankLine = () => ({ name: '', qty: '', unit: 'no', inventory_item_id: null, specs: '' });
 
@@ -188,7 +189,7 @@ function RequestSheet({ prId, onOpenChange, onChanged, canEdit, canChoose }) {
   useEffect(() => { setPr(null); load(); }, [load]);
   useLiveRefresh(['purchases'], load);
   const changed = (data) => { if (data?.id) setPr(data); else load(); onChanged?.(); };
-  const removeQuote = async (q) => { if (!window.confirm(`Remove ${q.vendor_name}'s quote?`)) return; try { changed((await procurementAPI.removeQuote(pr.id, q.id)).data); } catch (e) { toast.error(errText(e)); } };
+  const removeQuote = async (q) => { if (!await confirmAction(`Remove ${q.vendor_name}'s quote?`)) return; try { changed((await procurementAPI.removeQuote(pr.id, q.id)).data); } catch (e) { toast.error(errText(e)); } };
   const cancel = async () => { const r = window.prompt('Why cancel this request?'); if (r === null) return; try { await procurementAPI.cancel(pr.id, r); changed(); load(); } catch (e) { toast.error(errText(e)); } };
   const open = pr && ['open', 'quoting'].includes(pr.status);
   const c = pr?.comparison;

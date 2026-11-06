@@ -7,6 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../ui/dialog';
 import { Loader2 } from 'lucide-react';
 
+import { errText } from '../kit/PageBits';
 const today = () => new Date().toISOString().slice(0, 10);
 const EMPTY_ORDER = { platform_id: '', platform_order_id: '', order_date: today(), inventory_item_id: '', quantity: 1, sold_price: '', shipping_cost: 0 };
 
@@ -33,7 +34,7 @@ export function RecordOrderDialog({ open, onOpenChange, platforms, products, ite
         lines: [{ listing_id: listing?.id, inventory_item_id: form.inventory_item_id, quantity: parseFloat(form.quantity), sold_price: parseFloat(form.sold_price) }],
       });
       setForm(EMPTY_ORDER); onOpenChange(false); onSaved();
-    } catch (e) { setError(e.response?.data?.detail || 'Failed to record order'); } finally { setSaving(false); }
+    } catch (e) { setError(errText(e, 'Failed to record order')); } finally { setSaving(false); }
   };
 
   return (
@@ -84,7 +85,7 @@ export function ImportOrdersDialog({ open, onOpenChange, platforms, onImported }
     const file = e.target.files[0];
     if (!file || !platformId) return;
     setError('');
-    try { setPreview((await ecommerceAPI.orders.importPreview(platformId, file)).data); } catch (err) { setError(err.response?.data?.detail || 'Import preview failed'); }
+    try { setPreview((await ecommerceAPI.orders.importPreview(platformId, file)).data); } catch (err) { setError(errText(err, 'Import preview failed')); }
   };
   const commit = async () => {
     if (!preview) return;
@@ -93,7 +94,7 @@ export function ImportOrdersDialog({ open, onOpenChange, platforms, onImported }
       const rows = preview.rows.filter(r => r.matched).map(r => ({ platform_order_id: r.platform_order_id, order_date: r.order_date, customer_name_masked: r.customer_name_masked, inventory_item_id: r.inventory_item_id, quantity: r.quantity, sold_price: r.sold_price, shipping_cost: r.shipping_cost }));
       const res = await ecommerceAPI.orders.importCommit({ platform_id: platformId, rows });
       onImported(res.data); close();
-    } catch (err) { setError(err.response?.data?.detail || 'Import failed'); } finally { setSaving(false); }
+    } catch (err) { setError(errText(err, 'Import failed')); } finally { setSaving(false); }
   };
 
   return (

@@ -5,19 +5,22 @@ import { useAuth, formatApiErrorDetail } from '../contexts/AuthContext';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
-import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
+import { Card, CardContent } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '../components/ui/dialog';
 import { 
   ArrowLeft, Plus, Edit, Trash2, Loader2, Package, AlertTriangle,
   Search, Warehouse, Tag, X, CheckCircle2, Circle, Link2, CalendarDays,
-  Upload, FileSpreadsheet, FileText, Download, Layers
+  Upload, FileSpreadsheet, Download, Layers
 } from 'lucide-react';
 import Can from '../components/Can';
 import PhotoStrip, { itemImage } from '../components/PhotoStrip';
 import { useLiveRefresh } from '../lib/liveSync';
 
+import { errText } from '../components/kit/PageBits';
+import { toast } from 'sonner';
+import { confirmAction } from '../components/kit/confirm';
 const REQUIRED_IMPORT_FIELDS = ['name', 'sku_code', 'category', 'quantity', 'unit_price'];
 const IMPORT_STATUS_STYLES = {
   will_create: 'bg-emerald-100 text-emerald-700',
@@ -227,9 +230,9 @@ export default function InventoryManagement() {
   };
 
   const handleDeleteItem = async (item) => {
-    if (!window.confirm(`Delete "${item.name}"?`)) return;
+    if (!await confirmAction(`Delete "${item.name}"?`)) return;
     try { await inventoryAPI.deleteItem(item.id); fetchData(); }
-    catch (err) { alert(err.response?.data?.detail || 'Failed to delete'); }
+    catch (err) { toast.error(errText(err, 'Failed to delete')); }
   };
 
   const handleCreateCategory = async () => {
@@ -243,9 +246,9 @@ export default function InventoryManagement() {
   };
 
   const handleDeleteCategory = async (id) => {
-    if (!window.confirm('Delete this category?')) return;
+    if (!await confirmAction('Delete this category?')) return;
     try { await inventoryAPI.deleteCategory(id); fetchData(); }
-    catch (err) { alert(err.response?.data?.detail || 'Cannot delete'); }
+    catch (err) { toast.error(errText(err, 'Cannot delete')); }
   };
 
   const filteredItems = items.filter(item => {
@@ -353,16 +356,16 @@ export default function InventoryManagement() {
               <table className="w-full bg-white rounded-lg border border-slate-200">
                 <thead>
                   <tr className="border-b border-slate-200 bg-slate-50">
-                    <th className="text-left py-3 px-4 text-xs font-semibold uppercase text-slate-500">Item</th>
-                    <th className="text-left py-3 px-4 text-xs font-semibold uppercase text-slate-500">Category</th>
-                    <th className="text-left py-3 px-4 text-xs font-semibold uppercase text-slate-500 cursor-pointer select-none" onClick={toggleBranchSort} data-testid="sort-branch-header">Branch{branchSort === 'asc' ? ' ▲' : branchSort === 'desc' ? ' ▼' : ''}</th>
-                    <th className="text-left py-3 px-4 text-xs font-semibold uppercase text-slate-500">Bin Location</th>
-                    <th className="text-right py-3 px-4 text-xs font-semibold uppercase text-slate-500">Qty</th>
-                    {viewMode === 'panels' && <th className="text-right py-3 px-4 text-xs font-semibold uppercase text-slate-500">Wattage</th>}
-                    <th className="text-right py-3 px-4 text-xs font-semibold uppercase text-slate-500">Price</th>
-                    <th className="text-right py-3 px-4 text-xs font-semibold uppercase text-slate-500">GST</th>
-                    <th className="text-left py-3 px-4 text-xs font-semibold uppercase text-slate-500">HSN</th>
-                    <th className="text-right py-3 px-4 text-xs font-semibold uppercase text-slate-500">Actions</th>
+                    <th className="text-left py-3 px-4 text-xs font-semibold text-slate-500">Item</th>
+                    <th className="text-left py-3 px-4 text-xs font-semibold text-slate-500">Category</th>
+                    <th className="text-left py-3 px-4 text-xs font-semibold text-slate-500 cursor-pointer select-none" onClick={toggleBranchSort} data-testid="sort-branch-header">Branch{branchSort === 'asc' ? ' ▲' : branchSort === 'desc' ? ' ▼' : ''}</th>
+                    <th className="text-left py-3 px-4 text-xs font-semibold text-slate-500">Bin Location</th>
+                    <th className="text-right py-3 px-4 text-xs font-semibold text-slate-500">Qty</th>
+                    {viewMode === 'panels' && <th className="text-right py-3 px-4 text-xs font-semibold text-slate-500">Wattage</th>}
+                    <th className="text-right py-3 px-4 text-xs font-semibold text-slate-500">Price</th>
+                    <th className="text-right py-3 px-4 text-xs font-semibold text-slate-500">GST</th>
+                    <th className="text-left py-3 px-4 text-xs font-semibold text-slate-500">HSN</th>
+                    <th className="text-right py-3 px-4 text-xs font-semibold text-slate-500">Actions</th>
                   </tr>
                 </thead>
                 <tbody>

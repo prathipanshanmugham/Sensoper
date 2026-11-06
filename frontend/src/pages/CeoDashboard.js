@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { dashboardAPI, healthAPI, supportAPI, reportsAPI } from '../utils/api';
+import { dashboardAPI, healthAPI, supportAPI } from '../utils/api';
 import HealthScoreCard from '../components/HealthScoreCard';
 import { useLocationScope, LocationScopeSelect } from '../components/LocationScope';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
@@ -20,8 +20,8 @@ import { generateCeoReportPDF } from '../utils/ceoReportPDF';
 import { DateRangePicker, rangeLabel } from '../components/DateRangePicker';
 import Can from '../components/Can';
 
-const COLORS = ['#10b981', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
-const STATUS_COLORS = { draft: '#f59e0b', submitted: '#3b82f6', approved: '#10b981', rejected: '#ef4444', completed: '#059669', deletion_requested: '#f97316' };
+const COLORS = ['#58A024', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
+const STATUS_COLORS = { draft: '#f59e0b', submitted: '#3b82f6', approved: '#58A024', rejected: '#ef4444', completed: '#43851A', deletion_requested: '#f97316' };
 
 function KpiCard({ title, value, icon: Icon, color = 'emerald', subtitle, onClick }) {
   return (
@@ -29,7 +29,7 @@ function KpiCard({ title, value, icon: Icon, color = 'emerald', subtitle, onClic
       <CardContent className="p-5">
         <div className="flex items-start justify-between">
           <div className="space-y-1">
-            <p className="text-xs font-medium uppercase tracking-wider text-slate-400">{title}</p>
+            <p className="text-xs font-medium text-slate-400">{title}</p>
             <p className={`text-2xl font-bold font-['Outfit'] text-${color}-600`}>{value}</p>
             {subtitle && <p className="text-xs text-slate-500">{subtitle}</p>}
           </div>
@@ -106,8 +106,8 @@ export default function CeoDashboard({ embedded = false }) {
   const funnelData = [
     { name: 'Leads', value: sales_funnel.total_leads, fill: '#94a3b8' },
     { name: 'Quotes', value: sales_funnel.quotes_generated, fill: '#3b82f6' },
-    { name: 'Approved', value: sales_funnel.approved, fill: '#10b981' },
-    { name: 'Completed', value: sales_funnel.completed, fill: '#059669' }
+    { name: 'Approved', value: sales_funnel.approved, fill: '#58A024' },
+    { name: 'Completed', value: sales_funnel.completed, fill: '#43851A' }
   ];
 
   return (
@@ -207,7 +207,7 @@ export default function CeoDashboard({ embedded = false }) {
               {cashHistory.length >= 2 && (
                 <div className="mt-3 h-12 w-full">
                   <ResponsiveContainer width="100%" height={48}>
-                    <LineChart data={cashHistory} margin={{ top: 2, right: 4, bottom: 2, left: 4 }}><Line type="monotone" dataKey="amount" stroke="#10b981" strokeWidth={2} dot={false} isAnimationActive={false} /><Tooltip formatter={(v) => `₹${v.toLocaleString('en-IN')}`} labelFormatter={(l) => l} /></LineChart>
+                    <LineChart data={cashHistory} margin={{ top: 2, right: 4, bottom: 2, left: 4 }}><Line type="monotone" dataKey="amount" stroke="#58A024" strokeWidth={2} dot={false} isAnimationActive={false} /><Tooltip formatter={(v) => `₹${v.toLocaleString('en-IN')}`} labelFormatter={(l) => l} /></LineChart>
                   </ResponsiveContainer>
                 </div>
               )}
@@ -255,7 +255,7 @@ export default function CeoDashboard({ embedded = false }) {
                     <XAxis dataKey="month" tick={{ fontSize: 11 }} stroke="#94a3b8" />
                     <YAxis tick={{ fontSize: 11 }} stroke="#94a3b8" tickFormatter={(v) => v >= 100000 ? `${(v/100000).toFixed(1)}L` : v >= 1000 ? `${(v/1000).toFixed(0)}K` : v} />
                     <Tooltip formatter={(v) => [`₹${v.toLocaleString('en-IN')}`, 'Revenue']} />
-                    <Line type="monotone" dataKey="revenue" stroke="#10b981" strokeWidth={2.5} dot={{ r: 4, fill: '#10b981' }} />
+                    <Line type="monotone" dataKey="revenue" stroke="#58A024" strokeWidth={2.5} dot={{ r: 4, fill: '#58A024' }} />
                   </LineChart>
                 </ResponsiveContainer>
               ) : <p className="text-sm text-slate-400 text-center py-16">No revenue data yet</p>}
@@ -376,9 +376,9 @@ export default function CeoDashboard({ embedded = false }) {
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                 {/* Aging Chart */}
                 <div className="space-y-3">
-                  <p className="text-xs font-medium uppercase tracking-wider text-slate-400">Credit Aging</p>
+                  <p className="text-xs font-medium text-slate-400">Credit Aging</p>
                   {[
-                    { label: '0-30 Days', value: data.credit_data.aging?.['0_30'] || 0, color: '#10b981' },
+                    { label: '0-30 Days', value: data.credit_data.aging?.['0_30'] || 0, color: '#58A024' },
                     { label: '30-60 Days', value: data.credit_data.aging?.['30_60'] || 0, color: '#f59e0b' },
                     { label: '60+ Days', value: data.credit_data.aging?.['60_plus'] || 0, color: '#ef4444' }
                   ].map(bucket => {
@@ -393,7 +393,7 @@ export default function CeoDashboard({ embedded = false }) {
                 </div>
                 {/* Top Debtors */}
                 <div>
-                  <p className="text-xs font-medium uppercase tracking-wider text-slate-400 mb-3">Top 5 Outstanding</p>
+                  <p className="text-xs font-medium text-slate-400 mb-3">Top 5 Outstanding</p>
                   {data.credit_data.top_debtors?.length > 0 ? (
                     <div className="space-y-2">
                       {data.credit_data.top_debtors.map((d, i) => (

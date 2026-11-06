@@ -9,9 +9,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../components/ui/dialog';
 import { Label } from '../components/ui/label';
 import { Textarea } from '../components/ui/textarea';
-import { Loader2, Plus, Ticket, Clock, AlertTriangle, TrendingUp, Star, Users, Settings } from 'lucide-react';
+import { Loader2, Plus, Ticket, Clock, AlertTriangle, Star, Settings } from 'lucide-react';
 import { useLiveRefresh } from '../lib/liveSync';
 
+import { errText } from '../components/kit/PageBits';
+import { toast } from 'sonner';
 const STATUS_STYLES = { open: 'bg-slate-100 text-slate-700', assigned: 'bg-blue-100 text-blue-700', in_progress: 'bg-amber-100 text-amber-700', pending_customer: 'bg-purple-100 text-purple-700', resolved: 'bg-emerald-100 text-emerald-700', closed: 'bg-slate-200 text-slate-600', reopened: 'bg-rose-100 text-rose-700' };
 const PRIORITY_STYLES = { low: 'bg-slate-100 text-slate-600', medium: 'bg-blue-100 text-blue-700', high: 'bg-orange-100 text-orange-700', critical: 'bg-red-100 text-red-700' };
 const SLA_STYLES = { on_track: 'bg-emerald-100 text-emerald-700', at_risk: 'bg-amber-100 text-amber-700', breached: 'bg-red-100 text-red-700' };
@@ -25,7 +27,7 @@ function KpiCard({ label, value, icon: Icon, testid, tone = 'slate' }) {
   const toneCls = { slate: 'text-slate-500', red: 'text-red-500', emerald: 'text-emerald-500', amber: 'text-amber-500' }[tone] || 'text-slate-500';
   return (
     <Card className="border-slate-200" data-testid={testid}><CardContent className="p-4">
-      <div className={`flex items-center gap-2 mb-1 ${toneCls}`}><Icon className="h-4 w-4" /><span className="text-[11px] uppercase tracking-wide text-slate-400">{label}</span></div>
+      <div className={`flex items-center gap-2 mb-1 ${toneCls}`}><Icon className="h-4 w-4" /><span className="text-[11px] text-slate-400">{label}</span></div>
       <p className="text-xl font-bold text-slate-900">{value}</p>
     </CardContent></Card>
   );
@@ -63,23 +65,23 @@ export default function SupportTicketsTab() {
   useEffect(() => { fetchAll(); }, [fetchAll]);
   useLiveRefresh(['support', 'portal'], () => fetchAll(true));
 
-  const openSLA = async () => { try { const r = await supportAPI.slaConfig.get(); setSla({ critical_response_hours: r.data.critical.response, critical_resolution_hours: r.data.critical.resolution, high_response_hours: r.data.high.response, high_resolution_hours: r.data.high.resolution, medium_response_hours: r.data.medium.response, medium_resolution_hours: r.data.medium.resolution, low_response_hours: r.data.low.response, low_resolution_hours: r.data.low.resolution }); setShowSLA(true); } catch (e) { alert('Could not load SLA config'); } };
-  const saveSLA = async () => { try { await supportAPI.slaConfig.update(sla); setShowSLA(false); fetchAll(); } catch (e) { alert(e.response?.data?.detail || 'Save failed'); } };
+  const openSLA = async () => { try { const r = await supportAPI.slaConfig.get(); setSla({ critical_response_hours: r.data.critical.response, critical_resolution_hours: r.data.critical.resolution, high_response_hours: r.data.high.response, high_resolution_hours: r.data.high.resolution, medium_response_hours: r.data.medium.response, medium_resolution_hours: r.data.medium.resolution, low_response_hours: r.data.low.response, low_resolution_hours: r.data.low.resolution }); setShowSLA(true); } catch (e) { toast.error('Could not load SLA config'); } };
+  const saveSLA = async () => { try { await supportAPI.slaConfig.update(sla); setShowSLA(false); fetchAll(); } catch (e) { toast.error(errText(e, 'Save failed')); } };
 
   const handleCreate = async () => {
-    if (!form.customer_name || !form.description) { alert('Customer & description required'); return; }
+    if (!form.customer_name || !form.description) { toast.error('Customer & description required'); return; }
     setSaving(true);
     try { await supportAPI.tickets.create({ ...form, system_capacity_kw: parseFloat(form.system_capacity_kw) || 0 }); setShowCreate(false); setForm(emptyTicket()); fetchAll(); }
-    catch (e) { alert(e.response?.data?.detail || 'Failed'); } finally { setSaving(false); }
+    catch (e) { toast.error(errText(e, 'Failed')); } finally { setSaving(false); }
   };
 
-  const transitionStatus = async (id, status) => { try { await supportAPI.tickets.transitionStatus(id, { status }); fetchAll(); if (selected && selected.id === id) { const r = await supportAPI.tickets.get(id); setSelected(r.data); } } catch (e) { alert(e.response?.data?.detail || 'Failed'); } };
+  const transitionStatus = async (id, status) => { try { await supportAPI.tickets.transitionStatus(id, { status }); fetchAll(); if (selected && selected.id === id) { const r = await supportAPI.tickets.get(id); setSelected(r.data); } } catch (e) { toast.error(errText(e, 'Failed')); } };
 
   const openClose = (t) => { setSelected(t); setCsat(5); setCloseNotes(''); setShowClose(true); };
-  const doClose = async () => { try { await supportAPI.tickets.close(selected.id, { customer_satisfaction_rating: csat, resolution_notes: closeNotes }); setShowClose(false); setSelected(null); fetchAll(); } catch (e) { alert(e.response?.data?.detail || 'Failed'); } };
+  const doClose = async () => { try { await supportAPI.tickets.close(selected.id, { customer_satisfaction_rating: csat, resolution_notes: closeNotes }); setShowClose(false); setSelected(null); fetchAll(); } catch (e) { toast.error(errText(e, 'Failed')); } };
 
   const [assignTo, setAssignTo] = useState('');
-  const doAssign = async () => { if (!assignTo || !selected) return; try { await supportAPI.tickets.update(selected.id, { assigned_to: assignTo, assigned_to_name: assignTo, note: `Assigned to ${assignTo}` }); const r = await supportAPI.tickets.get(selected.id); setSelected(r.data); setAssignTo(''); fetchAll(); } catch (e) { alert(e.response?.data?.detail || 'Failed'); } };
+  const doAssign = async () => { if (!assignTo || !selected) return; try { await supportAPI.tickets.update(selected.id, { assigned_to: assignTo, assigned_to_name: assignTo, note: `Assigned to ${assignTo}` }); const r = await supportAPI.tickets.get(selected.id); setSelected(r.data); setAssignTo(''); fetchAll(); } catch (e) { toast.error(errText(e, 'Failed')); } };
 
   if (loading) return <div className="flex justify-center py-16"><Loader2 className="h-8 w-8 animate-spin text-emerald-600" /></div>;
 

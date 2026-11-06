@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { deletionRequestsAPI } from '../utils/api';
 import { Button } from '../components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
+import { Card, CardContent } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { 
@@ -15,6 +15,7 @@ import {
   FileText
 } from 'lucide-react';
 
+import { confirmAction } from '../components/kit/confirm';
 const statusConfig = {
   pending: { label: 'Pending', color: 'bg-amber-100 text-amber-800', icon: Clock },
   approved: { label: 'Approved', color: 'bg-green-100 text-green-800', icon: Check },
@@ -44,7 +45,7 @@ export default function DeletionApprovals() {
   }, [filter, fetchRequests]);
 
   const handleApprove = async (id) => {
-    if (!window.confirm('Approve this deletion request? The project will be soft-deleted.')) return;
+    if (!await confirmAction('Approve this deletion request? The project will be soft-deleted.')) return;
     
     setActionLoading(id);
     try {
@@ -58,7 +59,7 @@ export default function DeletionApprovals() {
   };
 
   const handleReject = async (id) => {
-    if (!window.confirm('Reject this deletion request? The project status will be restored.')) return;
+    if (!await confirmAction('Reject this deletion request? The project status will be restored.')) return;
     
     setActionLoading(id);
     try {

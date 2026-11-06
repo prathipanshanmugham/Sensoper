@@ -117,7 +117,9 @@ def build_dashboard_numbers(project: Dict[str, Any], payments: List[Dict[str, An
     subsidy = _num(ce.get("subsidy")) or _num(ps.get("subsidy"))
     paid = sum(_num(p.get("amount")) for p in payments)
 
-    start = _day(project.get("commissioning_date")) or _day(project.get("installation_date"))
+    # a completed project without the dates filled in has still been running since it was completed
+    start = (_day(project.get("commissioning_date")) or _day(project.get("installation_date"))
+             or (_day(project.get("completed_at") or project.get("updated_at")) if project.get("status") == "completed" else None))
     running = bool(start and start <= today)
     years = max((today - start).days, 0) / 365.25 if running else 0.0
     est_units = annual_units * years
@@ -355,6 +357,8 @@ def create_router(db, get_current_user, require_role, create_audit_log, jwt_secr
         diaries = await db.site_diaries.find({"project_id": pid}).sort("date", 1).to_list(500)
         stages_done = {s for dd in diaries for s in (dd.get("stages_done") or [])}
         progress = max([_num(dd.get("progress_pct")) for dd in diaries if dd.get("progress_pct") is not None] or [0])
+        if p.get("status") == "completed":
+            progress = 100
         commissioned = _day(p.get("commissioning_date"))
         completed = p.get("status") == "completed" or STAGES_DONE_INSTALL in stages_done
         journey = [

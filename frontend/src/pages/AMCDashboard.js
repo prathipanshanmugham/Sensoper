@@ -27,6 +27,7 @@ import AmcReportTab from '../components/amc/AmcReportTab';
 import { AmcSettingsSheet } from '../components/amc/AmcSettings';
 import { useLiveRefresh } from '../lib/liveSync';
 
+import { errText } from '../components/kit/PageBits';
 const STATUS_STYLES = { active: 'bg-emerald-100 text-emerald-700', expiring: 'bg-amber-100 text-amber-700', expired: 'bg-rose-100 text-rose-700', renewed: 'bg-blue-100 text-blue-700', cancelled: 'bg-slate-200 text-slate-600', 'on-hold': 'bg-violet-100 text-violet-700' };
 
 const blankContract = { customer_name: '', contact: '', site_address: '', district: '', system_type: 'on-grid', system_type_other: '', system_capacity_kw: '', contract_type: 'comprehensive', start_date: '', duration_months: 12, annual_value: '', billing_frequency: 'annual', visits_per_year: 2, notes: '' };
@@ -80,27 +81,27 @@ export default function AMCDashboard() {
   const handleCreateFromProject = async () => {
     setSaving(true);
     try { await amcAPI.createFromProject(selectedProjectId); setShowFromProject(false); setSelectedProjectId(''); toast.success('AMC contract created'); changed(); }
-    catch (e) { toast.error(e.response?.data?.detail || 'Could not create contract'); } finally { setSaving(false); }
+    catch (e) { toast.error(errText(e, 'Could not create contract')); } finally { setSaving(false); }
   };
   const handleCreate = async () => {
     setSaving(true);
     try {
       await amcAPI.create({ ...form, system_type_other: form.system_type === 'others' ? form.system_type_other.trim() : null, notes: form.notes.trim() || null, system_capacity_kw: parseFloat(form.system_capacity_kw) || 0, annual_value: parseFloat(form.annual_value) || 0, duration_months: parseInt(form.duration_months, 10) || 12, visits_per_year: parseInt(form.visits_per_year, 10) || 2 });
       setShowCreate(false); toast.success('Contract created'); changed();
-    } catch (e) { toast.error(e.response?.data?.detail || 'Could not create contract'); } finally { setSaving(false); }
+    } catch (e) { toast.error(errText(e, 'Could not create contract')); } finally { setSaving(false); }
   };
-  const handleRenew = async (c) => { try { await amcAPI.renew(c.id); toast.success('Renewed for another term'); changed(); } catch (e) { toast.error(e.response?.data?.detail || 'Could not renew'); } };
+  const handleRenew = async (c) => { try { await amcAPI.renew(c.id); toast.success('Renewed for another term'); changed(); } catch (e) { toast.error(errText(e, 'Could not renew')); } };
   const handleCancel = async (c) => {
     const reason = window.prompt('Reason for cancelling (optional)');
     if (reason === null) return;
-    try { await amcAPI.cancel(c.id, reason); changed(); } catch (e) { toast.error(e.response?.data?.detail || 'Could not cancel'); }
+    try { await amcAPI.cancel(c.id, reason); changed(); } catch (e) { toast.error(errText(e, 'Could not cancel')); }
   };
   const scheduleVisit = async () => {
     setSaving(true);
     try {
       const r = await amcAPI.scheduleWithNotifications(visitDlg.contract.id, { scheduled_date: visitDlg.date, technician_name: visitDlg.tech || null, lead_days: [3, 1], notes: visitDlg.notes || '' });
       toast.success(`Visit planned · ${r.data.notifications_created} reminders queued`); setVisitDlg(null); changed();
-    } catch (e) { toast.error(e.response?.data?.detail || 'Could not plan the visit'); } finally { setSaving(false); }
+    } catch (e) { toast.error(errText(e, 'Could not plan the visit')); } finally { setSaving(false); }
   };
 
   const tabs = [

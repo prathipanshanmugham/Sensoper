@@ -3,7 +3,6 @@ import { assetsAPI, actionRequestsAPI } from '../utils/api';
 import { useAuth } from '../contexts/AuthContext';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
-import { Label } from '../components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
@@ -19,6 +18,8 @@ import { useLocationScope, LocationScopeSelect } from '../components/LocationSco
 import { AssetDocuments } from '../components/AssetDocuments';
 import Can from '../components/Can';
 
+import { errText } from '../components/kit/PageBits';
+import { toast } from 'sonner';
 const CATEGORIES = ['vehicle', 'power_tool', 'hand_tool', 'test_equipment', 'safety', 'it', 'furniture', 'other']; // fallback until /assets/filters loads
 const STATUSES = ['available', 'issued', 'in_maintenance', 'under_repair', 'lost', 'scrapped', 'sold'];
 const STATUS_STYLES = {
@@ -90,18 +91,18 @@ export default function AssetsPage() {
 
   const handleApproveArchive = async (id) => {
     try { await actionRequestsAPI.approve(id); await fetchApprovals(); await fetchAssets(); }
-    catch (e) { alert(e.response?.data?.detail || 'Could not approve'); }
+    catch (e) { toast.error(errText(e, 'Could not approve')); }
   };
   const handleRejectArchive = async (id) => {
     try { await actionRequestsAPI.reject(id); await fetchApprovals(); }
-    catch (e) { alert(e.response?.data?.detail || 'Could not reject'); }
+    catch (e) { toast.error(errText(e, 'Could not reject')); }
   };
 
   const openEdit = (a) => { setShowEdit(a); setEditForm({ name: a.name, make: a.make || '', model: a.model || '', serial_number: a.serial_number || '', purchase_cost: a.purchase_cost || '', useful_life_years: a.useful_life_years || 5, insurance_expiry: a.insurance_expiry || '', registration_expiry: a.registration_expiry || '', fitness_certificate_expiry: a.fitness_certificate_expiry || '', pollution_certificate_expiry: a.pollution_certificate_expiry || '', notes: a.notes || '' }); setActionError(''); };
   const saveEdit = async () => {
     setSaving(true); setActionError('');
     try { await assetsAPI.update(showEdit.id, { ...editForm, purchase_cost: parseFloat(editForm.purchase_cost) || 0, useful_life_years: parseFloat(editForm.useful_life_years) || 5 }); setShowEdit(null); await fetchAssets(); await fetchReport(reportType); }
-    catch (e) { setActionError(e.response?.data?.detail || 'Could not save changes'); } finally { setSaving(false); }
+    catch (e) { setActionError(errText(e, 'Could not save changes')); } finally { setSaving(false); }
   };
 
   const confirmArchive = async () => {
@@ -111,7 +112,7 @@ export default function AssetsPage() {
       const r = await assetsAPI.remove(archiveTarget.id);
       if (r.data.status === 'pending_approval') { setActionError(r.data.message); }
       else { setArchiveTarget(null); await fetchAssets(); await fetchReport(reportType); }
-    } catch (e) { setActionError(e.response?.data?.detail || 'Could not archive this asset'); } finally { setSaving(false); }
+    } catch (e) { setActionError(errText(e, 'Could not archive this asset')); } finally { setSaving(false); }
   };
 
   const handleCreate = async () => {
@@ -129,13 +130,13 @@ export default function AssetsPage() {
     try {
       await assetsAPI.issue(showIssue.id, { ...issueForm, assigned_to: issueForm.assigned_to_name });
       setShowIssue(null); await fetchAssets(); await fetchReport(reportType);
-    } catch (e) { alert(e.response?.data?.detail || 'Could not issue asset'); } finally { setSaving(false); }
+    } catch (e) { toast.error(errText(e, 'Could not issue asset')); } finally { setSaving(false); }
   };
 
   const handleReturn = async () => {
     setSaving(true);
     try { await assetsAPI.returnAsset(showReturn.id, returnForm); setShowReturn(null); await fetchAssets(); await fetchReport(reportType); }
-    catch (e) { alert(e.response?.data?.detail || 'Could not return asset'); } finally { setSaving(false); }
+    catch (e) { toast.error(errText(e, 'Could not return asset')); } finally { setSaving(false); }
   };
 
   const handleMaintenance = async () => {
@@ -143,7 +144,7 @@ export default function AssetsPage() {
     try {
       await assetsAPI.logMaintenance(showMaintenance.id, { ...maintenanceForm, cost: parseFloat(maintenanceForm.cost) || 0 });
       setShowMaintenance(null); await fetchAssets(); await fetchReport(reportType);
-    } catch (e) { alert('Could not log maintenance'); } finally { setSaving(false); }
+    } catch (e) { toast.error('Could not log maintenance'); } finally { setSaving(false); }
   };
 
   const openQr = async (asset) => {

@@ -21,7 +21,7 @@ import { loadUnicodeFont } from '../utils/pdfFont';
 import { useLocationScope, LocationScopeSelect } from '../components/LocationScope';
 import Can from '../components/Can';
 
-const PIE_COLORS = ['#10b981', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#84cc16'];
+const PIE_COLORS = ['#58A024', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#84cc16'];
 const PARTNER_SPECIALITIES = ['on-grid', 'off-grid', 'hybrid', 'pump', 'electrical', 'civil'];
 
 const REPORTS = [
@@ -54,7 +54,7 @@ const REPORTS = [
 function SummaryCard({ label, value }) {
   return (
     <div className="bg-white rounded-lg border border-slate-200 p-3 text-center" data-testid={`summary-${label.toLowerCase().replace(/\s+/g, '-')}`}>
-      <p className="text-[10px] uppercase tracking-wider text-slate-400 mb-0.5">{label}</p>
+      <p className="text-[11px] text-slate-400 mb-0.5">{label}</p>
       <p className="text-lg font-bold text-slate-900">{typeof value === 'number' ? value.toLocaleString('en-IN') : value}</p>
     </div>
   );
@@ -334,7 +334,7 @@ export default function ReportsPage() {
               {/* Chart */}
               {reportData.chart_data?.length > 0 && (
                 <div className="mb-4 p-4 bg-white rounded-lg border border-slate-200" data-testid="report-chart">
-                  <p className="text-xs font-medium uppercase tracking-wider text-slate-400 mb-3">Visual Breakdown</p>
+                  <p className="text-xs font-medium text-slate-400 mb-3">Visual Breakdown</p>
                   <div className="space-y-2.5">
                     {reportData.chart_data.map((item, i) => {
                       const maxVal = Math.max(...reportData.chart_data.map(d => d.value));
@@ -354,7 +354,7 @@ export default function ReportsPage() {
               {/* Ecommerce: platform breakdown + monthly revenue trend (Iter 46 Change 2) */}
               {activeReport === 'brand_returns' && reportData.supplier_rows?.length > 0 && (
                 <div className="mb-4 p-4 bg-white rounded-lg border border-slate-200" data-testid="brand-returns-supplier-ranking">
-                  <p className="text-xs font-medium uppercase tracking-wider text-slate-400 mb-1">Supplier ranking by return rate</p>
+                  <p className="text-xs font-medium text-slate-400 mb-1">Supplier ranking by return rate</p>
                   <p className="text-[11px] text-slate-500 mb-3">Return rate = quantity returned ÷ quantity purchased from that supplier (purchase orders). Higher = more of their goods come back.</p>
                   <table className="w-full text-sm">
                     <thead><tr className="text-left text-slate-500 border-b"><th className="py-1.5">#</th><th>Supplier</th><th>Returns</th><th>Qty returned / purchased</th><th>Return rate</th><th>Value returned</th><th>Open / Resolved</th><th>Avg resolution</th></tr></thead>
@@ -368,7 +368,7 @@ export default function ReportsPage() {
                 <div className="mb-4 grid grid-cols-1 md:grid-cols-2 gap-4" data-testid="brand-returns-breakdowns">
                   {[['By reason', reportData.reason_rows], ['By item', reportData.item_rows], ['By month', reportData.monthly_rows]].map(([title, list]) => list?.length > 0 && (
                     <div key={title} className="p-4 bg-white rounded-lg border border-slate-200">
-                      <p className="text-xs font-medium uppercase tracking-wider text-slate-400 mb-2">{title}</p>
+                      <p className="text-xs font-medium text-slate-400 mb-2">{title}</p>
                       <table className="w-full text-sm"><thead><tr className="text-left text-slate-500 border-b"><th className="py-1">{title.replace('By ', '')}</th><th>Returns</th><th>Qty</th><th>Value</th></tr></thead>
                         <tbody>{list.map(r => <tr key={r.name} className="border-b last:border-0"><td className="py-1">{r.name}</td><td>{r.count}</td><td>{r.qty}</td><td>₹{(r.value || 0).toLocaleString('en-IN')}</td></tr>)}</tbody></table>
                     </div>
@@ -377,7 +377,7 @@ export default function ReportsPage() {
               )}
               {activeReport === 'customer_support' && reportData.technician_rows?.length > 0 && (
                 <div className="mb-4 p-4 bg-white rounded-lg border border-slate-200" data-testid="support-technician-rows">
-                  <p className="text-xs font-medium uppercase tracking-wider text-slate-400 mb-3">Technician-level Resolution Performance</p>
+                  <p className="text-xs font-medium text-slate-400 mb-3">Technician-level Resolution Performance</p>
                   <table className="w-full text-sm">
                     <thead><tr className="text-left text-slate-500 border-b"><th className="py-1.5">Technician</th><th>Resolved</th><th>Avg CSAT</th><th>Avg Resolution (hrs)</th></tr></thead>
                     <tbody>{reportData.technician_rows.map(r => (
@@ -388,7 +388,7 @@ export default function ReportsPage() {
               )}
               {activeReport === 'customer_support' && reportData.monthly_rows?.length > 0 && (
                 <div className="mb-4 p-4 bg-white rounded-lg border border-slate-200" data-testid="support-monthly-rows">
-                  <p className="text-xs font-medium uppercase tracking-wider text-slate-400 mb-3">Volume &amp; CSAT by Month</p>
+                  <p className="text-xs font-medium text-slate-400 mb-3">Volume &amp; CSAT by Month</p>
                   <table className="w-full text-sm">
                     <thead><tr className="text-left text-slate-500 border-b"><th className="py-1.5">Month</th><th>Ticket Count</th><th>Avg CSAT</th></tr></thead>
                     <tbody>{reportData.monthly_rows.map(r => (
@@ -399,7 +399,7 @@ export default function ReportsPage() {
               )}
               {activeReport === 'customer_support' && reportData.top_recurring?.length > 0 && (
                 <div className="mb-4 p-4 bg-white rounded-lg border border-slate-200" data-testid="support-top-recurring">
-                  <p className="text-xs font-medium uppercase tracking-wider text-slate-400 mb-3">Top Recurring Issue Categories</p>
+                  <p className="text-xs font-medium text-slate-400 mb-3">Top Recurring Issue Categories</p>
                   <div className="flex flex-wrap gap-2">{reportData.top_recurring.map(r => (
                     <span key={r.category} className="px-3 py-1.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs">{r.category.replace(/_/g, ' ')} · {r.count}</span>
                   ))}</div>
@@ -407,7 +407,7 @@ export default function ReportsPage() {
               )}
               {activeReport === 'ecommerce' && reportData.platform_rows?.length > 0 && (
                 <div className="mb-4 p-4 bg-white rounded-lg border border-slate-200" data-testid="ecommerce-platform-breakdown">
-                  <p className="text-xs font-medium uppercase tracking-wider text-slate-400 mb-3">Revenue by Platform</p>
+                  <p className="text-xs font-medium text-slate-400 mb-3">Revenue by Platform</p>
                   <table className="w-full text-sm">
                     <thead><tr className="text-left text-slate-500 border-b"><th className="py-1.5">Platform</th><th>Revenue</th><th>Units</th><th>Commission</th><th>Orders</th></tr></thead>
                     <tbody>{reportData.platform_rows.map(r => (
@@ -418,7 +418,7 @@ export default function ReportsPage() {
               )}
               {activeReport === 'ecommerce' && reportData.monthly_rows?.length > 0 && (
                 <div className="mb-4 p-4 bg-white rounded-lg border border-slate-200" data-testid="ecommerce-monthly-trend">
-                  <p className="text-xs font-medium uppercase tracking-wider text-slate-400 mb-3">Revenue by Month</p>
+                  <p className="text-xs font-medium text-slate-400 mb-3">Revenue by Month</p>
                   <table className="w-full text-sm">
                     <thead><tr className="text-left text-slate-500 border-b"><th className="py-1.5">Month</th><th>Revenue</th><th>Units</th><th>Orders</th></tr></thead>
                     <tbody>{reportData.monthly_rows.map(r => (
@@ -436,17 +436,17 @@ export default function ReportsPage() {
                     <>
                       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3" data-testid="cac-kpi-strip">
                         <div className="rounded-lg border border-rose-200 bg-rose-50 p-3">
-                          <p className="text-[10px] uppercase text-rose-700">Marketing Spend</p>
+                          <p className="text-[11px] text-rose-700">Marketing Spend</p>
                           <p className="text-lg font-bold text-slate-900">₹{(cacData.cac.total_spend || 0).toLocaleString('en-IN')}</p>
                           <p className="text-[10px] text-slate-500 mt-0.5">{cacData.marketing?.entry_count || 0} entries</p>
                         </div>
                         <div className="rounded-lg border border-blue-200 bg-blue-50 p-3">
-                          <p className="text-[10px] uppercase text-blue-700">New Customers</p>
+                          <p className="text-[11px] text-blue-700">New Customers</p>
                           <p className="text-lg font-bold text-slate-900">{cacData.cac.total_customers || 0}</p>
                           <p className="text-[10px] text-slate-500 mt-0.5">{cacData.cac.unattributed_pct?.toFixed?.(0) || 0}% unattributed</p>
                         </div>
                         <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
-                          <p className="text-[10px] uppercase text-amber-700">Blended CAC</p>
+                          <p className="text-[11px] text-amber-700">Blended CAC</p>
                           <p className="text-lg font-bold text-slate-900">
                             {cacData.cac.blended_cac == null ? '—' : `₹${cacData.cac.blended_cac.toLocaleString('en-IN')}`}
                           </p>
@@ -455,7 +455,7 @@ export default function ReportsPage() {
                           </p>
                         </div>
                         <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3">
-                          <p className="text-[10px] uppercase text-emerald-700">LTV : CAC</p>
+                          <p className="text-[11px] text-emerald-700">LTV : CAC</p>
                           <p className="text-lg font-bold text-slate-900">
                             {cacData.cac.ltv_cac_ratio == null ? '—' : `${cacData.cac.ltv_cac_ratio.toFixed(1)}×`}
                           </p>
@@ -472,7 +472,7 @@ export default function ReportsPage() {
                           <CardContent className="p-0">
                             {cacData.cac.channels?.length ? (
                               <table className="w-full text-xs">
-                                <thead className="bg-slate-50 border-b border-slate-100 text-[10px] uppercase text-slate-500">
+                                <thead className="bg-slate-50 border-b border-slate-100 text-[11px] text-slate-500">
                                   <tr>
                                     <th className="text-left px-2 py-2">Channel</th>
                                     <th className="text-right px-2 py-2">Spend</th>
@@ -546,7 +546,7 @@ export default function ReportsPage() {
                         <CardContent className="p-0">
                           {excessMaterialData.by_item?.length ? (
                             <table className="w-full text-xs">
-                              <thead className="bg-slate-50 border-b border-slate-100 text-[10px] uppercase text-slate-500"><tr><th className="text-left px-2 py-2">Item</th><th className="text-right px-2 py-2">Issued</th><th className="text-right px-2 py-2">Variance</th><th className="text-right px-2 py-2">Over-Issue %</th></tr></thead>
+                              <thead className="bg-slate-50 border-b border-slate-100 text-[11px] text-slate-500"><tr><th className="text-left px-2 py-2">Item</th><th className="text-right px-2 py-2">Issued</th><th className="text-right px-2 py-2">Variance</th><th className="text-right px-2 py-2">Over-Issue %</th></tr></thead>
                               <tbody className="divide-y divide-slate-100">
                                 {excessMaterialData.by_item.slice(0, 10).map(it => (
                                   <tr key={it.name}>
@@ -566,7 +566,7 @@ export default function ReportsPage() {
                         <CardContent className="p-0">
                           {excessMaterialData.unreturned_by_project?.length ? (
                             <table className="w-full text-xs">
-                              <thead className="bg-slate-50 border-b border-slate-100 text-[10px] uppercase text-slate-500"><tr><th className="text-left px-2 py-2">Project</th><th className="text-right px-2 py-2">Value at Site</th></tr></thead>
+                              <thead className="bg-slate-50 border-b border-slate-100 text-[11px] text-slate-500"><tr><th className="text-left px-2 py-2">Project</th><th className="text-right px-2 py-2">Value at Site</th></tr></thead>
                               <tbody className="divide-y divide-slate-100">
                                 {excessMaterialData.unreturned_by_project.slice(0, 10).map((p, i) => (
                                   <tr key={p.project_id || `${p.project_name}-${i}`}><td className="px-2 py-1.5 font-medium text-slate-800 truncate max-w-[160px]">{p.project_name}</td><td className="px-2 py-1.5 text-right">₹{p.value_at_site.toLocaleString('en-IN')}</td></tr>
@@ -588,7 +588,7 @@ export default function ReportsPage() {
                 <div className="overflow-x-auto rounded-lg border border-slate-200" data-testid="report-table">
                   <table className="w-full text-sm">
                     <thead><tr className="bg-slate-50 border-b border-slate-200">
-                      {getColumns().map(col => <th key={col} className="px-3 py-2.5 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">{formatHeader(col)}</th>)}
+                      {getColumns().map(col => <th key={col} className="px-3 py-2.5 text-left text-xs font-semibold text-slate-600">{formatHeader(col)}</th>)}
                     </tr></thead>
                     <tbody>
                       {reportData.rows.map((row, idx) => (

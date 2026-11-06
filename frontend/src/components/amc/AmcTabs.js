@@ -11,6 +11,7 @@ import { inr, systemLabel } from './amcCommon';
 import { PlanCards } from './QuoteBuilder';
 import { amcQuoteMessage, generateAmcQuotePDF } from '../../utils/amcPdf';
 
+import { errText } from '../kit/PageBits';
 const fmt = (d) => (d ? new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '—');
 const STATUS = { draft: 'bg-slate-100 text-slate-700', sent: 'bg-sky-50 text-sky-800', accepted: 'bg-emerald-50 text-emerald-800', declined: 'bg-rose-50 text-rose-700' };
 const STATUS_LABEL = { draft: 'Not sent', sent: 'Sent', accepted: 'Accepted', declined: 'Declined' };
@@ -32,7 +33,7 @@ export function OffersTab({ canEdit, onQuote, reloadKey }) {
   useEffect(() => { load(); }, [load, reloadKey]);
   const flag = async (o, action) => {
     try { await amcAPI.flagOffer(o.source_type, o.source_id, action); toast.success(action === 'later' ? 'We will remind you later' : 'Marked not interested'); load(); }
-    catch (e) { toast.error(e.response?.data?.detail || 'Could not update'); }
+    catch (e) { toast.error(errText(e, 'Could not update')); }
   };
   if (!data) return <div className="flex justify-center py-10"><Loader2 className="h-6 w-6 animate-spin text-slate-400" /></div>;
   return (
@@ -87,7 +88,7 @@ export function QuotesTab({ brand, canEdit, reloadKey, onChanged }) {
   };
   const status = async (q, s) => {
     try { await amcAPI.quoteStatus(q.id, s); toast.success(s === 'sent' ? 'Marked as sent' : 'Marked as declined'); load(); }
-    catch (e) { toast.error(e.response?.data?.detail || 'Could not update'); }
+    catch (e) { toast.error(errText(e, 'Could not update')); }
   };
   const doAccept = async () => {
     setBusy('accept');
@@ -95,7 +96,7 @@ export function QuotesTab({ brand, canEdit, reloadKey, onChanged }) {
       const r = await amcAPI.acceptQuote(accept.q.id, { plan_key: accept.plan, start_date: accept.start, duration_months: 12 });
       toast.success(`Contract ${r.data.contract.contract_number} created`);
       setAccept(null); load(); onChanged?.();
-    } catch (e) { toast.error(e.response?.data?.detail || 'Could not create the contract'); } finally { setBusy(''); }
+    } catch (e) { toast.error(errText(e, 'Could not create the contract')); } finally { setBusy(''); }
   };
 
   if (!rows) return <div className="flex justify-center py-10"><Loader2 className="h-6 w-6 animate-spin text-slate-400" /></div>;

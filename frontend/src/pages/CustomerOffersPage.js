@@ -10,6 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import { inputCls, textareaCls, Field, Chip } from '../components/FormBits';
 import Can from '../components/Can';
 
+import { confirmAction } from '../components/kit/confirm';
 const TYPES = [['on-grid', 'On-grid'], ['hybrid', 'Hybrid'], ['off-grid', 'Off-grid'], ['solar-pump', 'Solar pump']];
 const EMPTY = { title: '', description: '', badge: '', valid_till: '', cta_label: "I'm interested", system_types: [], active: true };
 const fmt = (d) => (d ? new Date(`${String(d).slice(0, 10)}T00:00:00`).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '');
@@ -58,7 +59,7 @@ export default function CustomerOffersPage() {
   }, []);
   useEffect(() => { load(); }, [load]);
   const remove = async (o) => {
-    if (!window.confirm(`Delete "${o.title}"?`)) return;
+    if (!await confirmAction(`Delete "${o.title}"?`)) return;
     await customerDashboardAPI.deleteOffer(o.id).catch(() => toast.error('Could not delete'));
     load();
   };

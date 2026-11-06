@@ -47,6 +47,21 @@ def _pct(a, b):
     return (a / b) * 100
 
 
+_STATE_ALIASES = {"tn": "Tamil Nadu", "t n": "Tamil Nadu", "tamilnadu": "Tamil Nadu", "tamil nadu": "Tamil Nadu", "kl": "Kerala", "ka": "Karnataka",
+                  "ap": "Andhra Pradesh", "ts": "Telangana", "py": "Puducherry", "pondicherry": "Puducherry"}
+
+
+def _state(v) -> str:
+    """One spelling per state, so "TN", "Tamilnadu" and "Tamil Nadu" are one row."""
+    t = " ".join(str(v or "").replace(".", " ").split())
+    return _STATE_ALIASES.get(t.lower(), t.title() if t.islower() or t.isupper() else t)
+
+
+def _place(v) -> str:
+    t = " ".join(str(v or "").split())
+    return t.title() if t.islower() or t.isupper() else t
+
+
 def compute_district_scores(projects, credits, brand_returns, branches, config,
                             period_start=None, period_end=None):
     now = datetime.now(timezone.utc)
@@ -71,8 +86,8 @@ def compute_district_scores(projects, credits, brand_returns, branches, config,
 
     for p in projects:
         loc = p.get("location", {}) or {}
-        d = loc.get("district") or "Unknown"
-        st = loc.get("state") or ""
+        d = _place(loc.get("district")) or "Unknown"
+        st = _state(loc.get("state"))
         entry = by_district[(d, st)]
         entry["projects"].append(p)
         status = p.get("status", "draft")
@@ -128,7 +143,7 @@ def compute_district_scores(projects, credits, brand_returns, branches, config,
         # scan projects list for match — small ops so OK for now
         for p in projects:
             if str(p.get("_id", "")) == str(pid) or p.get("id") == str(pid):
-                d = (p.get("location", {}) or {}).get("district") or "Unknown"
+                d = _place((p.get("location", {}) or {}).get("district")) or "Unknown"
                 returns_by_district[d] += 1
                 break
 

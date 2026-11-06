@@ -13,6 +13,7 @@ import { Textarea } from '../components/ui/textarea';
 import { Loader2, Plus, X, Save, CheckCircle2, Undo2, Trash2, Clock } from 'lucide-react';
 import Can from '../components/Can';
 
+import { errText } from '../components/kit/PageBits';
 export default function BrandReturnsPage() {
   const { isAdmin } = useAuth();
   const [returns, setReturns] = useState([]);
@@ -37,7 +38,7 @@ export default function BrandReturnsPage() {
       const r = await returnsAPI.remove(del.id, delReason.trim());
       toast[r.data.status === 'deleted' ? 'success' : 'info'](r.data.message);
       setDel(null); setDelReason(''); await fetch();
-    } catch (e) { toast.error(e.response?.data?.detail || 'Delete failed'); }
+    } catch (e) { toast.error(errText(e, 'Delete failed')); }
     finally { setDeleting(false); }
   };
 

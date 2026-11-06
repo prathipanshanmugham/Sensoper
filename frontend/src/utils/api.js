@@ -54,9 +54,9 @@ export const inboxAPI = {
 export const projectsAPI = {
   getAll: (status = null) => api.get('/projects', { params: status ? { status } : {} }),
   getOne: (id) => api.get(`/projects/${id}`),
+  inverterPassword: (id) => api.get(`/projects/${id}/inverter-password`),
   create: (data) => api.post('/projects', data),
   update: (id, data) => api.put(`/projects/${id}`, data),
-  delete: (id) => api.delete(`/projects/${id}`),
   submit: (id) => api.post(`/projects/${id}/submit`),
   approve: (id) => api.post(`/projects/${id}/approve`),
   reject: (id, reason) => api.post(`/projects/${id}/reject`, { reason }),
@@ -76,6 +76,7 @@ export const projectsAPI = {
 // Users API (Admin only)
 export const usersAPI = {
   getAll: () => api.get('/users'),
+  directory: () => api.get('/users/directory'),
   create: (userData) => api.post('/users', userData),
   update: (id, userData) => api.put(`/users/${id}`, userData),
   delete: (id) => api.delete(`/users/${id}`)

@@ -8,6 +8,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Loader2, Plus, MapPin, Trash2, Pencil, Users as UsersIcon } from 'lucide-react';
 import Can from '../components/Can';
 
+import { errText } from '../components/kit/PageBits';
+import { toast } from 'sonner';
+import { confirmAction } from '../components/kit/confirm';
 const TYPES = ['branch', 'warehouse', 'business_unit', 'head_office'];
 
 export default function LocationsPage() {
@@ -31,25 +34,25 @@ export default function LocationsPage() {
   const handleCreate = async () => {
     if (!form.name.trim()) return;
     try { await locationsAPI.create(form); setShowCreate(false); setForm({ name: '', code: '', type: 'branch', address: '', district: '', state: '' }); await fetchAll(); }
-    catch (e) { alert('Failed to create location'); }
+    catch (e) { toast.error('Failed to create location'); }
   };
 
   const openEdit = (l) => { setEditing(l); };
   const saveEdit = async () => {
     try { await locationsAPI.update(editing.id, { name: editing.name, code: editing.code, type: editing.type, address: editing.address, district: editing.district, state: editing.state }); setEditing(null); await fetchAll(); }
-    catch (e) { alert('Failed to save'); }
+    catch (e) { toast.error('Failed to save'); }
   };
 
   const removeLocation = async (id) => {
-    if (!window.confirm('Remove this location?')) return;
-    try { await locationsAPI.remove(id); await fetchAll(); } catch (e) { alert(e.response?.data?.detail || 'Failed to remove'); }
+    if (!await confirmAction('Remove this location?')) return;
+    try { await locationsAPI.remove(id); await fetchAll(); } catch (e) { toast.error(errText(e, 'Failed to remove')); }
   };
 
   const openAssign = (u) => { setAssigningUser(u); setAssignForm({ location_ids: u.location_ids || [], default_location_id: u.default_location_id || '' }); };
   const toggleLocation = (id) => setAssignForm(p => ({ ...p, location_ids: p.location_ids.includes(id) ? p.location_ids.filter(x => x !== id) : [...p.location_ids, id] }));
   const saveAssign = async () => {
     try { await locationsAPI.assignUser(assigningUser.id, assignForm); setAssigningUser(null); await fetchAll(); }
-    catch (e) { alert('Failed to assign'); }
+    catch (e) { toast.error('Failed to assign'); }
   };
 
   if (loading) return <div className="flex justify-center py-24"><Loader2 className="h-8 w-8 animate-spin text-emerald-600" /></div>;

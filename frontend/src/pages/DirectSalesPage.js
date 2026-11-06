@@ -9,10 +9,12 @@ import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Badge } from '../components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '../components/ui/dialog';
-import { ArrowLeft, Plus, X, Loader2, Receipt, ShoppingCart, IndianRupee, Users, Package, Pencil, Trash2, AlertTriangle } from 'lucide-react';
+import { ArrowLeft, X, Loader2, Receipt, ShoppingCart, Users, Package, Pencil, Trash2, AlertTriangle } from 'lucide-react';
 import HardDeleteButton from '../components/HardDeleteButton';
 import { useLiveRefresh } from '../lib/liveSync';
 
+import { errText } from '../components/kit/PageBits';
+import { toast } from 'sonner';
 const LEAD_SOURCES = ['google_ads', 'meta_ads', 'referral', 'organic', 'exhibitions', 'field_marketing', 'telecalling', 'website_seo', 'whatsapp', 'other'];
 
 export default function DirectSalesPage() {
@@ -68,11 +70,11 @@ export default function DirectSalesPage() {
 
   const handleApproveCancel = async (id) => {
     try { await actionRequestsAPI.approve(id); await fetchApprovals(); await fetchAll(); }
-    catch (e) { alert(e.response?.data?.detail || 'Could not approve'); }
+    catch (e) { toast.error(errText(e, 'Could not approve')); }
   };
   const handleRejectCancel = async (id) => {
     try { await actionRequestsAPI.reject(id); await fetchApprovals(); }
-    catch (e) { alert(e.response?.data?.detail || 'Could not reject'); }
+    catch (e) { toast.error(errText(e, 'Could not reject')); }
   };
 
   const addLine = (item) => {
@@ -101,8 +103,8 @@ export default function DirectSalesPage() {
   }, [lines]);
 
   const confirmSale = async () => {
-    if (!customer.name.trim() || !customer.phone.trim()) { alert('Customer name & phone required'); return; }
-    if (lines.length === 0) { alert('Add at least one item'); return; }
+    if (!customer.name.trim() || !customer.phone.trim()) { toast.error('Customer name & phone required'); return; }
+    if (lines.length === 0) { toast.error('Add at least one item'); return; }
     setSaving(true);
     try {
       const payload = {
@@ -119,10 +121,10 @@ export default function DirectSalesPage() {
         payments: amountPaid ? [{ mode: paymentMode, amount: parseFloat(amountPaid) }] : []
       };
       const r = await salesAPI.create(payload);
-      alert(`Invoice ${r.data.invoice_number} created for ₹${r.data.grand_total.toLocaleString('en-IN')}`);
+      toast.success(`Invoice ${r.data.invoice_number} created for ₹${r.data.grand_total.toLocaleString('en-IN')}`);
       setLines([]); setCustomer({ name: '', phone: '', state: 'Tamil Nadu' }); setAmountPaid('');
       fetchAll();
-    } catch (e) { alert(e.response?.data?.detail || 'Sale failed'); }
+    } catch (e) { toast.error(errText(e, 'Sale failed')); }
     finally { setSaving(false); }
   };
 
@@ -146,7 +148,7 @@ export default function DirectSalesPage() {
         })),
       });
       setEditSale(null); await fetchAll();
-    } catch (e) { setActionError(e.response?.data?.detail || 'Could not save changes'); } finally { setSaving(false); }
+    } catch (e) { setActionError(errText(e, 'Could not save changes')); } finally { setSaving(false); }
   };
 
   const confirmDeleteSale = async () => {
@@ -156,7 +158,7 @@ export default function DirectSalesPage() {
       const r = await salesAPI.remove(deleteTarget.id);
       if (r.data.status === 'pending_approval') { setActionError(r.data.message); }
       else { setDeleteTarget(null); await fetchAll(); }
-    } catch (e) { setActionError(e.response?.data?.detail || 'Could not cancel this sale'); } finally { setSaving(false); }
+    } catch (e) { setActionError(errText(e, 'Could not cancel this sale')); } finally { setSaving(false); }
   };
 
 
@@ -190,11 +192,11 @@ export default function DirectSalesPage() {
         {/* Today's summary */}
         {summary && (
           <div className="grid grid-cols-2 md:grid-cols-5 gap-2 mb-4" data-testid="sales-summary-strip">
-            <Card><CardContent className="p-3"><p className="text-[10px] uppercase text-slate-500">Revenue (30d)</p><p className="text-lg font-bold">₹{summary.total_revenue.toLocaleString('en-IN')}</p></CardContent></Card>
-            <Card><CardContent className="p-3"><p className="text-[10px] uppercase text-slate-500">Margin</p><p className="text-lg font-bold text-emerald-700">₹{summary.total_margin.toLocaleString('en-IN')}</p></CardContent></Card>
-            <Card><CardContent className="p-3"><p className="text-[10px] uppercase text-slate-500">Sales</p><p className="text-lg font-bold">{summary.sale_count}</p></CardContent></Card>
-            <Card><CardContent className="p-3"><p className="text-[10px] uppercase text-slate-500">Avg Ticket</p><p className="text-lg font-bold">₹{summary.avg_ticket.toLocaleString('en-IN')}</p></CardContent></Card>
-            <Card><CardContent className="p-3"><p className="text-[10px] uppercase text-slate-500">Units</p><p className="text-lg font-bold">{summary.total_units}</p></CardContent></Card>
+            <Card><CardContent className="p-3"><p className="text-[11px] text-slate-500">Revenue (30d)</p><p className="text-lg font-bold">₹{summary.total_revenue.toLocaleString('en-IN')}</p></CardContent></Card>
+            <Card><CardContent className="p-3"><p className="text-[11px] text-slate-500">Margin</p><p className="text-lg font-bold text-emerald-700">₹{summary.total_margin.toLocaleString('en-IN')}</p></CardContent></Card>
+            <Card><CardContent className="p-3"><p className="text-[11px] text-slate-500">Sales</p><p className="text-lg font-bold">{summary.sale_count}</p></CardContent></Card>
+            <Card><CardContent className="p-3"><p className="text-[11px] text-slate-500">Avg Ticket</p><p className="text-lg font-bold">₹{summary.avg_ticket.toLocaleString('en-IN')}</p></CardContent></Card>
+            <Card><CardContent className="p-3"><p className="text-[11px] text-slate-500">Units</p><p className="text-lg font-bold">{summary.total_units}</p></CardContent></Card>
           </div>
         )}
 
@@ -309,7 +311,7 @@ export default function DirectSalesPage() {
             {loading ? <div className="py-8 text-center"><Loader2 className="h-6 w-6 animate-spin text-slate-400 mx-auto" /></div> :
              pivotByItem ? (
               <table className="w-full text-sm" data-testid="item-pivot-table">
-                <thead className="bg-slate-50 text-[10px] uppercase text-slate-500"><tr><th className="text-left px-3 py-2">Item</th><th className="text-right px-3 py-2">Units</th><th className="text-right px-3 py-2">Revenue</th><th className="text-right px-3 py-2">Margin</th></tr></thead>
+                <thead className="bg-slate-50 text-[11px] text-slate-500"><tr><th className="text-left px-3 py-2">Item</th><th className="text-right px-3 py-2">Units</th><th className="text-right px-3 py-2">Revenue</th><th className="text-right px-3 py-2">Margin</th></tr></thead>
                 <tbody className="divide-y divide-slate-100">
                   {itemPivot.map(it => (
                     <tr key={it.name}><td className="px-3 py-2 font-medium truncate">{it.name}</td>
@@ -322,7 +324,7 @@ export default function DirectSalesPage() {
               </table>
              ) : (
               <table className="w-full text-sm" data-testid="sales-list-table">
-                <thead className="bg-slate-50 text-[10px] uppercase text-slate-500"><tr><th className="text-left px-3 py-2">Invoice</th><th className="text-left px-3 py-2">Date</th><th className="text-left px-3 py-2">Customer</th><th className="text-left px-3 py-2">Items</th><th className="text-right px-3 py-2">Total</th><th className="text-left px-3 py-2">Payment</th>{canManage && <th className="text-right px-3 py-2">Actions</th>}</tr></thead>
+                <thead className="bg-slate-50 text-[11px] text-slate-500"><tr><th className="text-left px-3 py-2">Invoice</th><th className="text-left px-3 py-2">Date</th><th className="text-left px-3 py-2">Customer</th><th className="text-left px-3 py-2">Items</th><th className="text-right px-3 py-2">Total</th><th className="text-left px-3 py-2">Payment</th>{canManage && <th className="text-right px-3 py-2">Actions</th>}</tr></thead>
                 <tbody className="divide-y divide-slate-100">
                   {sales.map(s => (
                     <tr key={s.id} data-testid={`sale-row-${s.id}`}><td className="px-3 py-2 font-mono text-xs">{s.invoice_number}</td>

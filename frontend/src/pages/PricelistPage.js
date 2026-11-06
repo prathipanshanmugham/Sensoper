@@ -13,6 +13,7 @@ import { PdfOptionsDialog } from '../components/pricelist/PdfOptionsDialog';
 import { generatePriceListPDF } from '../utils/priceListPDF';
 import Can from '../components/Can';
 
+import { errText } from '../components/kit/PageBits';
 const inr = (v) => `₹${Math.round(v || 0).toLocaleString('en-IN')}`;
 const STATUS = [{ id: 'active', label: 'Active' }, { id: 'archived', label: 'Archived' }, { id: 'all', label: 'All' }];
 
@@ -52,7 +53,7 @@ export default function PricelistPage({ embedded = false }) {
   const save = async (row, field, value) => { const r = await pricelistAPI.update(row.id, { [field]: value }); patchRow(r.data); };
   const toggleArchive = async (row) => {
     try { const r = await pricelistAPI.update(row.id, { active: !row.active }); patchRow(r.data); toast.success(row.active ? `${row.name} archived` : `${row.name} restored`); if (status !== 'all') load(); }
-    catch (e) { toast.error(e.response?.data?.detail || 'Failed'); }
+    catch (e) { toast.error(errText(e, 'Failed')); }
   };
   const allVisibleSelected = items.length > 0 && items.every(r => selected.has(r.id));
   const toggleAll = () => setSelected(allVisibleSelected ? new Set() : new Set(items.map(r => r.id)));
@@ -62,11 +63,11 @@ export default function PricelistPage({ embedded = false }) {
   const normalise = async () => {
     setNormalising(true);
     try { const r = await pricelistAPI.normaliseApply(); toast.success(`${r.data.moved} item${r.data.moved === 1 ? '' : 's'} moved to standard categories`); await load(); }
-    catch (e) { toast.error(e.response?.data?.detail || 'Normalise failed'); } finally { setNormalising(false); }
+    catch (e) { toast.error(errText(e, 'Normalise failed')); } finally { setNormalising(false); }
   };
   const moveToCategory = async (row, slug) => {
     try { await pricelistAPI.setCategory(row.id, slug); toast.success(`${row.name} → ${data.categories.find(c => c.slug === slug)?.name}`); load(); }
-    catch (e) { toast.error(e.response?.data?.detail || 'Failed'); }
+    catch (e) { toast.error(errText(e, 'Failed')); }
   };
 
   const generatePdf = async (opts) => {
@@ -128,7 +129,7 @@ export default function PricelistPage({ embedded = false }) {
               <p className="text-sm text-slate-400 text-center py-10" data-testid="pricelist-empty">No items match. Add items via the Inventory page.</p>
             ) : (
               <table className="w-full text-sm" data-testid="pricelist-table">
-                <thead className="bg-slate-50 border-b border-slate-200 text-[10px] uppercase text-slate-500">
+                <thead className="bg-slate-50 border-b border-slate-200 text-[11px] text-slate-500">
                   <tr>
                     <th className="px-3 py-2 w-8"><input type="checkbox" checked={allVisibleSelected} onChange={toggleAll} data-testid="pricelist-select-all" /></th>
                     <th className="text-left px-3 py-2">Item</th>
@@ -163,7 +164,7 @@ function GroupRows({ group, selected, toggleOne, save, toggleArchive, setHistory
   return (
     <>
       <tr className="bg-slate-50/80 border-y border-slate-200" data-testid={`pricelist-group-${group.slug}`}>
-        <td colSpan={9} className="px-3 py-1.5 text-xs font-semibold text-slate-600 uppercase tracking-wide">{group.label} <span className="text-slate-400 font-normal">· {group.items.length}</span></td>
+        <td colSpan={9} className="px-3 py-1.5 text-xs font-semibold text-slate-600">{group.label} <span className="text-slate-400 font-normal">· {group.items.length}</span></td>
       </tr>
       {group.items.map(r => (
         <tr key={r.id} className={`border-b border-slate-100 last:border-0 ${r.active ? 'hover:bg-slate-50/60' : 'opacity-50'}`} data-testid={`pricelist-row-${r.id}`}>

@@ -13,6 +13,9 @@ import { Textarea } from '../components/ui/textarea';
 import { Loader2, Plus, HardHat, Star, Search, Trash2, Tag, Pencil } from 'lucide-react';
 import Can from '../components/Can';
 
+import { errText } from '../components/kit/PageBits';
+import { toast } from 'sonner';
+import { confirmAction } from '../components/kit/confirm';
 const STATUS_COLORS = { active: 'bg-emerald-100 text-emerald-800', inactive: 'bg-slate-100 text-slate-600', blacklisted: 'bg-red-100 text-red-800' };
 
 function StarRating({ value = 0, size = 'sm' }) {
@@ -96,20 +99,20 @@ export default function PartnersPage() {
       };
       await partnersAPI.create(payload);
       setShowCreate(false); setForm(emptyForm()); fetchPartners();
-    } catch (err) { setError(err.response?.data?.detail || 'Failed to create partner'); } finally { setSaving(false); }
+    } catch (err) { setError(errText(err, 'Failed to create partner')); } finally { setSaving(false); }
   };
 
   const addTag = async () => {
     if (!newTag.trim()) return;
     try { await partnersAPI.tags.create(newTag.trim()); setNewTag(''); fetchTags(); }
-    catch (e) { alert(e.response?.data?.detail || 'Could not add tag'); }
+    catch (e) { toast.error(errText(e, 'Could not add tag')); }
   };
   const renameTag = async (id, cur) => {
     const nx = window.prompt('Rename tag', cur); if (!nx || nx === cur) return;
     try { await partnersAPI.tags.rename(id, nx); fetchTags(); fetchPartners(); }
-    catch (e) { alert(e.response?.data?.detail || 'Could not rename'); }
+    catch (e) { toast.error(errText(e, 'Could not rename')); }
   };
-  const retireTag = async (id) => { if (!window.confirm('Retire this tag from the picker?')) return; try { await partnersAPI.tags.remove(id); fetchTags(); } catch (e) { alert(e.response?.data?.detail || 'Failed'); } };
+  const retireTag = async (id) => { if (!await confirmAction('Retire this tag from the picker?')) return; try { await partnersAPI.tags.remove(id); fetchTags(); } catch (e) { toast.error(errText(e, 'Failed')); } };
 
   const tagValues = availableTags.map(t => t.tag);
 

@@ -5,6 +5,7 @@ import { Button } from './ui/button';
 import { toast } from 'sonner';
 import { Percent, RotateCcw, Check } from 'lucide-react';
 
+import { errText } from './kit/PageBits';
 /** Iter 54 — implied credit-interest cell: default rate, marked when overridden per customer / per record. */
 export function CreditInterestCell({ credit, onChanged }) {
   const [editing, setEditing] = useState(null); // 'record' | 'customer' | null
@@ -15,7 +16,7 @@ export function CreditInterestCell({ credit, onChanged }) {
     try {
       if (editing === 'record') await creditsAPI.setRate(credit.id, pct); else await creditsAPI.setCustomerRate(credit.customer_name, pct);
       toast.success(pct == null ? 'Override cleared' : `Rate set to ${pct}%/month`); setEditing(null); onChanged?.();
-    } catch (e) { toast.error(e.response?.data?.detail || 'Failed'); }
+    } catch (e) { toast.error(errText(e, 'Failed')); }
   };
   if (editing) {
     return (

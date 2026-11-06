@@ -10,8 +10,8 @@ import {
   Loader2, AlertTriangle, IndianRupee, Shield, TrendingDown, Save, Settings2
 } from 'lucide-react';
 
-const RISK_COLORS = { High: '#ef4444', Medium: '#f59e0b', Low: '#10b981' };
-const PIE_COLORS = ['#ef4444', '#f59e0b', '#3b82f6', '#8b5cf6', '#10b981', '#ec4899'];
+const RISK_COLORS = { High: '#ef4444', Medium: '#f59e0b', Low: '#58A024' };
+const PIE_COLORS = ['#ef4444', '#f59e0b', '#3b82f6', '#8b5cf6', '#58A024', '#ec4899'];
 
 export default function AlertsDashboard() {
   const navigate = useNavigate();
@@ -78,28 +78,28 @@ export default function AlertsDashboard() {
             <CardContent className="p-4 text-center">
               <IndianRupee className="h-6 w-6 text-red-500 mx-auto mb-1" />
               <p className="text-2xl font-bold text-red-700">₹{(data.total_leakage || 0).toLocaleString('en-IN')}</p>
-              <p className="text-xs text-red-500 uppercase tracking-wider">Total Leakage</p>
+              <p className="text-xs text-red-500">Total Leakage</p>
             </CardContent>
           </Card>
           <Card className="border-amber-200 bg-amber-50">
             <CardContent className="p-4 text-center">
               <AlertTriangle className="h-6 w-6 text-amber-500 mx-auto mb-1" />
               <p className="text-2xl font-bold text-amber-700">{data.total_alerts}</p>
-              <p className="text-xs text-amber-500 uppercase tracking-wider">Active Alerts</p>
+              <p className="text-xs text-amber-500">Active Alerts</p>
             </CardContent>
           </Card>
           <Card className="border-orange-200 bg-orange-50">
             <CardContent className="p-4 text-center">
               <Shield className="h-6 w-6 text-orange-500 mx-auto mb-1" />
               <p className="text-2xl font-bold text-orange-700">{data.risky_projects}</p>
-              <p className="text-xs text-orange-500 uppercase tracking-wider">Risky Projects</p>
+              <p className="text-xs text-orange-500">Risky Projects</p>
             </CardContent>
           </Card>
           <Card className="border-slate-200">
             <CardContent className="p-4 text-center">
               <TrendingDown className="h-6 w-6 text-slate-400 mx-auto mb-1" />
               <p className="text-2xl font-bold text-slate-700">{Object.keys(data.alerts_by_type || {}).length}</p>
-              <p className="text-xs text-slate-500 uppercase tracking-wider">Alert Types</p>
+              <p className="text-xs text-slate-500">Alert Types</p>
             </CardContent>
           </Card>
         </div>

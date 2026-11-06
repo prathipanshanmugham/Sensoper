@@ -16,6 +16,7 @@ from datetime import date, datetime, timedelta, timezone
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from bson import ObjectId
+from project_numbers import project_kw, project_system_type
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 from pymongo import ReturnDocument
@@ -444,6 +445,7 @@ def create_router(db, get_current_user, require_role, create_audit_log, role_ok)
         async for p in db.projects.find({"status": "completed", "deleted_at": {"$exists": False}},
                                         {"customer": 1, "commissioning_date": 1, "completed_at": 1, "installation_date": 1, "location": 1,
                                          "custom_fields.proposed_solution.system_size_kw": 1, "custom_fields.proposed_solution.system_type": 1,
+                                         "solar_report.sizing.kwp_recommended": 1, "solar_system": 1, "cost_estimation.system_size_kw": 1,
                                          "reference_number": 1, "electrical.eb_tariff": 1}):
             pid = str(p["_id"])
             if pid in covered:
@@ -460,7 +462,7 @@ def create_router(db, get_current_user, require_role, create_audit_log, role_ok)
             cust = p.get("customer") or {}
             q = quotes.get(("project", pid))
             rows.append({"source_type": "project", "source_id": pid, "customer_name": cust.get("name"), "phone": cust.get("phone"),
-                         "system_capacity_kw": round(_f(ps.get("system_size_kw")), 2), "system_type": ps.get("system_type") or "on-grid",
+                         "system_capacity_kw": round(project_kw(p), 2), "system_type": project_system_type(p),
                          "district": (p.get("location") or {}).get("district"), "commissioned_on": commissioned.isoformat(), "due_on": due.isoformat(),
                          "state": state, "years": round((today - commissioned).days / 365.25, 1), "days_overdue": max((today - due).days, 0),
                          "quote": {"id": str(q["_id"]), "number": q.get("quote_number"), "status": q.get("status")} if q else None,
@@ -556,8 +558,8 @@ def create_router(db, get_current_user, require_role, create_audit_log, role_ok)
             cust, loc = p.get("customer") or {}, p.get("location") or {}
             commissioned = _to_date(p.get("commissioning_date")) or _to_date(p.get("completed_at"))
             return {"customer_name": cust.get("name"), "phone": cust.get("phone"), "site_address": cust.get("address") or loc.get("address"),
-                    "district": loc.get("district"), "state": loc.get("state"), "system_type": ps.get("system_type") or "on-grid",
-                    "system_capacity_kw": _f(ps.get("system_size_kw")), "commissioning_date": commissioned.isoformat() if commissioned else None,
+                    "district": loc.get("district"), "state": loc.get("state"), "system_type": project_system_type(p),
+                    "system_capacity_kw": project_kw(p), "commissioning_date": commissioned.isoformat() if commissioned else None,
                     "tariff": _f(ps.get("tariff_per_unit")) or _f((p.get("electrical") or {}).get("eb_tariff")) or None,
                     "project_id": str(p["_id"]), "reference_number": p.get("reference_number"), "location_id": p.get("location_id")}
         if body.source_type != "manual":
@@ -707,6 +709,8 @@ def create_router(db, get_current_user, require_role, create_audit_log, role_ok)
             "outstanding": round(sum(_f(c.get("outstanding")) for c in contracts)),
         }
 
+        overdue_ids = {str(v["_id"]) for v in v_overdue}
+
         def crow(c):
             return {"contract_number": c.get("contract_number"), "customer": c.get("customer_name"), "district": c.get("district"),
                     "kw": _f(c.get("system_capacity_kw")), "plan": c.get("plan_name") or c.get("contract_type"), "start_date": c.get("start_date"),
@@ -719,7 +723,9 @@ def create_router(db, get_current_user, require_role, create_audit_log, role_ok)
             "contracts": [crow(c) for c in sorted(contracts, key=lambda c: c.get("start_date") or "", reverse=True)],
             "visits": [{"date": v.get("actual_date") or v.get("scheduled_date"), "contract_number": (by_id.get(v.get("contract_id")) or {}).get("contract_number"),
                         "customer": (by_id.get(v.get("contract_id")) or {}).get("customer_name"), "type": v.get("visit_type"), "technician": v.get("technician_name"),
-                        "status": v.get("status")} for v in sorted(v_done + v_sched + v_overdue, key=lambda v: v.get("actual_date") or v.get("scheduled_date") or "", reverse=True)],
+                        "status": "overdue" if str(v["_id"]) in overdue_ids else v.get("status")}
+                       for v in sorted({str(v["_id"]): v for v in v_done + v_sched + v_overdue}.values(),   # a late visit is in both lists — show it once
+                                       key=lambda v: v.get("actual_date") or v.get("scheduled_date") or "", reverse=True)],
             "renewals_due": [{"contract_number": c.get("contract_number"), "customer": c.get("customer_name"),
                               "end_date": c.get("end_date"), "yearly_value": _f(c.get("annual_value"))} for c in renewals_due],
             "offers_due": [{"customer": o["customer_name"], "kw": o["system_capacity_kw"], "commissioned_on": o["commissioned_on"],

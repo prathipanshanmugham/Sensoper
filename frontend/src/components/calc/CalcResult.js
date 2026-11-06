@@ -25,7 +25,7 @@ export function CalcResult({ r }) {
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
         {tiles.map(t => (
           <div key={t.testid} className={`rounded-lg p-2.5 ${t.accent ? 'bg-emerald-600 text-white' : 'bg-white border border-slate-100'}`}>
-            <p className={`text-[10px] uppercase tracking-wider flex items-center gap-1 ${t.accent ? 'text-emerald-100' : 'text-slate-500'}`}><t.icon className="h-3 w-3" />{t.label}</p>
+            <p className={`text-[11px] flex items-center gap-1 ${t.accent ? 'text-emerald-100' : 'text-slate-500'}`}><t.icon className="h-3 w-3" />{t.label}</p>
             <p className={`text-base font-bold leading-tight mt-0.5 ${t.accent ? 'text-white' : 'text-slate-900'}`} data-testid={t.testid}>{t.value}</p>
             <p className={`text-[10px] mt-0.5 ${t.accent ? 'text-emerald-100' : 'text-slate-500'}`}>{t.sub}</p>
           </div>

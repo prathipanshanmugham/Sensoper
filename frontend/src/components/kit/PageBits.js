@@ -15,18 +15,26 @@ export const inrShort = (v) => {
 export const fmtDate = (d, opts = { day: 'numeric', month: 'short', year: 'numeric' }) => (d ? new Date(`${String(d).slice(0, 10)}T00:00:00`).toLocaleDateString('en-IN', opts) : '—');
 export const todayISO = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
 export const addDaysISO = (iso, n) => { const d = new Date(`${iso}T00:00:00`); d.setDate(d.getDate() + n); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
-export const errText = (e, fallback = 'Something went wrong') => {
+/** A sentence for an error notice: the server's own reason when it gave one, otherwise a plain fallback. */
+export const errText = (e, fallback = 'That didn’t work. Try again.') => {
+  if (e && !e.response && (e.request || e.message === 'Network Error')) return 'Can’t reach Sensoper — check the internet connection and try again.';
   const d = e?.response?.data?.detail;
-  if (Array.isArray(d)) return d[0]?.msg || fallback;
-  return typeof d === 'string' ? d : fallback;
+  if (Array.isArray(d)) {   // FastAPI validation: [{loc: [..., 'phone'], msg: 'Field required'}]
+    const parts = d.slice(0, 2).map((x) => { const f = Array.isArray(x?.loc) ? x.loc[x.loc.length - 1] : ''; return x?.msg ? `${f && typeof f === 'string' ? `${f.replace(/_/g, ' ')}: ` : ''}${x.msg}` : ''; }).filter(Boolean);
+    return parts.join('; ') || fallback;
+  }
+  if (typeof d === 'string' && d.trim()) return d;
+  const base = fallback === 'Failed' ? 'That didn’t work' : fallback;
+  if (e?.response?.status >= 500) return `${base.replace(/[.!]$/, '')} — the server hit a problem. Try again in a moment.`;
+  return fallback === 'Failed' ? 'That didn’t work. Try again.' : fallback;
 };
 
 export function PageHeader({ icon: Icon, title, sub, children, testid }) {
   return (
     <div className="flex flex-wrap items-end justify-between gap-3" data-testid={testid}>
       <div className="min-w-0">
-        <h1 className="flex items-center gap-2 font-['Outfit'] text-2xl font-bold text-slate-900">{Icon && <Icon className="h-6 w-6 text-emerald-600" />}{title}</h1>
-        {sub && <p className="text-sm text-slate-500">{sub}</p>}
+        <h1 className="flex items-center gap-2.5 font-['Outfit'] text-2xl font-semibold tracking-tight text-slate-900">{Icon && <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100"><Icon className="h-[18px] w-[18px]" /></span>}{title}</h1>
+        {sub && <p className="mt-1 text-sm text-slate-500">{sub}</p>}
       </div>
       {children && <div className="flex w-full flex-wrap items-end gap-2 sm:w-auto">{children}</div>}
     </div>
@@ -43,12 +51,12 @@ export function PillTabs({ tabs, value, onChange, label = 'Sections', testid = '
   }, [value]);
   return (
     <div ref={box} className="-mx-4 overflow-x-auto px-4" role="tablist" aria-label={label}>
-      <div className="flex w-max gap-1.5">
+      <div className="flex w-max gap-0.5 rounded-lg bg-slate-100 p-1">
         {tabs.filter(Boolean).map(([k, l, n]) => (
           <button key={k} type="button" role="tab" aria-selected={value === k} onClick={() => onChange(k)}
-            className={`flex items-center gap-1.5 whitespace-nowrap rounded-full border px-3.5 py-2 text-sm ${value === k ? 'border-emerald-300 bg-emerald-100 font-medium text-emerald-800' : 'border-slate-200 bg-white text-slate-600 hover:border-emerald-200'}`}
+            className={`flex items-center gap-1.5 whitespace-nowrap rounded-md px-3 py-1.5 text-sm transition-colors ${value === k ? 'bg-white font-medium text-slate-900 shadow-[0_1px_2px_rgba(15,23,42,0.08)]' : 'text-slate-600 hover:text-slate-900'}`}
             data-testid={`${testid}-${k}`}>
-            {l}{n > 0 && <span className="rounded-full bg-amber-500 px-1.5 text-[11px] font-semibold text-white">{n}</span>}
+            {l}{n > 0 && <span className="min-w-[1.25rem] rounded-full bg-amber-500 px-1.5 text-center text-[11px] font-semibold leading-[18px] text-white">{n}</span>}
           </button>
         ))}
       </div>
@@ -59,13 +67,13 @@ export function PillTabs({ tabs, value, onChange, label = 'Sections', testid = '
 export function Tile({ label, value, sub, icon: Icon, tone, testid, onClick }) {
   const toneCls = tone === 'bad' ? 'border-rose-200 bg-rose-50/60' : tone === 'warn' ? 'border-amber-200 bg-amber-50/60' : tone === 'good' ? 'border-emerald-200 bg-emerald-50/60' : 'border-slate-200 bg-white';
   const body = (
-    <div className={`h-full rounded-xl border p-3 text-left ${toneCls}`} data-testid={testid}>
-      <div className="mb-1 flex items-center gap-1.5 text-slate-500">{Icon && <Icon className="h-4 w-4" />}<span className="text-[11px] font-medium uppercase tracking-wide">{label}</span></div>
-      <p className="font-['Outfit'] text-xl font-bold tabular-nums text-slate-900">{value}</p>
-      {sub && <p className="text-[11px] text-slate-500">{sub}</p>}
+    <div className={`h-full rounded-xl border p-3 text-left sm:p-4 ${toneCls}`} data-testid={testid}>
+      <div className="mb-1 flex items-center gap-1.5 text-slate-500">{Icon && <Icon className="h-4 w-4 shrink-0" />}<span className="truncate text-xs font-medium">{label}</span></div>
+      <p className="font-['Outfit'] text-xl font-semibold tabular-nums tracking-tight text-slate-900">{value}</p>
+      {sub && <p className="mt-0.5 text-[11px] text-slate-500">{sub}</p>}
     </div>
   );
-  return onClick ? <button type="button" onClick={onClick} className="block h-full w-full">{body}</button> : body;
+  return onClick ? <button type="button" onClick={onClick} className="block h-full w-full rounded-xl transition-shadow hover:shadow-[0_2px_8px_rgba(15,23,42,0.06)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/40">{body}</button> : body;
 }
 
 export function Tiles({ children }) {
@@ -89,7 +97,7 @@ export function Loading() {
 
 export function Card({ title, sub, action, children, testid, className = '' }) {
   return (
-    <section className={`rounded-xl border border-slate-200 bg-white p-3 sm:p-4 ${className}`} data-testid={testid}>
+    <section className={`rounded-xl border border-slate-200 bg-white p-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)] sm:p-4 ${className}`} data-testid={testid}>
       {(title || action) && (
         <div className="mb-2 flex items-start justify-between gap-2">
           <div className="min-w-0">{title && <p className="text-sm font-semibold text-slate-900">{title}</p>}{sub && <p className="text-[11px] text-slate-500">{sub}</p>}</div>
@@ -104,7 +112,7 @@ export function Card({ title, sub, action, children, testid, className = '' }) {
 export function Chip({ children, tone = 'slate', className = '', testid }) {
   const t = { slate: 'bg-slate-100 text-slate-700', green: 'bg-emerald-50 text-emerald-800 ring-1 ring-emerald-200', amber: 'bg-amber-50 text-amber-900 ring-1 ring-amber-200',
     red: 'bg-rose-50 text-rose-700 ring-1 ring-rose-200', blue: 'bg-sky-50 text-sky-800 ring-1 ring-sky-200', violet: 'bg-violet-50 text-violet-800 ring-1 ring-violet-200' }[tone];
-  return <span className={`inline-flex items-center gap-1 whitespace-nowrap rounded-full px-2 py-0.5 text-[10px] font-semibold ${t} ${className}`} data-testid={testid}>{children}</span>;
+  return <span className={`inline-flex items-center gap-1 whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-medium leading-4 ${t} ${className}`} data-testid={testid}>{children}</span>;
 }
 
 /** Read-only stars, e.g. 4.2 ★ (text too, so it never relies on colour alone). */
@@ -166,7 +174,7 @@ export function FileAttach({ value, onChange, label = 'Attach file', testid = 'f
 }
 
 /** Native date / select / text field with a label — the same height everywhere (44px for thumbs). */
-export const inputCls = 'h-11 w-full rounded-md border border-slate-200 bg-white px-3 text-sm outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100';
+export const inputCls = 'h-11 w-full rounded-md border border-slate-300 bg-white px-3 text-sm outline-none transition-colors focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/25';
 export function Field({ label, hint, children, className = '' }) {
   return (
     <label className={`block space-y-1 ${className}`}>

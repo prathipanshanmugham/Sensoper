@@ -13,6 +13,8 @@ import { Checkbox } from '../components/ui/checkbox';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '../components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 
+import { errText } from '../components/kit/PageBits';
+import { confirmAction } from '../components/kit/confirm';
 const inr = (v) => `₹${Math.round(v || 0).toLocaleString('en-IN')}`;
 const EMPTY = { name: '', description: '', lead_user_id: '', member_user_ids: [], specialities: '', status: 'active' };
 
@@ -28,17 +30,17 @@ export default function TeamsPage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [t, u] = await Promise.all([teamsAPI.list({ status: 'all' }), canManage ? usersAPI.getAll() : Promise.resolve({ data: [] })]);
+      const [t, u] = await Promise.all([teamsAPI.list({ status: 'all' }), canManage ? usersAPI.directory() : Promise.resolve({ data: [] })]);
       setTeams(t.data || []); setUsers(u.data || []);
-    } catch (e) { toast.error(e.response?.data?.detail || 'Failed to load teams'); }
+    } catch (e) { toast.error(errText(e, 'Failed to load teams')); }
     finally { setLoading(false); }
   }, [canManage]);
   useEffect(() => { load(); }, [load]);
 
   const remove = async (t) => {
-    if (!window.confirm(`Delete team "${t.name}"? Completed projects keep their history.`)) return;
+    if (!await confirmAction(`Delete team "${t.name}"? Completed projects keep their history.`)) return;
     try { await teamsAPI.remove(t.id); toast.success('Team deleted'); load(); }
-    catch (e) { toast.error(e.response?.data?.detail || 'Delete failed'); }
+    catch (e) { toast.error(errText(e, 'Delete failed')); }
   };
   const openDetail = async (t) => {
     try { const r = await teamsAPI.get(t.id); setDetail(r.data); } catch (e) { toast.error('Failed to load team'); }
@@ -118,7 +120,7 @@ function TeamCard({ team, canManage, isAdmin, onEdit, onDelete, onOpen }) {
 }
 
 function Stat({ label, value, testid }) {
-  return <div><p className="text-lg font-bold text-slate-900 tabular-nums" data-testid={testid}>{value}</p><p className="text-[10px] uppercase tracking-wide text-slate-400">{label}</p></div>;
+  return <div><p className="text-lg font-bold text-slate-900 tabular-nums" data-testid={testid}>{value}</p><p className="text-[11px] text-slate-400">{label}</p></div>;
 }
 
 function TeamForm({ initial, users, onDone, onCancel }) {
@@ -135,7 +137,7 @@ function TeamForm({ initial, users, onDone, onCancel }) {
     try {
       if (form.id) await teamsAPI.update(form.id, payload); else await teamsAPI.create(payload);
       toast.success(form.id ? 'Team updated' : 'Team created'); onDone();
-    } catch (e) { setErr(e.response?.data?.detail || 'Save failed'); }
+    } catch (e) { setErr(errText(e, 'Save failed')); }
     finally { setSaving(false); }
   };
   return (
@@ -178,7 +180,7 @@ function PerformanceTable({ teams }) {
       <CardHeader className="pb-2"><CardTitle className="text-base font-['Outfit'] flex items-center gap-2"><Trophy className="h-4 w-4 text-amber-500" />Team performance</CardTitle></CardHeader>
       <CardContent className="p-0 overflow-x-auto">
         <table className="w-full text-sm">
-          <thead className="bg-slate-50 border-y border-slate-200 text-[10px] uppercase text-slate-500">
+          <thead className="bg-slate-50 border-y border-slate-200 text-[11px] text-slate-500">
             <tr><th className="text-left px-3 py-2">Team</th><th className="text-right px-3 py-2">Handled</th><th className="text-right px-3 py-2">Active</th><th className="text-right px-3 py-2">Completed</th><th className="text-right px-3 py-2">Completion</th><th className="text-right px-3 py-2">On-time</th><th className="text-right px-3 py-2">Avg days</th><th className="text-right px-3 py-2">Revenue completed</th></tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
@@ -208,7 +210,7 @@ function TeamDetail({ team }) {
       <div className="space-y-3">
         <div className="flex flex-wrap gap-1">{(team.members || []).map(m => <Badge key={m.id} variant="secondary" className="text-[10px]">{m.name}</Badge>)}</div>
         <table className="w-full text-sm">
-          <thead className="bg-slate-50 border-y border-slate-200 text-[10px] uppercase text-slate-500"><tr><th className="text-left px-3 py-2">Ref</th><th className="text-left px-3 py-2">Customer</th><th className="text-left px-3 py-2">Status</th><th className="text-left px-3 py-2">Install date</th><th className="text-right px-3 py-2">Value</th></tr></thead>
+          <thead className="bg-slate-50 border-y border-slate-200 text-[11px] text-slate-500"><tr><th className="text-left px-3 py-2">Ref</th><th className="text-left px-3 py-2">Customer</th><th className="text-left px-3 py-2">Status</th><th className="text-left px-3 py-2">Install date</th><th className="text-right px-3 py-2">Value</th></tr></thead>
           <tbody className="divide-y divide-slate-100">
             {(team.projects || []).map(p => (
               <tr key={p.id} data-testid={`team-project-row-${p.id}`}>

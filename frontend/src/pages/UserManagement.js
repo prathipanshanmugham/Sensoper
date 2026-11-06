@@ -5,14 +5,13 @@ import { formatApiErrorDetail } from '../contexts/AuthContext';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
-import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
+import { Card, CardContent } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../components/ui/dialog';
 import { Switch } from '../components/ui/switch';
 import { 
   ArrowLeft,
-  Users,
   Plus,
   Edit,
   Trash2,
@@ -22,6 +21,8 @@ import {
   Star
 } from 'lucide-react';
 
+import { errText } from '../components/kit/PageBits';
+import { toast } from 'sonner';
 const roleConfig = {
   admin: { label: 'Admin', color: 'bg-purple-100 text-purple-800' },
   manager: { label: 'Manager', color: 'bg-blue-100 text-blue-800' },
@@ -73,7 +74,7 @@ export default function UserManagement() {
     try {
       await employeeScoresAPI.create({ user_id: scoreUser.id, period: scoreForm.period, score: parseInt(scoreForm.score, 10), notes: scoreForm.notes });
       setScoreUser(null);
-    } catch (e) { alert(e.response?.data?.detail || 'Failed to log score'); }
+    } catch (e) { toast.error(errText(e, 'Failed to log score')); }
     finally { setScoreSaving(false); }
   };
 

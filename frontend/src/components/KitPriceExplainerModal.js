@@ -58,7 +58,7 @@ export default function KitPriceExplainerModal({ project, open, onClose }) {
           <div className="flex items-center justify-between">
             <DialogTitle className="flex items-center gap-2 text-lg font-['Outfit']">
               <Calculator className="h-5 w-5 text-emerald-600" /> Kit Price Explainer
-              <Badge variant="outline" className="text-[10px] uppercase">Internal only</Badge>
+              <Badge variant="outline" className="text-[11px]">Internal only</Badge>
             </DialogTitle>
             <div className="flex items-center gap-2">
               <Button variant="outline" size="sm" onClick={() => setShowCustomerSide(v => !v)} className="h-8 text-xs gap-1" data-testid="explainer-toggle-customer">
@@ -76,7 +76,7 @@ export default function KitPriceExplainerModal({ project, open, onClose }) {
           <div className="space-y-3" data-testid="explainer-sales-side">
             <div className="flex items-center gap-2 pb-1 border-b border-slate-200">
               <Receipt className="h-4 w-4 text-rose-600" />
-              <p className="text-xs font-semibold uppercase tracking-wider text-rose-700">Sales / Internal View</p>
+              <p className="text-xs font-semibold text-rose-700">Sales / Internal View</p>
             </div>
 
             {/* Core system */}
@@ -91,7 +91,7 @@ export default function KitPriceExplainerModal({ project, open, onClose }) {
                 ) : (
                   <div className="overflow-x-auto">
                     <table className="w-full text-[11px]">
-                      <thead className="bg-slate-50 text-slate-500 text-[10px] uppercase">
+                      <thead className="bg-slate-50 text-slate-500 text-[11px]">
                         <tr>
                           <th className="text-left px-1.5 py-1">Item</th>
                           <th className="text-right px-1.5 py-1">Qty</th>
@@ -200,7 +200,7 @@ export default function KitPriceExplainerModal({ project, open, onClose }) {
             <div className="space-y-3" data-testid="explainer-customer-side">
               <div className="flex items-center gap-2 pb-1 border-b border-slate-200">
                 <TrendingUp className="h-4 w-4 text-emerald-600" />
-                <p className="text-xs font-semibold uppercase tracking-wider text-emerald-700">Customer View (what prints on the Kit PDF)</p>
+                <p className="text-xs font-semibold text-emerald-700">Customer View (what prints on the Kit PDF)</p>
               </div>
 
               {/* System line */}
@@ -210,7 +210,7 @@ export default function KitPriceExplainerModal({ project, open, onClose }) {
                     <p className="text-sm font-semibold text-slate-800">{customer.systemLine.name}</p>
                     <p className="text-lg font-bold text-slate-900" data-testid="explainer-customer-system-price">{inr(customer.systemLine.price)}</p>
                   </div>
-                  <p className="text-[10px] uppercase text-slate-500 mt-2 mb-1">Includes:</p>
+                  <p className="text-[11px] text-slate-500 mt-2 mb-1">Includes:</p>
                   <ul className="text-[11px] text-slate-700 space-y-0.5">
                     {customer.systemLine.inclusions.map((inc, i) => <li key={i}>• {inc}</li>)}
                   </ul>
@@ -266,12 +266,12 @@ export default function KitPriceExplainerModal({ project, open, onClose }) {
           <Card className="mt-4 border-slate-200 bg-gradient-to-r from-rose-50/50 to-emerald-50/50" data-testid="explainer-reconciliation">
             <CardContent className="p-3 flex items-center justify-around text-xs">
               <div className="text-center">
-                <p className="text-[10px] uppercase text-rose-700 tracking-wider">Sales cost + margin</p>
+                <p className="text-[11px] text-rose-700">Sales cost + margin</p>
                 <p className="text-sm font-bold text-slate-900">{inr(sales.totals.rawWithMargin)}</p>
               </div>
               <ArrowRight className="h-4 w-4 text-slate-400" />
               <div className="text-center">
-                <p className="text-[10px] uppercase text-amber-700 tracking-wider">After rounding ({sales.config.mode} ₹{sales.config.step})</p>
+                <p className="text-[11px] text-amber-700">After rounding ({sales.config.mode} ₹{sales.config.step})</p>
                 <p className="text-sm font-bold text-slate-900">{inr(sales.totals.roundedTotal)}</p>
                 <p className={`text-[10px] ${sales.totals.roundingImpact >= 0 ? 'text-emerald-700' : 'text-rose-600'}`}>
                   {sales.totals.roundingImpact >= 0 ? '+' : ''}{inr(sales.totals.roundingImpact)}
@@ -279,7 +279,7 @@ export default function KitPriceExplainerModal({ project, open, onClose }) {
               </div>
               <ArrowRight className="h-4 w-4 text-slate-400" />
               <div className="text-center">
-                <p className="text-[10px] uppercase text-emerald-700 tracking-wider">Customer lump-sum</p>
+                <p className="text-[11px] text-emerald-700">Customer lump-sum</p>
                 <p className="text-sm font-bold text-slate-900">{inr(customer.totals.systemPrice + customer.totals.addonsTotal)}</p>
               </div>
             </CardContent>

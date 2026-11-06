@@ -70,7 +70,7 @@ function MyDay() {
       <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm" data-testid="attendance-card">
         <div className="flex items-center justify-between gap-3">
           <div>
-            <p className="text-xs font-medium uppercase tracking-wider text-slate-500">{dayLabel(localDate(), { long: true })}</p>
+            <p className="text-xs font-medium text-slate-500">{dayLabel(localDate(), { long: true })}</p>
             <p className="font-['Outfit'] text-3xl font-bold tabular-nums text-slate-900" data-testid="attendance-clock">{new Date(now).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' })}</p>
           </div>
           <span className={`rounded-full px-3 py-1 text-xs font-semibold ${!rec ? 'bg-slate-100 text-slate-600' : rec.check_out ? 'bg-sky-50 text-sky-700' : 'bg-emerald-50 text-emerald-700'}`} data-testid="attendance-state">

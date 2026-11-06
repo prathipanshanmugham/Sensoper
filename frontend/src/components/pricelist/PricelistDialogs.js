@@ -6,6 +6,7 @@ import { Label } from '../ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '../ui/dialog';
 import { Loader2, History } from 'lucide-react';
 
+import { errText } from '../kit/PageBits';
 const ACTIONS = [
   { id: 'set_margin', label: 'Set margin to', suffix: '%', hint: 'Every selected item gets exactly this margin.' },
   { id: 'adjust_margin_pts', label: 'Change margin by', suffix: 'pts', hint: 'Adds/subtracts percentage points (e.g. +5 turns 15% into 20%).' },
@@ -23,7 +24,7 @@ export function BulkAdjustDialog({ open, onOpenChange, itemIds, onDone }) {
   const run = async () => {
     setSaving(true); setError('');
     try { const r = await pricelistAPI.bulk({ item_ids: itemIds, action, value: parseFloat(value) }); onDone(r.data); onOpenChange(false); setValue(''); }
-    catch (e) { setError(e.response?.data?.detail || 'Bulk update failed'); } finally { setSaving(false); }
+    catch (e) { setError(errText(e, 'Bulk update failed')); } finally { setSaving(false); }
   };
 
   return (

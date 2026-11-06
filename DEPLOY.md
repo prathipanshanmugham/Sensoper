@@ -4,7 +4,22 @@ Your server already has `/root/Sensoper/deploy.sh`. It pulls the code, installs 
 copies the build to `/var/www/sensoper`, restarts the `sensoper` service and checks the live bundle. This release needs
 nothing new installed.
 
-## This release: payroll & benefits, help desk, and the https fix for Claude connectors
+## This release: error sweep and a cleaner look
+
+Code-only release with no new settings. Deploy as usual (`/root/Sensoper/deploy.sh`).
+
+On first start, the server fills in the missing stock cost on direct sales saved without one. The log shows
+"Direct sales: filled the missing stock cost on N sale(s)" when it does.
+
+**After deploy, check:**
+1. Open a few stock items and older projects; they should open without errors.
+2. Delete something harmless, such as a test category. The confirmation is an in-app box, not a browser pop-up.
+3. Sales → Direct sales → Summary shows real margins.
+4. Find any quote warning "margin … isn't a sensible percentage", open its calculator, enter the margin as a %, and
+   save it again.
+5. On a project with inverter details, **Show** fetches the password, and Settings → Activity log records it.
+
+## Earlier release: payroll & benefits, help desk, and the https fix for Claude connectors
 
 Nothing new to install. After `./deploy.sh`:
 

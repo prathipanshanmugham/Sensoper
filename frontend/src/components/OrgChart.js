@@ -11,6 +11,7 @@ import { Input } from './ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from './ui/dialog';
 
+import { errText } from './kit/PageBits';
 const DOT = { checked_in: 'bg-emerald-500', checked_out: 'bg-sky-500', absent: 'bg-slate-300' };
 const ROLE_TONE = { admin: 'bg-amber-300 text-slate-900', manager: 'bg-sky-100 text-sky-800', staff: 'bg-emerald-100 text-emerald-800' };
 const initials = (n) => (n || '?').split(/\s+/).filter(Boolean).slice(0, 2).map((x) => x[0]).join('').toUpperCase();
@@ -108,7 +109,7 @@ export default function OrgChart({ data, canEdit, onChanged }) {
     try {
       await hrAPI.updatePerson(pick.id, { designation: form.designation, department: pick.department, reports_to: form.reports_to || null });
       toast.success('Reporting line saved'); setPick(null); onChanged?.();
-    } catch (e) { toast.error(e.response?.data?.detail || 'Could not save'); } finally { setSaving(false); }
+    } catch (e) { toast.error(errText(e, 'Could not save')); } finally { setSaving(false); }
   };
   return (
     <div className="space-y-2" data-testid="org-chart">

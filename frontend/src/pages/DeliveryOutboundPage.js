@@ -13,6 +13,9 @@ import HardDeleteButton from '../components/HardDeleteButton';
 import Can from '../components/Can';
 import { useLiveRefresh } from '../lib/liveSync';
 
+import { errText } from '../components/kit/PageBits';
+import { toast } from 'sonner';
+import { confirmAction } from '../components/kit/confirm';
 export default function DeliveryOutboundPage() {
   const { isAdmin, isManager } = useAuth();
   const [deliveries, setDeliveries] = useState([]);
@@ -44,11 +47,11 @@ export default function DeliveryOutboundPage() {
 
   const handleApproveCancel = async (id) => {
     try { await actionRequestsAPI.approve(id); await fetchApprovals(); await fetch(); }
-    catch (e) { alert(e.response?.data?.detail || 'Could not approve'); }
+    catch (e) { toast.error(errText(e, 'Could not approve')); }
   };
   const handleRejectCancel = async (id) => {
     try { await actionRequestsAPI.reject(id); await fetchApprovals(); }
-    catch (e) { alert(e.response?.data?.detail || 'Could not reject'); }
+    catch (e) { toast.error(errText(e, 'Could not reject')); }
   };
 
   const addItem = () => setForm(p => ({...p, items: [...p.items, { name: '', qty: '' }]}));
@@ -77,11 +80,11 @@ export default function DeliveryOutboundPage() {
       const items = rest.items.filter(i => i.name).map(i => ({ name: i.name, qty: parseFloat(i.qty) || 0 }));
       const r = await deliveriesAPI.edit(id, { ...rest, items });
       if (r.data.status === 'needs_confirmation') {
-        if (window.confirm(r.data.message)) await deliveriesAPI.edit(id, { ...rest, items, confirm_reconciliation_impact: true });
+        if (await confirmAction(r.data.message)) await deliveriesAPI.edit(id, { ...rest, items, confirm_reconciliation_impact: true });
         else { setSaving(false); return; }
       }
       setEditDelivery(null); await fetch();
-    } catch (err) { setActionError(err.response?.data?.detail || 'Could not save changes'); } finally { setSaving(false); }
+    } catch (err) { setActionError(errText(err, 'Could not save changes')); } finally { setSaving(false); }
   };
 
   const confirmCancelDelivery = async () => {
@@ -91,7 +94,7 @@ export default function DeliveryOutboundPage() {
       const r = await deliveriesAPI.cancel(cancelTarget.id);
       if (r.data.status === 'pending_approval') { setActionError(r.data.message); }
       else { setCancelTarget(null); await fetch(); }
-    } catch (err) { setActionError(err.response?.data?.detail || 'Could not cancel this delivery'); } finally { setSaving(false); }
+    } catch (err) { setActionError(errText(err, 'Could not cancel this delivery')); } finally { setSaving(false); }
   };
 
   if (loading) return <div className="flex items-center justify-center min-h-[60vh]"><Loader2 className="h-8 w-8 animate-spin text-emerald-600" /></div>;

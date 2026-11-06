@@ -9,6 +9,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Textarea } from './ui/textarea';
 import { Loader2, IndianRupee, CheckCircle2, Clock, XCircle, FileCheck, Save } from 'lucide-react';
 
+import { errText } from './kit/PageBits';
+import { toast } from 'sonner';
 const STATUS_STEPS = [
   { key: 'eligible',       label: 'Eligible',       color: 'bg-slate-200 text-slate-700', border: 'border-slate-300', icon: CheckCircle2 },
   { key: 'applied',        label: 'Applied',        color: 'bg-blue-100 text-blue-700',    border: 'border-blue-300',  icon: FileCheck },
@@ -70,7 +72,7 @@ export default function SubsidyTrackingCard({ projectId }) {
       await subsidyAPI.upsert(payload);
       setEditing(false);
       await load();
-    } catch (e) { alert(e.response?.data?.detail || 'Save failed'); }
+    } catch (e) { toast.error(errText(e, 'Save failed')); }
     finally { setSaving(false); }
   };
 
@@ -84,7 +86,7 @@ export default function SubsidyTrackingCard({ projectId }) {
       if (newStatus === 'disbursed' && !form.disbursement_date) patch.disbursement_date = today;
       await subsidyAPI.upsert(patch);
       await load();
-    } catch (e) { alert(e.response?.data?.detail || 'Failed'); }
+    } catch (e) { toast.error(errText(e, 'Failed')); }
     finally { setSaving(false); }
   };
 
@@ -95,7 +97,7 @@ export default function SubsidyTrackingCard({ projectId }) {
     try {
       await subsidyAPI.upsert({ project_id: projectId, status: 'rejected', rejection_reason: reason });
       await load();
-    } catch (e) { alert('Failed'); }
+    } catch (e) { toast.error('Failed'); }
     finally { setSaving(false); }
   };
 
@@ -136,7 +138,7 @@ export default function SubsidyTrackingCard({ projectId }) {
                     data-testid={`subsidy-step-${s.key}`}
                   >
                     <Icon className="h-4 w-4 mb-0.5" />
-                    <span className="text-[10px] font-semibold uppercase tracking-wide">{s.label}</span>
+                    <span className="text-[11px] font-semibold">{s.label}</span>
                   </div>
                   {idx < STATUS_STEPS.length - 1 && (
                     <div className={`h-0.5 w-3 ${idx < currentIdx ? 'bg-emerald-400' : 'bg-slate-200'}`} />
@@ -171,19 +173,19 @@ export default function SubsidyTrackingCard({ projectId }) {
         {!editing && (
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <div className="rounded-lg bg-slate-50 border border-slate-100 p-2.5">
-              <p className="text-[10px] uppercase text-slate-500">Scheme</p>
+              <p className="text-[11px] text-slate-500">Scheme</p>
               <p className="text-xs font-semibold text-slate-800 mt-0.5">{SCHEMES.find(s => s.value === (data?.scheme || 'pm_surya_ghar'))?.label.split(' (')[0] || data?.scheme || '—'}</p>
             </div>
             <div className="rounded-lg bg-slate-50 border border-slate-100 p-2.5">
-              <p className="text-[10px] uppercase text-slate-500">Eligible</p>
+              <p className="text-[11px] text-slate-500">Eligible</p>
               <p className="text-sm font-bold text-slate-900 mt-0.5">₹{(data?.eligible_amount || 0).toLocaleString('en-IN')}</p>
             </div>
             <div className="rounded-lg bg-slate-50 border border-slate-100 p-2.5">
-              <p className="text-[10px] uppercase text-slate-500">Approved</p>
+              <p className="text-[11px] text-slate-500">Approved</p>
               <p className="text-sm font-bold text-slate-900 mt-0.5">₹{(data?.approved_amount || 0).toLocaleString('en-IN')}</p>
             </div>
             <div className="rounded-lg bg-emerald-50 border border-emerald-100 p-2.5">
-              <p className="text-[10px] uppercase text-emerald-700">Disbursed</p>
+              <p className="text-[11px] text-emerald-700">Disbursed</p>
               <p className="text-sm font-bold text-emerald-800 mt-0.5">₹{(data?.disbursed_amount || 0).toLocaleString('en-IN')}</p>
             </div>
           </div>

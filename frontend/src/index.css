@@ -21,34 +21,34 @@ code {
 
 @layer base {
     :root {
-        /* Sensoper Brand Colors - Based on Logo */
-        --sensoper-green: 120 100% 45%;  /* #4ADE40 - Bright Lime Green */
-        --sensoper-blue: 207 89% 56%;    /* #2D9BF0 - Bright Blue */
-        --sensoper-dark: 0 0% 8%;        /* #141414 - Near Black */
-        
+        /* Sensoper brand: leaf green and royal blue from the logo. Green is for actions and the current
+           selection; blue for links and information; everything else stays neutral. */
+        --sensoper-green: 96 67% 31%;    /* #43851A — leaf (logo #48A818, deepened for contrast) */
+        --sensoper-blue: 213 86% 44%;    /* #1068D0 — logo blue */
+
         --background: 210 40% 98%;
-        --foreground: 0 0% 8%;
+        --foreground: 222 47% 11%;
         --card: 0 0% 100%;
-        --card-foreground: 0 0% 8%;
+        --card-foreground: 222 47% 11%;
         --popover: 0 0% 100%;
-        --popover-foreground: 0 0% 8%;
-        --primary: 120 100% 45%;         /* Sensoper Green */
+        --popover-foreground: 222 47% 11%;
+        --primary: 96 67% 31%;
         --primary-foreground: 0 0% 100%;
-        --secondary: 207 89% 56%;        /* Sensoper Blue */
-        --secondary-foreground: 0 0% 100%;
+        --secondary: 210 40% 96%;
+        --secondary-foreground: 215 25% 27%;
         --muted: 210 40% 96%;
-        --muted-foreground: 215 16% 47%;
-        --accent: 207 89% 56%;           /* Sensoper Blue */
-        --accent-foreground: 0 0% 100%;
-        --destructive: 0 84% 60%;
+        --muted-foreground: 215 16% 42%;
+        --accent: 210 40% 95%;           /* hover and highlighted menu items: neutral, never a colour */
+        --accent-foreground: 222 47% 11%;
+        --destructive: 0 72% 51%;
         --destructive-foreground: 0 0% 100%;
-        --border: 214 32% 91%;
-        --input: 214 32% 91%;
-        --ring: 120 100% 45%;            /* Sensoper Green */
-        --chart-1: 120 100% 45%;
-        --chart-2: 207 89% 56%;
+        --border: 214 32% 90%;
+        --input: 214 28% 84%;
+        --ring: 96 55% 40%;
+        --chart-1: 96 67% 31%;
+        --chart-2: 213 86% 44%;
         --chart-3: 38 92% 50%;
-        --chart-4: 0 84% 60%;
+        --chart-4: 0 72% 51%;
         --chart-5: 262 83% 58%;
         --radius: 0.75rem;
     }
@@ -60,28 +60,48 @@ code {
     }
     body {
         @apply bg-background text-foreground;
+        text-rendering: optimizeLegibility;
+    }
+    h1, h2, h3 {
+        letter-spacing: -0.01em;
+    }
+    /* Numbers line up in columns (money, quantities, dates). */
+    table, .tabular-nums {
+        font-variant-numeric: tabular-nums;
+    }
+    /* A grid cell may shrink below its content's natural width, so a long code block or a row of tabs
+       scrolls inside its card instead of pushing the whole page sideways on phones. */
+    .grid > * {
+        min-width: 0;
+    }
+    ::selection {
+        background: #E4F2D4;
+        color: #122808;
+    }
+    :focus-visible {
+        outline-color: #58A024;
     }
 }
 
 /* Brand colors utility classes */
 .bg-sensoper-green {
-    background-color: #4ADE40;
+    background-color: #43851A;
 }
 
 .bg-sensoper-blue {
-    background-color: #2D9BF0;
+    background-color: #1068D0;
 }
 
 .bg-sensoper-dark {
-    background-color: #141414;
+    background-color: #0F172A;
 }
 
 .text-sensoper-green {
-    color: #4ADE40;
+    color: #43851A;
 }
 
 .text-sensoper-blue {
-    color: #2D9BF0;
+    color: #1068D0;
 }
 
 /* Custom scrollbar */
@@ -143,7 +163,7 @@ code {
 }
 
 .status-approved {
-    @apply bg-green-100 text-green-800;
+    @apply bg-emerald-100 text-emerald-800;
 }
 
 .status-rejected {
@@ -156,11 +176,11 @@ code {
 
 /* Brand gradient */
 .brand-gradient {
-    background: linear-gradient(135deg, #4ADE40 0%, #2D9BF0 100%);
+    background: linear-gradient(135deg, #43851A 0%, #1068D0 100%);
 }
 
 .brand-gradient-text {
-    background: linear-gradient(135deg, #4ADE40 0%, #2D9BF0 100%);
+    background: linear-gradient(135deg, #43851A 0%, #1068D0 100%);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;

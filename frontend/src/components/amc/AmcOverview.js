@@ -15,7 +15,7 @@ function Tile({ label, value, sub, icon: Icon, tone, testid, to, onClick }) {
   const toneCls = tone === 'bad' ? 'border-rose-200 bg-rose-50/60' : tone === 'warn' ? 'border-amber-200 bg-amber-50/60' : tone === 'hero' ? 'border-emerald-200 bg-emerald-50/60' : 'border-slate-200 bg-white';
   const body = (
     <div className={`h-full rounded-xl border p-3 ${toneCls}`} data-testid={testid}>
-      <div className="mb-1 flex items-center gap-1.5 text-slate-500"><Icon className="h-4 w-4" /><span className="text-[11px] font-medium uppercase tracking-wide">{label}</span></div>
+      <div className="mb-1 flex items-center gap-1.5 text-slate-500"><Icon className="h-4 w-4" /><span className="text-[11px] font-medium">{label}</span></div>
       <p className="font-['Outfit'] text-xl font-bold tabular-nums text-slate-900">{value}</p>
       {sub && <p className="text-[11px] text-slate-500">{sub}</p>}
     </div>
@@ -28,7 +28,7 @@ function Tile({ label, value, sub, icon: Icon, tone, testid, to, onClick }) {
 function Section({ title, children }) {
   return (
     <section className="space-y-2">
-      <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-500">{title}</h2>
+      <h2 className="text-xs font-semibold text-slate-500">{title}</h2>
       <div className="grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-4">{children}</div>
     </section>
   );

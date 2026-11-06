@@ -8,6 +8,7 @@ import { toast } from 'sonner';
 import { Loader2, Plus, CheckCircle2, AlertTriangle, Clock, FileDown, Undo2, X } from 'lucide-react';
 import Can from '../components/Can';
 
+import { errText } from '../components/kit/PageBits';
 /** Iter 57 — Weekly Audit rebuilt around the walk-through: one status board (open / overdue / resolved), a 4-field quick
  *  point entry (what · severity · owner · by when), reusable templates, PDF export in place. */
 const SEV = [['low', 'Low', 'bg-slate-100 text-slate-700 border-slate-300'], ['medium', 'Medium', 'bg-amber-100 text-amber-800 border-amber-300'], ['high', 'High', 'bg-red-100 text-red-800 border-red-300']];
@@ -29,8 +30,8 @@ export default function WeeklyAuditPage() {
     try {
       const [a, w, t] = await Promise.all([auditsAPI.list(), auditsAPI.thisWeek(), auditsAPI.templates()]);
       setAudits(a.data); setWeek(w.data); setTemplates(t.data.templates);
-      if (isAdmin || isManager) usersAPI.getAll().then(r => setUsers(r.data || [])).catch(() => {});
-    } catch (e) { toast.error(e.response?.data?.detail || 'Could not load audits'); }
+      if (isAdmin || isManager) usersAPI.directory().then(r => setUsers(r.data || [])).catch(() => {});
+    } catch (e) { toast.error(errText(e, 'Could not load audits')); }
     finally { setLoading(false); }
   }, [isAdmin, isManager]);
   useEffect(() => { load(); }, [load]);
@@ -47,11 +48,11 @@ export default function WeeklyAuditPage() {
     if (!p.description.trim() || !week) return;
     setSaving(true);
     try { await auditsAPI.addIssue(week.id, { ...p, owner_name: p.owner_name || user?.name || '' }); setP(q => ({ ...q, description: '' })); toast.success('Point added'); await load(); }
-    catch (e) { toast.error(e.response?.data?.detail || 'Could not add'); }
+    catch (e) { toast.error(errText(e, 'Could not add')); }
     finally { setSaving(false); }
   };
-  const setStatus = async (pt, status) => { try { await auditsAPI.setPointStatus(pt.audit_id, pt.idx, status); await load(); } catch (e) { toast.error(e.response?.data?.detail || 'Failed'); } };
-  const saveTemplates = async (next) => { try { const r = await auditsAPI.saveTemplates(next); setTemplates(r.data.templates); } catch (e) { toast.error(e.response?.data?.detail || 'Failed'); } };
+  const setStatus = async (pt, status) => { try { await auditsAPI.setPointStatus(pt.audit_id, pt.idx, status); await load(); } catch (e) { toast.error(errText(e, 'Failed')); } };
+  const saveTemplates = async (next) => { try { const r = await auditsAPI.saveTemplates(next); setTemplates(r.data.templates); } catch (e) { toast.error(errText(e, 'Failed')); } };
 
   const exportPdf = async () => {
     const { default: jsPDF } = await import('jspdf'); const { default: autoTable } = await import('jspdf-autotable');
@@ -93,7 +94,7 @@ export default function WeeklyAuditPage() {
       <div className="grid grid-cols-4 gap-2" data-testid="audit-board-tabs">
         {[['open', 'Open', Clock, 'text-sky-700'], ['overdue', 'Overdue', AlertTriangle, 'text-red-700'], ['resolved', 'Resolved', CheckCircle2, 'text-emerald-700'], ['all', 'All', null, 'text-slate-700']].map(([k, l, I, c]) => (
           <button key={k} type="button" onClick={() => setView(k)} className={`rounded-xl border p-2.5 text-left ${view === k ? 'border-slate-900 bg-white shadow-sm' : 'border-slate-200 bg-slate-50'}`} data-testid={`audit-board-${k}`}>
-            <p className={`text-[11px] uppercase tracking-wider flex items-center gap-1 ${c}`}>{I && <I className="h-3.5 w-3.5" />}{l}</p>
+            <p className={`text-[11px] flex items-center gap-1 ${c}`}>{I && <I className="h-3.5 w-3.5" />}{l}</p>
             <p className="text-2xl font-bold text-slate-900" data-testid={`audit-count-${k}`}>{k === 'all' ? points.length : counts[k]}</p>
           </button>
         ))}

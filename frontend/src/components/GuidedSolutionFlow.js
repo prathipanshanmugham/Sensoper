@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
-import { Button } from './ui/button';
 import { Badge } from './ui/badge';
 import { ChevronDown, ChevronRight, Info, CheckCircle2, AlertTriangle, Zap, Ruler, IndianRupee, TrendingUp } from 'lucide-react';
 
@@ -55,23 +54,23 @@ export default function GuidedSolutionFlow({ stages, result, systemType, warning
       {/* Live summary — always visible */}
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-2" data-testid="guided-summary-strip">
         <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-2.5 text-center">
-          <p className="text-[10px] uppercase text-emerald-700 tracking-wider">System</p>
+          <p className="text-[11px] text-emerald-700">System</p>
           <p className="text-lg font-bold text-slate-900">{kwp} <span className="text-xs">{systemType === 'solar-pump' ? 'kWp' : 'kWp'}</span></p>
         </div>
         <div className="rounded-lg border border-slate-200 bg-slate-50 p-2.5 text-center">
-          <p className="text-[10px] uppercase text-slate-700 tracking-wider">Total Cost</p>
+          <p className="text-[11px] text-slate-700">Total Cost</p>
           <p className="text-lg font-bold text-slate-900">₹{(totalCost / 100000).toFixed(2)}L</p>
         </div>
         <div className="rounded-lg border border-blue-200 bg-blue-50 p-2.5 text-center">
-          <p className="text-[10px] uppercase text-blue-700 tracking-wider">Subsidy</p>
+          <p className="text-[11px] text-blue-700">Subsidy</p>
           <p className="text-lg font-bold text-slate-900">₹{subsidy > 0 ? (subsidy / 1000).toFixed(0) + 'k' : '—'}</p>
         </div>
         <div className="rounded-lg border border-amber-200 bg-amber-50 p-2.5 text-center">
-          <p className="text-[10px] uppercase text-amber-700 tracking-wider">Customer Pays</p>
+          <p className="text-[11px] text-amber-700">Customer Pays</p>
           <p className="text-lg font-bold text-slate-900">₹{(netCost / 100000).toFixed(2)}L</p>
         </div>
         <div className="rounded-lg border border-violet-200 bg-violet-50 p-2.5 text-center">
-          <p className="text-[10px] uppercase text-violet-700 tracking-wider">Payback</p>
+          <p className="text-[11px] text-violet-700">Payback</p>
           <p className="text-lg font-bold text-slate-900">{payback ? `${payback}y` : '—'}</p>
         </div>
       </div>

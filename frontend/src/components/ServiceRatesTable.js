@@ -6,6 +6,7 @@ import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Plus, Check, X, Trash2, Loader2, Pencil } from 'lucide-react';
 
+import { confirmAction } from './kit/confirm';
 const UNITS = [['per_kw', 'per kW'], ['per_unit', 'per unit'], ['per_km', 'per km'], ['flat', 'flat']];
 const SCOPES = ['any', 'on-grid', 'off-grid', 'hybrid', 'solar-pump'];
 const blank = { name: '', system_type_scope: 'any', unit: 'per_kw', rate: '', margin_pct: '', gst_pct: '', active: true };
@@ -34,7 +35,7 @@ export function ServiceRatesTable() {
     } catch (e) { toast.error(err(e, 'Save failed')); } finally { setSaving(false); }
   };
   const remove = async (r) => {
-    if (!window.confirm(`Remove "${r.name}"?`)) return;
+    if (!await confirmAction(`Remove "${r.name}"?`)) return;
     try { await catalogueAPI.delete('service', r.id); toast.success('Removed'); load(); } catch (e) { toast.error(err(e, 'Remove failed')); }
   };
   const cell = (k, type = 'text', extra = {}) => <Input type={type} value={edit[k] ?? ''} onChange={e => setEdit(p => ({ ...p, [k]: e.target.value }))} className="h-8 text-xs" data-testid={`svc-${k}`} {...extra} />;
@@ -59,7 +60,7 @@ export function ServiceRatesTable() {
   return (
     <div className="rounded-lg border border-slate-200 bg-white overflow-x-auto" data-testid="service-rates-table">
       <table className="w-full text-sm">
-        <thead className="bg-slate-50 text-[10px] uppercase tracking-wider text-slate-500"><tr>
+        <thead className="bg-slate-50 text-[11px] text-slate-500"><tr>
           <th className="text-left px-2 py-2">Service</th><th className="text-left px-2 py-2">Scope</th><th className="text-left px-2 py-2">Unit</th><th className="text-left px-2 py-2">Rate ₹</th><th className="text-left px-2 py-2">Margin %</th><th className="text-left px-2 py-2">GST %</th><th className="px-2 py-2" />
         </tr></thead>
         <tbody className="divide-y divide-slate-100">

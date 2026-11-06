@@ -11,6 +11,7 @@ import { Textarea } from '../components/ui/textarea';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '../components/ui/dialog';
 import { useLiveRefresh } from '../lib/liveSync';
 
+import { errText } from '../components/kit/PageBits';
 const SOURCE_META = {
   approval: { label: 'Deletion / change request', icon: ShieldAlert, color: 'bg-red-100 text-red-800' },
   project_submission: { label: 'Project review', icon: FileText, color: 'bg-blue-100 text-blue-800' },
@@ -38,7 +39,7 @@ export default function ApprovalsPage() {
     try {
       if (tab === 'pending') { const r = await inboxAPI.list(source); setData(r.data); }
       else { const r = await inboxAPI.history(); setHistory(r.data); }
-    } catch (e) { toast.error(e.response?.data?.detail || 'Failed to load approvals'); }
+    } catch (e) { toast.error(errText(e, 'Failed to load approvals')); }
     finally { setLoading(false); }
   }, [tab, source]);
   useEffect(() => { load(); }, [load]);
@@ -47,13 +48,13 @@ export default function ApprovalsPage() {
   const approve = async (it) => {
     setBusy(it.id);
     try { const r = await inboxAPI.approve(it.source, it.id); toast.success(r.data.result || 'Approved'); load(); }
-    catch (e) { toast.error(e.response?.data?.detail || 'Approve failed'); }
+    catch (e) { toast.error(errText(e, 'Approve failed')); }
     finally { setBusy(''); }
   };
   const doReject = async () => {
     setBusy(reject.id);
     try { await inboxAPI.reject(reject.source, reject.id, reason || 'Rejected'); toast.success('Rejected'); setReject(null); setReason(''); load(); }
-    catch (e) { toast.error(e.response?.data?.detail || 'Reject failed'); }
+    catch (e) { toast.error(errText(e, 'Reject failed')); }
     finally { setBusy(''); }
   };
   const canAct = (it) => it.approver_roles.includes(isAdmin ? 'admin' : 'manager');
@@ -111,7 +112,7 @@ export default function ApprovalsPage() {
       ) : (
         <Card><CardContent className="p-0">
           <table className="w-full text-sm">
-            <thead className="bg-slate-50 border-y border-slate-200 text-[10px] uppercase text-slate-500"><tr><th className="text-left px-3 py-2">Request</th><th className="text-left px-3 py-2">Type</th><th className="text-left px-3 py-2">Outcome</th><th className="text-left px-3 py-2">By</th><th className="text-left px-3 py-2">When</th><th className="text-left px-3 py-2">Reason</th></tr></thead>
+            <thead className="bg-slate-50 border-y border-slate-200 text-[11px] text-slate-500"><tr><th className="text-left px-3 py-2">Request</th><th className="text-left px-3 py-2">Type</th><th className="text-left px-3 py-2">Outcome</th><th className="text-left px-3 py-2">By</th><th className="text-left px-3 py-2">When</th><th className="text-left px-3 py-2">Reason</th></tr></thead>
             <tbody className="divide-y divide-slate-100">
               {history.map(h => (
                 <tr key={`${h.source}-${h.id}`} data-testid={`history-${h.source}-${h.id}`}>

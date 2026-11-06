@@ -6,6 +6,8 @@ import { Switch } from './ui/switch';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Archive, Download, Loader2, Trash2 } from 'lucide-react';
 
+import { errText } from './kit/PageBits';
+import { confirmAction } from './kit/confirm';
 const API_URL = process.env.REACT_APP_BACKEND_URL;
 
 /** Iter 49 §5 — quarterly archive list + retention settings. Purge stays a deliberate admin action. */
@@ -24,7 +26,7 @@ export default function LogArchivesPanel({ isAdmin }) {
 
   const run = async (label, fn) => {
     setBusy(label); setMsg('');
-    try { const r = await fn(); setMsg(r); } catch (e) { setMsg(e.response?.data?.detail || 'Failed'); }
+    try { const r = await fn(); setMsg(r); } catch (e) { setMsg(errText(e, 'Failed')); }
     finally { setBusy(''); load(); }
   };
   const saveCfg = (patch) => run('cfg', async () => { const r = await auditLogsAPI.updateArchiveConfig({ ...cfg, ...patch }); setCfg(r.data); return 'Retention settings saved'; });
@@ -70,7 +72,7 @@ export default function LogArchivesPanel({ isAdmin }) {
                   {a.status === 'archived' && <>
                     <Button size="sm" variant="ghost" className="h-7 px-2" onClick={() => download(a, 'xlsx')} data-testid={`archive-download-xlsx-${a.quarter}`}><Download className="h-3.5 w-3.5 mr-1" />Excel</Button>
                     <Button size="sm" variant="ghost" className="h-7 px-2" onClick={() => download(a, 'pdf')} data-testid={`archive-download-pdf-${a.quarter}`}><Download className="h-3.5 w-3.5 mr-1" />PDF</Button>
-                    {isAdmin && !a.purged_at && <Button size="sm" variant="ghost" className="h-7 px-2 text-rose-700" disabled={!!busy} onClick={() => { if (window.confirm(`Purge live logs for ${a.quarter}? The archive stays available forever.`)) run('purge', async () => { const r = await auditLogsAPI.purgeQuarter(a.quarter); return `Purged ${r.data.purged_rows} live rows for ${a.quarter}`; }); }} data-testid={`archive-purge-${a.quarter}`}><Trash2 className="h-3.5 w-3.5 mr-1" />Purge live</Button>}
+                    {isAdmin && !a.purged_at && <Button size="sm" variant="ghost" className="h-7 px-2 text-rose-700" disabled={!!busy} onClick={async () => { if (await confirmAction(`Purge live logs for ${a.quarter}? The archive stays available forever.`)) run('purge', async () => { const r = await auditLogsAPI.purgeQuarter(a.quarter); return `Purged ${r.data.purged_rows} live rows for ${a.quarter}`; }); }} data-testid={`archive-purge-${a.quarter}`}><Trash2 className="h-3.5 w-3.5 mr-1" />Purge live</Button>}
                   </>}
                 </td>
               </tr>

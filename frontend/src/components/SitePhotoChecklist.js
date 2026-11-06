@@ -15,6 +15,7 @@ import { getPosition, tryPosition, stampImage } from '../lib/geo';
 import { Section } from './FormBits';
 import PhotoSourceButtons from './PhotoSourceButtons';
 
+import { confirmAction } from './kit/confirm';
 let checklistCache = null;
 function loadChecklist() {
   if (!checklistCache) checklistCache = sitePhotosAPI.checklist().then((r) => r.data).catch((e) => { checklistCache = null; throw e; });
@@ -147,7 +148,7 @@ export default function SitePhotoChecklist({ value, onChange, projectId = null, 
   };
 
   const remove = async (photo) => {
-    if (!window.confirm('Remove this photo from the checklist?' + (photo.drive_status === 'uploaded' ? ' The copy in Google Drive stays there.' : ''))) return;
+    if (!await confirmAction('Remove this photo from the checklist?' + (photo.drive_status === 'uploaded' ? ' The copy in Google Drive stays there.' : ''))) return;
     if (live) {
       try { await sitePhotosAPI.remove(projectId, photo.id); } catch (e) { toast.error(formatApiErrorDetail(e.response?.data?.detail) || 'Could not remove the photo'); return; }
     }
@@ -223,7 +224,7 @@ export default function SitePhotoChecklist({ value, onChange, projectId = null, 
                       <div className="min-w-0 flex-1">
                         <p className="text-sm font-medium text-slate-900">
                           {s.label}
-                          {s.optional && <span className="ml-1.5 rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-slate-500">if applicable</span>}
+                          {s.optional && <span className="ml-1.5 rounded bg-slate-100 px-1.5 py-0.5 text-[11px] font-medium text-slate-500">if applicable</span>}
                           {(s.min || 1) > 1 && <span className="ml-1.5 text-xs font-normal text-slate-500">{Math.min(list.length, s.min)}/{s.min}</span>}
                         </p>
                         {s.hint && <p className="text-xs text-slate-500">{s.hint}</p>}

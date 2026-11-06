@@ -10,6 +10,7 @@ import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '../ui/sheet';
 
+import { errText } from '../kit/PageBits';
 const Num = ({ label, value, onChange, unit, step = 1, testid, hint }) => (
   <div className="space-y-1">
     <Label className="text-xs text-slate-700">{label}{unit && <span className="text-slate-400"> ({unit})</span>}</Label>
@@ -33,7 +34,7 @@ export function AmcSettingsSheet({ open, onOpenChange, onSaved }) {
   const save = async () => {
     setSaving(true);
     try { const r = await amcAPI.saveSettings(s); setS(r.data); toast.success('AMC settings saved'); onSaved?.(); onOpenChange(false); }
-    catch (e) { toast.error(e.response?.data?.detail || 'Could not save'); } finally { setSaving(false); }
+    catch (e) { toast.error(errText(e, 'Could not save')); } finally { setSaving(false); }
   };
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>

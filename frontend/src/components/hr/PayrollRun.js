@@ -38,8 +38,8 @@ function LineDialog({ month, line, editable, onOpenChange, onSaved }) {
           <DialogDescription>{line.paid_days} of {line.basis_days} days paid{a.present_days > 0 || line.auto_lop ? ` · checked in ${a.present_days} of ${a.working_days} working days` : ''}{line.auto_lop ? ` · attendance suggests ${line.auto_lop} unpaid` : ''}</DialogDescription></DialogHeader>
         {line.warnings?.length > 0 && <ul className="space-y-1 rounded-lg bg-amber-50 p-2 text-xs text-amber-900">{line.warnings.map((w) => <li key={w} className="flex gap-1.5"><AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />{w}</li>)}</ul>}
         <div className="grid gap-3 sm:grid-cols-2">
-          <div><p className="mb-1 text-[11px] font-medium uppercase text-slate-500">Earnings</p><MoneyRows rows={line.earnings} total={line.gross} totalLabel="Gross" testid="pay-line-earnings" /></div>
-          <div><p className="mb-1 text-[11px] font-medium uppercase text-slate-500">Deductions</p><MoneyRows rows={line.deductions} total={line.net} totalLabel="Net pay" tone="green" testid="pay-line-deductions" /></div>
+          <div><p className="mb-1 text-[11px] font-medium text-slate-500">Earnings</p><MoneyRows rows={line.earnings} total={line.gross} totalLabel="Gross" testid="pay-line-earnings" /></div>
+          <div><p className="mb-1 text-[11px] font-medium text-slate-500">Deductions</p><MoneyRows rows={line.deductions} total={line.net} totalLabel="Net pay" tone="green" testid="pay-line-deductions" /></div>
         </div>
         {line.employer?.length > 0 && <p className="text-[11px] text-slate-500">Company pays on top: {line.employer.map((e) => `${e.label} ${inr(e.amount)}`).join(' · ')}</p>}
         {editable && (

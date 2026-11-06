@@ -8,6 +8,7 @@ import { Badge } from './ui/badge';
 import { Button } from './ui/button';
 import { Checkbox } from './ui/checkbox';
 
+import { errText } from './kit/PageBits';
 /** Iter 52 — assign one or more internal teams (Alpha, Beta…) to a project from its detail page. */
 export default function ProjectTeamsCard({ projectId, canManage }) {
   const [teams, setTeams] = useState([]);
@@ -33,7 +34,7 @@ export default function ProjectTeamsCard({ projectId, canManage }) {
   const save = async () => {
     setSaving(true);
     try { const r = await teamsAPI.setProjectTeams(projectId, draft); setCurrent(r.data.team_ids); toast.success('Teams updated'); }
-    catch (e) { toast.error(e.response?.data?.detail || 'Failed to save teams'); }
+    catch (e) { toast.error(errText(e, 'Failed to save teams')); }
     finally { setSaving(false); }
   };
   const assigned = teams.filter(t => current.includes(t.id));

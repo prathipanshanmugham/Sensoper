@@ -16,6 +16,8 @@ import {
 } from 'lucide-react';
 import Can from '../components/Can';
 
+import { toast } from 'sonner';
+import { confirmAction } from '../components/kit/confirm';
 const blankKit = {
   name: '', category: 'on-grid',
   capacity_kw: 3, capacity_min_kw: 2, capacity_max_kw: 4, size_value: '',
@@ -123,9 +125,9 @@ export default function MaterialKitsPage() {
   };
 
   const remove = async (kit) => {
-    if (!window.confirm(`Delete kit "${kit.name}"?`)) return;
+    if (!await confirmAction(`Delete kit "${kit.name}"?`)) return;
     try { await materialKitsAPI.remove(kit.id); fetchKits(); }
-    catch (e) { alert(formatApiErrorDetail(e.response?.data?.detail) || 'Delete failed'); }
+    catch (e) { toast.error(formatApiErrorDetail(e.response?.data?.detail) || 'Delete failed'); }
   };
 
   const shown = kits.filter(k => filterSystem === 'all' || (k.category || k.system_type) === filterSystem);
@@ -203,7 +205,7 @@ export default function MaterialKitsPage() {
                   </div>
                   {k.description && <p className="text-[11px] text-slate-500 mb-2 line-clamp-2">{k.description}</p>}
                   <div className="border-t border-slate-100 pt-2 mt-2">
-                    <p className="text-[10px] uppercase tracking-wider text-slate-400 mb-1">{k.lines.length} lines</p>
+                    <p className="text-[11px] text-slate-400 mb-1">{k.lines.length} lines</p>
                     <ul className="text-[11px] text-slate-600 space-y-0.5 max-h-32 overflow-y-auto">
                       {k.lines.map((l, i) => (
                         <li key={`${l.inventory_item_id || l.name || 'line'}-${i}`} className="flex items-start gap-1.5">

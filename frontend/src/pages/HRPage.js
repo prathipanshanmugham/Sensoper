@@ -16,6 +16,7 @@ import { useLiveRefresh } from '../lib/liveSync';
 import PayTab from '../components/hr/PayTab';
 import { Card, Chip, Empty, Field, FileAttach, Loading, PageHeader, PillTabs, Stars, Tile, Tiles, addDaysISO, errText, fmtDate, inputCls, todayISO } from '../components/kit/PageBits';
 
+import { confirmAction } from '../components/kit/confirm';
 const STAGES = [['applied', 'Applied'], ['screening', 'Screening'], ['interview', 'Interview'], ['offer', 'Offer made'], ['hired', 'Hired'], ['rejected', 'Not selected'], ['withdrawn', 'Withdrew']];
 const STAGE_TONE = { applied: 'slate', screening: 'blue', interview: 'violet', offer: 'amber', hired: 'green', rejected: 'red', withdrawn: 'slate' };
 const EXIT_TYPES = [['resignation', 'Resignation'], ['termination', 'Termination'], ['end_of_contract', 'End of contract'], ['retirement', 'Retirement']];
@@ -384,7 +385,7 @@ function Cover({ people, shifts, canEdit }) {
   const load = useCallback(() => hrAPI.covers().then((r) => setRows(r.data)).catch(() => setRows([])), []);
   useEffect(() => { load(); }, [load]);
   useLiveRefresh(['hr'], load);
-  const cancel = async (c) => { if (!window.confirm('Cancel this cover?')) return; try { await hrAPI.cancelCover(c.id); load(); } catch (e) { toast.error(errText(e)); } };
+  const cancel = async (c) => { if (!await confirmAction('Cancel this cover?')) return; try { await hrAPI.cancelCover(c.id); load(); } catch (e) { toast.error(errText(e)); } };
   const t = todayISO();
   return (
     <div className="space-y-3" data-testid="hr-cover">
@@ -494,7 +495,7 @@ function Shifts({ shifts, canEdit, reloadShifts }) {
           return (
             <button key={d} type="button" onClick={() => setDay(d)} aria-pressed={d === shownDay}
               className={`rounded-lg border py-1.5 text-center ${d === shownDay ? 'border-emerald-500 bg-emerald-50 text-emerald-800' : 'border-slate-200 bg-white text-slate-600'}`}>
-              <span className="block text-[10px] uppercase">{dt.toLocaleDateString('en-IN', { weekday: 'short' })}</span>
+              <span className="block text-[11px]">{dt.toLocaleDateString('en-IN', { weekday: 'short' })}</span>
               <b className={`block text-sm ${d === t ? 'underline decoration-2 underline-offset-2' : ''}`}>{dt.getDate()}</b>
             </button>);
         })}</div>
@@ -596,7 +597,7 @@ function Exits({ people, settings, reloadPeople }) {
             <Field label="Exit interview notes"><textarea rows={3} defaultValue={sel.exit_interview || ''} onBlur={(e) => e.target.value !== (sel.exit_interview || '') && update(sel, { exit_interview: e.target.value })} className="w-full rounded-md border border-slate-200 p-2 text-sm outline-none focus:border-emerald-400" /></Field>
             {sel.status === 'serving_notice' && <div className="flex flex-wrap gap-2">
               <Button variant="outline" onClick={() => act(() => hrAPI.withdrawExit(sel.id), 'Exit withdrawn — they stay')} data-testid="hr-exit-withdraw">Withdraw (they stay)</Button>
-              <Button className="bg-rose-600 text-white hover:bg-rose-700" onClick={() => window.confirm(`Relieve ${sel.name} now? Their login is switched off.`) && act(() => hrAPI.completeExit(sel.id), 'Relieved — login switched off')} data-testid="hr-exit-complete">Relieve now</Button>
+              <Button className="bg-rose-600 text-white hover:bg-rose-700" onClick={async () => (await confirmAction(`Relieve ${sel.name} now? Their login is switched off.`)) && act(() => hrAPI.completeExit(sel.id), 'Relieved — login switched off')} data-testid="hr-exit-complete">Relieve now</Button>
             </div>}
           </div>}
         </SheetContent>
@@ -618,7 +619,7 @@ function SettingsDialog({ open, settings, onOpenChange, onSaved }) {
       <DialogContent className="max-h-[92vh] max-w-sm overflow-y-auto" data-testid="hr-settings">
         <DialogHeader><DialogTitle>HR settings</DialogTitle></DialogHeader>
         <div className="space-y-2">
-          <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Notice period (days)</p>
+          <p className="text-xs font-semibold text-slate-500">Notice period (days)</p>
           {EXIT_TYPES.map(([k, l]) => <Field key={k} label={l}><Input type="number" inputMode="numeric" value={f.notice_days[k] ?? 0} onChange={(e) => setF({ ...f, notice_days: { ...f.notice_days, [k]: Number(e.target.value) } })} className="h-11" /></Field>)}
           <Field label="Late after (minutes past shift start)"><Input type="number" inputMode="numeric" value={f.grace_minutes} onChange={(e) => setF({ ...f, grace_minutes: e.target.value })} className="h-11" /></Field>
           <Field label="Departments" hint="One per line"><textarea rows={6} value={f.departments_text} onChange={(e) => setF({ ...f, departments_text: e.target.value })} className="w-full rounded-md border border-slate-200 p-2 text-sm outline-none focus:border-emerald-400" /></Field>

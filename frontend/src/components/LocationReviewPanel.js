@@ -6,6 +6,7 @@ import { Input } from './ui/input';
 import { Badge } from './ui/badge';
 import { MapPinOff, Wand2, Check, Loader2, ChevronDown, ChevronUp } from 'lucide-react';
 
+import { errText } from './kit/PageBits';
 /** Iter 60 — projects Expansion would bucket as "Unknown": one row each, district/state/PIN typed inline, saved in one click. */
 export function LocationReviewPanel({ onChanged }) {
   const [data, setData] = useState({ count: 0, items: [] });
@@ -14,20 +15,20 @@ export function LocationReviewPanel({ onChanged }) {
   const [drafts, setDrafts] = useState({});
   const [autoResult, setAutoResult] = useState(null);
 
-  const load = useCallback(async () => { try { const r = await locationReviewAPI.list(); setData(r.data); } catch (e) { toast.error(e.response?.data?.detail || 'Could not load location review'); } }, []);
+  const load = useCallback(async () => { try { const r = await locationReviewAPI.list(); setData(r.data); } catch (e) { toast.error(errText(e, 'Could not load location review')); } }, []);
   useEffect(() => { load(); }, [load]);
 
   const autoResolve = async () => {
     setBusy('auto');
     try { const r = await locationReviewAPI.autoResolve(); setAutoResult(r.data); toast.success(`${r.data.resolved_count} resolved automatically · ${r.data.remaining_count} still need you`); await load(); onChanged?.(); }
-    catch (e) { toast.error(e.response?.data?.detail || 'Auto-resolve failed'); } finally { setBusy(''); }
+    catch (e) { toast.error(errText(e, 'Auto-resolve failed')); } finally { setBusy(''); }
   };
   const fix = async (row) => {
     const d = drafts[row.id] || {};
     if (!d.district?.trim()) { toast.error('Type the district'); return; }
     setBusy(row.id);
     try { await locationReviewAPI.fix(row.id, { district: d.district.trim(), state: d.state?.trim() || row.state || null, pincode: d.pincode?.trim() || row.pincode || null }); toast.success(`${row.customer_name || row.reference_number}: ${d.district.trim()}`); await load(); onChanged?.(); }
-    catch (e) { toast.error(e.response?.data?.detail || 'Could not save'); } finally { setBusy(''); }
+    catch (e) { toast.error(errText(e, 'Could not save')); } finally { setBusy(''); }
   };
   const setD = (id, k, v) => setDrafts(p => ({ ...p, [id]: { ...(p[id] || {}), [k]: v } }));
 
@@ -46,7 +47,7 @@ export function LocationReviewPanel({ onChanged }) {
       {open && data.count > 0 && (
         <div className="max-h-96 overflow-y-auto border-t border-amber-200/60">
           <table className="w-full text-xs">
-            <thead className="bg-white/60 text-[10px] uppercase tracking-wider text-slate-500 sticky top-0"><tr><th className="text-left px-3 py-1.5">Project</th><th className="text-left px-3 py-1.5">Address on file</th><th className="text-left px-3 py-1.5">District</th><th className="text-left px-3 py-1.5">State</th><th className="text-left px-3 py-1.5">PIN</th><th className="px-3 py-1.5" /></tr></thead>
+            <thead className="bg-white/60 text-[11px] text-slate-500 sticky top-0"><tr><th className="text-left px-3 py-1.5">Project</th><th className="text-left px-3 py-1.5">Address on file</th><th className="text-left px-3 py-1.5">District</th><th className="text-left px-3 py-1.5">State</th><th className="text-left px-3 py-1.5">PIN</th><th className="px-3 py-1.5" /></tr></thead>
             <tbody className="divide-y divide-amber-100">
               {data.items.map(r => (
                 <tr key={r.id} className="bg-white/70" data-testid={`lr-row-${r.id}`}>

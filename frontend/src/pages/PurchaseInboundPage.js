@@ -3,7 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import { purchaseOrdersAPI, inventoryAPI, inboundApprovalsAPI, locationsAPI, procurementAPI } from '../utils/api';
 import PurchaseRequests from '../components/procurement/PurchaseRequests';
 import VendorPicker, { useVendorChoices } from '../components/procurement/VendorPicker';
-import { PillTabs } from '../components/kit/PageBits';
+import { PillTabs, errText } from '../components/kit/PageBits';
 import { StorageLocationPicker } from '../components/StorageLocationPicker';
 import { useAuth } from '../contexts/AuthContext';
 import { Button } from '../components/ui/button';
@@ -19,6 +19,7 @@ import HardDeleteButton from '../components/HardDeleteButton';
 import Can from '../components/Can';
 import { useLiveRefresh } from '../lib/liveSync';
 
+import { confirmAction } from '../components/kit/confirm';
 const STATUS_COLORS = { pending: 'bg-amber-100 text-amber-700', approved: 'bg-blue-100 text-blue-700', arrived: 'bg-violet-100 text-violet-700', qc_done: 'bg-teal-100 text-teal-700', completed: 'bg-emerald-100 text-emerald-700' };
 const BLANK_PO = { vendor_id: '', supplier_name: '', supplier_contact: '', items: [{ name: '', qty: '', unit_price: '', inventory_item_id: '', sku_code: '' }], expected_delivery: '', notes: '', location_id: '', po_number: '', skip_reason: '' };
 const STATUS_LABELS = { pending: 'Pending Approval', approved: 'Approved', arrived: 'Material Arrived', qc_done: 'QC Passed', completed: 'Completed' };
@@ -73,12 +74,12 @@ export default function PurchaseInboundPage() {
   const handleApproveReversal = async (id) => {
     setSaving(true);
     try { await inboundApprovalsAPI.approve(id); await fetchApprovals(); await fetch(); }
-    catch (err) { setActionError(err.response?.data?.detail || 'Could not approve'); } finally { setSaving(false); }
+    catch (err) { setActionError(errText(err, 'Could not approve')); } finally { setSaving(false); }
   };
   const handleRejectReversal = async (id) => {
     setSaving(true);
     try { await inboundApprovalsAPI.reject(id); await fetchApprovals(); }
-    catch (err) { setActionError(err.response?.data?.detail || 'Could not reject'); } finally { setSaving(false); }
+    catch (err) { setActionError(errText(err, 'Could not reject')); } finally { setSaving(false); }
   };
 
   const addItem = () => setForm(p => ({...p, items: [...p.items, { name: '', qty: '', unit_price: '', inventory_item_id: '', sku_code: '' }]}));
@@ -91,9 +92,9 @@ export default function PurchaseInboundPage() {
     return { ...p, items };
   });
   const handleDeletePo = async (po) => {
-    if (!window.confirm(`Delete PO for ${po.supplier_name}? This cannot be undone.`)) return;
+    if (!await confirmAction(`Delete PO for ${po.supplier_name}? This cannot be undone.`)) return;
     try { await purchaseOrdersAPI.remove(po.id); await fetch(); }
-    catch (err) { alert(err.response?.data?.detail || 'Could not delete this PO'); }
+    catch (err) { toast.error(errText(err, 'Could not delete this PO')); }
   };
 
 
@@ -107,7 +108,7 @@ export default function PurchaseInboundPage() {
       toast.success(`PO ${r.data.po_number} created`);
       setShowCreate(false); setForm(BLANK_PO); await fetch();
     } catch (err) {
-      const msg = err.response?.data?.detail || 'Could not create PO';
+      const msg = errText(err, 'Could not create PO');
       if (err.response?.status === 409) setPoError(typeof msg === 'string' ? msg : 'PO number already used for this supplier');
       toast.error(typeof msg === 'string' ? msg : 'Could not create PO');
     } finally { setSaving(false); }
@@ -122,7 +123,7 @@ export default function PurchaseInboundPage() {
       else if (activeAction.type === 'qc') await purchaseOrdersAPI.qc(activeAction.poId, actionForm);
       else if (activeAction.type === 'inbound') await purchaseOrdersAPI.inbound(activeAction.poId, actionForm);
       setActiveAction(null); setActionForm({}); await fetch();
-    } catch (err) { setActionError(err.response?.data?.detail || 'Action failed'); console.error(err); } finally { setSaving(false); }
+    } catch (err) { setActionError(errText(err, 'Action failed')); console.error(err); } finally { setSaving(false); }
   };
 
   const openEditInbound = (po) => {
@@ -137,7 +138,7 @@ export default function PurchaseInboundPage() {
     try {
       await purchaseOrdersAPI.editInbound(editInbound.po.id, { lines: editInbound.lines });
       setEditInbound(null); await fetch();
-    } catch (err) { setActionError(err.response?.data?.detail || 'Could not save changes'); } finally { setSaving(false); }
+    } catch (err) { setActionError(errText(err, 'Could not save changes')); } finally { setSaving(false); }
   };
 
   const confirmReverse = async () => {
@@ -147,7 +148,7 @@ export default function PurchaseInboundPage() {
       const res = await purchaseOrdersAPI.reverseInbound(reverseTarget.id);
       if (res.data.status === 'pending_approval') { setActionError(res.data.message); }
       else { setReverseTarget(null); await fetch(); }
-    } catch (err) { setActionError(err.response?.data?.detail || 'Could not reverse this inbound'); } finally { setSaving(false); }
+    } catch (err) { setActionError(errText(err, 'Could not reverse this inbound')); } finally { setSaving(false); }
   };
 
   if (loading) return <div className="flex items-center justify-center min-h-[60vh]"><Loader2 className="h-8 w-8 animate-spin text-emerald-600" /></div>;

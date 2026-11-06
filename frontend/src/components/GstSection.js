@@ -8,6 +8,9 @@ import { Badge } from '../components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Loader2, Plus, Save, Trash2, Edit, ArrowDownToLine, ArrowUpFromLine, FileBarChart } from 'lucide-react';
 
+import { errText } from './kit/PageBits';
+import { toast } from 'sonner';
+import { confirmAction } from './kit/confirm';
 const GST_META = {
   gst_paid: { label: 'GST Paid', icon: ArrowUpFromLine, color: 'rose', accent: 'border-rose-200 bg-rose-50/40' },
   gst_input: { label: 'GST Input Credit', icon: ArrowDownToLine, color: 'sky', accent: 'border-sky-200 bg-sky-50/40' }
@@ -66,14 +69,14 @@ export default function GstSection() {
       else await accountsAPI.create(payload);
       setShowForm(false);
       await load();
-    } catch (e) { setError(e.response?.data?.detail || 'Save failed'); }
+    } catch (e) { setError(errText(e, 'Save failed')); }
     finally { setSaving(false); }
   };
 
   const remove = async (id) => {
-    if (!window.confirm('Delete this GST entry?')) return;
+    if (!await confirmAction('Delete this GST entry?')) return;
     try { await accountsAPI.delete(id); await load(); }
-    catch (e) { alert(e.response?.data?.detail || 'Delete failed'); }
+    catch (e) { toast.error(errText(e, 'Delete failed')); }
   };
 
   const gstPaidMtd = summary?.gst_paid_mtd || 0;
@@ -88,7 +91,7 @@ export default function GstSection() {
           <CardContent className="p-4">
             <div className="flex items-center gap-2 mb-1">
               <ArrowUpFromLine className="h-4 w-4 text-rose-600" />
-              <p className="text-xs uppercase tracking-wider text-slate-500">Total GST Paid (MTD)</p>
+              <p className="text-xs text-slate-500">Total GST Paid (MTD)</p>
             </div>
             <p className="text-2xl font-bold text-slate-900" data-testid="gst-paid-amount">₹{gstPaidMtd.toLocaleString('en-IN')}</p>
             <p className="text-[11px] text-slate-500 mt-1">Output GST collected on sales</p>
@@ -98,7 +101,7 @@ export default function GstSection() {
           <CardContent className="p-4">
             <div className="flex items-center gap-2 mb-1">
               <ArrowDownToLine className="h-4 w-4 text-sky-600" />
-              <p className="text-xs uppercase tracking-wider text-slate-500">Input Credits (MTD)</p>
+              <p className="text-xs text-slate-500">Input Credits (MTD)</p>
             </div>
             <p className="text-2xl font-bold text-slate-900" data-testid="gst-input-amount">₹{gstInputMtd.toLocaleString('en-IN')}</p>
             <p className="text-[11px] text-slate-500 mt-1">Input tax credits this month</p>
@@ -108,7 +111,7 @@ export default function GstSection() {
           <CardContent className="p-4">
             <div className="flex items-center gap-2 mb-1">
               <FileBarChart className={`h-4 w-4 ${gstNetMtd >= 0 ? 'text-amber-700' : 'text-emerald-700'}`} />
-              <p className="text-xs uppercase tracking-wider text-slate-500">Net GST Liability (MTD)</p>
+              <p className="text-xs text-slate-500">Net GST Liability (MTD)</p>
             </div>
             <p className={`text-2xl font-bold ${gstNetMtd >= 0 ? 'text-amber-700' : 'text-emerald-700'}`} data-testid="gst-net-amount">{gstNetMtd >= 0 ? '₹' : '-₹'}{Math.abs(gstNetMtd).toLocaleString('en-IN')}</p>
             <p className="text-[11px] text-slate-500 mt-1">{gstNetMtd >= 0 ? 'Owed to govt this month (Paid − Input)' : 'Refund expected (Input > Paid)'}</p>

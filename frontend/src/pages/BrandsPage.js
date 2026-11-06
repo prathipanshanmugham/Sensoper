@@ -19,6 +19,7 @@ import Can from '../components/Can';
 import { useLiveRefresh } from '../lib/liveSync';
 import { Card, Chip, Empty, Field, FileAttach, Loading, PageHeader, PillTabs, Tile, Tiles, addDaysISO, errText, fmtDate, inputCls, inr, inrShort, todayISO } from '../components/kit/PageBits';
 
+import { confirmAction } from '../components/kit/confirm';
 const KIND = { own: ['Our brand', 'green'], dealership: ['Dealership', 'blue'], distribution: ['Distribution', 'violet'] };
 const TM_STATUS = [['planned', 'Planned'], ['filed', 'Filed'], ['formalities_check', 'Formalities check'], ['examined', 'Examined'], ['objected', 'Objected'],
   ['accepted', 'Accepted'], ['advertised', 'Advertised in journal'], ['opposed', 'Opposed'], ['registered', 'Registered'], ['refused', 'Refused'],
@@ -90,7 +91,7 @@ function BrandForm({ initial, onSaved, onCancel }) {
       </div>
       {dealer && (
         <>
-          <p className="pt-1 text-xs font-semibold uppercase tracking-wider text-slate-500">Agreement</p>
+          <p className="pt-1 text-xs font-semibold text-slate-500">Agreement</p>
           <div className="grid grid-cols-2 gap-2">
             <Field label="Starts"><input type="date" value={f.agreement.start_date || ''} onChange={setIn('agreement', 'start_date')} className={inputCls} /></Field>
             <Field label="Ends"><input type="date" value={f.agreement.end_date || ''} onChange={setIn('agreement', 'end_date')} className={inputCls} data-testid="brand-agreement-end" /></Field>
@@ -99,7 +100,7 @@ function BrandForm({ initial, onSaved, onCancel }) {
             <Field label="Yearly target (₹)"><Input type="number" inputMode="decimal" value={f.agreement.target_amount ?? ''} onChange={setIn('agreement', 'target_amount')} className="h-11" data-testid="brand-target" /></Field>
             <Field label="Credit days"><Input type="number" inputMode="numeric" value={f.agreement.credit_days ?? ''} onChange={setIn('agreement', 'credit_days')} className="h-11" /></Field>
           </div>
-          <p className="pt-1 text-xs font-semibold uppercase tracking-wider text-slate-500">Their contact</p>
+          <p className="pt-1 text-xs font-semibold text-slate-500">Their contact</p>
           <div className="grid grid-cols-2 gap-2">
             <Field label="Company"><Input value={f.contact.company || ''} onChange={setIn('contact', 'company')} className="h-11" /></Field>
             <Field label="Person"><Input value={f.contact.person || ''} onChange={setIn('contact', 'person')} className="h-11" /></Field>
@@ -205,11 +206,11 @@ function BrandSheet({ brandId, onOpenChange, onChanged, canEdit, isAdmin }) {
   const unlink = async (it) => { try { await brandsAPI.unlinkItem(brandId, it.id); changed(); } catch (err) { toast.error(errText(err)); } };
   const openPicker = async () => { setPick(true); if (!allItems.length) { try { setAllItems((await inventoryAPI.getItems()).data || []); } catch { /* list stays empty */ } } };
   const removeTm = async (t) => {
-    if (!window.confirm(`Delete the trademark record ${t.mark}?`)) return;
+    if (!await confirmAction(`Delete the trademark record ${t.mark}?`)) return;
     try { await brandsAPI.removeTrademark(t.id); changed(); } catch (err) { toast.error(errText(err)); }
   };
   const remove = async () => {
-    if (!window.confirm(`Delete ${b.name}? Its stock items are kept but lose the brand.`)) return;
+    if (!await confirmAction(`Delete ${b.name}? Its stock items are kept but lose the brand.`)) return;
     try { await brandsAPI.remove(b.id); toast.success('Brand deleted'); onOpenChange(false); onChanged?.(); } catch (err) { toast.error(errText(err)); }
   };
   const linked = new Set((b?.items || []).map((i) => i.id));

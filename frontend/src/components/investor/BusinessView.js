@@ -194,7 +194,7 @@ export default function BusinessView({ data, audience = 'admin' }) {
             <p className="mt-1 text-xs text-slate-500">Now <b className="text-slate-800">{kw(cap.monthly.at(-1)?.kw_cumulative)}</b> · +{kw(cap.monthly.reduce((s, r) => s + r.kw_installed, 0))} in the {periodText}</p>
             {cap.system_mix?.length > 0 && (
               <div className="mt-4">
-                <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-slate-500"><PieChart className="h-3.5 w-3.5" />Won by system type</p>
+                <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold text-slate-500"><PieChart className="h-3.5 w-3.5" />Won by system type</p>
                 <HBars rows={cap.system_mix.map((m) => ({ ...m, label: m.type }))} valueKey="kw" format={kw} sub={(r) => `${r.count} project${r.count === 1 ? '' : 's'}`} testid="bv-mix" />
               </div>
             )}

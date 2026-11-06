@@ -10,6 +10,7 @@ import { Label } from './ui/label';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from './ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 
+import { errText } from './kit/PageBits';
 const inr = (v) => (v == null ? '—' : `₹${Math.round(v).toLocaleString('en-IN')}`);
 
 /** Iter 53 — AMC operations: follow-up pipeline, scheduled-visit calendar, pincode batching, customer outbox. */
@@ -27,7 +28,7 @@ export function AmcOpsPanel({ canManage, canComplete = canManage }) {
     try {
       const [f, s, b, o] = await Promise.all([amcAPI.followUps(), amcAPI.schedule(), canManage ? amcAPI.batching(days) : Promise.resolve({ data: null }), amcAPI.outbox(true)]);
       setFollowUps(f.data.rows || []); setSchedule(s.data || []); setBatching(b.data); setOutbox(o.data.rows || []);
-      if (canManage) usersAPI.getAll().then(r => setTechs(r.data || [])).catch(() => {});
+      if (canManage) usersAPI.directory().then(r => setTechs(r.data || [])).catch(() => {});
     } catch (e) { console.warn('amc ops load failed', e); }
   }, [canManage, days]);
   useEffect(() => { load(); }, [load]);
@@ -39,11 +40,11 @@ export function AmcOpsPanel({ canManage, canComplete = canManage }) {
       const r = await amcAPI.scheduleWithNotifications(dlg.contract_id, { scheduled_date: dlg.date, technician_id: dlg.technician_id || null, technician_name: tech?.name || null, lead_days: [3, 1], notes: dlg.notes || '' });
       toast.success(`Visit scheduled · ${r.data.notifications_created} reminders queued (3 days & 1 day before)`);
       setDlg(null); load();
-    } catch (e) { toast.error(e.response?.data?.detail || 'Scheduling failed'); }
+    } catch (e) { toast.error(errText(e, 'Scheduling failed')); }
     finally { setBusy(''); }
   };
   const markSent = async (n) => { try { await amcAPI.outboxSent(n.id); load(); } catch (e) { toast.error('Failed'); } };
-  const markDone = async (v) => { try { await amcAPI.completeVisit(v.id, {}); toast.success('Visit marked done'); load(); } catch (e) { toast.error(e.response?.data?.detail || 'Failed'); } };
+  const markDone = async (v) => { try { await amcAPI.completeVisit(v.id, {}); toast.success('Visit marked done'); load(); } catch (e) { toast.error(errText(e, 'Failed')); } };
 
   const scheduleCard = (
     <Card data-testid="amc-schedule-card">
@@ -71,7 +72,7 @@ export function AmcOpsPanel({ canManage, canComplete = canManage }) {
             {followUps.slice(0, 8).map(f => (
               <div key={f.project_id} className="flex items-center justify-between text-sm border-b border-slate-100 pb-1.5" data-testid={`amc-followup-${f.project_id}`}>
                 <div><p className="font-medium text-slate-800">{f.customer_name}</p><p className="text-[11px] text-slate-400">{f.reference_number} · {f.district || f.pincode || '—'} · {f.system_size_kw || '?'} kW · {f.interest?.notes}</p></div>
-                {canManage && <Button size="sm" variant="outline" className="h-7 text-xs" onClick={async () => { try { await amcAPI.createFromProject(f.project_id); toast.success('AMC contract created'); load(); } catch (e) { toast.error(e.response?.data?.detail || 'Failed'); } }} data-testid={`amc-followup-convert-${f.project_id}`}>Create contract</Button>}
+                {canManage && <Button size="sm" variant="outline" className="h-7 text-xs" onClick={async () => { try { await amcAPI.createFromProject(f.project_id); toast.success('AMC contract created'); load(); } catch (e) { toast.error(errText(e, 'Failed')); } }} data-testid={`amc-followup-convert-${f.project_id}`}>Create contract</Button>}
               </div>
             ))}
           </CardContent>
@@ -150,7 +151,7 @@ export function AmcInterestToggle({ projectId, interest, onChanged }) {
   const set = async (interested) => {
     setBusy(true);
     try { await amcAPI.setInterest(projectId, { interested, notes: interested ? 'Flagged after commissioning' : '' }); toast.success(interested ? 'Added to AMC follow-up list' : 'Removed from AMC follow-ups'); onChanged?.(); }
-    catch (e) { toast.error(e.response?.data?.detail || 'Failed'); }
+    catch (e) { toast.error(errText(e, 'Failed')); }
     finally { setBusy(false); }
   };
   return (
