@@ -446,4 +446,11 @@ See CHANGES.md for the full list. Highlights for the next agent:
   components/ClientPasswordDialog.js, CustomerDashboardCard "Customer login" block, SiteVisitForm `?lead=` prefill +
   link, navigation entry (Globe, badge website_leads), websiteAPI in utils/api.js.
 - Tests: tests/test_website.py (6).
+- Review fixes: staff may change/reset/join a client login only if every project on it is theirs (`_staff_may_change`),
+  list filtered to own projects (`other_projects` count); reset no longer re-activates; `_clean` truncates before a
+  linear tag regex, pydantic max_length on public bodies; repeat leads only fill empty fields (differences logged);
+  login limits per (phone, IP) 6, per phone 30, per IP 24, dummy-hash check for unknown numbers; picture endpoint
+  shop-platform only, png/jpeg/webp/gif, nosniff + CSP sandbox, external pictures linked directly (no redirect);
+  `/public/site` prices = package slabs only; pop-up links `https://host` or `/path` (no `//`); `ensure_indexes`
+  (TTL on attempt logs, unique client phone) at startup. tests/test_website.py now 7.
 

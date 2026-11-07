@@ -226,13 +226,12 @@ def test_shop_products_and_order_requests(app, loop, world):
         p = prods[0]
         assert p["price"] == 17736 and p["stock"] == "in_stock" and p["featured"] and p["watt"] == 585
         assert "unit_price" not in r.text and "15356" not in r.text                      # cost never leaves the ERP
-        r = await pub.get(p["images"][0], follow_redirects=False)
-        assert r.status_code == 302 and r.headers["location"] == "https://cdn.example.in/w585.webp"
+        assert p["images"] == ["https://cdn.example.in/w585.webp"]                     # outside pictures are linked directly
         assert (await pub.get(f"/api/public/shop/image/{cable_listing}/0")).status_code == 404   # draft listing → no picture
 
         # a stored file outside the images folder is never served
         await db.ecommerce_listings.update_one({"_id": ObjectId(p["id"])}, {"$push": {"images": "sensoper/secret/payslip.pdf"}})
-        assert (await pub.get(f"{p['images'][0][:-1]}1")).status_code == 404
+        assert (await pub.get(f"/api/public/shop/image/{p['id']}/1")).status_code == 404
 
         # the order uses the shop's price, not what the browser says
         r = await pub.post("/api/public/shop/order", json={"name": "Arun", "phone": "9443322110", "items": [{"id": p["id"], "qty": 3, "price": 1}],
@@ -312,27 +311,33 @@ def test_customer_logins_made_by_staff(app, loop, world):
         assert (await st.get("/api/client/me")).status_code == 401
         assert (await cust.get("/api/projects")).status_code == 401
 
-        # a reset signs the customer out and makes them choose a password again
-        r = await st.post(f"/api/client-accounts/{acc['id']}/reset-password")
+        # the login now shows another salesperson's project too, so staff can't reset or change it — that would let them sign
+        # in as the customer and see a project the ERP hides from them
+        assert (await st.post(f"/api/client-accounts/{acc['id']}/reset-password")).status_code == 403
+        assert (await st.put(f"/api/client-accounts/{acc['id']}", json={"project_ids": [p1]})).status_code == 403
+        rows = (await st.get("/api/client-accounts", params={"q": "Selvi"})).json()
+        assert rows and [p["reference"] for p in rows[0]["projects"]] == ["WEB-CL-1"] and rows[0]["project_ids"] == [p1] and rows[0]["other_projects"] == 1
+        assert (await st.get(f"/api/projects/{p1}/client-login")).json()["can_change"] is False
+        # a manager's reset signs the customer out and makes them choose a password again
+        r = await mgr.post(f"/api/client-accounts/{acc['id']}/reset-password")
         assert r.status_code == 200 and r.json()["password"] and r.json()["password"] != pw
         assert (await cust.get("/api/client/me")).status_code == 401
-        # turning it off blocks sign-in
+        # turning it off blocks sign-in, and a reset doesn't switch it back on
         assert (await mgr.put(f"/api/client-accounts/{acc['id']}", json={"active": False})).status_code == 200
-        r = await cust.post("/api/client/auth/login", json={"phone": "9988776655", "password": r.json()["password"]})
+        r2 = await mgr.post(f"/api/client-accounts/{acc['id']}/reset-password")
+        assert (await server.db.client_accounts.find_one({"_id": ObjectId(acc["id"])}))["active"] is False
+        r = await cust.post("/api/client/auth/login", json={"phone": "9988776655", "password": r2.json()["password"]})
         assert r.status_code == 401
-        # staff can't remove a project that isn't theirs from the login
         await mgr.put(f"/api/client-accounts/{acc['id']}", json={"active": True})
-        r = await st.put(f"/api/client-accounts/{acc['id']}", json={"project_ids": [p1]})
-        assert r.status_code == 200 and set(r.json()["project_ids"]) == {p1, p2}
-        rows = (await st.get("/api/client-accounts", params={"q": "Selvi"})).json()
-        assert rows and rows[0]["projects"][0]["reference"] == "WEB-CL-1"
         assert (await st.delete(f"/api/client-accounts/{acc['id']}")).status_code == 403
         assert (await mgr.delete(f"/api/client-accounts/{acc['id']}")).status_code == 200
 
-        # brute force on one number is stopped
+        # brute force on one number is stopped — but a stranger guessing elsewhere doesn't lock the real customer out
         bf = client(app, "10.5.5.5")
         codes = [(await bf.post("/api/client/auth/login", json={"phone": "9123456780", "password": f"x{i}"})).status_code for i in range(8)]
         assert codes[:website.LOGIN_TRIES] == [401] * website.LOGIN_TRIES and codes[-1] == 429
+        other = client(app, "10.6.6.6")
+        assert (await other.post("/api/client/auth/login", json={"phone": "9123456780", "password": "y"})).status_code == 401
     run(loop, go())
 
 
@@ -347,4 +352,59 @@ def test_website_page_is_on_the_permissions_page(app, loop, world):
         assert perms["module_website"]["view"] and perms["module_website"]["create"] and not perms["module_website"]["delete"]
         assert perms.get("can_manage_website") is False
         assert (await server.get_permissions("manager")).get("can_manage_website") is True
+    run(loop, go())
+
+
+def test_review_fixes_for_public_inputs(app, loop, world):
+    """Findings from the security review: slow-regex input, lead take-over by phone number, pictures, pop-up links."""
+    import time
+    async def go():
+        db = server.db
+        # a long run of '<' is cleaned in linear time, before anything else happens
+        t0 = time.perf_counter()
+        out = website._clean("<" * 200000 + "<b>hi</b>", 1000)
+        assert time.perf_counter() - t0 < 0.5 and len(out) <= 1000
+        pub = client(app, "10.7.7.7")
+        r = await pub.post("/api/public/leads", json={"name": "A" * 5000, "phone": "9876500001"})
+        assert r.status_code == 422                                     # oversized fields are refused outright
+
+        # someone else typing a customer's number can't change who the lead is
+        r = await pub.post("/api/public/leads", json={"name": "Meena Real", "phone": "9876500002", "email": "meena@example.in", "area": "Perundurai"})
+        num = r.json()["number"]
+        evil = client(app, "10.8.8.8")
+        await evil.post("/api/public/leads", json={"name": "Fake Name", "phone": "9876500002", "email": "x@evil.in", "area": "Elsewhere", "message": "send the quote here"})
+        lead = await db.website_leads.find_one({"number": num})
+        assert lead["name"] == "Meena Real" and lead["email"] == "meena@example.in" and lead["area"] == "Perundurai"
+        assert "Fake Name" in lead["activity"][-1]["text"] and "x@evil.in" in lead["activity"][-1]["text"]
+
+        # pictures: only the shop's own live listings, only raster images, safe headers
+        shop = await db.ecommerce_platforms.find_one({"platform_type": "custom_website"})
+        amazon = await db.ecommerce_platforms.insert_one({"name": "Amazon", "platform_type": "marketplace", "active": True})
+        server.put_object(f"{server.APP_NAME}/images/w.png", b"\x89PNG fake", "image/png")
+        server.put_object(f"{server.APP_NAME}/images/x.svg", b"<svg onload=alert(1)>", "image/svg+xml")
+        a = await db.ecommerce_listings.insert_one({"platform_id": str(amazon.inserted_id), "status": "live", "images": [f"{server.APP_NAME}/images/w.png"], "inventory_item_id": "x"})
+        b = await db.ecommerce_listings.insert_one({"platform_id": str(shop["_id"]) if shop else "none", "status": "live",
+                                                   "images": [f"{server.APP_NAME}/images/w.png", f"{server.APP_NAME}/images/x.svg", "https://cdn.example.in/p.webp"], "inventory_item_id": "x"})
+        assert (await pub.get(f"/api/public/shop/image/{a.inserted_id}/0")).status_code == 404
+        if shop:
+            ok = await pub.get(f"/api/public/shop/image/{b.inserted_id}/0")
+            assert ok.status_code == 200 and ok.headers["x-content-type-options"] == "nosniff" and "sandbox" in ok.headers["content-security-policy"]
+            assert (await pub.get(f"/api/public/shop/image/{b.inserted_id}/1")).status_code == 404     # SVG never served
+            assert (await pub.get(f"/api/public/shop/image/{b.inserted_id}/2", follow_redirects=False)).status_code == 404   # no redirects
+        await db.ecommerce_listings.delete_many({"_id": {"$in": [a.inserted_id, b.inserted_id]}})
+
+        # pop-up links can't leave for another site
+        mgr = world["mgr"]
+        for bad in ("//evil.example", "/\\evil.example", "javascript:alert(1)", "https:///x"):
+            r = await mgr.post("/api/website/popups", json={"title": "Link test", "cta_action": "link", "cta_url": bad})
+            assert r.status_code == 400, bad
+        for good in ("/#subsidy", "https://sensoper.in/#calculator"):
+            r = await mgr.post("/api/website/popups", json={"title": "Link test", "cta_action": "link", "cta_url": good})
+            assert r.status_code == 200, good
+
+        # the public price table carries only the package slabs, never the calculator's internal per-kW figure
+        await db.calc_config.update_one({"_id": "singleton"}, {"$set": {"cost_per_kwp": {"on-grid": 41000}}}, upsert=True)
+        await mgr.put("/api/website/settings", json={"show_price_estimate": True})
+        site = (await pub.get("/api/public/site")).json()
+        assert site["prices"]["per_kw"] == {} and "41000" not in str(site)
     run(loop, go())

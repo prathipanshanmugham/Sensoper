@@ -37,6 +37,18 @@ A new public website whose main job is bringing in leads. Everything it collects
 - Permissions: new page **Website**. Staff can view, create and edit by default. Managers can also delete and have
   the option "Run the shop, pop-ups and website settings".
 
+### Security (from an independent review before release)
+- Staff can change, reset or add projects to a customer login only when every project on it is theirs, and they see
+  only their own customers' logins. Otherwise they could have signed in as the customer and seen another
+  salesperson's project.
+- Public form text is cut to size before it is cleaned, and oversized fields are refused. A specially built
+  submission could otherwise have frozen the server.
+- A repeat enquiry with someone's number can't change the name, email or address on their lead.
+- The customer sign-in can't be used to lock out a customer or to find out who is a customer.
+- Shop pictures: only the shop's own photos are served, never SVG, with safe headers.
+- The calculator publishes only the package slab rates.
+- Pop-up links must stay on the site or use https.
+
 ## November 2026 · Error sweep and a cleaner, calmer look
 
 Every page was opened as admin, manager and staff on a phone and a laptop, plus the customer and investor portals,

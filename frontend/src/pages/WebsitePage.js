@@ -372,7 +372,7 @@ function LoginsTab({ onCount }) {
             <div key={a.id} className="flex flex-col gap-2 px-3 py-3 sm:flex-row sm:items-center sm:px-4">
               <div className="min-w-0 flex-1">
                 <p className="flex flex-wrap items-center gap-2 font-medium text-slate-900">{a.name}{!a.active ? <Chip>Off</Chip> : a.must_change_password ? <Chip tone="amber">Hasn’t signed in yet</Chip> : <Chip tone="green">Active</Chip>}</p>
-                <p className="text-[11px] text-slate-500">+91 {a.phone} — {a.projects.map((p) => p.reference).filter(Boolean).join(', ') || 'no projects'} — {a.last_login_at ? `last in ${ago(a.last_login_at)}` : `made by ${a.created_by_name || '—'} ${ago(a.created_at)}`}</p>
+                <p className="text-[11px] text-slate-500">+91 {a.phone} — {a.projects.map((p) => p.reference).filter(Boolean).join(', ') || 'no projects'}{a.other_projects ? ` + ${a.other_projects} handled by others` : ''} — {a.last_login_at ? `last in ${ago(a.last_login_at)}` : `made by ${a.created_by_name || '—'} ${ago(a.created_at)}`}</p>
               </div>
               <div className="flex flex-wrap gap-1">
                 <Button variant="ghost" size="sm" className="h-8 gap-1 px-2" onClick={() => setEdit(a)}><Pencil className="h-3.5 w-3.5" />Projects</Button>
@@ -479,7 +479,7 @@ function PopupsTab({ onCount }) {
           <div className="space-y-3">
             <Field label="WhatsApp number" hint={`Empty = the company phone (${s.company_phone || 'not set'}). Now: ${s.effective_whatsapp || '—'}`}><input className={inputCls} value={s.whatsapp_number || ''} onChange={(e) => setS({ ...s, whatsapp_number: e.target.value })} disabled={!manage} inputMode="numeric" data-testid="settings-whatsapp" /></Field>
             <Field label="Phone number for calls" hint={`Empty = the company phone. Now: ${s.effective_call || '—'}`}><input className={inputCls} value={s.call_number || ''} onChange={(e) => setS({ ...s, call_number: e.target.value })} disabled={!manage} inputMode="numeric" /></Field>
-            <label className="flex items-start gap-2 text-sm text-slate-700"><input type="checkbox" checked={!!s.show_price_estimate} onChange={(e) => setS({ ...s, show_price_estimate: e.target.checked })} disabled={!manage} className="mt-0.5 h-4 w-4" /><span>Show an estimated price in the savings calculator<span className="block text-[11px] text-slate-500">From Price list → Package slabs (or the calculator’s ₹ per kW).</span></span></label>
+            <label className="flex items-start gap-2 text-sm text-slate-700"><input type="checkbox" checked={!!s.show_price_estimate} onChange={(e) => setS({ ...s, show_price_estimate: e.target.checked })} disabled={!manage} className="mt-0.5 h-4 w-4" /><span>Show an estimated price in the savings calculator<span className="block text-[11px] text-slate-500">Uses Price list → Package slabs — the per-kW rates you quote customers.</span></span></label>
             {manage && <Button onClick={saveSettings} disabled={saving} className="w-full bg-emerald-600 text-white hover:bg-emerald-700" data-testid="settings-save">{saving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Save settings'}</Button>}
           </div>
         )}

@@ -35,7 +35,6 @@ from typing import Any, Dict, List, Optional
 import jwt
 from bson import ObjectId
 from fastapi import APIRouter, HTTPException, Request, Response
-from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, Field
 from pymongo import ReturnDocument
 
@@ -63,6 +62,7 @@ SOURCES = {"calculator": "Savings calculator", "quote": "Free quote form", "cont
            "shop": "Shop", "service": "Service request", "account": "Customer login page"}
 POPUP_ACTIONS = ("quote", "whatsapp", "shop", "link", "none")
 POPUP_WHERE = ("site", "shop", "both")
+IMAGE_TYPES = {"image/png", "image/jpeg", "image/webp", "image/gif"}   # never SVG: it can carry script
 UTM_KEYS = ("utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content", "gclid", "fbclid")
 
 
@@ -89,8 +89,8 @@ def mobile(v: Any) -> Optional[str]:
 
 
 def _clean(text: Any, limit: int) -> str:
-    """Plain, single-spaced text without tags or control characters."""
-    s = re.sub(r"<[^>]*>", " ", str(text or ""))
+    """Plain, single-spaced text without tags or control characters. Cut to size first, so a huge input costs nothing."""
+    s = re.sub(r"<[^<>]*>", " ", str(text or "")[: max(limit, 1) * 4])
     s = re.sub(r"[\x00-\x08\x0b-\x1f\x7f]", " ", s)
     s = re.sub(r"[ \t]+", " ", s).strip()
     return s[:limit]
@@ -176,36 +176,36 @@ def lead_summary(lead: Dict[str, Any]) -> str:
 
 # ───────────────────────── request bodies ─────────────────────────
 class LeadIn(BaseModel):
-    name: str = ""
-    phone: str = ""
-    email: Optional[str] = ""
-    pincode: Optional[str] = ""
-    area: Optional[str] = ""
-    kind: Optional[str] = "home"
-    message: Optional[str] = ""
-    source: Optional[str] = "quote"
-    page: Optional[str] = ""
+    name: str = Field("", max_length=200)
+    phone: str = Field("", max_length=40)
+    email: Optional[str] = Field("", max_length=200)
+    pincode: Optional[str] = Field("", max_length=20)
+    area: Optional[str] = Field("", max_length=200)
+    kind: Optional[str] = Field("home", max_length=20)
+    message: Optional[str] = Field("", max_length=4000)
+    source: Optional[str] = Field("quote", max_length=20)
+    page: Optional[str] = Field("", max_length=500)
     calc: Optional[Dict[str, Any]] = None
     utm: Optional[Dict[str, Any]] = None
-    best_time: Optional[str] = ""
-    website: Optional[str] = ""          # honeypot — people never see or fill it
+    best_time: Optional[str] = Field("", max_length=100)
+    website: Optional[str] = Field("", max_length=500)          # honeypot — people never see or fill it
 
 
 class OrderLineIn(BaseModel):
-    id: str
+    id: str = Field(max_length=40)
     qty: float = 1
 
 
 class OrderIn(BaseModel):
-    name: str = ""
-    phone: str = ""
-    address: Optional[str] = ""
-    pincode: Optional[str] = ""
-    delivery: Optional[str] = "delivery"     # delivery | pickup
-    message: Optional[str] = ""
-    items: List[OrderLineIn] = []
+    name: str = Field("", max_length=200)
+    phone: str = Field("", max_length=40)
+    address: Optional[str] = Field("", max_length=1000)
+    pincode: Optional[str] = Field("", max_length=20)
+    delivery: Optional[str] = Field("delivery", max_length=20)     # delivery | pickup
+    message: Optional[str] = Field("", max_length=2000)
+    items: List[OrderLineIn] = Field(default_factory=list, max_length=50)
     utm: Optional[Dict[str, Any]] = None
-    website: Optional[str] = ""
+    website: Optional[str] = Field("", max_length=500)
 
 
 class LeadUpdate(BaseModel):
@@ -258,13 +258,31 @@ class ClientAccountUpdate(BaseModel):
 
 
 class ClientLogin(BaseModel):
-    phone: str = ""
-    password: str = ""
+    phone: str = Field("", max_length=40)
+    password: str = Field("", max_length=200)
 
 
 class ClientPasswordChange(BaseModel):
     current_password: str
     new_password: str = Field(min_length=8, max_length=200)
+
+
+async def ensure_indexes(db) -> None:
+    """Fast look-ups for the public forms and logins; the attempt logs clean themselves up after a day."""
+    for coll, keys, opts in (
+        ("website_lead_hits", [("at", 1)], {"expireAfterSeconds": 86400}),
+        ("website_lead_hits", [("ip", 1), ("bucket", 1), ("at", 1)], {}),
+        ("client_login_attempts", [("at", 1)], {"expireAfterSeconds": 86400}),
+        ("client_login_attempts", [("phone", 1), ("ip", 1), ("at", 1)], {}),
+        ("client_accounts", [("phone", 1)], {"unique": True}),
+        ("client_accounts", [("project_ids", 1)], {}),
+        ("website_leads", [("phone", 1), ("status", 1), ("created_at", -1)], {}),
+        ("website_leads", [("status", 1), ("last_submitted_at", -1)], {}),
+    ):
+        try:
+            await db[coll].create_index(keys, **opts)
+        except Exception:   # an old index with other options — leave it, the app works without
+            pass
 
 
 def create_router(db, get_current_user, require_role, create_audit_log, jwt_secret: str, hash_password, verify_password,
@@ -326,16 +344,15 @@ def create_router(db, get_current_user, require_role, create_audit_log, jwt_secr
         return out
 
     async def _price_table() -> Dict[str, Any]:
-        """₹ per kW for each system type, for the calculator's 'about ₹…' line: package slabs first, else calculator settings."""
-        cfg = await db.calc_config.find_one({}) or {}
-        per_kw = dict(cfg.get("cost_per_kwp") or {})
+        """₹ per kW for the calculator's 'about ₹…' line — only Price list → Package slabs (the rates quoted to customers);
+        the calculator's internal per-kW benchmark is never published."""
         slabs: Dict[str, List[Dict[str, Any]]] = {}
         async for d in db.pricing_slabs.find({"active": {"$ne": False}, "unit": "kw"}):
             rows = [{"from": s.get("from_value"), "to": s.get("to_value"), "rate": s.get("rate_per_unit")} for s in d.get("slabs") or []
                     if s.get("rate_per_unit")]
             if rows:
                 slabs[d.get("category")] = rows
-        return {"per_kw": {k: v for k, v in per_kw.items() if isinstance(v, (int, float)) and v > 0}, "slabs": slabs}
+        return {"per_kw": {}, "slabs": slabs}
 
     async def _rate_limit(request: Request, bucket: str):
         ip = _client_ip(request)
@@ -372,10 +389,21 @@ def create_router(db, get_current_user, require_role, create_audit_log, jwt_secr
         entry = {"at": now, "by": "Website", "type": "submitted", "text": SOURCES.get(fields.get("source"), "Website form"),
                  "kind": fields.get("kind")}
         if existing:
-            upd = {k: v for k, v in fields.items() if v not in (None, "", {}, []) and k not in ("phone",)}
+            # Anyone can type someone else's number, so a repeat enquiry only fills gaps — it never replaces the name,
+            # email or address staff already have. What they typed this time goes into the timeline instead.
+            upd: Dict[str, Any] = {k: fields[k] for k in ("kind", "calc", "source", "page") if fields.get(k)}
+            for k in ("name", "email", "area", "pincode", "best_time", "message"):
+                if fields.get(k) and not existing.get(k):
+                    upd[k] = fields[k]
+            if fields.get("utm") and not existing.get("utm"):
+                upd["utm"] = fields["utm"]
             upd.update({"last_submitted_at": now, "needs_attention": True, "updated_at": now})
+            differs = [f"{label}: {fields[k]}" for k, label in (("name", "name"), ("email", "email"), ("area", "area"), ("pincode", "PIN"))
+                       if fields.get(k) and existing.get(k) and fields[k] != existing[k]]
             if fields.get("message"):
                 entry["text"] += f": {fields['message'][:300]}"
+            if differs:
+                entry["text"] += f" (typed a different {'; '.join(differs)})"
             await db.website_leads.update_one({"_id": existing["_id"]}, {"$set": upd, "$inc": {"submissions": 1}, "$push": {"activity": entry}})
             lead = await db.website_leads.find_one({"_id": existing["_id"]})
             await _tell_staff(lead, again=True)
@@ -415,10 +443,10 @@ def create_router(db, get_current_user, require_role, create_audit_log, jwt_secr
         phone = mobile(body.phone)
         if not phone:
             raise HTTPException(status_code=400, detail="Enter a 10-digit mobile number so we can call you back.")
+        ip = await _rate_limit(request, "lead")
         name = _clean(body.name, 80)
         if len(name) < 2:
             raise HTTPException(status_code=400, detail="Tell us your name.")
-        ip = await _rate_limit(request, "lead")
         pin = _digits(body.pincode)[:6]
         kind = body.kind if body.kind in KINDS and body.kind != "shop_order" else "other"
         email = _clean(body.email, 120)
@@ -452,7 +480,8 @@ def create_router(db, get_current_user, require_role, create_audit_log, jwt_secr
                 "id": str(l["_id"]), "title": l.get("listing_title") or item.get("name") or "Product",
                 "description": l.get("description") or "", "category": item.get("category") or "other",
                 "brand": item.get("brand") or "", "price": price, "featured": bool(l.get("featured")),
-                "images": [f"/api/public/shop/image/{l['_id']}/{n}" for n in range(len(l.get("images") or []))],
+                "images": [str(ref) if str(ref).startswith("https://") else f"/api/public/shop/image/{l['_id']}/{n}"
+                           for n, ref in enumerate(l.get("images") or [])],
                 "stock": "in_stock" if qty > max(low, 0) else ("low" if qty > 0 else "on_order"),
                 "watt": item.get("wattage_w") or None, "gst_pct": item.get("gst_percentage") if item.get("gst_percentage") is not None else item.get("gst_pct"),
                 "updated_at": l.get("updated_at"),
@@ -482,13 +511,15 @@ def create_router(db, get_current_user, require_role, create_audit_log, jwt_secr
 
     @router.get("/public/shop/image/{listing_id}/{n}")
     async def public_product_image(listing_id: str, n: int):
-        l = await db.ecommerce_listings.find_one({"_id": _oid(listing_id, "picture"), "status": "live"})
+        shop = await _shop_platform()
+        l = await db.ecommerce_listings.find_one({"_id": _oid(listing_id, "picture"), "status": "live",
+                                                  "platform_id": str(shop["_id"]) if shop else "__none__"})
         imgs = (l or {}).get("images") or []
         if not l or n < 0 or n >= len(imgs):
             raise HTTPException(status_code=404, detail="Picture not found")
         ref = str(imgs[n])
         if ref.startswith("https://") or ref.startswith("http://"):
-            return RedirectResponse(ref, status_code=302)
+            raise HTTPException(status_code=404, detail="Picture not found")    # outside pictures are linked directly
         path = ref.split("/api/files/", 1)[-1].lstrip("/")
         if not path.startswith(f"{app_name}/images/") or ".." in path or get_object is None:
             raise HTTPException(status_code=404, detail="Picture not found")
@@ -496,9 +527,10 @@ def create_router(db, get_current_user, require_role, create_audit_log, jwt_secr
             data, ctype = get_object(path)
         except Exception:
             raise HTTPException(status_code=404, detail="Picture not found")
-        if not str(ctype).startswith("image/"):
+        if str(ctype).split(";")[0].strip().lower() not in IMAGE_TYPES:
             raise HTTPException(status_code=404, detail="Picture not found")
-        return Response(content=data, media_type=ctype, headers={"Cache-Control": "public, max-age=604800"})
+        return Response(content=data, media_type=ctype, headers={"Cache-Control": "public, max-age=604800", "X-Content-Type-Options": "nosniff",
+                                                                  "Content-Security-Policy": "default-src 'none'; sandbox"})
 
     @router.post("/public/shop/order")
     async def public_order(body: OrderIn, request: Request):
@@ -512,6 +544,7 @@ def create_router(db, get_current_user, require_role, create_audit_log, jwt_secr
             raise HTTPException(status_code=400, detail="Tell us your name.")
         if not body.items:
             raise HTTPException(status_code=400, detail="Your cart is empty.")
+        ip = await _rate_limit(request, "order")
         live = {p["id"]: p for p in await _live_products()}
         lines, total, gone = [], 0.0, []
         for it in body.items[:50]:
@@ -529,7 +562,6 @@ def create_router(db, get_current_user, require_role, create_audit_log, jwt_secr
             raise HTTPException(status_code=409, detail="These products aren't available any more. Refresh the shop and try again.")
         if not lines:
             raise HTTPException(status_code=400, detail="Your cart is empty.")
-        ip = await _rate_limit(request, "order")
         delivery = body.delivery if body.delivery in ("delivery", "pickup") else "delivery"
         address = _clean(body.address, 300)
         if delivery == "delivery" and len(address) < 5:
@@ -596,20 +628,26 @@ def create_router(db, get_current_user, require_role, create_audit_log, jwt_secr
                 "status": p.get("status"), "place": ((p.get("location") or {}).get("city") or (p.get("location") or {}).get("district")
                                                      or (p.get("location") or {}).get("address") or "")[:60]}
 
+    dummy_hash = hash_password(secrets.token_urlsafe(12))   # checked when a number has no login, so both cases take as long
+
     @router.post("/client/auth/login")
     async def client_login(body: ClientLogin, request: Request, response: Response):
         phone = mobile(body.phone) or _digits(body.phone)[-10:]
         ip = _client_ip(request)
         since = _now() - timedelta(minutes=LOGIN_WINDOW_MIN)
-        tries = await db.client_login_attempts.count_documents({"phone": phone, "at": {"$gte": since}})
-        ip_tries = await db.client_login_attempts.count_documents({"ip": ip, "at": {"$gte": since}}) if ip else 0
-        if tries >= LOGIN_TRIES or ip_tries >= LOGIN_TRIES * 4:
+        # one person guessing (this number from this address) is stopped quickly; a stranger can't lock a customer out,
+        # because the per-number limit is much looser; one address can't try many numbers either
+        pair = await db.client_login_attempts.count_documents({"phone": phone, "ip": ip, "at": {"$gte": since}})
+        per_phone = await db.client_login_attempts.count_documents({"phone": phone, "at": {"$gte": since}})
+        per_ip = await db.client_login_attempts.count_documents({"ip": ip, "at": {"$gte": since}}) if ip else 0
+        if pair >= LOGIN_TRIES or per_phone >= LOGIN_TRIES * 5 or per_ip >= LOGIN_TRIES * 4:
             raise HTTPException(status_code=429, detail="Too many tries. Please wait 15 minutes, or ask us on WhatsApp to reset your password.")
         acc = await db.client_accounts.find_one({"phone": phone}) if phone else None
-        if not acc or not acc.get("active", True) or not verify_password(body.password or "", acc.get("password_hash") or ""):
+        ok = verify_password(body.password or "", (acc or {}).get("password_hash") or dummy_hash)
+        if not acc or not acc.get("active", True) or not ok:
             await db.client_login_attempts.insert_one({"phone": phone, "ip": ip, "at": _now()})
             raise HTTPException(status_code=401, detail="That mobile number and password don't match.")
-        await db.client_login_attempts.delete_many({"phone": phone})
+        await db.client_login_attempts.delete_many({"phone": phone, "ip": ip})
         await db.client_accounts.update_one({"_id": acc["_id"]}, {"$set": {"last_login_at": _iso()}, "$inc": {"login_count": 1}})
         _set_cookie(response, acc)
         return {"name": acc.get("name"), "must_change_password": bool(acc.get("must_change_password"))}
@@ -779,7 +817,7 @@ def create_router(db, get_current_user, require_role, create_audit_log, jwt_secr
         if body.cta_action not in POPUP_ACTIONS:
             raise HTTPException(status_code=400, detail="Choose what the button does")
         url = (body.cta_url or "").strip()
-        if body.cta_action == "link" and not re.match(r"^(https://|/)[^\s<>\"']{0,300}$", url):
+        if body.cta_action == "link" and not re.match(r"^(https://[^\s<>\"'/\\][^\s<>\"']{0,300}|/(?![/\\])[^\s<>\"']{0,300})$", url):
             raise HTTPException(status_code=400, detail="The button link should start with https:// or /")
         till = (body.valid_till or "")[:10] or None
         if till and not re.match(r"^\d{4}-\d{2}-\d{2}$", till):
@@ -970,14 +1008,31 @@ def create_router(db, get_current_user, require_role, create_audit_log, jwt_secr
             raise HTTPException(status_code=403, detail="You can only make logins for your own projects")
         return p
 
-    async def _account_out(acc: Dict[str, Any], with_projects: bool = True) -> Dict[str, Any]:
+    async def _own_project_ids(user: Dict[str, Any]) -> Optional[set]:
+        """Staff: the ids of the projects they made. Managers and admins: None (everything)."""
+        if user["role"] != "staff":
+            return None
+        return {str(p["_id"]) async for p in db.projects.find({"created_by": user["id"]}, {"_id": 1})}
+
+    async def _staff_may_change(acc: Dict[str, Any], user: Dict[str, Any]) -> None:
+        """A login shows the customer every project on it, so staff may change it only when every project on it is theirs —
+        otherwise they could reset it, sign in as the customer and see another salesperson's project."""
+        own = await _own_project_ids(user)
+        if own is None:
+            return
+        if any(pid not in own for pid in acc.get("project_ids") or []):
+            raise HTTPException(status_code=403, detail="This login also shows projects you don’t handle. Ask a manager to change it.")
+
+    async def _account_out(acc: Dict[str, Any], with_projects: bool = True, own: Optional[set] = None) -> Dict[str, Any]:
         out = {"id": str(acc["_id"]), "name": acc.get("name"), "phone": acc.get("phone"), "active": acc.get("active", True),
                "must_change_password": bool(acc.get("must_change_password")), "last_login_at": acc.get("last_login_at"),
                "login_count": acc.get("login_count", 0), "created_at": acc.get("created_at"), "created_by_name": acc.get("created_by_name"),
-               "project_ids": acc.get("project_ids") or []}
+               "project_ids": [i for i in acc.get("project_ids") or [] if own is None or i in own]}
+        if own is not None:
+            out["other_projects"] = len(acc.get("project_ids") or []) - len(out["project_ids"])
         if with_projects:
             out["projects"] = [{"id": str(p["_id"]), "reference": p.get("reference_number"), "name": (p.get("customer") or {}).get("name")}
-                               for p in await _client_projects(acc)]
+                               for p in await _client_projects(acc) if own is None or str(p["_id"]) in own]
         return out
 
     async def _valid_projects(ids: List[str], user: Dict[str, Any]) -> List[str]:
@@ -990,12 +1045,15 @@ def create_router(db, get_current_user, require_role, create_audit_log, jwt_secr
 
     @router.get("/client-accounts")
     async def list_accounts(request: Request, q: Optional[str] = None):
-        await get_current_user(request)
+        user = await get_current_user(request)
+        own = await _own_project_ids(user)
         query: Dict[str, Any] = {}
         if q:
             rx = re.escape(q.strip()[:60])
             query["$or"] = [{"name": {"$regex": rx, "$options": "i"}}, {"phone": {"$regex": rx}}]
-        return [await _account_out(a) async for a in db.client_accounts.find(query).sort("created_at", -1).limit(500)]
+        if own is not None:   # staff see the logins of their own customers only
+            query["project_ids"] = {"$in": list(own)}
+        return [await _account_out(a, own=own) async for a in db.client_accounts.find(query).sort("created_at", -1).limit(500)]
 
     @router.post("/client-accounts")
     async def create_account(body: ClientAccountIn, request: Request):
@@ -1018,7 +1076,7 @@ def create_router(db, get_current_user, require_role, create_audit_log, jwt_secr
         res = await db.client_accounts.insert_one(doc)
         await create_audit_log(user["id"], user.get("name", ""), "create", "client_account", str(res.inserted_id), None,
                                {"name": name, "phone": phone, "projects": project_ids})
-        return {"account": await _account_out({**doc, "_id": res.inserted_id}), "password": password}
+        return {"account": await _account_out({**doc, "_id": res.inserted_id}, own=await _own_project_ids(user)), "password": password}
 
     @router.put("/client-accounts/{account_id}")
     async def update_account(account_id: str, body: ClientAccountUpdate, request: Request):
@@ -1032,28 +1090,23 @@ def create_router(db, get_current_user, require_role, create_audit_log, jwt_secr
             if len(name) < 2:
                 raise HTTPException(status_code=400, detail="Enter the customer's name")
             upd["name"] = name
+        await _staff_may_change(acc, user)
         if body.project_ids is not None:
-            if user["role"] == "staff":   # staff can add their own projects, never take away someone else's
-                keep = [i for i in acc.get("project_ids") or [] if i not in body.project_ids]
-                for pid in keep:
-                    p = await db.projects.find_one({"_id": ObjectId(pid)}, {"created_by": 1}) if ObjectId.is_valid(pid) else None
-                    if p and p.get("created_by") == user["id"]:
-                        continue
-                    body.project_ids.append(pid)
             ids = await _valid_projects([i for i in body.project_ids if i not in (acc.get("project_ids") or [])], user)
             upd["project_ids"] = [i for i in body.project_ids if i in (acc.get("project_ids") or [])] + ids
             if not upd["project_ids"]:
                 raise HTTPException(status_code=400, detail="Keep at least one project — or turn the login off instead")
         if body.active is not None:
-            if user["role"] == "staff" and acc.get("created_by") != user["id"]:
+            if user["role"] == "staff" and (acc.get("created_by") != user["id"] or (body.active and acc.get("turned_off_by_role") in ("admin", "manager"))):
                 raise HTTPException(status_code=403, detail="Ask a manager to turn this login on or off")
             upd["active"] = bool(body.active)
+            upd["turned_off_by_role"] = None if body.active else user["role"]
             if not body.active:
                 upd["password_version"] = int(acc.get("password_version") or 1) + 1   # signs them out everywhere
         await db.client_accounts.update_one({"_id": acc["_id"]}, {"$set": upd})
         await create_audit_log(user["id"], user.get("name", ""), "update", "client_account", account_id, None,
                                {k: v for k, v in upd.items() if k != "updated_at"})
-        return await _account_out(await db.client_accounts.find_one({"_id": acc["_id"]}))
+        return await _account_out(await db.client_accounts.find_one({"_id": acc["_id"]}), own=await _own_project_ids(user))
 
     @router.post("/client-accounts/{account_id}/reset-password")
     async def reset_password(account_id: str, request: Request):
@@ -1061,20 +1114,15 @@ def create_router(db, get_current_user, require_role, create_audit_log, jwt_secr
         acc = await db.client_accounts.find_one({"_id": _oid(account_id, "login")})
         if not acc:
             raise HTTPException(status_code=404, detail="That login doesn't exist")
-        if user["role"] == "staff":
-            mine = False
-            for pid in acc.get("project_ids") or []:
-                p = await db.projects.find_one({"_id": ObjectId(pid)}, {"created_by": 1}) if ObjectId.is_valid(pid) else None
-                mine = mine or bool(p and p.get("created_by") == user["id"])
-            if not mine:
-                raise HTTPException(status_code=403, detail="Ask a manager to reset this password")
+        await _staff_may_change(acc, user)
         password = temp_password()
         await db.client_accounts.update_one({"_id": acc["_id"]}, {"$set": {
-            "password_hash": hash_password(password), "must_change_password": True, "active": True,
+            "password_hash": hash_password(password), "must_change_password": True,
             "password_version": int(acc.get("password_version") or 1) + 1, "password_reset_at": _iso(), "password_reset_by": user.get("name", "")}})
         await db.client_login_attempts.delete_many({"phone": acc.get("phone")})
         await create_audit_log(user["id"], user.get("name", ""), "update", "client_account", account_id, None, {"password": "reset"})
-        return {"account": await _account_out(await db.client_accounts.find_one({"_id": acc["_id"]})), "password": password}
+        return {"account": await _account_out(await db.client_accounts.find_one({"_id": acc["_id"]}), own=await _own_project_ids(user)),
+                "password": password}
 
     @router.delete("/client-accounts/{account_id}")
     async def delete_account(account_id: str, request: Request):
@@ -1092,8 +1140,10 @@ def create_router(db, get_current_user, require_role, create_audit_log, jwt_secr
         p = await _project_for_staff(project_id, user)
         phone = mobile((p.get("customer") or {}).get("phone"))
         acc = await db.client_accounts.find_one({"phone": phone}) if phone else None
-        return {"phone": phone, "name": (p.get("customer") or {}).get("name") or "", "account": await _account_out(acc) if acc else None,
-                "linked": bool(acc and project_id in (acc.get("project_ids") or []))}
+        own = await _own_project_ids(user)
+        return {"phone": phone, "name": (p.get("customer") or {}).get("name") or "", "account": await _account_out(acc, own=own) if acc else None,
+                "linked": bool(acc and project_id in (acc.get("project_ids") or [])),
+                "can_change": bool(acc) and (own is None or all(i in own for i in acc.get("project_ids") or []))}
 
     @router.post("/projects/{project_id}/client-login")
     async def make_project_login(project_id: str, request: Request):
@@ -1106,9 +1156,11 @@ def create_router(db, get_current_user, require_role, create_audit_log, jwt_secr
         acc = await db.client_accounts.find_one({"phone": phone})
         if acc:
             if project_id not in (acc.get("project_ids") or []):
+                await _staff_may_change(acc, user)
                 await db.client_accounts.update_one({"_id": acc["_id"]}, {"$push": {"project_ids": project_id}, "$set": {"updated_at": _iso()}})
                 await create_audit_log(user["id"], user.get("name", ""), "update", "client_account", str(acc["_id"]), None, {"added_project": project_id})
-            return {"account": await _account_out(await db.client_accounts.find_one({"_id": acc["_id"]})), "password": None, "added": True}
+            return {"account": await _account_out(await db.client_accounts.find_one({"_id": acc["_id"]}), own=await _own_project_ids(user)),
+                    "password": None, "added": True}
         body = ClientAccountIn(name=(p.get("customer") or {}).get("name") or "Customer", phone=phone, project_ids=[project_id])
         if len(_clean(body.name, 80)) < 2:
             body.name = "Customer"

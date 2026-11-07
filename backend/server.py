@@ -7803,6 +7803,8 @@ async def startup_event():
     await db.customer_portal_links.create_index("token_hash")
     await db.customer_portal_links.create_index("project_id")
     await db.portal_attempts.create_index("at", expireAfterSeconds=24 * 3600)
+    from website import ensure_indexes as _website_indexes  # noqa: E402
+    await _website_indexes(db)
     await db.offer_interests.create_index([("offer_id", 1), ("project_id", 1)], unique=True)
     # What3words was removed (Oct 2026): clear its cache and the saved (encrypted) API key
     await db.w3w_cache.drop()

@@ -34,6 +34,9 @@ Don't switch Odoo off until the new site is live and checked.
     certbot --nginx -d sensoper.in -d www.sensoper.in -d shop.sensoper.in
 
 These domains pass only `/api/public/*` and `/api/client/*` to the backend. The ERP stays on quote.sensoper.in.
+Use this file as it is. Don't copy the ERP's `location /api/` block into it: that would put the whole ERP API on the
+public site. The backend must keep listening on 127.0.0.1 only, so the visitor limits see real addresses. If you ever
+put Cloudflare in front, tell me first; the visitor-address setting has to change with it.
 
 ### 4. Set it up in the ERP (Sales & projects → Website)
 1. **Pop-ups & settings:** check the WhatsApp number. It defaults to the company phone, 9043547047. Turn the price

@@ -119,7 +119,7 @@ function renderDash(d) {
   const status = { draft: 'Quotation being prepared', submitted: 'Quotation sent', approved: 'Installation under way', completed: 'Running' }[p.status] || 'In progress';
   const hero = `<section class="tile hero-tile span-6">
     <div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:flex-start">
-      <div><p class="muted small">${esc(p.reference || '')}</p><h2 style="font-family:var(--display);font-size:clamp(1.4rem,4vw,2rem);font-weight:600;letter-spacing:-.03em;margin:4px 0 0">Your ${p.size_kw ? fmt(p.size_kw, 1) + ' kW ' : ''}${esc(TYPE[p.system_type] || p.system_type || '')} system</h2></div>
+      <div><p class="muted small">${esc(p.reference || '')}</p><h2 style="font-family:var(--display);font-size:clamp(1.4rem,4vw,2rem);font-weight:600;letter-spacing:-.03em;margin:4px 0 0">Your ${p.size_kw ? esc(fmt(p.size_kw, 1)) + ' kW ' : ''}${esc(TYPE[p.system_type] || p.system_type || '')} system</h2></div>
       <span class="tag ${running ? 'ok' : 'warn'}">${running ? 'Running since ' + day(s.running_since) : status}</span>
     </div>
     ${running ? `<div class="kpis">
@@ -141,7 +141,7 @@ function renderDash(d) {
   </section>` : `<section class="tile span-3"><h2>Payments</h2><p class="muted">Your payment details appear here once your quotation is final.</p></section>`;
 
   const sys = `<section class="tile span-2"><h2>Your system</h2><div class="list">
-    ${p.panels && p.panels.count ? `<div><span class="muted">Panels</span><b style="text-align:right">${p.panels.count}${p.panels.watt ? ` × ${p.panels.watt} W` : ''}</b></div>${p.panels.name ? `<div><span class="muted">Make</span><span style="text-align:right">${esc(p.panels.name)}</span></div>` : ''}` : ''}
+    ${p.panels && p.panels.count ? `<div><span class="muted">Panels</span><b style="text-align:right">${esc(p.panels.count)}${p.panels.watt ? ` × ${esc(p.panels.watt)} W` : ''}</b></div>${p.panels.name ? `<div><span class="muted">Make</span><span style="text-align:right">${esc(p.panels.name)}</span></div>` : ''}` : ''}
     ${p.inverter ? `<div><span class="muted">Inverter</span><span style="text-align:right">${esc(p.inverter)}</span></div>` : ''}
     ${p.battery ? `<div><span class="muted">Battery</span><span style="text-align:right">${esc(p.battery.count || '')} ${esc(p.battery.name || '')}</span></div>` : ''}
     ${p.installation_date ? `<div><span class="muted">Installed</span><span>${day(p.installation_date)}</span></div>` : ''}

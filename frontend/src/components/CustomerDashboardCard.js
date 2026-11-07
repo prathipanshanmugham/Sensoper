@@ -39,12 +39,14 @@ function CustomerLogin({ project, phoneOk }) {
       {acc && state.linked ? (
         <>
           <p className="mt-1 text-xs text-slate-500">Signs in at sensoper.in/account with …{acc.phone.slice(-4)}. {!acc.active ? 'The login is turned off.' : acc.must_change_password ? 'Hasn’t signed in yet.' : acc.last_login_at ? `Last signed in ${new Date(acc.last_login_at).toLocaleDateString('en-IN')}.` : ''}{acc.projects.length > 1 ? ` Sees ${acc.projects.length} projects.` : ''}</p>
-          <Can module="module_website" action="edit"><Button variant="ghost" onClick={reset} disabled={busy} className="mt-2 h-9 gap-1.5 text-slate-600" data-testid="client-login-reset"><KeyRound className="h-4 w-4" />New password</Button></Can>
+          {state.can_change
+            ? <Can module="module_website" action="edit"><Button variant="ghost" onClick={reset} disabled={busy} className="mt-2 h-9 gap-1.5 text-slate-600" data-testid="client-login-reset"><KeyRound className="h-4 w-4" />New password</Button></Can>
+            : <p className="mt-1 text-[11px] text-slate-500">Their login also shows projects you don’t handle, so a manager resets its password.</p>}
         </>
       ) : (
         <>
-          <p className="mt-1 text-xs text-slate-500">{acc ? `${acc.name} already has a login (…${acc.phone.slice(-4)}). Add this project so they see it too.` : 'A password login for sensoper.in/account — they see this project, and any others you add, without a link.'}</p>
-          <Can module="module_website" action="create"><Button onClick={make} disabled={busy || !phoneOk} className="mt-2 h-9 gap-1.5 bg-slate-900 text-white hover:bg-slate-800" data-testid="client-login-make">{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <UserCheck className="h-4 w-4" />}{acc ? 'Add to their login' : 'Make customer login'}</Button></Can>
+          <p className="mt-1 text-xs text-slate-500">{acc ? `${acc.name} already has a login (…${acc.phone.slice(-4)}).${state.can_change ? ' Add this project so they see it too.' : ' It also shows projects you don’t handle, so ask a manager to add this one.'}` : 'A password login for sensoper.in/account — they see this project, and any others you add, without a link.'}</p>
+          {(!acc || state.can_change) && <Can module="module_website" action="create"><Button onClick={make} disabled={busy || !phoneOk} className="mt-2 h-9 gap-1.5 bg-slate-900 text-white hover:bg-slate-800" data-testid="client-login-make">{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <UserCheck className="h-4 w-4" />}{acc ? 'Add to their login' : 'Make customer login'}</Button></Can>}
         </>
       )}
       {shown && <ClientPasswordDialog result={shown} onClose={() => setShown(null)} />}
