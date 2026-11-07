@@ -422,3 +422,28 @@ See CHANGES.md for the full list. Highlights for the next agent:
   one-line breadcrumb, active bar, single New project button. SiteVisitForm `blankNulls` on load; SiteDiary partners only with
   module_partners; Teams/WeeklyAudit/AmcOps use usersAPI.directory. ProjectDetails fetches the inverter password on demand.
 - Tests: tests/test_qa_nov.py (11) — 107 in-process tests pass.
+
+
+## Iteration 72 — public website, shop and customer logins (2026-11-07)
+- website/ (static, no build): index.html + assets/home.js (sun position NOAA-style for 11.2755N 77.587E, clear-sky kW,
+  draggable dial; calculator: TNEB domestic telescopic slabs back-solved from the bimonthly bill, 4.4 u/kW/day, PSG
+  30k/kW to 2 kW + 18k to 3 kW, price from /api/public/site prices (pricing_slabs, else calc_config.cost_per_kwp)),
+  shop/index.html + assets/shop.js (cart in localStorage, order request), account/index.html + assets/account.js
+  (client login → customer_portal.project_dashboard JSON), assets/core.js (links rewrite on localhost, contacts, lead
+  sheet, pop-up queue, exit intent, UTM capture), assets/site.css (Unbounded subset + system UI). dev-server.mjs (:5100,
+  proxies /api/public|client to :8001). deploy/nginx-sensoper-website.conf, deploy/deploy-website.sh.
+- backend/website.py: public `/api/public/{site,leads,shop/products,shop/image/{id}/{n},shop/order}`; client auth
+  `/api/client/auth/{login,logout,change-password}`, `/api/client/me`, `/api/client/projects/{id}/{dashboard,tickets,
+  offers/{offer_id}/interest}` (cookie sp_client, path /api/client, 30 days, password_version invalidation, 6 tries/15 min
+  per phone, 24 per IP); staff `/api/website/{summary,leads,popups,settings,shop/products}`, `/api/client-accounts`,
+  `/api/projects/{id}/client-login`. Collections website_leads (WL-0001 via counters), website_popups, website_settings,
+  client_accounts, website_lead_hits, client_login_attempts. Shop = ecommerce_listings on the custom_website platform
+  (auto-created "Sensoper shop (shop.sensoper.in)"), with description/images/featured. Bell kind website_lead.
+- customer_portal.py: company_info / project_dashboard / raise_ticket_for / offer_interest_for at module level.
+- access_policy: page module_website (staff V,C,E; manager all) + option can_manage_website; rules for popups/settings/
+  shop writes (option), client-accounts and project client-login (page). /api/dashboard/stats adds website_leads.
+- Frontend: pages/WebsitePage.js (/dashboard/website: Leads | Shop | Customer logins | Pop-ups & settings),
+  components/ClientPasswordDialog.js, CustomerDashboardCard "Customer login" block, SiteVisitForm `?lead=` prefill +
+  link, navigation entry (Globe, badge website_leads), websiteAPI in utils/api.js.
+- Tests: tests/test_website.py (6).
+

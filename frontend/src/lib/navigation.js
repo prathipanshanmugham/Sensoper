@@ -12,7 +12,7 @@ import {
   ShoppingBag, RefreshCw, Package, Boxes, PackageOpen, Truck, Undo2, Store, Tags, HardHat, Users, Wrench,
   CreditCard, AlertTriangle, BarChart3, MapPin, Building2, UserCog, Shield, Map, SlidersHorizontal, ScrollText,
   Layers, History, KeyRound, LockKeyhole, FileText, UserRound, Clock, Network, Gift, Landmark,
-  LifeBuoy, CalendarDays, BadgeCheck, IdCard, HandCoins, Bot, Wallet, Banknote, MessageCircleQuestion,
+  LifeBuoy, CalendarDays, BadgeCheck, IdCard, HandCoins, Bot, Wallet, Banknote, MessageCircleQuestion, Globe,
 } from 'lucide-react';
 
 export const NAV_SECTIONS = [
@@ -132,6 +132,18 @@ export const NAV_SECTIONS = [
         help: {
           what: 'Everything waiting for a manager’s decision: project reviews, deletions, stock reversals and purchase orders.',
           steps: ['Open a request to see what changes.', 'Approve or reject it; the person who asked is updated straight away.'],
+        },
+      },
+      {
+        href: '/dashboard/website', label: 'Website', icon: Globe, module: 'module_website', badge: 'website_leads',
+        keywords: 'website leads enquiries sensoper.in shop shop.sensoper.in customer login client login popup pop-up whatsapp',
+        help: {
+          what: 'Leads from sensoper.in, the products in the online shop, customer logins and the pop-ups visitors see.',
+          steps: ['Leads: call new enquiries first, add a note or a call-back date, and tap "Make project" to start the site visit with their details filled in.',
+            'Shop: pick an item from Inventory, set the shop price (including GST), add a photo, and show it in the shop.',
+            'Customer logins: make a login for a customer, then send them the password on WhatsApp — they sign in at sensoper.in/account.',
+            'Pop-ups: short notices on the website, like an offer or a deadline.'],
+          tip: 'You can also make a customer’s login from their project page → Customer dashboard.',
         },
       },
       {

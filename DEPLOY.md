@@ -4,7 +4,58 @@ Your server already has `/root/Sensoper/deploy.sh`. It pulls the code, installs 
 copies the build to `/var/www/sensoper`, restarts the `sensoper` service and checks the live bundle. This release needs
 nothing new installed.
 
-## This release: error sweep and a cleaner look
+## This release: the customer website (sensoper.in, shop.sensoper.in)
+
+The backend and ERP deploy as usual (`/root/Sensoper/deploy.sh`). No new packages and no new settings. The public
+website is new. It needs a one-time setup: DNS, nginx and SSL.
+
+### 1. Copy the website on every deploy (once)
+Add this line to `/root/Sensoper/deploy.sh`, after `git pull`:
+
+    bash /root/Sensoper/website/deploy/deploy-website.sh
+
+It copies `website/` to `/var/www/sensoper-site`, then checks the three addresses.
+
+### 2. Point the domains at the VPS (once)
+sensoper.in currently runs on Odoo. At your domain's DNS provider:
+
+- Set the **A records** for `sensoper.in`, `www.sensoper.in` and `shop.sensoper.in` to the VPS address. It's the same
+  address as `quote.sensoper.in`. For `www` and `shop`, a CNAME to `sensoper.in` also works.
+- **Do not change MX or TXT records.** Email and Google verification keep working.
+- Changes usually show within an hour.
+
+Don't switch Odoo off until the new site is live and checked.
+
+### 3. nginx and https (once, after DNS has switched)
+
+    cp /root/Sensoper/website/deploy/nginx-sensoper-website.conf /etc/nginx/sites-available/sensoper-website
+    ln -s /etc/nginx/sites-available/sensoper-website /etc/nginx/sites-enabled/
+    nginx -t && systemctl reload nginx
+    certbot --nginx -d sensoper.in -d www.sensoper.in -d shop.sensoper.in
+
+These domains pass only `/api/public/*` and `/api/client/*` to the backend. The ERP stays on quote.sensoper.in.
+
+### 4. Set it up in the ERP (Sales & projects → Website)
+1. **Pop-ups & settings:** check the WhatsApp number. It defaults to the company phone, 9043547047. Turn the price
+   estimate in the calculator on or off. It uses Price list → Package slabs, so check those rates first.
+2. **Shop:** use **Add product**. Pick a stock item, then set the shop price *including GST* and add a photo. Until a
+   product is live, the shop asks visitors what they need, and their answers arrive as leads.
+3. **Customer logins:** on any customer's project page → Customer dashboard → **Make customer login**. Then tap
+   **Send on WhatsApp**. They sign in at sensoper.in/account and choose their own password.
+4. **Permissions:** the new page is called **Website**. Staff can see leads and make logins. Managers can also run
+   the shop, pop-ups and settings (the option is "Run the shop, pop-ups and website settings").
+
+### 5. Check after it's live
+1. On a phone, open https://sensoper.in. The sky should match the time of day, and the calculator should respond.
+   Send yourself a quote request.
+2. The request appears under Website → Leads, the bell shows a note, and the menu badge counts it.
+3. Open https://shop.sensoper.in, add something to the cart and send an order request. It arrives as a lead marked
+   "Shop order".
+4. Make a customer login for a test project, sign in at https://sensoper.in/account, set a password and raise a
+   service request. It appears in Customer support.
+5. The footer's **ERP login** opens https://quote.sensoper.in/login.
+
+## Earlier release: error sweep and a cleaner look
 
 Code-only release with no new settings. Deploy as usual (`/root/Sensoper/deploy.sh`).
 

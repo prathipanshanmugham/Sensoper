@@ -1,5 +1,42 @@
 # Sensoper — change log
 
+## November 2026 · The customer website — sensoper.in and shop.sensoper.in
+
+A new public website whose main job is bringing in leads. Everything it collects lands in the ERP.
+
+### On the website
+- **Live sun over Perundurai.** The sky follows the real time of day there. A sun dial shows where the sun is right
+  now and what a 3 kW roof is making on a clear day. Visitors can drag the sun through the day.
+- **Savings calculator** for homes (from the 2-monthly TNEB bill), farm pumps (diesel saved) and businesses. It shows
+  system size, panels and a roof that fills in, PM Surya Ghar subsidy, a price estimate from the package slabs (can
+  be turned off), payback and 25-year savings. **Get my exact quote** sends the figures along with the lead.
+- **Lead form** behind every quote button (name, mobile, area, what it's for). It filters out spam bots, limits
+  repeat sends from one visitor, and adds a repeat enquiry to that person's existing lead.
+- **WhatsApp button** on every page. The number comes from the ERP settings.
+- **Pop-up notifications** that slide in like phone alerts: the PM Surya Ghar deadline, a follow-up after someone uses
+  the calculator, a desktop "before you go" offer, and any pop-ups staff make. At most two per visit, and the same
+  one isn't shown again for 3 days.
+- **Shop at shop.sensoper.in.** Products staff put live, with search, categories, stock level, a cart and an order
+  request. Prices are checked again on the server. The order arrives as a lead with the items and total.
+- **Customer login at sensoper.in/account.** Customers sign in with their mobile number and a password staff gave
+  them, then choose their own. They see the same dashboard as the private link (savings, units, CO₂, payments,
+  project steps, AMC, offers) for every project on their login, and can raise service requests.
+- **ERP login** in the footer of every page.
+- Fast and phone-first: no framework, about 75 KB for the home page, under a second to first paint on slow 4G.
+
+### In the ERP
+- New **Website** page under Sales & projects:
+  - **Leads** with stages, call-back dates, assignment, notes and a timeline. **Make project** opens New project
+    already filled in and links the two.
+  - **Shop**: add stock items with a price including GST, photos, featured or hidden.
+  - **Customer logins**: make, add projects to, reset, turn off and delete them.
+  - **Pop-ups & settings**: WhatsApp number, call number, and the price estimate switch.
+- The project page's **Customer dashboard** card can now make the customer's login in one tap, or add the project to
+  a login they already have. The password is shown once, with a ready WhatsApp message.
+- The menu badge and the bell show new website leads.
+- Permissions: new page **Website**. Staff can view, create and edit by default. Managers can also delete and have
+  the option "Run the shop, pop-ups and website settings".
+
 ## November 2026 · Error sweep and a cleaner, calmer look
 
 Every page was opened as admin, manager and staff on a phone and a laptop, plus the customer and investor portals,

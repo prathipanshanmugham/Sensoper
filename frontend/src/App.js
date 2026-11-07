@@ -56,6 +56,7 @@ import CustomerPortal from "./pages/CustomerPortal";
 import AttendancePage from "./pages/AttendancePage";
 import OrgStructurePage from "./pages/OrgStructurePage";
 import CustomerOffersPage from "./pages/CustomerOffersPage";
+import WebsitePage from "./pages/WebsitePage";
 import InvestorsPage from "./pages/InvestorsPage";
 import InvestorPortal from "./pages/InvestorPortal";
 import AIAgentsPage from "./pages/AIAgentsPage";
@@ -196,6 +197,7 @@ function AppRoutes() {
       <Route path="/dashboard/attendance" element={<ProtectedRoute module="module_attendance"><DashboardLayout><AttendancePage /></DashboardLayout></ProtectedRoute>} />
       <Route path="/dashboard/org-structure" element={<ProtectedRoute module="module_org"><DashboardLayout><OrgStructurePage /></DashboardLayout></ProtectedRoute>} />
       <Route path="/dashboard/customer-offers" element={<ProtectedRoute module="module_customer_offers"><DashboardLayout><CustomerOffersPage /></DashboardLayout></ProtectedRoute>} />
+      <Route path="/dashboard/website" element={<ProtectedRoute module="module_website"><DashboardLayout><WebsitePage /></DashboardLayout></ProtectedRoute>} />
       <Route path="/dashboard/investors" element={<ProtectedRoute allowedRoles={["admin"]} module="module_investors"><DashboardLayout><InvestorsPage /></DashboardLayout></ProtectedRoute>} />
       {/* Investors' own dashboard — separate investor session (they sign in on /login) */}
       <Route path="/investor" element={<InvestorPortal />} />
