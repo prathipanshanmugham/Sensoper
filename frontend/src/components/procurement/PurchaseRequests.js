@@ -70,7 +70,7 @@ function NewRequestDialog({ open, onOpenChange, onCreated }) {
           <Button type="button" variant="outline" size="sm" className="gap-1 border-dashed" onClick={() => setF((x) => ({ ...x, lines: [...x.lines, blankLine()] }))} data-testid="pr-add-line"><Plus className="h-4 w-4" />Add item</Button>
           <div className="grid grid-cols-2 gap-2 pt-1">
             <Field label="Needed by"><input type="date" value={f.needed_by} min={todayISO()} onChange={(e) => setF((x) => ({ ...x, needed_by: e.target.value }))} className={inputCls} data-testid="pr-needed-by" /></Field>
-            <Field label="Title (optional)"><Input value={f.title} onChange={(e) => setF((x) => ({ ...x, title: e.target.value }))} placeholder="e.g. Panels for Kongu Mill" className="h-11" /></Field>
+            <Field label="Title (optional)"><Input value={f.title} onChange={(e) => setF((x) => ({ ...x, title: e.target.value }))} placeholder="e.g. Panels for Erode Mill" className="h-11" /></Field>
             <Field label="Notes for vendors" className="col-span-2"><textarea rows={2} value={f.notes} onChange={(e) => setF((x) => ({ ...x, notes: e.target.value }))} placeholder="Brand, specs, delivery site…" className="w-full rounded-md border border-slate-200 p-2 text-sm outline-none focus:border-emerald-400" /></Field>
           </div>
         </div>

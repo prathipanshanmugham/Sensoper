@@ -55,7 +55,7 @@ export async function api(path, { method = 'GET', body, signal } = {}) {
 }
 
 /* ───────── company details, WhatsApp, links ───────── */
-let SITE = { company: { name: 'Sensoper Controls & Renewables', phone: '9043547047', whatsapp: '9043547047', email: 'info@sensoper.com' }, popups: [], prices: null, shop: { products: 0 } };
+let SITE = { company: { name: 'Sensoper Controls & Renewables', phone: '9043547047', whatsapp: '9043547047', email: 'info@sensoper.in' }, popups: [], prices: null, shop: { products: 0 } };
 let sitePromise = null;
 export function site(where = 'site') {
   if (!sitePromise) {
