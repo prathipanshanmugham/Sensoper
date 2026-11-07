@@ -6,6 +6,7 @@ import http from 'node:http';
 import { readFile, stat } from 'node:fs/promises';
 import { extname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { gzipSync } from 'node:zlib';
 
 const ROOT = fileURLToPath(new URL('.', import.meta.url));
 const PORT = Number(process.env.PORT || 5100);
@@ -28,8 +29,11 @@ http.createServer(async (req, res) => {
   let file = join(ROOT, path);
   try { if ((await stat(file)).isDirectory()) file = join(file, 'index.html'); } catch { /* fall through */ }
   try {
-    const body = await readFile(file);
-    res.writeHead(200, { 'content-type': TYPES[extname(file)] || 'application/octet-stream', 'cache-control': 'no-cache' });
+    let body = await readFile(file);
+    const type = TYPES[extname(file)] || 'application/octet-stream';
+    const headers = { 'content-type': type, 'cache-control': 'no-cache' };
+    if (/text|javascript|json|svg|xml/.test(type) && /gzip/.test(req.headers['accept-encoding'] || '')) { body = gzipSync(body); headers['content-encoding'] = 'gzip'; }   // like nginx in production
+    res.writeHead(200, headers);
     res.end(body);
   } catch {
     res.writeHead(404, { 'content-type': 'text/html; charset=utf-8' });

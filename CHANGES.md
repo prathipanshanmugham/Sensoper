@@ -5,13 +5,32 @@
 A new public website whose main job is bringing in leads. Everything it collects lands in the ERP.
 
 ### On the website
-- **Live sun over Perundurai.** The sky follows the real time of day there. A sun dial shows where the sun is right
-  now and what a 3 kW roof is making on a clear day. Visitors can drag the sun through the day.
+- **The home page is a story you scroll through.** It opens at night over an illustrated house near Erode. As the
+  visitor scrolls, the sun rises, the camera moves in, panels drop onto the roof, power flows to the meter, the
+  windows light up, and the EB bill counts down to ₹0 before a "₹78,000 back" stamp lands. Then come:
+  - **Why is your EB bill so high?** The TNEB slabs explained, with a bill that shrinks as the roof's units come off.
+  - **The subsidy**, with a giant ₹78,000 that fills with colour, the three slabs and a countdown to 31 March 2027.
+  - **The savings calculator.**
+  - **How it works**, five steps that slide sideways.
+  - **Solutions**, cards that stack as you scroll.
+  - **A night with a battery**, where the page turns dark and a battery runs down from 7 pm to 5 am.
+  - **Why us**, with the words lighting up as you read.
+  - A moving strip of brands, the FAQ and a sunny final call to action.
+  Anyone who has turned off animations on their phone sees the finished daytime picture instead. The animation
+  library (GSAP, free licence) is bundled with the site, not loaded from elsewhere.
+- **White header with the logo**, a call button, **Get free quote**, and a reading-progress line.
+- **Leads first, everywhere.** The hero and the final section have a one-box form: type a mobile number, tap **Get
+  my free plan**. The number is saved straight away, even if the visitor goes no further. A 3-tap quiz then asks
+  what it's for (home, farm pump, business, backup, service) and the bill or pump size, shows an estimate, and asks
+  for the name and area. On phones, a bar with **Call** and **Get my free solar plan** stays at the bottom of the
+  screen. Staff can see which button each lead came from (header, subsidy, calculator, how it works, solutions,
+  backup, phone bar, number box or quiz).
 - **Savings calculator** for homes (from the 2-monthly TNEB bill), farm pumps (diesel saved) and businesses. It shows
   system size, panels and a roof that fills in, PM Surya Ghar subsidy, a price estimate from the package slabs (can
   be turned off), payback and 25-year savings. **Get my exact quote** sends the figures along with the lead.
-- **Lead form** behind every quote button (name, mobile, area, what it's for). It filters out spam bots, limits
-  repeat sends from one visitor, and adds a repeat enquiry to that person's existing lead.
+- **Spam and repeats.** The forms filter out spam bots and limit sends from one internet address (12 in 10 minutes,
+  since many phones share one carrier address). A repeat enquiry from the same number is added to that person's
+  existing lead.
 - **WhatsApp button** on every page. The number comes from the ERP settings.
 - **Pop-up notifications** that slide in like phone alerts: the PM Surya Ghar deadline, a follow-up after someone uses
   the calculator, a desktop "before you go" offer, and any pop-ups staff make. At most two per visit, and the same
@@ -22,7 +41,8 @@ A new public website whose main job is bringing in leads. Everything it collects
   them, then choose their own. They see the same dashboard as the private link (savings, units, CO₂, payments,
   project steps, AMC, offers) for every project on their login, and can raise service requests.
 - **ERP login** in the footer of every page.
-- Fast and phone-first: no framework, about 75 KB for the home page, under a second to first paint on slow 4G.
+- Fast and phone-first: no framework, about 130 KB compressed for the home page including the animation library,
+  under a second to first paint on slow 4G.
 
 ### In the ERP
 - New **Website** page under Sales & projects:

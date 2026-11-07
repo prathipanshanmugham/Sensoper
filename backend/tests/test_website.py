@@ -135,7 +135,7 @@ def test_a_lead_from_the_website_reaches_staff(app, loop, world):
 
         # one address can't flood the inbox
         spam = client(app, "10.9.9.9")
-        codes = [(await spam.post("/api/public/leads", json={"name": f"Spam {i}", "phone": f"98{i:08d}"})).status_code for i in range(10)]
+        codes = [(await spam.post("/api/public/leads", json={"name": f"Spam {i}", "phone": f"98{i:08d}"})).status_code for i in range(website.LEAD_HITS + 2)]
         assert codes.count(200) == website.LEAD_HITS and codes[-1] == 429
 
         # staff work the lead
@@ -408,3 +408,28 @@ def test_review_fixes_for_public_inputs(app, loop, world):
         site = (await pub.get("/api/public/site")).json()
         assert site["prices"]["per_kw"] == {} and "41000" not in str(site)
     run(loop, go())
+
+
+def test_number_first_lead_is_filled_in_by_the_quiz(app, loop, world):
+    """The hero box saves just the number; the quiz that follows adds the name to the same lead."""
+    async def go():
+        db = server.db
+        pub = client(app, "10.9.1.1")
+        r = await pub.post("/api/public/leads", json={"name": "", "phone": "9566012345"})
+        assert r.status_code == 400                                                  # other forms still need a name
+        r = await pub.post("/api/public/leads", json={"phone": "9566012345", "source": "quick", "page": "/"})
+        assert r.status_code == 200
+        num = r.json()["number"]
+        lead = await db.website_leads.find_one({"number": num})
+        assert lead["name"] == "" and lead["source"] == "quick"
+        note = await db.notifications.find_one({"source_id": str(lead["_id"])})
+        assert note and "left their number" in note["title"]
+        r = await pub.post("/api/public/leads", json={"name": "Lakshmi", "phone": "9566012345", "source": "quiz", "kind": "home", "area": "Bhavani",
+                                                     "calc": {"mode": "home", "bill": 4500}})
+        assert r.json()["number"] == num
+        lead = await db.website_leads.find_one({"number": num})
+        assert lead["name"] == "Lakshmi" and lead["area"] == "Bhavani" and lead["source"] == "quiz" and lead["submissions"] == 2
+        notes = [n["title"] async for n in db.notifications.find({"source_id": str(lead["_id"])})]
+        assert any("New website lead: Lakshmi" in t for t in notes)
+    run(loop, go())
+

@@ -445,7 +445,17 @@ See CHANGES.md for the full list. Highlights for the next agent:
 - Frontend: pages/WebsitePage.js (/dashboard/website: Leads | Shop | Customer logins | Pop-ups & settings),
   components/ClientPasswordDialog.js, CustomerDashboardCard "Customer login" block, SiteVisitForm `?lead=` prefill +
   link, navigation entry (Globe, badge website_leads), websiteAPI in utils/api.js.
-- Tests: tests/test_website.py (6).
+- Tests: tests/test_website.py (8).
+- Redesign (same iteration, after owner feedback): white header (`.top`, logo, call, Get free quote, `.progress`), home
+  page as a GSAP 3.12.5 + ScrollTrigger scroll story (vendored in website/assets/vendor; optional — reduced motion or no
+  library → finished state). Pinned hero film: inline SVG `#scene` (sky stops #sk1-3, `.sun`, `.pv` panels, `.flow`,
+  `.win`, `.glows`, `.tint`), one proxy 0→1 drives `draw(p)`; camera viewBox V0→V1 on wide screens, house-framed viewBox on
+  portrait. Then pinned bill chapter (desktop), subsidy sweep and counters, calculator, pinned sideways "how", sticky
+  stacking solution cards, night/battery section (bg tween, live clear-sky kW chip), word-lit why text, CSS marquee,
+  FAQ, final number box. Lead funnel: `form[data-quick]` posts {phone, source:'quick'} (name optional for that source,
+  merged by phone within 30 days), then `openLead` quiz (kind → bill/pump → name/area, with estimate). New SOURCES:
+  header, subsidy, how, solutions, backup, mobile-bar. LEAD_HITS 12 per 10 min per IP. Phone bar `#mbar`.
+  dev-server gzips like nginx.
 - Review fixes: staff may change/reset/join a client login only if every project on it is theirs (`_staff_may_change`),
   list filtered to own projects (`other_projects` count); reset no longer re-activates; `_clean` truncates before a
   linear tag regex, pydantic max_length on public bodies; repeat leads only fill empty fields (differences logged);

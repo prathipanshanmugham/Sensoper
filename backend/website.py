@@ -46,7 +46,7 @@ CLIENT_COOKIE = "sp_client"
 CLIENT_COOKIE_PATH = "/api/client"
 CLIENT_SESSION_DAYS = 30
 LOGIN_TRIES, LOGIN_WINDOW_MIN = 6, 15
-LEAD_HITS, LEAD_WINDOW_MIN = 8, 10
+LEAD_HITS, LEAD_WINDOW_MIN = 12, 10       # the number box and the quiz each count; many phones share one carrier IP
 SHOP_PLATFORM_NAME = "Sensoper shop (shop.sensoper.in)"
 
 KINDS = {
@@ -59,7 +59,9 @@ STATUSES = {
 }
 OPEN_STATUSES = ("new", "contacted", "site_visit", "quoted")
 SOURCES = {"calculator": "Savings calculator", "quote": "Free quote form", "contact": "Contact form", "popup": "Pop-up",
-           "shop": "Shop", "service": "Service request", "account": "Customer login page"}
+           "shop": "Shop", "service": "Service request", "account": "Customer login page", "quick": "Mobile number box",
+           "quiz": "Free solar plan quiz", "header": "Header button", "subsidy": "Subsidy section", "how": "How it works section",
+           "solutions": "Solutions section", "backup": "Battery backup section", "mobile-bar": "Phone bottom bar"}
 POPUP_ACTIONS = ("quote", "whatsapp", "shop", "link", "none")
 POPUP_WHERE = ("site", "shop", "both")
 IMAGE_TYPES = {"image/png", "image/jpeg", "image/webp", "image/gif"}   # never SVG: it can carry script
@@ -373,7 +375,8 @@ def create_router(db, get_current_user, require_role, create_audit_log, jwt_secr
             users = await notify.users_who_can(db, get_permissions, "module_website", "view")
             who = lead.get("name") or "Someone"
             title = (f"{who} asked again on the website" if again else
-                     (f"New shop order request from {who}" if lead.get("kind") == "shop_order" else f"New website lead: {who}"))
+                     (f"New shop order request from {who}" if lead.get("kind") == "shop_order" else
+                      f"New website lead: {who}" if lead.get("name") else f"Someone left their number on the website: {lead.get('phone')}"))
             await notify.plan(db, kind="website_lead", source_type="website_lead", source_id=str(lead["_id"]), user_ids=users,
                               title=title, message=lead_summary(lead), link=f"/dashboard/website?lead={lead['_id']}",
                               tag=f"submission-{lead.get('submissions', 1)}")
@@ -406,7 +409,7 @@ def create_router(db, get_current_user, require_role, create_audit_log, jwt_secr
                 entry["text"] += f" (typed a different {'; '.join(differs)})"
             await db.website_leads.update_one({"_id": existing["_id"]}, {"$set": upd, "$inc": {"submissions": 1}, "$push": {"activity": entry}})
             lead = await db.website_leads.find_one({"_id": existing["_id"]})
-            await _tell_staff(lead, again=True)
+            await _tell_staff(lead, again=bool(existing.get("name")))
             return lead
         doc = {**fields, "number": await _next_number(), "status": "new", "needs_attention": True, "submissions": 1, "ip": ip,
                "created_at": now, "updated_at": now, "last_submitted_at": now, "activity": [entry]}
@@ -445,7 +448,9 @@ def create_router(db, get_current_user, require_role, create_audit_log, jwt_secr
             raise HTTPException(status_code=400, detail="Enter a 10-digit mobile number so we can call you back.")
         ip = await _rate_limit(request, "lead")
         name = _clean(body.name, 80)
-        if len(name) < 2:
+        # the hero's mobile-number box saves the number straight away (so a call-back happens even if they stop there);
+        # the quiz that follows fills in the name
+        if len(name) < 2 and body.source != "quick":
             raise HTTPException(status_code=400, detail="Tell us your name.")
         pin = _digits(body.pincode)[:6]
         kind = body.kind if body.kind in KINDS and body.kind != "shop_order" else "other"

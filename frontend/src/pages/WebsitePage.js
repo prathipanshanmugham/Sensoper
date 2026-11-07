@@ -43,17 +43,17 @@ function LeadDialog({ id, onClose, onChanged, staff }) {
     catch (e) { toast.error(errText(e)); } finally { setBusy(false); }
   };
   const remove = async () => {
-    if (!await confirmAction({ title: `Delete the lead from ${l.name}?`, message: 'It can’t be brought back.', confirmLabel: 'Delete', tone: 'danger' })) return;
+    if (!await confirmAction({ title: `Delete the lead from ${l.name || `+91 ${l.phone}`}?`, message: 'It can’t be brought back.', confirmLabel: 'Delete', tone: 'danger' })) return;
     try { await websiteAPI.leads.remove(id); toast.success('Lead deleted'); onChanged(); onClose(); } catch (e) { toast.error(errText(e)); }
   };
   const c = l?.calc || {};
-  const first = (l?.name || '').split(' ')[0];
+  const first = (l?.name || '').split(' ')[0] || 'there';
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="max-h-[92dvh] max-w-lg overflow-y-auto" data-testid="lead-dialog">
         {!l ? <Loading /> : (<>
           <DialogHeader>
-            <DialogTitle className="flex flex-wrap items-center gap-2">{l.name}<Chip tone={STATUS_TONE[l.status]}>{l.status_label}</Chip></DialogTitle>
+            <DialogTitle className="flex flex-wrap items-center gap-2">{l.name || <span className="text-slate-500">Only their number so far</span>}<Chip tone={STATUS_TONE[l.status]}>{l.status_label}</Chip></DialogTitle>
             <DialogDescription>{l.number} — {l.kind_label}, from the {l.source_label.toLowerCase()} — {ago(l.created_at)}{l.submissions > 1 ? ` — asked ${l.submissions} times` : ''}</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 text-sm">
@@ -159,7 +159,7 @@ function LeadsTab({ onCount }) {
             <button key={l.id} type="button" onClick={() => setOpen(l.id)} className="flex w-full items-start gap-3 px-3 py-3 text-left hover:bg-slate-50 sm:px-4" data-testid={`lead-row-${l.number}`}>
               <span className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${l.needs_attention ? 'bg-amber-500' : 'bg-transparent'}`} aria-hidden="true" />
               <span className="min-w-0 flex-1">
-                <span className="flex flex-wrap items-center gap-x-2 gap-y-1"><span className="font-medium text-slate-900">{l.name}</span><Chip tone={STATUS_TONE[l.status]}>{l.status_label}</Chip>{l.kind === 'shop_order' && <Chip tone="violet">Shop order</Chip>}</span>
+                <span className="flex flex-wrap items-center gap-x-2 gap-y-1"><span className="font-medium text-slate-900">{l.name || <span className="font-normal italic text-slate-500">Name not given yet</span>}</span><Chip tone={STATUS_TONE[l.status]}>{l.status_label}</Chip>{l.kind === 'shop_order' && <Chip tone="violet">Shop order</Chip>}</span>
                 <span className="mt-0.5 block truncate text-sm text-slate-600">{l.summary}</span>
                 <span className="mt-0.5 block text-[11px] text-slate-500">{l.number} — +91 {l.phone} — {l.source_label} — {ago(l.last_submitted_at || l.created_at)}{l.assigned_to_name ? ` — ${l.assigned_to_name}` : ''}</span>
               </span>
