@@ -43,7 +43,11 @@ A new public website whose main job is bringing in leads. Everything it collects
 - **Customer login at sensoper.in/account.** Customers sign in with their mobile number and a password staff gave
   them, then choose their own. They see the same dashboard as the private link (savings, units, CO₂, payments,
   project steps, AMC, offers) for every project on their login, and can raise service requests.
-- **ERP login** in the footer of every page.
+- **ERP login** in the footer of every page, under a white logo on a transparent background (made from the original
+  high-resolution logo, so it stays sharp on phone screens).
+- **Checked at 13 screen sizes** — 320px phones up to 1920px desktops, tablets both ways and phones held sideways —
+  with no sideways scrolling, nothing cut off and tap targets of at least 36px. Small phones get a stacked number box
+  and a shorter "Free quote" header button; phones held sideways get a compact film that fits the screen.
 - Fast and phone-first: no framework; the page shows in about a second on slow 4G, and the 3D scene (about 130 KB
   compressed) loads afterwards and pauses when it's off screen. Phones draw it at 30 frames a second.
 

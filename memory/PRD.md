@@ -465,6 +465,9 @@ See CHANGES.md for the full list. Highlights for the next agent:
   counters, #systems (4 sticky cards, gen'd SVG diagrams with SMIL pulses, data-note → lead message, source "systems"),
   #day (24h chart, pinned on desktop), #brands (crossing ribbons + grid). Removed: cartoon SVG house, solutions, night.
   Font Manrope variable (latin + ₹ subset). openLead: kind "other" goes straight to details.
+- Footer logo: assets/img/logo-white.webp (white, transparent, from project file slg.png). Responsive pass: audit at
+  13 viewports (overflow, clipping, tap targets); ≤374px header "Free quote" + 14px gutter; ≤380px stacked .quick;
+  max-height 520 landscape compact hero; hero min-height 460.
 - Review fixes: staff may change/reset/join a client login only if every project on it is theirs (`_staff_may_change`),
   list filtered to own projects (`other_projects` count); reset no longer re-activates; `_clean` truncates before a
   linear tag regex, pydantic max_length on public bodies; repeat leads only fill empty fields (differences logged);
