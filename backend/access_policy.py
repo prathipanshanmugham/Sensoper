@@ -69,6 +69,10 @@ SECTIONS: List[Dict[str, Any]] = [
               options=[_opt("can_approve_deletion", "Approve deletion requests", "Say yes to a request to delete a project.")]),
         _page("module_customer_offers", "Customer offers", "Offers on customers’ dashboards and who to call back.", actions=(V, C, E, D),
               manager=(V, C, E, D)),
+        _page("module_website", "Website", "Leads from sensoper.in, the shop at shop.sensoper.in, customer logins and website pop-ups.",
+              actions=(V, C, E, D, X), staff=(V, C, E), manager=(V, C, E, D, X),
+              options=[_opt("can_manage_website", "Run the shop, pop-ups and website settings",
+                            "Add products and prices to the shop, make pop-ups, change the WhatsApp number.")]),
         _page("module_direct_sales", "Direct sales", "Counter and B2B sales with GST invoices.", staff=(V, C), manager=(V, C, E, X)),
         _page("module_ecommerce", "Online orders", "Marketplace products and orders.", manager=(V, C, E, D, X)),
         _page("module_amc", "AMC & service", "Maintenance contracts, visits, offers and quotes.", manager=(V, C, E, X)),
@@ -403,6 +407,16 @@ for _m, _pat in (("POST", "/api/payroll/runs/{month}/approve"), ("POST", "/api/p
                  ("DELETE", "/api/payroll/runs/{month}"), ("POST", "/api/payroll/extras/{extra_id}/approve"), ("POST", "/api/payroll/extras/{extra_id}/reject"),
                  ("POST", "/api/payroll/extras/approve-all"), ("POST", "/api/payroll/commission/approve")):
     rule(_m, _pat, option("can_approve_payroll"))
+
+# Website: the shop, pop-ups and settings are an option; leads and customer logins are the page
+rule("POST,PUT,DELETE", "/api/website/popups*", option("can_manage_website"))
+rule("PUT", "/api/website/settings", option("can_manage_website"))
+rule("POST,PUT,DELETE", "/api/website/shop*", option("can_manage_website"))
+rule("POST", "/api/projects/{project_id}/client-login", page("module_website", C))
+rule("GET", "/api/projects/{project_id}/client-login", page("module_website", V))
+rule("POST", "/api/client-accounts/{account_id}/reset-password", page("module_website", E))
+rule("*", "/api/client-accounts*", page("module_website"))
+rule("*", "/api/website*", page("module_website"))
 
 # shared look-ups and admin-only odds and ends — no decision here
 for m, pat in [("GET", "/api/inventory/items*"), ("GET", "/api/inventory/alerts"), ("GET", "/api/inventory/categories"),

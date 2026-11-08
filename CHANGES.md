@@ -1,5 +1,81 @@
 # Sensoper — change log
 
+## November 2026 · The customer website — sensoper.in and shop.sensoper.in
+
+A new public website whose main job is bringing in leads. Everything it collects lands in the ERP.
+
+### On the website
+- **A premium 3D film opens the home page.** Rows of glass TOPCon panels and a white battery-and-inverter cabinet,
+  lit by a real sun that moves as the visitor scrolls: sunrise glinting off the glass, a high pass over the array at
+  noon, energy running into the cabinet, and the battery glowing under a starry sky after sunset. Readouts show the
+  time, what the roof is making and the battery level; four short captions tell the story; the EB bill counts down
+  to ₹0 at the end. The scene is drawn live (three.js, `website/src/hero3d.js`, built into `assets/hero3d.js`) and
+  loads after the page has shown — a still picture stands in until then, and for anyone who has turned animations off.
+- **Four ways to run on sunshine:** on-grid rooftop, off-grid, battery storage (BESS) and solar water pumps — each with
+  what it does, who it suits, what's in it, the brands, the subsidy and a diagram whose power lines draw themselves.
+  The cards stack as you scroll. Each card's button sends a lead marked with that system.
+- **A day on solar, hour by hour:** a 24-hour chart of solar output, home use and battery charge with a playhead that
+  follows the scroll (or the pointer).
+- **Brands we deal with:** two ribbons crossing the page (Waaree, Vikram Solar, Avaada, Asha Power, Polycab, SolarEdge,
+  Torque Lithium, Aviva, Textro) and the same brands listed by panels, inverters, batteries and pumps.
+- Also on the page: numbers that count up, why the EB bill is high, the subsidy with a countdown, the calculator, how
+  it works (sliding sideways), why us, FAQ (now including on-grid vs off-grid, batteries and pumps) and a final call
+  to action. One typeface (Manrope) and a calmer navy, white and sunlight-gold palette.
+- **White header with the logo**, a call button, **Get free quote**, and a reading-progress line.
+- **Leads first, everywhere.** The hero and the final section have a one-box form: type a mobile number, tap **Get
+  my free plan**. The number is saved straight away, even if the visitor goes no further. A 3-tap quiz then asks
+  what it's for (home, farm pump, business, backup, service) and the bill or pump size, shows an estimate, and asks
+  for the name and area. On phones, a bar with **Call** and **Get my free solar plan** stays at the bottom of the
+  screen. Staff can see which button each lead came from (header, subsidy, calculator, how it works, solutions,
+  backup, phone bar, number box or quiz).
+- **Savings calculator** for homes (from the 2-monthly TNEB bill), farm pumps (diesel saved) and businesses. It shows
+  system size, panels and a roof that fills in, PM Surya Ghar subsidy, a price estimate from the package slabs (can
+  be turned off), payback and 25-year savings. **Get my exact quote** sends the figures along with the lead.
+- **Spam and repeats.** The forms filter out spam bots and limit sends from one internet address (12 in 10 minutes,
+  since many phones share one carrier address). A repeat enquiry from the same number is added to that person's
+  existing lead.
+- **WhatsApp button** on every page. The number comes from the ERP settings.
+- **Pop-up notifications** that slide in like phone alerts: the PM Surya Ghar deadline, a follow-up after someone uses
+  the calculator, a desktop "before you go" offer, and any pop-ups staff make. At most two per visit, and the same
+  one isn't shown again for 3 days.
+- **Shop at shop.sensoper.in.** Products staff put live, with search, categories, stock level, a cart and an order
+  request. Prices are checked again on the server. The order arrives as a lead with the items and total.
+- **Customer login at sensoper.in/account.** Customers sign in with their mobile number and a password staff gave
+  them, then choose their own. They see the same dashboard as the private link (savings, units, CO₂, payments,
+  project steps, AMC, offers) for every project on their login, and can raise service requests.
+- **ERP login** in the footer of every page, under a white logo on a transparent background (made from the original
+  high-resolution logo, so it stays sharp on phone screens).
+- **Checked at 13 screen sizes** — 320px phones up to 1920px desktops, tablets both ways and phones held sideways —
+  with no sideways scrolling, nothing cut off and tap targets of at least 36px. Small phones get a stacked number box
+  and a shorter "Free quote" header button; phones held sideways get a compact film that fits the screen.
+- Fast and phone-first: no framework; the page shows in about a second on slow 4G, and the 3D scene (about 130 KB
+  compressed) loads afterwards and pauses when it's off screen. Phones draw it at 30 frames a second.
+
+### In the ERP
+- New **Website** page under Sales & projects:
+  - **Leads** with stages, call-back dates, assignment, notes and a timeline. **Make project** opens New project
+    already filled in and links the two.
+  - **Shop**: add stock items with a price including GST, photos, featured or hidden.
+  - **Customer logins**: make, add projects to, reset, turn off and delete them.
+  - **Pop-ups & settings**: WhatsApp number, call number, and the price estimate switch.
+- The project page's **Customer dashboard** card can now make the customer's login in one tap, or add the project to
+  a login they already have. The password is shown once, with a ready WhatsApp message.
+- The menu badge and the bell show new website leads.
+- Permissions: new page **Website**. Staff can view, create and edit by default. Managers can also delete and have
+  the option "Run the shop, pop-ups and website settings".
+
+### Security (from an independent review before release)
+- Staff can change, reset or add projects to a customer login only when every project on it is theirs, and they see
+  only their own customers' logins. Otherwise they could have signed in as the customer and seen another
+  salesperson's project.
+- Public form text is cut to size before it is cleaned, and oversized fields are refused. A specially built
+  submission could otherwise have frozen the server.
+- A repeat enquiry with someone's number can't change the name, email or address on their lead.
+- The customer sign-in can't be used to lock out a customer or to find out who is a customer.
+- Shop pictures: only the shop's own photos are served, never SVG, with safe headers.
+- The calculator publishes only the package slab rates.
+- Pop-up links must stay on the site or use https.
+
 ## November 2026 · Error sweep and a cleaner, calmer look
 
 Every page was opened as admin, manager and staff on a phone and a laptop, plus the customer and investor portals,

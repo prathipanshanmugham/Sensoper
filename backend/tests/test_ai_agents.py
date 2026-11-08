@@ -118,13 +118,13 @@ def world(app, loop):
             r = await a.post("/api/users", json={"email": email, "password": PW, "name": name, "role": role, "phone": "98765430" + str(len(ids)).zfill(2)})
             assert r.status_code == 200, r.text
             ids[role] = str((await server.db.users.find_one({"email": email}))["_id"])
-        v = (await a.post("/api/vendors", json={"name": "Kongu Solar Traders", "phone": "9443300011", "contact_person": "Ravi", "category": "panels"})).json()
+        v = (await a.post("/api/vendors", json={"name": "Erode Solar Traders", "phone": "9443300011", "contact_person": "Ravi", "category": "panels"})).json()
         bad = (await a.post("/api/vendors", json={"name": "Late Lines", "blocked": True, "blocked_reason": "Missed three deliveries"})).json()
         return {"admin": a, "ids": ids, "vendor": v["id"], "blocked": bad["id"]}
 
     async def tidy():   # other test files share this in-memory database
         db = server.db
-        names = ["Kongu Solar Traders", "Late Lines", "Bot Vendor", "MCP Vendor", "Nope", "X"]
+        names = ["Erode Solar Traders", "Late Lines", "Bot Vendor", "MCP Vendor", "Nope", "X"]
         vids = [str(v["_id"]) async for v in db.vendors.find({"name": {"$in": names}})]
         await db.purchase_orders.delete_many({"vendor_id": {"$in": vids}})
         await db.vendors.delete_many({"name": {"$in": names}})
@@ -143,11 +143,11 @@ def test_po_vendor_comes_from_the_list(app, loop, world):
         r = await a.post("/api/purchase-orders", json={**item, "vendor_id": world["vendor"], "supplier_name": "typed text is ignored"})
         assert r.status_code == 200, r.text
         po = await server.db.purchase_orders.find_one({"po_number": r.json()["po_number"]})
-        assert po["supplier_name"] == "Kongu Solar Traders" and po["vendor_id"] == world["vendor"] and "9443300011" in po["supplier_contact"]
+        assert po["supplier_name"] == "Erode Solar Traders" and po["vendor_id"] == world["vendor"] and "9443300011" in po["supplier_contact"]
         assert (await a.post("/api/purchase-orders", json={**item, "vendor_id": world["blocked"]})).json()["detail"].startswith("Late Lines is blocked")
         assert "Pick the vendor" in (await a.post("/api/purchase-orders", json={**item, "supplier_name": "Someone New"})).json()["detail"]
         assert (await a.post("/api/purchase-orders", json={**item, "vendor_id": "nope"})).status_code == 400
-        r = await a.post("/api/purchase-orders", json={**item, "supplier_name": "kongu solar traders"})     # older callers: exact name
+        r = await a.post("/api/purchase-orders", json={**item, "supplier_name": "erode solar traders"})     # older callers: exact name
         assert r.status_code == 200 and (await server.db.purchase_orders.find_one({"po_number": r.json()["po_number"]}))["vendor_id"] == world["vendor"]
     run(loop, go())
 
@@ -234,8 +234,8 @@ def test_mcp_server(app, loop, world):
         assert not any("/api/agents" in e["path"] for e in tool_json(await rpc(c, "tools/call", {"name": "list_endpoints", "arguments": {"limit": 300}}))["endpoints"])
         d = tool_json(await rpc(c, "tools/call", {"name": "describe_endpoint", "arguments": {"method": "POST", "path": "/api/vendors"}}))
         assert "name" in d["body"]["properties"] and "agent_may_not_call" in d
-        got = tool_json(await rpc(c, "tools/call", {"name": "call_api", "arguments": {"method": "GET", "path": "/api/vendors", "query": {"search": "Kongu"}}}))
-        assert got["ok"] and [v["name"] for v in got["data"]] == ["Kongu Solar Traders"]
+        got = tool_json(await rpc(c, "tools/call", {"name": "call_api", "arguments": {"method": "GET", "path": "/api/vendors", "query": {"search": "Erode"}}}))
+        assert got["ok"] and [v["name"] for v in got["data"]] == ["Erode Solar Traders"]
         no = await rpc(c, "tools/call", {"name": "call_api", "arguments": {"method": "POST", "path": "/api/vendors", "body": {"name": "X"}}})
         assert no["result"]["isError"] and "read-only" in tool_json(no)["error"]
         bad = await rpc(c, "tools/call", {"name": "call_api", "arguments": {"method": "GET", "path": "/api/vendors/{vendor_id}"}})

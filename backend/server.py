@@ -1267,8 +1267,8 @@ async def get_active_company():
             "secondary_color": "#2D9BF0",
             "address": "Tamil Nadu, India",
             "phone": "+91 XXXXX XXXXX",
-            "email": "info@sensoper.com",
-            "website": "www.sensoper.com",
+            "email": "info@sensoper.in",
+            "website": "www.sensoper.in",
             "gst_number": None,
             "pan_number": None,
             "state": "Tamil Nadu",
@@ -2690,6 +2690,10 @@ _agents_router = _agents.create_router(db, get_current_user, require_role, creat
 api_router.include_router(_agents_router)
 app.include_router(_agents_router.root_router)
 api_router.include_router(_create_portal_router(db, get_current_user, require_role, create_audit_log, JWT_SECRET))
+from website import create_router as _create_website_router  # noqa: E402
+# Public website (sensoper.in / shop.sensoper.in): leads, shop, pop-ups, and customer logins staff make for customers
+api_router.include_router(_create_website_router(db, get_current_user, require_role, create_audit_log, JWT_SECRET, hash_password, verify_password,
+                                                 get_permissions, check_module_permission, app_name=APP_NAME, get_object=get_object))
 
 # ═══════════ ECOMMERCE MARKETPLACES (Iter 46 Change 2) ═══════════
 from ecommerce import create_router as _create_ecommerce_router  # noqa: E402
@@ -4637,6 +4641,9 @@ async def get_dashboard_stats(request: Request):
         ]
         low_stock_items = await db.inventory_items.aggregate(low_stock_pipeline).to_list(100)
         stats["low_stock_alerts"] = len(low_stock_items)
+    # New enquiries from the website, for the menu badge (anyone who can open the Website page)
+    if user["role"] == "admin" or await check_module_permission(user, "module_website", "view"):
+        stats["website_leads"] = await db.website_leads.count_documents({"status": "new"})
     
     return stats
 
@@ -7796,6 +7803,8 @@ async def startup_event():
     await db.customer_portal_links.create_index("token_hash")
     await db.customer_portal_links.create_index("project_id")
     await db.portal_attempts.create_index("at", expireAfterSeconds=24 * 3600)
+    from website import ensure_indexes as _website_indexes  # noqa: E402
+    await _website_indexes(db)
     await db.offer_interests.create_index([("offer_id", 1), ("project_id", 1)], unique=True)
     # What3words was removed (Oct 2026): clear its cache and the saved (encrypted) API key
     await db.w3w_cache.drop()
@@ -7895,8 +7904,8 @@ async def startup_event():
             "secondary_color": "#2D9BF0",
             "address": "123 Solar Street, Erode\nTamil Nadu, India - 638001",
             "phone": "+91 98765 43210",
-            "email": "info@sensoper.com",
-            "website": "www.sensoper.com",
+            "email": "info@sensoper.in",
+            "website": "www.sensoper.in",
             "gst_number": "33XXXXX1234X1ZX",
             "pan_number": "XXXXX1234X",
             "bank_details": {

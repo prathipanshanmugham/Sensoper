@@ -422,3 +422,57 @@ See CHANGES.md for the full list. Highlights for the next agent:
   one-line breadcrumb, active bar, single New project button. SiteVisitForm `blankNulls` on load; SiteDiary partners only with
   module_partners; Teams/WeeklyAudit/AmcOps use usersAPI.directory. ProjectDetails fetches the inverter password on demand.
 - Tests: tests/test_qa_nov.py (11) — 107 in-process tests pass.
+
+
+## Iteration 72 — public website, shop and customer logins (2026-11-07)
+- website/ (static, no build): index.html + assets/home.js (sun position NOAA-style for 11.2755N 77.587E, clear-sky kW,
+  draggable dial; calculator: TNEB domestic telescopic slabs back-solved from the bimonthly bill, 4.4 u/kW/day, PSG
+  30k/kW to 2 kW + 18k to 3 kW, price from /api/public/site prices (pricing_slabs, else calc_config.cost_per_kwp)),
+  shop/index.html + assets/shop.js (cart in localStorage, order request), account/index.html + assets/account.js
+  (client login → customer_portal.project_dashboard JSON), assets/core.js (links rewrite on localhost, contacts, lead
+  sheet, pop-up queue, exit intent, UTM capture), assets/site.css (Unbounded subset + system UI). dev-server.mjs (:5100,
+  proxies /api/public|client to :8001). deploy/nginx-sensoper-website.conf, deploy/deploy-website.sh.
+- backend/website.py: public `/api/public/{site,leads,shop/products,shop/image/{id}/{n},shop/order}`; client auth
+  `/api/client/auth/{login,logout,change-password}`, `/api/client/me`, `/api/client/projects/{id}/{dashboard,tickets,
+  offers/{offer_id}/interest}` (cookie sp_client, path /api/client, 30 days, password_version invalidation, 6 tries/15 min
+  per phone, 24 per IP); staff `/api/website/{summary,leads,popups,settings,shop/products}`, `/api/client-accounts`,
+  `/api/projects/{id}/client-login`. Collections website_leads (WL-0001 via counters), website_popups, website_settings,
+  client_accounts, website_lead_hits, client_login_attempts. Shop = ecommerce_listings on the custom_website platform
+  (auto-created "Sensoper shop (shop.sensoper.in)"), with description/images/featured. Bell kind website_lead.
+- customer_portal.py: company_info / project_dashboard / raise_ticket_for / offer_interest_for at module level.
+- access_policy: page module_website (staff V,C,E; manager all) + option can_manage_website; rules for popups/settings/
+  shop writes (option), client-accounts and project client-login (page). /api/dashboard/stats adds website_leads.
+- Frontend: pages/WebsitePage.js (/dashboard/website: Leads | Shop | Customer logins | Pop-ups & settings),
+  components/ClientPasswordDialog.js, CustomerDashboardCard "Customer login" block, SiteVisitForm `?lead=` prefill +
+  link, navigation entry (Globe, badge website_leads), websiteAPI in utils/api.js.
+- Tests: tests/test_website.py (8).
+- Redesign (same iteration, after owner feedback): white header (`.top`, logo, call, Get free quote, `.progress`), home
+  page as a GSAP 3.12.5 + ScrollTrigger scroll story (vendored in website/assets/vendor; optional — reduced motion or no
+  library → finished state). Pinned hero film: inline SVG `#scene` (sky stops #sk1-3, `.sun`, `.pv` panels, `.flow`,
+  `.win`, `.glows`, `.tint`), one proxy 0→1 drives `draw(p)`; camera viewBox V0→V1 on wide screens, house-framed viewBox on
+  portrait. Then pinned bill chapter (desktop), subsidy sweep and counters, calculator, pinned sideways "how", sticky
+  stacking solution cards, night/battery section (bg tween, live clear-sky kW chip), word-lit why text, CSS marquee,
+  FAQ, final number box. Lead funnel: `form[data-quick]` posts {phone, source:'quick'} (name optional for that source,
+  merged by phone within 30 days), then `openLead` quiz (kind → bill/pump → name/area, with estimate). New SOURCES:
+  header, subsidy, how, solutions, backup, mobile-bar. LEAD_HITS 12 per 10 min per IP. Phone bar `#mbar`.
+  dev-server gzips like nginx.
+- Premium pass (after "looks like kids animation"): hero is a three.js scene (website/src/hero3d.js → esbuild →
+  assets/hero3d.js, three 0.170): 8×24 instanced TOPCon panels (canvas cell texture, clearcoat), BESS + inverter cabinet,
+  sky shader with sun, stars, per-material envMap (RoomEnvironment PMREM) so shadows read; scroll p → hourAt → sun,
+  sky, camera (Catmull-Rom keyframes), flows (additive tube shader), battery bar. Loaded by dynamic import after load
+  (window.SP_HERO3D overrides the URL — the preview uses a blob), IntersectionObserver start/stop, 30 fps on phones.
+  Posters hero-{dawn,day}{,-m}.webp. Overlays: chapters, HUD (time, kW, battery), bill chip. New sections: proof
+  counters, #systems (4 sticky cards, gen'd SVG diagrams with SMIL pulses, data-note → lead message, source "systems"),
+  #day (24h chart, pinned on desktop), #brands (crossing ribbons + grid). Removed: cartoon SVG house, solutions, night.
+  Font Manrope variable (latin + ₹ subset). openLead: kind "other" goes straight to details.
+- Footer logo: assets/img/logo-white.webp (white, transparent, from project file slg.png). Responsive pass: audit at
+  13 viewports (overflow, clipping, tap targets); ≤374px header "Free quote" + 14px gutter; ≤380px stacked .quick;
+  max-height 520 landscape compact hero; hero min-height 460.
+- Review fixes: staff may change/reset/join a client login only if every project on it is theirs (`_staff_may_change`),
+  list filtered to own projects (`other_projects` count); reset no longer re-activates; `_clean` truncates before a
+  linear tag regex, pydantic max_length on public bodies; repeat leads only fill empty fields (differences logged);
+  login limits per (phone, IP) 6, per phone 30, per IP 24, dummy-hash check for unknown numbers; picture endpoint
+  shop-platform only, png/jpeg/webp/gif, nosniff + CSP sandbox, external pictures linked directly (no redirect);
+  `/public/site` prices = package slabs only; pop-up links `https://host` or `/path` (no `//`); `ensure_indexes`
+  (TTL on attempt logs, unique client phone) at startup. tests/test_website.py now 7.
+

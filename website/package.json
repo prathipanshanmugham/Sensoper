@@ -1,0 +1,12 @@
+{
+  "name": "sensoper-website",
+  "private": true,
+  "description": "Only needed to rebuild assets/hero3d.js after editing src/hero3d.js. The site itself has no build step.",
+  "scripts": {
+    "build:hero": "esbuild src/hero3d.js --bundle --format=esm --minify --legal-comments=eof --outfile=assets/hero3d.js"
+  },
+  "devDependencies": {
+    "esbuild": "0.21.5",
+    "three": "0.170.0"
+  }
+}

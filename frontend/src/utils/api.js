@@ -905,6 +905,38 @@ export const partnersAPI = {
 };
 
 // Ecommerce marketplaces (Iter 46 Change 2)
+// Public website (sensoper.in / shop.sensoper.in): leads, shop, pop-ups, settings and customer logins
+export const websiteAPI = {
+  summary: () => api.get('/website/summary'),
+  leads: {
+    list: (params = {}) => api.get('/website/leads', { params }),
+    get: (id) => api.get(`/website/leads/${id}`),
+    update: (id, data) => api.put(`/website/leads/${id}`, data),
+    remove: (id) => api.delete(`/website/leads/${id}`),
+  },
+  popups: {
+    list: () => api.get('/website/popups'),
+    create: (data) => api.post('/website/popups', data),
+    update: (id, data) => api.put(`/website/popups/${id}`, data),
+    remove: (id) => api.delete(`/website/popups/${id}`),
+  },
+  settings: { get: () => api.get('/website/settings'), save: (data) => api.put('/website/settings', data) },
+  shop: {
+    list: () => api.get('/website/shop/products'),
+    add: (data) => api.post('/website/shop/products', data),
+    update: (id, data) => api.put(`/website/shop/products/${id}`, data),
+    remove: (id) => api.delete(`/website/shop/products/${id}`),
+  },
+  accounts: {
+    list: (params = {}) => api.get('/client-accounts', { params }),
+    create: (data) => api.post('/client-accounts', data),
+    update: (id, data) => api.put(`/client-accounts/${id}`, data),
+    resetPassword: (id) => api.post(`/client-accounts/${id}/reset-password`),
+    remove: (id) => api.delete(`/client-accounts/${id}`),
+  },
+  projectLogin: { get: (projectId) => api.get(`/projects/${projectId}/client-login`), create: (projectId) => api.post(`/projects/${projectId}/client-login`) },
+};
+
 export const ecommerceAPI = {
   platforms: {
     list: () => api.get('/ecommerce/platforms'),

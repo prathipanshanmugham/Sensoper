@@ -153,6 +153,155 @@ def build_dashboard_numbers(project: Dict[str, Any], payments: List[Dict[str, An
     }
 
 
+async def company_info(db) -> Dict[str, Any]:
+    cp = await db.company_profiles.find_one({"is_active": True}) or {}
+    return {"name": cp.get("company_name") or "Sensoper Controls & Renewables", "tagline": cp.get("tagline"),
+            "logo_url": cp.get("logo_url"), "phone": cp.get("sales_contact_phone") or cp.get("phone"),
+            "email": cp.get("email"), "website": cp.get("website"), "address": cp.get("address"),
+            "warranty_headline": cp.get("warranty_headline")}
+
+
+async def project_dashboard(db, p: Dict[str, Any]) -> Dict[str, Any]:
+    """Everything the customer sees for one project. Used by the private link and by customer logins."""
+    pid = str(p["_id"])
+    today = _now().astimezone(IST).date()
+    cust = p.get("customer") or {}
+    phone = _digits(cust.get("phone"))
+    payments = await db.payments.find({"project_id": pid}).to_list(200)
+
+    # Measured generation from Readings (matched by project ref or the customer's phone)
+    actual, last_reading = 0.0, None
+    async for r in db.readings.find({"$or": [{"site_ref": p.get("reference_number") or "__none__"},
+                                              {"customer_phone": {"$regex": f"{phone}$"}} if phone else {"_id": None}]}):
+        for g in r.get("generation_logs") or []:
+            actual += _num(g.get("kwh"))
+            last_reading = max(last_reading or "", str(g.get("date") or ""))
+    nums = build_dashboard_numbers(p, payments, actual or None, today)
+    nums["energy"]["last_reading"] = last_reading or None
+
+    ps = (p.get("custom_fields") or {}).get("proposed_solution") or {}
+    q = ps.get("_quick") or {}
+    names = {}
+    for key in ("panel_item_id", "inverter_item_id", "battery_item_id"):
+        kind = key.split("_")[0]
+        if ps.get(f"{kind}_mode") == "none":
+            continue
+        if ps.get(f"{kind}_mode") == "custom":       # typed in on the quote, not in Inventory
+            names[key] = ((ps.get(f"{kind}_custom") or {}).get("name") or None)
+            continue
+        if ps.get(key) and ObjectId.is_valid(ps[key]):
+            it = await db.inventory_items.find_one({"_id": ObjectId(ps[key])}, {"name": 1})
+            names[key] = (it or {}).get("name")
+
+    diaries = await db.site_diaries.find({"project_id": pid}).sort("date", 1).to_list(500)
+    stages_done = {s for dd in diaries for s in (dd.get("stages_done") or [])}
+    progress = max([_num(dd.get("progress_pct")) for dd in diaries if dd.get("progress_pct") is not None] or [0])
+    if p.get("status") == "completed":
+        progress = 100
+    commissioned = _day(p.get("commissioning_date"))
+    completed = p.get("status") == "completed" or STAGES_DONE_INSTALL in stages_done
+    journey = [
+        {"key": "visit", "label": "Site visit & design", "done": True, "date": p.get("project_date") or str(p.get("created_at") or "")[:10]},
+        {"key": "approved", "label": "Quotation approved", "done": p.get("status") in ("approved", "completed") or bool(p.get("approved_at")),
+         "date": str(p.get("approved_at") or "")[:10] or None},
+        {"key": "install", "label": "Installation", "done": completed or bool(commissioned and commissioned <= today) or progress >= 100,
+         "active": bool(diaries) and not completed, "date": diaries[0]["date"] if diaries else (p.get("installation_date") or None),
+         "detail": (f"{round(progress)}% done" + (f" · {diaries[-1]['stages_done'][-1]}" if diaries and diaries[-1].get("stages_done") else "")) if diaries else None},
+        {"key": "commissioned", "label": "Switched on", "done": bool(commissioned and commissioned <= today), "date": p.get("commissioning_date")},
+        {"key": "netmeter", "label": "Net meter", "done": "Net-meter applied" in stages_done, "date": None},
+        {"key": "handover", "label": "Handed over", "done": completed, "date": None},
+    ]
+    # A later step being done means the earlier ones are too (net meter runs on its own DISCOM timeline)
+    seen_done = False
+    for j in reversed(journey):
+        if j["key"] == "netmeter":
+            continue
+        if j["done"]:
+            seen_done = True
+        elif seen_done:
+            j["done"], j["active"] = True, False
+
+    amc = None
+    c = await db.amc_contracts.find_one({"project_id": pid, "status": {"$in": ["active", "renewed"]}}, sort=[("start_date", -1)])
+    if c:
+        visits = await db.amc_service_visits.find({"contract_id": str(c["_id"])}).to_list(100)
+        upcoming = sorted([v for v in visits if v.get("status") == "scheduled" and (v.get("scheduled_date") or "") >= today.isoformat()], key=lambda v: v.get("scheduled_date") or "")
+        done = sorted([v for v in visits if v.get("status") == "completed"], key=lambda v: v.get("actual_date") or v.get("scheduled_date") or "")
+        amc = {"contract_type": c.get("contract_type"), "start_date": c.get("start_date"), "end_date": c.get("end_date"),
+               "visits_per_year": c.get("visits_per_year"), "next_visit": (upcoming[0].get("scheduled_date") if upcoming else None),
+               "last_visit": ((done[-1].get("actual_date") or done[-1].get("scheduled_date")) if done else None)}
+
+    stype = ps.get("system_type") or (p.get("solar_system") or {}).get("system_type") or "on-grid"
+    interested = {i["offer_id"] async for i in db.offer_interests.find({"project_id": pid}, {"offer_id": 1})}
+    offers = []
+    async for o in db.customer_offers.find({"active": True}).sort("created_at", -1):
+        if o.get("valid_till") and o["valid_till"] < today.isoformat():
+            continue
+        if o.get("system_types") and stype not in o["system_types"]:
+            continue
+        offers.append({"id": str(o["_id"]), "title": o.get("title"), "description": o.get("description", ""), "badge": o.get("badge") or "",
+                       "valid_till": o.get("valid_till"), "cta_label": o.get("cta_label") or "I'm interested", "interested": str(o["_id"]) in interested})
+
+    tickets = []
+    async for t in db.support_tickets.find({"project_id": pid}).sort("created_at", -1).limit(30):
+        last = (t.get("timeline") or [{}])[-1]
+        tickets.append({"id": str(t["_id"]), "number": t.get("ticket_number"), "category": TICKET_CATEGORIES.get(t.get("category"), "Request"),
+                        "status": t.get("status"), "created_at": t.get("created_at"), "description": (t.get("description") or "")[:200],
+                        "last_update": last.get("note") if last.get("action") != "created" else None, "updated_at": t.get("updated_at")})
+
+    return {
+        "company": await company_info(db),
+        "customer": {"name": cust.get("name", ""), "address": (p.get("location") or {}).get("address") or cust.get("address", ""),
+                     "phone_masked": f"••••••{phone[-4:]}" if phone else ""},
+        "project": {"reference": p.get("reference_number"), "system_type": stype, "size_kw": nums["system_size_kw"],
+                    "panels": {"count": ps.get("panel_count") or q.get("panel_count"), "watt": q.get("panel_wattage_w"), "name": names.get("panel_item_id")},
+                    "inverter": names.get("inverter_item_id") or (f"{q.get('inverter_rated_kw')} kW" if q.get("inverter_rated_kw") else None),
+                    "battery": ({"count": ps.get("battery_count"), "name": names.get("battery_item_id")} if ps.get("battery_count") else None),
+                    "project_date": p.get("project_date"), "installation_date": p.get("installation_date"),
+                    "commissioning_date": p.get("commissioning_date"), "status": p.get("status")},
+        "journey": journey, "progress_pct": round(progress),
+        **{k: nums[k] for k in ("money", "savings", "energy")},
+        "amc": amc, "offers": offers, "tickets": tickets,
+        "ticket_categories": [{"value": k, "label": v} for k, v in TICKET_CATEGORIES.items()],
+        "factors": {"grid_kg_co2_per_kwh": GRID_EF_KG_PER_KWH, "kg_co2_per_tree_year": KG_CO2_PER_TREE_YEAR},
+    }
+
+
+async def raise_ticket_for(db, p: Dict[str, Any], body: "TicketIn", via: str = "customer_dashboard") -> Dict[str, Any]:
+    pid = str(p["_id"])
+    text = (body.description or "").strip()
+    if len(text) < 5:
+        raise HTTPException(status_code=400, detail="Tell us a little more about the problem.")
+    cat = body.category if body.category in TICKET_CATEGORIES else "other"
+    recent = await db.support_tickets.count_documents({"project_id": pid, "reported_via": via,
+                                                       "created_at": {"$gte": (_now() - timedelta(hours=1)).isoformat()}})
+    if recent >= 5:
+        raise HTTPException(status_code=429, detail="You've raised several requests in the last hour — we're on it. Please call us if it's urgent.")
+    cust = p.get("customer") or {}
+    row = await open_ticket(db, {
+        "customer_name": cust.get("name") or "Customer", "contact_phone": body.contact_phone or cust.get("phone") or "",
+        "contact_email": cust.get("email") or "", "project_id": pid, "category": cat,
+        "priority": "high" if cat in ("no_power", "inverter_fault", "physical_damage") else "medium",
+        "description": text[:2000], "reported_via": via,
+    }, actor_name=cust.get("name") or "Customer", note="Raised by the customer from their dashboard")
+    return {"id": row["id"], "number": row.get("ticket_number"), "status": row.get("status")}
+
+
+async def offer_interest_for(db, p: Dict[str, Any], offer_id: str) -> Dict[str, Any]:
+    pid = str(p["_id"])
+    try:
+        o = await db.customer_offers.find_one({"_id": ObjectId(offer_id), "active": True})
+    except Exception:
+        o = None
+    if not o:
+        raise HTTPException(status_code=404, detail="This offer has ended.")
+    cust = p.get("customer") or {}
+    await db.offer_interests.update_one({"offer_id": offer_id, "project_id": pid}, {"$setOnInsert": {
+        "offer_id": offer_id, "offer_title": o.get("title"), "project_id": pid, "reference_number": p.get("reference_number"),
+        "customer_name": cust.get("name"), "phone": cust.get("phone"), "created_at": _now().isoformat(), "handled": False}}, upsert=True)
+    return {"interested": True}
+
+
 def create_router(db, get_current_user, require_role, create_audit_log, jwt_secret: str):
     router = APIRouter()
 
@@ -285,11 +434,7 @@ def create_router(db, get_current_user, require_role, create_audit_log, jwt_secr
         return link, await _project(link)
 
     async def _company() -> Dict[str, Any]:
-        cp = await db.company_profiles.find_one({"is_active": True}) or {}
-        return {"name": cp.get("company_name") or "Sensoper Controls & Renewables", "tagline": cp.get("tagline"),
-                "logo_url": cp.get("logo_url"), "phone": cp.get("sales_contact_phone") or cp.get("phone"),
-                "email": cp.get("email"), "website": cp.get("website"), "address": cp.get("address"),
-                "warranty_headline": cp.get("warranty_headline")}
+        return await company_info(db)
 
     @router.get("/portal/{token}/hello")
     async def hello(token: str):
@@ -324,142 +469,16 @@ def create_router(db, get_current_user, require_role, create_audit_log, jwt_secr
     @router.get("/portal/{token}/dashboard")
     async def dashboard(token: str, request: Request):
         link, p = await _session(token, request)
-        pid = link["project_id"]
-        today = _now().astimezone(IST).date()
-        cust = p.get("customer") or {}
-        phone = _digits(cust.get("phone"))
-        payments = await db.payments.find({"project_id": pid}).to_list(200)
-
-        # Measured generation from Readings (matched by project ref or the customer's phone)
-        actual, last_reading = 0.0, None
-        async for r in db.readings.find({"$or": [{"site_ref": p.get("reference_number") or "__none__"},
-                                                  {"customer_phone": {"$regex": f"{phone}$"}} if phone else {"_id": None}]}):
-            for g in r.get("generation_logs") or []:
-                actual += _num(g.get("kwh"))
-                last_reading = max(last_reading or "", str(g.get("date") or ""))
-        nums = build_dashboard_numbers(p, payments, actual or None, today)
-        nums["energy"]["last_reading"] = last_reading or None
-
-        ps = (p.get("custom_fields") or {}).get("proposed_solution") or {}
-        q = ps.get("_quick") or {}
-        names = {}
-        for key in ("panel_item_id", "inverter_item_id", "battery_item_id"):
-            kind = key.split("_")[0]
-            if ps.get(f"{kind}_mode") == "none":
-                continue
-            if ps.get(f"{kind}_mode") == "custom":       # typed in on the quote, not in Inventory
-                names[key] = ((ps.get(f"{kind}_custom") or {}).get("name") or None)
-                continue
-            if ps.get(key) and ObjectId.is_valid(ps[key]):
-                it = await db.inventory_items.find_one({"_id": ObjectId(ps[key])}, {"name": 1})
-                names[key] = (it or {}).get("name")
-
-        diaries = await db.site_diaries.find({"project_id": pid}).sort("date", 1).to_list(500)
-        stages_done = {s for dd in diaries for s in (dd.get("stages_done") or [])}
-        progress = max([_num(dd.get("progress_pct")) for dd in diaries if dd.get("progress_pct") is not None] or [0])
-        if p.get("status") == "completed":
-            progress = 100
-        commissioned = _day(p.get("commissioning_date"))
-        completed = p.get("status") == "completed" or STAGES_DONE_INSTALL in stages_done
-        journey = [
-            {"key": "visit", "label": "Site visit & design", "done": True, "date": p.get("project_date") or str(p.get("created_at") or "")[:10]},
-            {"key": "approved", "label": "Quotation approved", "done": p.get("status") in ("approved", "completed") or bool(p.get("approved_at")),
-             "date": str(p.get("approved_at") or "")[:10] or None},
-            {"key": "install", "label": "Installation", "done": completed or bool(commissioned and commissioned <= today) or progress >= 100,
-             "active": bool(diaries) and not completed, "date": diaries[0]["date"] if diaries else (p.get("installation_date") or None),
-             "detail": (f"{round(progress)}% done" + (f" · {diaries[-1]['stages_done'][-1]}" if diaries and diaries[-1].get("stages_done") else "")) if diaries else None},
-            {"key": "commissioned", "label": "Switched on", "done": bool(commissioned and commissioned <= today), "date": p.get("commissioning_date")},
-            {"key": "netmeter", "label": "Net meter", "done": "Net-meter applied" in stages_done, "date": None},
-            {"key": "handover", "label": "Handed over", "done": completed, "date": None},
-        ]
-        # A later step being done means the earlier ones are too (net meter runs on its own DISCOM timeline)
-        seen_done = False
-        for j in reversed(journey):
-            if j["key"] == "netmeter":
-                continue
-            if j["done"]:
-                seen_done = True
-            elif seen_done:
-                j["done"], j["active"] = True, False
-
-        amc = None
-        c = await db.amc_contracts.find_one({"project_id": pid, "status": {"$in": ["active", "renewed"]}}, sort=[("start_date", -1)])
-        if c:
-            visits = await db.amc_service_visits.find({"contract_id": str(c["_id"])}).to_list(100)
-            upcoming = sorted([v for v in visits if v.get("status") == "scheduled" and (v.get("scheduled_date") or "") >= today.isoformat()], key=lambda v: v.get("scheduled_date") or "")
-            done = sorted([v for v in visits if v.get("status") == "completed"], key=lambda v: v.get("actual_date") or v.get("scheduled_date") or "")
-            amc = {"contract_type": c.get("contract_type"), "start_date": c.get("start_date"), "end_date": c.get("end_date"),
-                   "visits_per_year": c.get("visits_per_year"), "next_visit": (upcoming[0].get("scheduled_date") if upcoming else None),
-                   "last_visit": ((done[-1].get("actual_date") or done[-1].get("scheduled_date")) if done else None)}
-
-        stype = ps.get("system_type") or (p.get("solar_system") or {}).get("system_type") or "on-grid"
-        interested = {i["offer_id"] async for i in db.offer_interests.find({"project_id": pid}, {"offer_id": 1})}
-        offers = []
-        async for o in db.customer_offers.find({"active": True}).sort("created_at", -1):
-            if o.get("valid_till") and o["valid_till"] < today.isoformat():
-                continue
-            if o.get("system_types") and stype not in o["system_types"]:
-                continue
-            offers.append({"id": str(o["_id"]), "title": o.get("title"), "description": o.get("description", ""), "badge": o.get("badge") or "",
-                           "valid_till": o.get("valid_till"), "cta_label": o.get("cta_label") or "I'm interested", "interested": str(o["_id"]) in interested})
-
-        tickets = []
-        async for t in db.support_tickets.find({"project_id": pid}).sort("created_at", -1).limit(30):
-            last = (t.get("timeline") or [{}])[-1]
-            tickets.append({"id": str(t["_id"]), "number": t.get("ticket_number"), "category": TICKET_CATEGORIES.get(t.get("category"), "Request"),
-                            "status": t.get("status"), "created_at": t.get("created_at"), "description": (t.get("description") or "")[:200],
-                            "last_update": last.get("note") if last.get("action") != "created" else None, "updated_at": t.get("updated_at")})
-
-        return {
-            "company": await _company(),
-            "customer": {"name": cust.get("name", ""), "address": (p.get("location") or {}).get("address") or cust.get("address", ""),
-                         "phone_masked": f"••••••{phone[-4:]}" if phone else ""},
-            "project": {"reference": p.get("reference_number"), "system_type": stype, "size_kw": nums["system_size_kw"],
-                        "panels": {"count": ps.get("panel_count") or q.get("panel_count"), "watt": q.get("panel_wattage_w"), "name": names.get("panel_item_id")},
-                        "inverter": names.get("inverter_item_id") or (f"{q.get('inverter_rated_kw')} kW" if q.get("inverter_rated_kw") else None),
-                        "battery": ({"count": ps.get("battery_count"), "name": names.get("battery_item_id")} if ps.get("battery_count") else None),
-                        "project_date": p.get("project_date"), "installation_date": p.get("installation_date"),
-                        "commissioning_date": p.get("commissioning_date"), "status": p.get("status")},
-            "journey": journey, "progress_pct": round(progress),
-            **{k: nums[k] for k in ("money", "savings", "energy")},
-            "amc": amc, "offers": offers, "tickets": tickets,
-            "ticket_categories": [{"value": k, "label": v} for k, v in TICKET_CATEGORIES.items()],
-            "factors": {"grid_kg_co2_per_kwh": GRID_EF_KG_PER_KWH, "kg_co2_per_tree_year": KG_CO2_PER_TREE_YEAR},
-        }
+        return await project_dashboard(db, p)
 
     @router.post("/portal/{token}/tickets")
     async def raise_ticket(token: str, body: TicketIn, request: Request):
         link, p = await _session(token, request)
-        text = (body.description or "").strip()
-        if len(text) < 5:
-            raise HTTPException(status_code=400, detail="Tell us a little more about the problem.")
-        cat = body.category if body.category in TICKET_CATEGORIES else "other"
-        recent = await db.support_tickets.count_documents({"project_id": link["project_id"], "reported_via": "customer_dashboard",
-                                                           "created_at": {"$gte": (_now() - timedelta(hours=1)).isoformat()}})
-        if recent >= 5:
-            raise HTTPException(status_code=429, detail="You've raised several requests in the last hour — we're on it. Please call us if it's urgent.")
-        cust = p.get("customer") or {}
-        row = await open_ticket(db, {
-            "customer_name": cust.get("name") or "Customer", "contact_phone": body.contact_phone or cust.get("phone") or "",
-            "contact_email": cust.get("email") or "", "project_id": link["project_id"], "category": cat,
-            "priority": "high" if cat in ("no_power", "inverter_fault", "physical_damage") else "medium",
-            "description": text[:2000], "reported_via": "customer_dashboard",
-        }, actor_name=cust.get("name") or "Customer", note="Raised by the customer from their dashboard")
-        return {"id": row["id"], "number": row.get("ticket_number"), "status": row.get("status")}
+        return await raise_ticket_for(db, p, body)
 
     @router.post("/portal/{token}/offers/{offer_id}/interest")
     async def offer_interest(token: str, offer_id: str, request: Request):
         link, p = await _session(token, request)
-        try:
-            o = await db.customer_offers.find_one({"_id": ObjectId(offer_id), "active": True})
-        except Exception:
-            o = None
-        if not o:
-            raise HTTPException(status_code=404, detail="This offer has ended.")
-        cust = p.get("customer") or {}
-        await db.offer_interests.update_one({"offer_id": offer_id, "project_id": link["project_id"]}, {"$setOnInsert": {
-            "offer_id": offer_id, "offer_title": o.get("title"), "project_id": link["project_id"], "reference_number": p.get("reference_number"),
-            "customer_name": cust.get("name"), "phone": cust.get("phone"), "created_at": _now().isoformat(), "handled": False}}, upsert=True)
-        return {"interested": True}
+        return await offer_interest_for(db, p, offer_id)
 
     return router

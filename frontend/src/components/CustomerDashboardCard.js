@@ -1,12 +1,59 @@
 /* Project page: share the customer's own dashboard (private link + their mobile number). */
 import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
-import { Copy, ExternalLink, Loader2, MessageCircle, RefreshCw, Smartphone, XCircle } from 'lucide-react';
-import { customerDashboardAPI } from '../utils/api';
+import { Copy, ExternalLink, KeyRound, Loader2, MessageCircle, RefreshCw, Smartphone, UserCheck, XCircle } from 'lucide-react';
+import { customerDashboardAPI, websiteAPI } from '../utils/api';
 import { formatApiErrorDetail } from '../contexts/AuthContext';
 import { Button } from './ui/button';
+import Can from './Can';
+import ClientPasswordDialog from './ClientPasswordDialog';
 
 import { confirmAction } from './kit/confirm';
+/* A login the customer uses at sensoper.in/account — sees every project on it, no link needed. */
+function CustomerLogin({ project, phoneOk }) {
+  const [state, setState] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [shown, setShown] = useState(null);
+  const load = useCallback(() => websiteAPI.projectLogin.get(project.id).then((r) => setState(r.data)).catch(() => setState({ error: true })), [project.id]);
+  useEffect(() => { load(); }, [load]);
+  const make = async () => {
+    setBusy(true);
+    try {
+      const r = await websiteAPI.projectLogin.create(project.id);
+      if (r.data.password) setShown(r.data); else toast.success('Added this project to their login');
+      load();
+    } catch (e) { toast.error(formatApiErrorDetail(e.response?.data?.detail) || 'Could not make the login'); }
+    finally { setBusy(false); }
+  };
+  const reset = async () => {
+    if (!await confirmAction({ title: 'Make a new password for this customer?', message: 'Their old password stops working. They choose their own after signing in.', confirmLabel: 'Make new password' })) return;
+    setBusy(true);
+    try { const r = await websiteAPI.accounts.resetPassword(state.account.id); setShown(r.data); load(); }
+    catch (e) { toast.error(formatApiErrorDetail(e.response?.data?.detail) || 'Could not reset it'); } finally { setBusy(false); }
+  };
+  if (!state || state.error) return null;
+  const acc = state.account;
+  return (
+    <div className="mt-4 border-t border-slate-100 pt-3" data-testid="customer-login-block">
+      <p className="flex items-center gap-2 text-sm font-semibold text-slate-900"><UserCheck className="h-4 w-4 text-emerald-600" />Customer login</p>
+      {acc && state.linked ? (
+        <>
+          <p className="mt-1 text-xs text-slate-500">Signs in at sensoper.in/account with …{acc.phone.slice(-4)}. {!acc.active ? 'The login is turned off.' : acc.must_change_password ? 'Hasn’t signed in yet.' : acc.last_login_at ? `Last signed in ${new Date(acc.last_login_at).toLocaleDateString('en-IN')}.` : ''}{acc.projects.length > 1 ? ` Sees ${acc.projects.length} projects.` : ''}</p>
+          {state.can_change
+            ? <Can module="module_website" action="edit"><Button variant="ghost" onClick={reset} disabled={busy} className="mt-2 h-9 gap-1.5 text-slate-600" data-testid="client-login-reset"><KeyRound className="h-4 w-4" />New password</Button></Can>
+            : <p className="mt-1 text-[11px] text-slate-500">Their login also shows projects you don’t handle, so a manager resets its password.</p>}
+        </>
+      ) : (
+        <>
+          <p className="mt-1 text-xs text-slate-500">{acc ? `${acc.name} already has a login (…${acc.phone.slice(-4)}).${state.can_change ? ' Add this project so they see it too.' : ' It also shows projects you don’t handle, so ask a manager to add this one.'}` : 'A password login for sensoper.in/account — they see this project, and any others you add, without a link.'}</p>
+          {(!acc || state.can_change) && <Can module="module_website" action="create"><Button onClick={make} disabled={busy || !phoneOk} className="mt-2 h-9 gap-1.5 bg-slate-900 text-white hover:bg-slate-800" data-testid="client-login-make">{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <UserCheck className="h-4 w-4" />}{acc ? 'Add to their login' : 'Make customer login'}</Button></Can>}
+        </>
+      )}
+      {shown && <ClientPasswordDialog result={shown} onClose={() => setShown(null)} />}
+    </div>
+  );
+}
+
 export default function CustomerDashboardCard({ project }) {
   const [link, setLink] = useState(null);
   const [busy, setBusy] = useState('');
@@ -53,6 +100,7 @@ export default function CustomerDashboardCard({ project }) {
           </div>
         </>
       )}
+      <CustomerLogin project={project} phoneOk={phone.length === 10} />
     </div>
   );
 }
