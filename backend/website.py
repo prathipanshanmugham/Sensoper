@@ -61,7 +61,8 @@ OPEN_STATUSES = ("new", "contacted", "site_visit", "quoted")
 SOURCES = {"calculator": "Savings calculator", "quote": "Free quote form", "contact": "Contact form", "popup": "Pop-up",
            "shop": "Shop", "service": "Service request", "account": "Customer login page", "quick": "Mobile number box",
            "quiz": "Free solar plan quiz", "header": "Header button", "subsidy": "Subsidy section", "how": "How it works section",
-           "solutions": "Solutions section", "backup": "Battery backup section", "mobile-bar": "Phone bottom bar"}
+           "solutions": "Solutions section", "backup": "Battery backup section", "mobile-bar": "Phone bottom bar",
+           "systems": "Systems section (on-grid, off-grid, battery, pump)"}
 POPUP_ACTIONS = ("quote", "whatsapp", "shop", "link", "none")
 POPUP_WHERE = ("site", "shop", "both")
 IMAGE_TYPES = {"image/png", "image/jpeg", "image/webp", "image/gif"}   # never SVG: it can carry script

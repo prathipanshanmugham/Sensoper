@@ -6,7 +6,7 @@ set -euo pipefail
 SRC="$(cd "$(dirname "$0")/.." && pwd)"
 DEST=/var/www/sensoper-site
 mkdir -p "$DEST"
-rsync -a --delete --exclude 'deploy/' --exclude 'dev-server.mjs' --exclude 'README.md' "$SRC/" "$DEST/"
+rsync -a --delete --exclude 'deploy/' --exclude 'dev-server.mjs' --exclude 'README.md' --exclude 'src/' --exclude 'node_modules/' --exclude 'package.json' --exclude 'package-lock.json' "$SRC/" "$DEST/"
 echo "Website copied to $DEST ($(find "$DEST" -type f | wc -l) files)"
 # quick check that nginx serves it (skips quietly before DNS/SSL are set up)
 for u in https://sensoper.in/ https://shop.sensoper.in/ https://sensoper.in/api/public/site; do

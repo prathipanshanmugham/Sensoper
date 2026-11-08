@@ -4,19 +4,21 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Sensoper — Solar for homes, farms and factories in Erode</title>
-<meta name="description" content="Rooftop solar, solar pumps and commercial solar from Sensoper Controls & Renewables, Perundurai. See your savings and PM Surya Ghar subsidy in seconds, then get a free site visit.">
+<meta name="description" content="On-grid, off-grid and hybrid rooftop solar, battery storage (BESS) and solar water pumps from Sensoper Controls & Renewables, Perundurai. See your savings and PM Surya Ghar subsidy, then get a free site visit.">
 <meta name="theme-color" content="#FFFFFF">
 <link rel="canonical" href="https://sensoper.in/">
 <meta property="og:type" content="website">
 <meta property="og:title" content="Sensoper — your roof can pay your EB bill">
-<meta property="og:description" content="Rooftop solar for homes, solar pumps for farms and bigger systems for factories. Up to ₹78,000 PM Surya Ghar subsidy.">
+<meta property="og:description" content="Rooftop solar, battery storage and solar pumps around Erode. Up to ₹78,000 PM Surya Ghar subsidy for homes.">
 <meta property="og:url" content="https://sensoper.in/">
-<meta property="og:image" content="https://sensoper.in/assets/img/logo.png">
+<meta property="og:image" content="https://sensoper.in/assets/img/hero-day.webp">
 <link rel="icon" href="/assets/img/favicon.png" type="image/png">
 <link rel="apple-touch-icon" href="/assets/img/apple-touch-icon.png">
-<link rel="preload" href="/assets/fonts/unbounded.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/assets/fonts/manrope-latin.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/assets/img/hero-dawn.webp" as="image" media="(min-aspect-ratio: 11/10)">
+<link rel="preload" href="/assets/img/hero-dawn-m.webp" as="image" media="(max-aspect-ratio: 11/10)">
 <link rel="stylesheet" href="/assets/site.css">
-<script type="application/ld+json">{"@context":"https://schema.org","@type":"HomeAndConstructionBusiness","name":"Sensoper Controls & Renewables","url":"https://sensoper.in/","logo":"https://sensoper.in/assets/img/logo.png","telephone":"+91-9043547047","email":"info@sensoper.in","address":{"@type":"PostalAddress","streetAddress":"518/3, Kunnathur – Perundurai Road","addressLocality":"Perundurai","addressRegion":"Tamil Nadu","postalCode":"638052","addressCountry":"IN"},"geo":{"@type":"GeoCoordinates","latitude":11.2755,"longitude":77.587},"areaServed":["Erode","Perundurai","Tiruppur","Namakkal","Karur","Coimbatore"],"knowsAbout":["Rooftop solar","Solar water pumps","PM Surya Ghar","Net metering"]}</script>
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"HomeAndConstructionBusiness","name":"Sensoper Controls & Renewables","url":"https://sensoper.in/","logo":"https://sensoper.in/assets/img/logo.png","telephone":"+91-9043547047","email":"info@sensoper.in","address":{"@type":"PostalAddress","streetAddress":"518/3, Kunnathur – Perundurai Road","addressLocality":"Perundurai","addressRegion":"Tamil Nadu","postalCode":"638052","addressCountry":"IN"},"geo":{"@type":"GeoCoordinates","latitude":11.2755,"longitude":77.587},"areaServed":["Erode","Perundurai","Tiruppur","Namakkal","Karur","Coimbatore"],"knowsAbout":["On-grid rooftop solar","Off-grid solar","Battery energy storage","Solar water pumps","PM Surya Ghar","PM-KUSUM","Net metering"]}</script>
 <script src="/assets/vendor/gsap.min.js" defer></script>
 <script src="/assets/vendor/ScrollTrigger.min.js" defer></script>
 <script type="module" src="/assets/home.js"></script>
@@ -28,17 +30,17 @@
   <div class="wrap top-in">
     <a class="brand" href="https://sensoper.in/" data-to="home" aria-label="Sensoper Controls & Renewables, home"><img src="/assets/img/logo.webp" width="138" height="50" alt="Sensoper Controls & Renewables"></a>
     <nav class="nav" aria-label="Main">
-      <a href="#calculator">Savings</a><a href="#subsidy">Subsidy</a><a href="#solutions">Solutions</a><a href="https://shop.sensoper.in/" data-to="shop">Shop</a><a href="https://sensoper.in/account/" data-to="account">Customer login</a>
+      <a href="#systems">Systems</a><a href="#calculator">Savings</a><a href="#subsidy">Subsidy</a><a href="#brands">Brands</a><a href="https://shop.sensoper.in/" data-to="shop">Shop</a><a href="https://sensoper.in/account/" data-to="account">Customer login</a>
     </nav>
     <div class="top-actions">
-      <a class="call-btn" data-call href="tel:+919043547047" aria-label="Call Sensoper"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2"/></svg><span data-call data-call-text>+91 90435 47047</span></a>
+      <a class="call-btn" data-call href="tel:+919043547047" aria-label="Call Sensoper"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2"/></svg><span data-call data-call-text>+91 90435 47047</span></a>
       <button type="button" class="btn btn-leaf btn-sm" data-lead="quiz" data-source="header">Get free quote</button>
-      <button type="button" class="menu-btn" aria-expanded="false" aria-controls="mnav" aria-label="Menu"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
+      <button type="button" class="menu-btn" aria-expanded="false" aria-controls="mnav" aria-label="Menu"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 8h16M4 16h16"/></svg></button>
     </div>
   </div>
   <nav class="mnav" id="mnav" hidden aria-label="Menu">
     <div class="wrap">
-      <a href="#calculator">Savings calculator</a><a href="#subsidy">PM Surya Ghar subsidy</a><a href="#solutions">Solutions</a><a href="#how">How it works</a>
+      <a href="#systems">On-grid, off-grid, battery and pumps</a><a href="#calculator">Savings calculator</a><a href="#subsidy">PM Surya Ghar subsidy</a><a href="#brands">Brands we deal with</a><a href="#how">How it works</a>
       <a href="https://shop.sensoper.in/" data-to="shop">Shop solar materials</a><a href="https://sensoper.in/account/" data-to="account">Customer login</a><a href="#contact">Contact</a>
     </div>
   </nav>
@@ -48,76 +50,159 @@
 <main id="main">
 
 <section class="hero" id="hero" aria-labelledby="hero-h">
-<svg class="hero-scene" id="scene" viewBox="0 0 1440 900" preserveAspectRatio="xMidYMid slice" aria-hidden="true" focusable="false">
-<defs>
-  <linearGradient id="g-sky" x1="0" y1="0" x2="0" y2="1"><stop id="sk1" offset="0" stop-color="#0B1A3F"/><stop id="sk2" offset=".55" stop-color="#3A3F78"/><stop id="sk3" offset="1" stop-color="#F28C5E"/></linearGradient>
-  <radialGradient id="g-sun"><stop offset="0" stop-color="#FFF6CF"/><stop offset=".6" stop-color="#FFC83A"/><stop offset="1" stop-color="#FF9F1C"/></radialGradient>
-  <radialGradient id="g-glow"><stop offset="0" stop-color="#FFD36B" stop-opacity=".75"/><stop offset=".45" stop-color="#FFB547" stop-opacity=".25"/><stop offset="1" stop-color="#FFB547" stop-opacity="0"/></radialGradient>
-  <linearGradient id="g-panel" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#2B57A0"/><stop offset="1" stop-color="#142C59"/></linearGradient>
-  <linearGradient id="g-wall" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFFFFF"/><stop offset="1" stop-color="#ECF0EA"/></linearGradient>
-  <radialGradient id="g-winglow"><stop offset="0" stop-color="#FFD772" stop-opacity=".55"/><stop offset="1" stop-color="#FFD772" stop-opacity="0"/></radialGradient>
-</defs>
-<rect width="1440" height="900" fill="url(#g-sky)"/>
-<g class="stars" fill="#FFFFFF"><circle cx="673" cy="87" r="2"/><circle cx="1343" cy="34" r="1"/><circle cx="1107" cy="58" r="1.5"/><circle cx="1203" cy="39" r="1.2"/><circle cx="86" cy="54" r="2"/><circle cx="866" cy="45" r="1.2"/><circle cx="195" cy="292" r="2"/><circle cx="131" cy="433" r="1"/><circle cx="467" cy="332" r="1"/><circle cx="1191" cy="309" r="2"/><circle cx="111" cy="123" r="1"/><circle cx="1150" cy="449" r="1.2"/><circle cx="603" cy="224" r="1.2"/><circle cx="1117" cy="70" r="1.5"/><circle cx="1157" cy="427" r="1.2"/><circle cx="221" cy="307" r="1.2"/><circle cx="772" cy="59" r="1"/><circle cx="1165" cy="40" r="1.2"/><circle cx="1026" cy="358" r="2"/><circle cx="653" cy="248" r="2"/><circle cx="750" cy="163" r="1.2"/><circle cx="378" cy="367" r="1.2"/><circle cx="177" cy="304" r="1.5"/><circle cx="1085" cy="263" r="1.5"/><circle cx="929" cy="157" r="1"/><circle cx="251" cy="272" r="2"/><circle cx="347" cy="397" r="1.5"/><circle cx="321" cy="260" r="2"/><circle cx="90" cy="352" r="1"/><circle cx="1152" cy="303" r="1.5"/><circle cx="706" cy="365" r="1.5"/><circle cx="1227" cy="264" r="2"/><circle cx="150" cy="440" r="1"/><circle cx="562" cy="252" r="1"/><circle cx="134" cy="384" r="1.5"/><circle cx="1335" cy="305" r="2"/><circle cx="592" cy="376" r="2"/><circle cx="1379" cy="187" r="1"/><circle cx="955" cy="191" r="1.2"/><circle cx="1261" cy="69" r="2"/><circle cx="130" cy="121" r="1.5"/><circle cx="274" cy="388" r="1.2"/><circle cx="824" cy="210" r="2"/><circle cx="175" cy="95" r="2"/><circle cx="832" cy="291" r="1.5"/><circle cx="290" cy="429" r="2"/></g>
-<g class="sun" transform="translate(1210 860)"><circle class="sun-glow" r="230" fill="url(#g-glow)"/><circle r="66" fill="url(#g-sun)"/></g>
-<g class="cloud c1" transform="translate(260 190)" fill="#FFFFFF" opacity=".92"><ellipse cx="0" cy="0" rx="84" ry="31"/><circle cx="-55" cy="-12" r="41"/><circle cx="-10" cy="-31" r="53"/><circle cx="48" cy="-17" r="38"/></g><g class="cloud c2" transform="translate(760 120)" fill="#FFFFFF" opacity=".92"><ellipse cx="0" cy="0" rx="56" ry="21"/><circle cx="-37" cy="-8" r="27"/><circle cx="-6" cy="-21" r="35"/><circle cx="32" cy="-11" r="26"/></g><g class="cloud c3" transform="translate(1010 330)" fill="#FFFFFF" opacity=".92"><ellipse cx="0" cy="0" rx="63" ry="23"/><circle cx="-41" cy="-9" r="31"/><circle cx="-7" cy="-23" r="40"/><circle cx="36" cy="-13" r="29"/></g>
-<g class="birds" fill="none" stroke="#1B2A44" stroke-width="3" stroke-linecap="round" opacity=".7"><path d="M0 0 q9 -9 18 0 q9 -9 18 0"/><path d="M44 18 q7 -7 14 0 q7 -7 14 0"/></g>
-<path class="hill-far" d="M0 640 C 180 560, 360 600, 520 588 S 860 520, 1040 556 S 1300 604, 1440 556 L1440 900 L0 900 Z" fill="#7FA9D8"/>
-<path class="hill-mid" d="M0 704 C 220 646, 420 692, 640 672 S 1000 634, 1220 664 S 1380 690, 1440 678 L1440 900 L0 900 Z" fill="#7CBB4B"/>
-<g class="palm p1"><path d="M250 760 C 256.6 679.5, 283.0 599.0, 278.6 530" stroke="#7A5A36" stroke-width="12.1" fill="none" stroke-linecap="round"/><path d="M245.6 714.0 h13.2" stroke="#5E4426" stroke-width="2" opacity=".5"/><path d="M248.405 679.5 h13.2" stroke="#5E4426" stroke-width="2" opacity=".5"/><path d="M252.20000000000002 645.0 h13.2" stroke="#5E4426" stroke-width="2" opacity=".5"/><path d="M256.98499999999996 610.5 h13.2" stroke="#5E4426" stroke-width="2" opacity=".5"/><path d="M262.76 576.0 h13.2" stroke="#5E4426" stroke-width="2" opacity=".5"/><path d="M278.6 530.0 Q 213.8 467.3 154.6 517.9 Q 207.0 485.9 278.6 530.0 Z" fill="#3C8C2A"/><path d="M278.6 530.0 Q 233.7 432.5 183.1 449.2 Q 218.5 445.2 278.6 530.0 Z" fill="#3C8C2A"/><path d="M278.6 530.0 Q 282.7 434.2 268.1 442.5 Q 262.9 436.0 278.6 530.0 Z" fill="#3C8C2A"/><path d="M278.6 530.0 Q 328.0 435.6 352.9 434.4 Q 310.9 425.7 278.6 530.0 Z" fill="#3C8C2A"/><path d="M278.6 530.0 Q 348.6 479.7 398.2 507.2 Q 340.2 461.7 278.6 530.0 Z" fill="#3C8C2A"/><path d="M278.6 530.0 Q 333.5 521.1 381.5 581.1 Q 336.9 501.6 278.6 530.0 Z" fill="#3C8C2A"/><path d="M278.6 530.0 Q 221.2 511.8 180.4 598.7 Q 228.0 530.4 278.6 530.0 Z" fill="#3C8C2A"/><circle cx="274.2" cy="538.8" r="6.6" fill="#5B4A1E"/><circle cx="285.2" cy="541.0" r="6.6" fill="#6B5824"/></g><g class="palm p2"><path d="M560 740 C 554.9 680.5, 534.5 621.0, 537.9 570" stroke="#7A5A36" stroke-width="9.3" fill="none" stroke-linecap="round"/><path d="M553.1999999999999 706.0 h10.2" stroke="#5E4426" stroke-width="2" opacity=".5"/><path d="M551.0325 680.5 h10.2" stroke="#5E4426" stroke-width="2" opacity=".5"/><path d="M548.1 655.0 h10.2" stroke="#5E4426" stroke-width="2" opacity=".5"/><path d="M544.4025 629.5 h10.2" stroke="#5E4426" stroke-width="2" opacity=".5"/><path d="M539.9399999999999 604.0 h10.2" stroke="#5E4426" stroke-width="2" opacity=".5"/><path d="M537.9 570.0 Q 487.8 521.5 442.1 560.6 Q 482.6 535.9 537.9 570.0 Z" fill="#3C8C2A"/><path d="M537.9 570.0 Q 503.2 494.6 464.1 507.6 Q 491.5 504.5 537.9 570.0 Z" fill="#3C8C2A"/><path d="M537.9 570.0 Q 541.0 496.0 529.8 502.4 Q 525.8 497.3 537.9 570.0 Z" fill="#3C8C2A"/><path d="M537.9 570.0 Q 576.1 497.1 595.3 496.1 Q 562.8 489.4 537.9 570.0 Z" fill="#3C8C2A"/><path d="M537.9 570.0 Q 592.0 531.1 630.3 552.4 Q 585.5 517.3 537.9 570.0 Z" fill="#3C8C2A"/><path d="M537.9 570.0 Q 580.3 563.1 617.4 609.5 Q 583.0 548.1 537.9 570.0 Z" fill="#3C8C2A"/><path d="M537.9 570.0 Q 493.5 555.9 462.0 623.1 Q 498.8 570.3 537.9 570.0 Z" fill="#3C8C2A"/><circle cx="534.5" cy="576.8" r="5.1" fill="#5B4A1E"/><circle cx="543.0" cy="578.5" r="5.1" fill="#6B5824"/></g>
-<g class="palm p3"><path d="M812 800 C 806.0 712.5, 782.0 625.0, 786.0 550" stroke="#7A5A36" stroke-width="11.0" fill="none" stroke-linecap="round"/><path d="M804.0 750.0 h12.0" stroke="#5E4426" stroke-width="2" opacity=".5"/><path d="M801.45 712.5 h12.0" stroke="#5E4426" stroke-width="2" opacity=".5"/><path d="M798.0 675.0 h12.0" stroke="#5E4426" stroke-width="2" opacity=".5"/><path d="M793.65 637.5 h12.0" stroke="#5E4426" stroke-width="2" opacity=".5"/><path d="M788.4 600.0 h12.0" stroke="#5E4426" stroke-width="2" opacity=".5"/><path d="M786.0 550.0 Q 727.1 493.0 673.2 539.0 Q 720.9 509.9 786.0 550.0 Z" fill="#3C8C2A"/><path d="M786.0 550.0 Q 745.2 461.3 699.2 476.6 Q 731.4 472.9 786.0 550.0 Z" fill="#3C8C2A"/><path d="M786.0 550.0 Q 789.7 462.9 776.4 470.4 Q 771.8 464.5 786.0 550.0 Z" fill="#3C8C2A"/><path d="M786.0 550.0 Q 830.9 464.2 853.5 463.1 Q 815.3 455.2 786.0 550.0 Z" fill="#3C8C2A"/><path d="M786.0 550.0 Q 849.6 504.3 894.8 529.3 Q 842.0 488.0 786.0 550.0 Z" fill="#3C8C2A"/><path d="M786.0 550.0 Q 835.9 541.9 879.6 596.5 Q 839.0 524.2 786.0 550.0 Z" fill="#3C8C2A"/><path d="M786.0 550.0 Q 733.8 533.4 696.7 612.5 Q 740.0 550.3 786.0 550.0 Z" fill="#3C8C2A"/><circle cx="782.0" cy="558.0" r="6.0" fill="#5B4A1E"/><circle cx="792.0" cy="560.0" r="6.0" fill="#6B5824"/></g>
-<g class="house">
-  <rect x="872" y="566" width="316" height="14" fill="#E2E6DF"/>
-  <rect x="896" y="508" width="84" height="60" fill="#F4F6F2"/><rect x="890" y="500" width="96" height="10" fill="#D7DCD4"/>
-  <rect x="910" y="526" width="26" height="40" fill="#8B5E3C" rx="2"/>
-  <rect x="880" y="578" width="300" height="114" fill="#FAFBF8"/>
-  <rect x="872" y="684" width="316" height="10" fill="#D7DCD4"/>
-  <rect x="880" y="692" width="300" height="112" fill="url(#g-wall)"/>
-  <rect x="1000" y="724" width="56" height="80" fill="#8B5E3C" rx="3"/><circle cx="1046" cy="766" r="3" fill="#E9C46A"/>
-  <rect x="990" y="802" width="76" height="8" fill="#C9CFC6"/>
-  <g class="glows" opacity="0"><circle cx="936" cy="738" r="70" fill="url(#g-winglow)"/><circle cx="1114" cy="738" r="70" fill="url(#g-winglow)"/><circle cx="1028" cy="628" r="120" fill="url(#g-winglow)"/></g>
-  <g><rect class="win" x="904" y="716" width="64" height="44" rx="3" fill="#2A3456" stroke="#C9CFC6" stroke-width="3"/><path d="M936.0 718 V758 M906 738.0 H966" stroke="#C9CFC6" stroke-width="2"/></g><g><rect class="win" x="1082" y="716" width="64" height="44" rx="3" fill="#2A3456" stroke="#C9CFC6" stroke-width="3"/><path d="M1114.0 718 V758 M1084 738.0 H1144" stroke="#C9CFC6" stroke-width="2"/></g><g><rect class="win" x="904" y="604" width="64" height="50" rx="3" fill="#2A3456" stroke="#C9CFC6" stroke-width="3"/><path d="M936.0 606 V652 M906 629.0 H966" stroke="#C9CFC6" stroke-width="2"/></g><g><rect class="win" x="996" y="604" width="64" height="50" rx="3" fill="#2A3456" stroke="#C9CFC6" stroke-width="3"/><path d="M1028.0 606 V652 M998 629.0 H1058" stroke="#C9CFC6" stroke-width="2"/></g><g><rect class="win" x="1088" y="604" width="64" height="50" rx="3" fill="#2A3456" stroke="#C9CFC6" stroke-width="3"/><path d="M1120.0 606 V652 M1090 629.0 H1150" stroke="#C9CFC6" stroke-width="2"/></g>
-  <g stroke="#9AA6B2" stroke-width="4" stroke-linecap="round"><path d="M986 554 H1188 M998 506 H1196"/><path d="M994 554 V566 M1180 554 V566 M1004 506 V566 M1190 506 V566"/></g>
-  <g class="pv"><polygon points="990,552 1035,552 1045,504 1000,504" fill="url(#g-panel)" stroke="#D5DEE8" stroke-width="2.5" stroke-linejoin="round"/><path d="M995 528 L1040 528 M1005 552 L1015 504 M1020 552 L1030 504" stroke="#4E7BC4" stroke-width="1.4"/><polygon class="pv-shine" points="1002,550 1010,550 1020,506 1012,506" fill="#FFFFFF" opacity="0"/></g><g class="pv"><polygon points="1039,552 1084,552 1094,504 1049,504" fill="url(#g-panel)" stroke="#D5DEE8" stroke-width="2.5" stroke-linejoin="round"/><path d="M1044 528 L1089 528 M1054 552 L1064 504 M1069 552 L1079 504" stroke="#4E7BC4" stroke-width="1.4"/><polygon class="pv-shine" points="1051,550 1059,550 1069,506 1061,506" fill="#FFFFFF" opacity="0"/></g><g class="pv"><polygon points="1088,552 1133,552 1143,504 1098,504" fill="url(#g-panel)" stroke="#D5DEE8" stroke-width="2.5" stroke-linejoin="round"/><path d="M1093 528 L1138 528 M1103 552 L1113 504 M1118 552 L1128 504" stroke="#4E7BC4" stroke-width="1.4"/><polygon class="pv-shine" points="1100,550 1108,550 1118,506 1110,506" fill="#FFFFFF" opacity="0"/></g><g class="pv"><polygon points="1137,552 1182,552 1192,504 1147,504" fill="url(#g-panel)" stroke="#D5DEE8" stroke-width="2.5" stroke-linejoin="round"/><path d="M1142 528 L1187 528 M1152 552 L1162 504 M1167 552 L1177 504" stroke="#4E7BC4" stroke-width="1.4"/><polygon class="pv-shine" points="1149,550 1157,550 1167,506 1159,506" fill="#FFFFFF" opacity="0"/></g>
-  <rect x="1150" y="704" width="24" height="32" rx="3" fill="#E9EDF1" stroke="#9AA6B2" stroke-width="2"/><rect class="meter-screen" x="1154" y="709" width="16" height="9" rx="1.5" fill="#183044"/>
-  <path class="flow" d="M1176 551 C 1200 560, 1202 580, 1200 610 L1200 690 C 1200 704, 1186 712, 1174 716" fill="none" stroke="#FFB020" stroke-width="5" stroke-linecap="round" stroke-dasharray="10 12" opacity="0"/>
-  <g fill="#4E9A2E"><circle cx="884" cy="800" r="16"/><circle cx="902" cy="804" r="12"/><circle cx="1178" cy="800" r="16"/><circle cx="1160" cy="805" r="11"/></g>
-</g>
-<g class="palm p4"><path d="M1290 812 C 1296.3 721.0, 1321.5 630.0, 1317.3 552" stroke="#7A5A36" stroke-width="11.6" fill="none" stroke-linecap="round"/><path d="M1285.8 760.0 h12.6" stroke="#5E4426" stroke-width="2" opacity=".5"/><path d="M1288.4775 721.0 h12.6" stroke="#5E4426" stroke-width="2" opacity=".5"/><path d="M1292.1000000000001 682.0 h12.6" stroke="#5E4426" stroke-width="2" opacity=".5"/><path d="M1296.6675 643.0 h12.6" stroke="#5E4426" stroke-width="2" opacity=".5"/><path d="M1302.18 604.0 h12.6" stroke="#5E4426" stroke-width="2" opacity=".5"/><path d="M1317.3 552.0 Q 1255.4 492.1 1198.9 540.4 Q 1248.9 509.9 1317.3 552.0 Z" fill="#3C8C2A"/><path d="M1317.3 552.0 Q 1274.4 458.9 1226.2 474.9 Q 1259.9 471.1 1317.3 552.0 Z" fill="#3C8C2A"/><path d="M1317.3 552.0 Q 1321.2 460.6 1307.2 468.4 Q 1302.3 462.2 1317.3 552.0 Z" fill="#3C8C2A"/><path d="M1317.3 552.0 Q 1364.5 461.9 1388.2 460.7 Q 1348.1 452.5 1317.3 552.0 Z" fill="#3C8C2A"/><path d="M1317.3 552.0 Q 1384.1 504.0 1431.5 530.3 Q 1376.1 486.8 1317.3 552.0 Z" fill="#3C8C2A"/><path d="M1317.3 552.0 Q 1369.7 543.5 1415.5 600.8 Q 1373.0 524.9 1317.3 552.0 Z" fill="#3C8C2A"/><path d="M1317.3 552.0 Q 1262.5 534.6 1223.6 617.6 Q 1269.0 552.3 1317.3 552.0 Z" fill="#3C8C2A"/><circle cx="1313.1" cy="560.4" r="6.3" fill="#5B4A1E"/><circle cx="1323.6" cy="562.5" r="6.3" fill="#6B5824"/></g>
-<path class="ground" d="M0 796 C 300 774, 600 806, 900 802 S 1300 784, 1440 794 L1440 900 L0 900 Z" fill="#5A9E34"/>
-<path d="M0 836 C 380 820, 760 846, 1440 828 L1440 900 L0 900 Z" fill="#4B8D2B"/>
-<rect class="tint" width="1440" height="900" fill="#0B1A3F" opacity=".5"/>
-</svg>
+  <div class="stage" aria-hidden="true">
+    <picture class="poster"><source media="(max-aspect-ratio: 11/10)" srcset="/assets/img/hero-dawn-m.webp"><img src="/assets/img/hero-dawn.webp" alt="" width="1600" height="1000" fetchpriority="high"></picture>
+    <canvas id="hero3d"></canvas>
+    <div class="scrim"></div>
+  </div>
   <div class="wrap hero-copy" id="hero-copy">
     <h1 id="hero-h">Your roof can pay your EB bill.</h1>
-    <p class="lede">Rooftop solar for homes, solar pumps for farms and bigger systems for factories — fitted by our team in Perundurai, with up to ₹78,000 subsidy for homes.</p>
+    <p class="lede">On-grid, off-grid and battery solar, and solar pumps — designed, fitted and looked after by our team in Perundurai. Up to ₹78,000 subsidy for homes.</p>
     <form class="quick" data-quick novalidate>
       <span class="pfx" aria-hidden="true">+91</span>
       <label class="sr" for="q-phone">Your mobile number</label>
       <input id="q-phone" name="phone" type="tel" inputmode="numeric" autocomplete="tel-national" maxlength="14" placeholder="Mobile number">
       <input class="hp" name="website" tabindex="-1" autocomplete="off" aria-hidden="true">
-      <button class="btn btn-sun" type="submit">Get my free plan</button>
+      <button class="btn btn-gold" type="submit">Get my free plan</button>
     </form>
     <p class="quick-err" role="alert"></p>
     <p class="quick-note"><span>Free site visit</span><span>Subsidy paperwork done for you</span></p>
   </div>
-  <div class="wrap film" aria-hidden="true">
-    <div class="caps">
-      <p class="cap">Every day, Erode gets about five hours of strong sun.</p>
-      <p class="cap">We fit Indian-made panels on your roof in a few days.</p>
-      <p class="cap">Your home starts running on sunshine.</p>
-      <p class="cap">And your EB bill drops to almost nothing.</p>
-    </div>
-    <div class="hcard hb">
-      <small>Your EB bill for two months</small>
-      <b id="hb-amt">₹4,500</b>
-      <small class="hb-note">Estimate for a home with a 3 kW roof</small>
-      <div class="stamp">₹78,000 back<small>PM Surya Ghar subsidy</small></div>
-    </div>
+  <ol class="chapters" aria-hidden="true">
+    <li class="chap"><span class="c-time">Morning</span><b>Sunrise over Erode</b><span>About five hours of strong sun, almost every day of the year.</span></li>
+    <li class="chap"><span class="c-time">Midday</span><b>Every panel at full output</b><span>TOPCon glass panels from Waaree and Vikram Solar, tilted south on a raised frame.</span></li>
+    <li class="chap"><span class="c-time">Afternoon</span><b>Stored for later</b><span>The hybrid inverter runs the house, fills the lithium battery and sends the rest to the grid.</span></li>
+    <li class="chap"><span class="c-time">Evening</span><b>The sun sets. The lights stay on.</b><span>The battery carries the evening, and the EB bill drops to almost nothing.</span></li>
+  </ol>
+  <div class="hud" aria-hidden="true">
+    <div class="hud-row"><div><span>Time</span><b id="hud-time">6:00 am</b></div><div><span>Solar output</span><b id="hud-solar">0.0 kW</b></div><div><span>Battery</span><b id="hud-batt">35%</b></div></div>
+    <div class="hud-bar"><i id="hud-day"></i></div>
+    <p class="hud-note">Example: 6.6 kW of panels and a 10 kWh battery on a clear November day</p>
   </div>
-  <p class="scroll-hint" aria-hidden="true"><i></i>Scroll to watch the sunrise</p>
+  <div class="bill-chip" aria-hidden="true">
+    <span>EB bill for two months</span>
+    <b id="hb-amt">₹4,500</b>
+    <small>Up to ₹78,000 back under PM Surya Ghar</small>
+  </div>
+  <p class="scroll-hint" aria-hidden="true"><i></i>Scroll to watch a day on solar</p>
 </section>
 <div id="after-hero" aria-hidden="true"></div>
+
+<section class="section proof" aria-label="Sensoper in numbers">
+  <div class="wrap proof-grid">
+    <div class="stat"><b><span data-n="10">10</span>+</b><span>years of installation experience in our team</span></div>
+    <div class="stat"><b>₹<span data-n="78000" data-inr>78,000</span></b><span>the most PM Surya Ghar pays a home</span></div>
+    <div class="stat"><b><span data-n="4.4" data-dec="1">4.4</span></b><span>units a day from each kW of panels around Erode</span></div>
+    <div class="stat"><b><span data-n="3">3</span>–<span data-n="10">10</span> HP</b><span>solar water pumps for farms</span></div>
+  </div>
+</section>
+
+<section class="section systems" id="systems" aria-labelledby="sys-h">
+  <div class="wrap">
+    <div class="section-head">
+      <h2 id="sys-h" data-split>Four ways to run on sunshine</h2>
+      <p>Every site is different. Here is what each kind of system does, who it suits and what goes into it.</p>
+    </div>
+    <div class="sys-stack">
+      <article class="sys" id="sys-ongrid">
+        <div class="sys-text">
+          <p class="sys-kind">On-grid rooftop</p>
+          <h3>Cut the bill, sell back the extra.</h3>
+          <p>Panels on your roof feed your home through an on-grid inverter. Extra units go to the TNEB grid through a net meter and come off your bill.</p>
+          <dl>
+            <div><dt>Best for</dt><dd>Homes, shops, offices and factories with a steady EB supply</dd></div>
+            <div><dt>What’s in it</dt><dd>TOPCon DCR panels, on-grid inverter, net meter, earthing and lightning arrester</dd></div>
+            <div><dt>Brands</dt><dd>Waaree, Vikram Solar, Polycab, SolarEdge</dd></div>
+            <div><dt>Subsidy</dt><dd>Up to ₹78,000 for homes under PM Surya Ghar</dd></div>
+            <div><dt>Good to know</dt><dd>It switches off in a power cut, to keep line workers safe</dd></div>
+          </dl>
+          <button type="button" class="btn btn-leaf" data-lead="home" data-source="systems" data-note="On-grid rooftop system" data-title="Plan my on-grid system">Plan my on-grid system</button>
+        </div>
+        <div class="sys-fig"><svg class="sys-svg" viewBox="0 0 560 430" role="img" aria-label="How an on-grid system works: panels feed the inverter, the inverter powers your home and sends extra units through the net meter to the grid"><path class="wire" d="M136 118 C 190 140, 214 170, 240 196"/><path class="flow f-gold" d="M136 118 C 190 140, 214 170, 240 196" pathLength="1"/><circle class="pulse p-gold" r="4"><animateMotion dur="2.6s" begin="0.00s" repeatCount="indefinite" keyPoints="0;1" keyTimes="0;1" calcMode="linear" path="M136 118 C 190 140, 214 170, 240 196"/></circle><circle class="pulse p-gold" r="4"><animateMotion dur="2.6s" begin="-1.30s" repeatCount="indefinite" keyPoints="0;1" keyTimes="0;1" calcMode="linear" path="M136 118 C 190 140, 214 170, 240 196"/></circle><path class="wire" d="M320 196 C 350 170, 380 140, 424 118"/><path class="flow f-gold" d="M320 196 C 350 170, 380 140, 424 118" pathLength="1"/><circle class="pulse p-gold" r="4"><animateMotion dur="2.6s" begin="0.00s" repeatCount="indefinite" keyPoints="0;1" keyTimes="0;1" calcMode="linear" path="M320 196 C 350 170, 380 140, 424 118"/></circle><circle class="pulse p-gold" r="4"><animateMotion dur="2.6s" begin="-1.30s" repeatCount="indefinite" keyPoints="0;1" keyTimes="0;1" calcMode="linear" path="M320 196 C 350 170, 380 140, 424 118"/></circle><path class="wire" d="M320 232 C 352 262, 384 300, 424 322"/><path class="flow f-gold" d="M320 232 C 352 262, 384 300, 424 322" pathLength="1"/><circle class="pulse p-gold" r="4"><animateMotion dur="2.6s" begin="0.00s" repeatCount="indefinite" keyPoints="0;1" keyTimes="0;1" calcMode="linear" path="M320 232 C 352 262, 384 300, 424 322"/></circle><circle class="pulse p-gold" r="4"><animateMotion dur="2.6s" begin="-1.30s" repeatCount="indefinite" keyPoints="0;1" keyTimes="0;1" calcMode="linear" path="M320 232 C 352 262, 384 300, 424 322"/></circle><path class="wire" d="M424 352 C 330 410, 230 410, 136 352"/><path class="flow f-gold" d="M424 352 C 330 410, 230 410, 136 352" pathLength="1"/><circle class="pulse p-gold" r="4"><animateMotion dur="3.2s" begin="0.00s" repeatCount="indefinite" keyPoints="0;1" keyTimes="0;1" calcMode="linear" path="M424 352 C 330 410, 230 410, 136 352"/></circle><circle class="pulse p-gold" r="4"><animateMotion dur="3.2s" begin="-1.60s" repeatCount="indefinite" keyPoints="0;1" keyTimes="0;1" calcMode="linear" path="M424 352 C 330 410, 230 410, 136 352"/></circle><path class="wire" d="M136 352 C 230 410, 330 410, 424 352"/><path class="flow f-blue" d="M136 352 C 230 410, 330 410, 424 352" pathLength="1"/><circle class="pulse p-blue" r="4"><animateMotion dur="3.2s" begin="0.00s" repeatCount="indefinite" keyPoints="0;1" keyTimes="0;1" calcMode="linear" path="M136 352 C 230 410, 330 410, 424 352"/></circle><g class="node " transform="translate(96 96)"><rect x="-40" y="-40" width="80" height="80" rx="20"/><g class="ico"><path d="M-24 12 L-13 -12 H24 L13 12 Z"/><path d="M-18.5 0 H18.5 M-1 -12 L-12 12 M11 -12 L0 12"/></g><text class="nl" y="62">Solar panels</text><text class="ns" y="80">DC power</text></g><g class="node hub" transform="translate(280 214)"><rect x="-40" y="-40" width="80" height="80" rx="20"/><g class="ico"><rect x="-15" y="-20" width="30" height="40" rx="5"/><path d="M-8 -2 q4 -7 8 0 t8 0"/><path d="M-7 11 H7"/></g><text class="nl" y="62">On-grid inverter</text><text class="ns" y="80">DC to AC</text></g><g class="node " transform="translate(464 96)"><rect x="-40" y="-40" width="80" height="80" rx="20"/><g class="ico"><path d="M-21 1 L0 -18 L21 1"/><path d="M-15 -4 V18 H15 V-4"/><path d="M-4 18 V8 H4 V18"/></g><text class="nl" y="62">Your home</text><text class="ns" y="80">Uses it first</text></g><g class="node " transform="translate(464 336)"><rect x="-40" y="-40" width="80" height="80" rx="20"/><g class="ico"><rect x="-16" y="-19" width="32" height="38" rx="5"/><rect x="-9" y="-12" width="18" height="9" rx="2"/><path d="M-8 8 H-1 M-4 5 L-8 8 L-4 11 M1 8 H8 M4 5 L8 8 L4 11"/></g><text class="nl" y="62">Net meter</text><text class="ns" y="80">Counts both ways</text></g><g class="node " transform="translate(96 336)"><rect x="-40" y="-40" width="80" height="80" rx="20"/><g class="ico"><path d="M0 -22 L-11 20 M0 -22 L11 20 M-15 -9 H15 M-11 3 H11 M-6 -17 H6 M-7.5 10 L7.5 10"/></g><text class="nl" y="62">TNEB grid</text><text class="ns" y="80">Takes the extra</text></g></svg></div>
+      </article>
+      <article class="sys" id="sys-offgrid">
+        <div class="sys-text">
+          <p class="sys-kind">Off-grid</p>
+          <h3>Your own power, no grid needed.</h3>
+          <p>No connection to the grid at all. Panels charge a battery bank through an off-grid inverter, and your loads run from the battery day and night.</p>
+          <dl>
+            <div><dt>Best for</dt><dd>Farm houses, remote sites and places where the supply is weak or missing</dd></div>
+            <div><dt>What’s in it</dt><dd>Panels, off-grid inverter with an MPPT charge controller, battery bank</dd></div>
+            <div><dt>Brands</dt><dd>Asha Power, Torque Lithium</dd></div>
+            <div><dt>Good to know</dt><dd>The battery is sized to the hours you need covered — we work it out from your loads</dd></div>
+          </dl>
+          <button type="button" class="btn btn-leaf" data-lead="other" data-source="systems" data-note="Off-grid system" data-title="Plan an off-grid system">Plan an off-grid system</button>
+        </div>
+        <div class="sys-fig"><svg class="sys-svg" viewBox="0 0 560 430" role="img" aria-label="How an off-grid system works: panels charge a battery through an off-grid inverter, which runs your loads with no grid connection"><path class="wire" d="M136 118 C 190 140, 214 170, 240 196"/><path class="flow f-gold" d="M136 118 C 190 140, 214 170, 240 196" pathLength="1"/><circle class="pulse p-gold" r="4"><animateMotion dur="2.6s" begin="0.00s" repeatCount="indefinite" keyPoints="0;1" keyTimes="0;1" calcMode="linear" path="M136 118 C 190 140, 214 170, 240 196"/></circle><circle class="pulse p-gold" r="4"><animateMotion dur="2.6s" begin="-1.30s" repeatCount="indefinite" keyPoints="0;1" keyTimes="0;1" calcMode="linear" path="M136 118 C 190 140, 214 170, 240 196"/></circle><path class="wire" d="M320 196 C 350 170, 380 140, 424 118"/><path class="flow f-gold" d="M320 196 C 350 170, 380 140, 424 118" pathLength="1"/><circle class="pulse p-gold" r="4"><animateMotion dur="2.6s" begin="0.00s" repeatCount="indefinite" keyPoints="0;1" keyTimes="0;1" calcMode="linear" path="M320 196 C 350 170, 380 140, 424 118"/></circle><circle class="pulse p-gold" r="4"><animateMotion dur="2.6s" begin="-1.30s" repeatCount="indefinite" keyPoints="0;1" keyTimes="0;1" calcMode="linear" path="M320 196 C 350 170, 380 140, 424 118"/></circle><path class="wire" d="M240 232 C 206 262, 176 300, 136 322"/><path class="flow f-green" d="M240 232 C 206 262, 176 300, 136 322" pathLength="1"/><circle class="pulse p-green" r="4"><animateMotion dur="2.4s" begin="0.00s" repeatCount="indefinite" keyPoints="0;1" keyTimes="0;1" calcMode="linear" path="M240 232 C 206 262, 176 300, 136 322"/></circle><circle class="pulse p-green" r="4"><animateMotion dur="2.4s" begin="-1.20s" repeatCount="indefinite" keyPoints="0;1" keyTimes="0;1" calcMode="linear" path="M240 232 C 206 262, 176 300, 136 322"/></circle><g class="node " transform="translate(96 96)"><rect x="-40" y="-40" width="80" height="80" rx="20"/><g class="ico"><path d="M-24 12 L-13 -12 H24 L13 12 Z"/><path d="M-18.5 0 H18.5 M-1 -12 L-12 12 M11 -12 L0 12"/></g><text class="nl" y="62">Solar panels</text><text class="ns" y="80">Charge by day</text></g><g class="node hub" transform="translate(280 214)"><rect x="-40" y="-40" width="80" height="80" rx="20"/><g class="ico"><rect x="-15" y="-20" width="30" height="40" rx="5"/><path d="M-8 -2 q4 -7 8 0 t8 0"/><path d="M-7 11 H7"/></g><text class="nl" y="62">Off-grid inverter</text><text class="ns" y="80">With MPPT</text></g><g class="node " transform="translate(464 96)"><rect x="-40" y="-40" width="80" height="80" rx="20"/><g class="ico"><path d="M-21 1 L0 -18 L21 1"/><path d="M-15 -4 V18 H15 V-4"/><path d="M-4 18 V8 H4 V18"/></g><text class="nl" y="62">Your loads</text><text class="ns" y="80">Day and night</text></g><g class="node batt" transform="translate(96 336)"><rect x="-40" y="-40" width="80" height="80" rx="20"/><g class="ico"><rect x="-13" y="-17" width="26" height="37" rx="4"/><path d="M-5 -21 H5"/><path class="lv" d="M-7 12 H7 M-7 5 H7 M-7 -2 H7 M-7 -9 H7"/></g><text class="nl" y="62">Battery bank</text><text class="ns" y="80">Lithium or tubular</text></g><g class="node off" transform="translate(464 336)"><rect x="-40" y="-40" width="80" height="80" rx="20"/><g class="ico"><path d="M0 -22 L-11 20 M0 -22 L11 20 M-15 -9 H15 M-11 3 H11"/><path d="M-20 -20 L20 20" class="x"/></g><text class="nl" y="62">No grid needed</text><text class="ns" y="80">Works anywhere</text></g></svg></div>
+      </article>
+      <article class="sys" id="sys-bess">
+        <div class="sys-text">
+          <p class="sys-kind">Battery storage (BESS)</p>
+          <h3>Keep running through every power cut.</h3>
+          <p>A hybrid inverter and a lithium battery store the day’s extra sunshine. When the grid goes off, your chosen loads move to the battery on their own.</p>
+          <dl>
+            <div><dt>Best for</dt><dd>Homes with power cuts, and shops, clinics and factories that can’t stop or want to run less diesel</dd></div>
+            <div><dt>What’s in it</dt><dd>Hybrid inverter (or a power conversion system for big sites), LiFePO4 battery with its own management system</dd></div>
+            <div><dt>Brands</dt><dd>Asha Power Rover and ESS, Torque Lithium, Aviva</dd></div>
+            <div><dt>Good to know</dt><dd>Adds to an existing rooftop system, or charges from the grid on its own</dd></div>
+          </dl>
+          <button type="button" class="btn btn-leaf" data-lead="battery" data-source="systems" data-note="Battery storage (BESS)" data-title="Plan battery backup">Plan battery backup</button>
+        </div>
+        <div class="sys-fig"><svg class="sys-svg" viewBox="0 0 560 430" role="img" aria-label="How battery storage works: panels and the grid feed a hybrid inverter, which charges a lithium battery and powers your loads in a power cut"><path class="wire" d="M136 118 C 190 140, 214 170, 240 196"/><path class="flow f-gold" d="M136 118 C 190 140, 214 170, 240 196" pathLength="1"/><circle class="pulse p-gold" r="4"><animateMotion dur="2.6s" begin="0.00s" repeatCount="indefinite" keyPoints="0;1" keyTimes="0;1" calcMode="linear" path="M136 118 C 190 140, 214 170, 240 196"/></circle><circle class="pulse p-gold" r="4"><animateMotion dur="2.6s" begin="-1.30s" repeatCount="indefinite" keyPoints="0;1" keyTimes="0;1" calcMode="linear" path="M136 118 C 190 140, 214 170, 240 196"/></circle><path class="wire" d="M136 322 C 176 300, 206 262, 240 232"/><path class="flow f-blue" d="M136 322 C 176 300, 206 262, 240 232" pathLength="1"/><circle class="pulse p-blue" r="4"><animateMotion dur="2.8s" begin="0.00s" repeatCount="indefinite" keyPoints="0;1" keyTimes="0;1" calcMode="linear" path="M136 322 C 176 300, 206 262, 240 232"/></circle><circle class="pulse p-blue" r="4"><animateMotion dur="2.8s" begin="-1.40s" repeatCount="indefinite" keyPoints="0;1" keyTimes="0;1" calcMode="linear" path="M136 322 C 176 300, 206 262, 240 232"/></circle><path class="wire" d="M320 232 C 352 262, 384 300, 424 322"/><path class="flow f-green" d="M320 232 C 352 262, 384 300, 424 322" pathLength="1"/><circle class="pulse p-green" r="4"><animateMotion dur="2.4s" begin="0.00s" repeatCount="indefinite" keyPoints="0;1" keyTimes="0;1" calcMode="linear" path="M320 232 C 352 262, 384 300, 424 322"/></circle><circle class="pulse p-green" r="4"><animateMotion dur="2.4s" begin="-1.20s" repeatCount="indefinite" keyPoints="0;1" keyTimes="0;1" calcMode="linear" path="M320 232 C 352 262, 384 300, 424 322"/></circle><path class="wire" d="M320 196 C 350 170, 380 140, 424 118"/><path class="flow f-gold" d="M320 196 C 350 170, 380 140, 424 118" pathLength="1"/><circle class="pulse p-gold" r="4"><animateMotion dur="2.6s" begin="0.00s" repeatCount="indefinite" keyPoints="0;1" keyTimes="0;1" calcMode="linear" path="M320 196 C 350 170, 380 140, 424 118"/></circle><circle class="pulse p-gold" r="4"><animateMotion dur="2.6s" begin="-1.30s" repeatCount="indefinite" keyPoints="0;1" keyTimes="0;1" calcMode="linear" path="M320 196 C 350 170, 380 140, 424 118"/></circle><g class="node " transform="translate(96 96)"><rect x="-40" y="-40" width="80" height="80" rx="20"/><g class="ico"><path d="M-24 12 L-13 -12 H24 L13 12 Z"/><path d="M-18.5 0 H18.5 M-1 -12 L-12 12 M11 -12 L0 12"/></g><text class="nl" y="62">Solar panels</text><text class="ns" y="80">When the sun is up</text></g><g class="node " transform="translate(96 336)"><rect x="-40" y="-40" width="80" height="80" rx="20"/><g class="ico"><path d="M0 -22 L-11 20 M0 -22 L11 20 M-15 -9 H15 M-11 3 H11 M-6 -17 H6 M-7.5 10 L7.5 10"/></g><text class="nl" y="62">Grid</text><text class="ns" y="80">Or a generator</text></g><g class="node hub" transform="translate(280 214)"><rect x="-40" y="-40" width="80" height="80" rx="20"/><g class="ico"><rect x="-15" y="-20" width="30" height="40" rx="5"/><path d="M-8 -2 q4 -7 8 0 t8 0"/><path d="M-7 11 H7"/></g><text class="nl" y="62">Hybrid inverter</text><text class="ns" y="80">Or PCS for big sites</text></g><g class="node batt" transform="translate(464 336)"><rect x="-40" y="-40" width="80" height="80" rx="20"/><g class="ico"><rect x="-13" y="-17" width="26" height="37" rx="4"/><path d="M-5 -21 H5"/><path class="lv" d="M-7 12 H7 M-7 5 H7 M-7 -2 H7 M-7 -9 H7"/></g><text class="nl" y="62">Lithium battery</text><text class="ns" y="80">LiFePO4</text></g><g class="node " transform="translate(464 96)"><rect x="-40" y="-40" width="80" height="80" rx="20"/><g class="ico"><path d="M-20 18 V-2 L-8 5 V-2 L4 5 V-14 H12 V18 Z"/><path d="M-20 18 H20"/></g><text class="nl" y="62">Home or business</text><text class="ns" y="80">Keeps running</text></g></svg></div>
+      </article>
+      <article class="sys" id="sys-pump">
+        <div class="sys-text">
+          <p class="sys-kind">Solar water pump</p>
+          <h3>Water all day, without diesel.</h3>
+          <p>Panels drive the pump through a pump controller. Water flows whenever the sun is up — no diesel, and no waiting for three-phase supply.</p>
+          <dl>
+            <div><dt>Best for</dt><dd>Farms with a borewell or an open well</dd></div>
+            <div><dt>What’s in it</dt><dd>Panels on a ground frame, solar pump controller, submersible or surface pump from 3 to 10 HP</dd></div>
+            <div><dt>Brands</dt><dd>Textro pump controllers</dd></div>
+            <div><dt>Subsidy</dt><dd>PM-KUSUM where you qualify — we check it for you</dd></div>
+          </dl>
+          <button type="button" class="btn btn-leaf" data-lead="farm" data-source="systems" data-note="Solar water pump" data-title="Plan my solar pump">Plan my solar pump</button>
+        </div>
+        <div class="sys-fig"><svg class="sys-svg" viewBox="0 0 560 430" role="img" aria-label="How a solar pump works: panels drive a pump controller, which runs a submersible pump that waters your field"><path class="wire" d="M136 96 H 240"/><path class="flow f-gold" d="M136 96 H 240" pathLength="1"/><circle class="pulse p-gold" r="4"><animateMotion dur="2.6s" begin="0.00s" repeatCount="indefinite" keyPoints="0;1" keyTimes="0;1" calcMode="linear" path="M136 96 H 240"/></circle><circle class="pulse p-gold" r="4"><animateMotion dur="2.6s" begin="-1.30s" repeatCount="indefinite" keyPoints="0;1" keyTimes="0;1" calcMode="linear" path="M136 96 H 240"/></circle><path class="wire" d="M320 96 C 380 96, 440 120, 460 150"/><path class="flow f-gold" d="M320 96 C 380 96, 440 120, 460 150" pathLength="1"/><circle class="pulse p-gold" r="4"><animateMotion dur="2.2s" begin="0.00s" repeatCount="indefinite" keyPoints="0;1" keyTimes="0;1" calcMode="linear" path="M320 96 C 380 96, 440 120, 460 150"/></circle><circle class="pulse p-gold" r="4"><animateMotion dur="2.2s" begin="-1.10s" repeatCount="indefinite" keyPoints="0;1" keyTimes="0;1" calcMode="linear" path="M320 96 C 380 96, 440 120, 460 150"/></circle><path class="wire" d="M440 286 C 400 330, 340 350, 304 346"/><path class="flow f-blue" d="M440 286 C 400 330, 340 350, 304 346" pathLength="1"/><circle class="pulse p-blue" r="4"><animateMotion dur="2.4s" begin="0.00s" repeatCount="indefinite" keyPoints="0;1" keyTimes="0;1" calcMode="linear" path="M440 286 C 400 330, 340 350, 304 346"/></circle><circle class="pulse p-blue" r="4"><animateMotion dur="2.4s" begin="-1.20s" repeatCount="indefinite" keyPoints="0;1" keyTimes="0;1" calcMode="linear" path="M440 286 C 400 330, 340 350, 304 346"/></circle><g class="node " transform="translate(96 96)"><rect x="-40" y="-40" width="80" height="80" rx="20"/><g class="ico"><path d="M-24 12 L-13 -12 H24 L13 12 Z"/><path d="M-18.5 0 H18.5 M-1 -12 L-12 12 M11 -12 L0 12"/></g><text class="nl" y="62">Solar panels</text><text class="ns" y="80">On a ground frame</text></g><g class="node hub" transform="translate(280 96)"><rect x="-40" y="-40" width="80" height="80" rx="20"/><g class="ico"><rect x="-17" y="-17" width="34" height="34" rx="6"/><circle cx="0" cy="-2" r="7"/><path d="M0 -2 L4 -6 M-9 11 H9"/></g><text class="nl" y="62">Pump controller</text><text class="ns" y="80">Starts with the sun</text></g><g class="node " transform="translate(464 214)"><rect x="-40" y="-40" width="80" height="80" rx="20"/><g class="ico"><rect x="-7" y="-22" width="14" height="30" rx="4"/><path d="M-7 -12 H7 M-7 -2 H7"/><path d="M0 8 V20 M-6 20 H6"/></g><text class="nl" y="62">Submersible pump</text><text class="ns" y="80">3 to 10 HP</text></g><g class="node " transform="translate(264 336)"><rect x="-40" y="-40" width="80" height="80" rx="20"/><g class="ico"><path d="M0 -20 C 8 -8, 14 0, 14 7 a14 14 0 0 1 -28 0 C -14 0, -8 -8, 0 -20 Z"/><path d="M-6 8 a6 6 0 0 0 6 6"/></g><text class="nl" y="62">Your field</text><text class="ns" y="80">Water all day</text></g></svg></div>
+      </article>
+    </div>
+  </div>
+</section>
+
+<section class="section day" id="day" aria-labelledby="day-h">
+  <div class="wrap day-wrap">
+    <div class="day-text">
+      <h2 id="day-h" data-split>A day on solar, hour by hour</h2>
+      <ol class="day-steps">
+        <li><b>Morning</b><span>Panels wake up with the sun. The battery has carried the house through the night.</span></li>
+        <li><b>Midday</b><span>The roof makes far more than the house uses. The battery fills and the extra goes to the grid.</span></li>
+        <li><b>Evening</b><span>The sun has gone and the lights and fans are on. The battery is doing the work.</span></li>
+        <li><b>Night</b><span>Still about two-thirds full. Tomorrow’s sun tops it up again.</span></li>
+      </ol>
+    </div>
+    <figure class="day-fig">
+      <div class="day-read" aria-live="off">
+        <div><span>Time</span><b id="dr-time">6:00 am</b></div>
+        <div><span class="k k-sun">Solar</span><b id="dr-sun">0.0 kW</b></div>
+        <div><span class="k k-home">Home uses</span><b id="dr-home">0.0 kW</b></div>
+        <div><span class="k k-bat">Battery</span><b id="dr-bat">35%</b></div>
+      </div>
+      <svg class="day-svg" viewBox="0 0 800 400" role="img" aria-labelledby="day-cap">
+<defs><linearGradient id="dg-sun" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#F2B544" stop-opacity=".55"/><stop offset="1" stop-color="#F2B544" stop-opacity="0"/></linearGradient>
+<linearGradient id="dg-bat" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#7BD389" stop-opacity=".4"/><stop offset="1" stop-color="#7BD389" stop-opacity="0"/></linearGradient>
+<clipPath id="day-clip"><rect id="day-clip-r" x="0" y="0" width="800" height="400"/></clipPath></defs>
+<text class="ax t" x="56" y="12">Power, kW</text><text class="ax t" x="56" y="274">Battery charge</text>
+<path class="g" d="M56 236.0 H784"/><text class="ax" x="46" y="240.0" text-anchor="end">0</text><path class="g" d="M56 193.6 H784"/><text class="ax" x="46" y="197.6" text-anchor="end">1</text><path class="g" d="M56 151.2 H784"/><text class="ax" x="46" y="155.2" text-anchor="end">2</text><path class="g" d="M56 108.8 H784"/><text class="ax" x="46" y="112.8" text-anchor="end">3</text><path class="g" d="M56 66.4 H784"/><text class="ax" x="46" y="70.4" text-anchor="end">4</text><path class="g" d="M56 24.0 H784"/><text class="ax" x="46" y="28.0" text-anchor="end">5</text><path class="g" d="M56 356.0 H784"/><text class="ax" x="46" y="360.0" text-anchor="end">0%</text><path class="g" d="M56 321.0 H784"/><text class="ax" x="46" y="325.0" text-anchor="end">50%</text><path class="g" d="M56 286.0 H784"/><text class="ax" x="46" y="290.0" text-anchor="end">100%</text><text class="ax" x="56.0" y="384" text-anchor="middle">12 am</text><text class="ax odd" x="147.0" y="384" text-anchor="middle">3 am</text><text class="ax" x="238.0" y="384" text-anchor="middle">6 am</text><text class="ax odd" x="329.0" y="384" text-anchor="middle">9 am</text><text class="ax" x="420.0" y="384" text-anchor="middle">12 pm</text><text class="ax odd" x="511.0" y="384" text-anchor="middle">3 pm</text><text class="ax" x="602.0" y="384" text-anchor="middle">6 pm</text><text class="ax odd" x="693.0" y="384" text-anchor="middle">9 pm</text><text class="ax" x="784.0" y="384" text-anchor="middle">12 am</text>
+<g clip-path="url(#day-clip)">
+<path class="a-sun" d="M56.0 236.0 L63.6 236.0 L71.2 236.0 L78.8 236.0 L86.3 236.0 L93.9 236.0 L101.5 236.0 L109.1 236.0 L116.7 236.0 L124.2 236.0 L131.8 236.0 L139.4 236.0 L147.0 236.0 L154.6 236.0 L162.2 236.0 L169.8 236.0 L177.3 236.0 L184.9 236.0 L192.5 236.0 L200.1 236.0 L207.7 236.0 L215.2 236.0 L222.8 236.0 L230.4 236.0 L238.0 236.0 L245.6 228.0 L253.2 216.1 L260.8 203.6 L268.3 190.9 L275.9 178.2 L283.5 165.7 L291.1 153.6 L298.7 142.0 L306.2 131.0 L313.8 120.7 L321.4 111.1 L329.0 102.3 L336.6 94.3 L344.2 87.1 L351.8 80.8 L359.3 75.1 L366.9 70.3 L374.5 66.2 L382.1 62.7 L389.7 59.9 L397.2 57.7 L404.8 56.1 L412.4 55.0 L420.0 54.6 L427.6 54.6 L435.2 55.2 L442.8 56.4 L450.3 58.1 L457.9 60.4 L465.5 63.3 L473.1 66.9 L480.7 71.2 L488.2 76.2 L495.8 82.0 L503.4 88.5 L511.0 95.9 L518.6 104.0 L526.2 112.9 L533.8 122.7 L541.3 133.1 L548.9 144.3 L556.5 156.0 L564.1 168.2 L571.7 180.7 L579.2 193.5 L586.8 206.2 L594.4 218.6 L602.0 230.2 L609.6 236.0 L617.2 236.0 L624.8 236.0 L632.3 236.0 L639.9 236.0 L647.5 236.0 L655.1 236.0 L662.7 236.0 L670.2 236.0 L677.8 236.0 L685.4 236.0 L693.0 236.0 L700.6 236.0 L708.2 236.0 L715.8 236.0 L723.3 236.0 L730.9 236.0 L738.5 236.0 L746.1 236.0 L753.7 236.0 L761.2 236.0 L768.8 236.0 L776.4 236.0 L784.0 236.0 L784.0 236 L56 236 Z"/><path class="l-sun" d="M56.0 236.0 L63.6 236.0 L71.2 236.0 L78.8 236.0 L86.3 236.0 L93.9 236.0 L101.5 236.0 L109.1 236.0 L116.7 236.0 L124.2 236.0 L131.8 236.0 L139.4 236.0 L147.0 236.0 L154.6 236.0 L162.2 236.0 L169.8 236.0 L177.3 236.0 L184.9 236.0 L192.5 236.0 L200.1 236.0 L207.7 236.0 L215.2 236.0 L222.8 236.0 L230.4 236.0 L238.0 236.0 L245.6 228.0 L253.2 216.1 L260.8 203.6 L268.3 190.9 L275.9 178.2 L283.5 165.7 L291.1 153.6 L298.7 142.0 L306.2 131.0 L313.8 120.7 L321.4 111.1 L329.0 102.3 L336.6 94.3 L344.2 87.1 L351.8 80.8 L359.3 75.1 L366.9 70.3 L374.5 66.2 L382.1 62.7 L389.7 59.9 L397.2 57.7 L404.8 56.1 L412.4 55.0 L420.0 54.6 L427.6 54.6 L435.2 55.2 L442.8 56.4 L450.3 58.1 L457.9 60.4 L465.5 63.3 L473.1 66.9 L480.7 71.2 L488.2 76.2 L495.8 82.0 L503.4 88.5 L511.0 95.9 L518.6 104.0 L526.2 112.9 L533.8 122.7 L541.3 133.1 L548.9 144.3 L556.5 156.0 L564.1 168.2 L571.7 180.7 L579.2 193.5 L586.8 206.2 L594.4 218.6 L602.0 230.2 L609.6 236.0 L617.2 236.0 L624.8 236.0 L632.3 236.0 L639.9 236.0 L647.5 236.0 L655.1 236.0 L662.7 236.0 L670.2 236.0 L677.8 236.0 L685.4 236.0 L693.0 236.0 L700.6 236.0 L708.2 236.0 L715.8 236.0 L723.3 236.0 L730.9 236.0 L738.5 236.0 L746.1 236.0 L753.7 236.0 L761.2 236.0 L768.8 236.0 L776.4 236.0 L784.0 236.0"/><path class="l-home" d="M56.0 216.9 L63.6 216.9 L71.2 216.9 L78.8 216.9 L86.3 216.9 L93.9 216.9 L101.5 216.9 L109.1 216.9 L116.7 216.9 L124.2 216.9 L131.8 216.9 L139.4 216.9 L147.0 216.9 L154.6 216.9 L162.2 216.9 L169.8 216.9 L177.3 216.9 L184.9 216.9 L192.5 216.9 L200.1 216.9 L207.7 216.7 L215.2 216.4 L222.8 215.6 L230.4 213.9 L238.0 211.1 L245.6 206.5 L253.2 200.3 L260.8 193.0 L268.3 185.9 L275.9 180.7 L283.5 178.8 L291.1 180.7 L298.7 185.9 L306.2 193.0 L313.8 200.3 L321.4 206.5 L329.0 211.1 L336.6 213.9 L344.2 215.6 L351.8 216.4 L359.3 216.7 L366.9 216.9 L374.5 216.9 L382.1 216.9 L389.7 216.9 L397.2 216.9 L404.8 216.9 L412.4 216.9 L420.0 216.9 L427.6 216.9 L435.2 216.9 L442.8 216.9 L450.3 216.9 L457.9 216.9 L465.5 216.9 L473.1 216.9 L480.7 216.9 L488.2 216.9 L495.8 216.9 L503.4 216.9 L511.0 216.9 L518.6 216.9 L526.2 216.8 L533.8 216.7 L541.3 216.5 L548.9 216.1 L556.5 215.4 L564.1 214.2 L571.7 212.4 L579.2 209.6 L586.8 205.8 L594.4 200.7 L602.0 194.5 L609.6 187.4 L617.2 180.0 L624.8 172.9 L632.3 167.0 L639.9 163.2 L647.5 161.8 L655.1 163.2 L662.7 167.0 L670.2 172.9 L677.8 180.0 L685.4 187.4 L693.0 194.5 L700.6 200.7 L708.2 205.8 L715.8 209.6 L723.3 212.4 L730.9 214.2 L738.5 215.4 L746.1 216.1 L753.7 216.5 L761.2 216.7 L768.8 216.8 L776.4 216.9 L784.0 216.9"/>
+<path class="a-bat" d="M56.0 310.5 L63.6 311.4 L71.2 312.2 L78.8 313.1 L86.3 314.0 L93.9 314.9 L101.5 315.8 L109.1 316.6 L116.7 317.5 L124.2 318.4 L131.8 319.2 L139.4 320.1 L147.0 321.0 L154.6 321.9 L162.2 322.8 L169.8 323.6 L177.3 324.5 L184.9 325.4 L192.5 326.2 L200.1 327.1 L207.7 328.0 L215.2 328.9 L222.8 329.8 L230.4 330.6 L238.0 331.5 L245.6 331.5 L253.2 331.5 L260.8 331.5 L268.3 331.5 L275.9 331.4 L283.5 331.0 L291.1 330.4 L298.7 329.5 L306.2 328.5 L313.8 327.3 L321.4 325.9 L329.0 324.4 L336.6 322.7 L344.2 320.9 L351.8 319.1 L359.3 317.1 L366.9 315.1 L374.5 313.0 L382.1 310.9 L389.7 308.8 L397.2 306.6 L404.8 304.5 L412.4 302.4 L420.0 300.4 L427.6 298.4 L435.2 296.6 L442.8 294.8 L450.3 293.1 L457.9 291.6 L465.5 290.2 L473.1 289.0 L480.7 288.0 L488.2 287.1 L495.8 286.5 L503.4 286.1 L511.0 286.0 L518.6 286.0 L526.2 286.0 L533.8 286.0 L541.3 286.0 L548.9 286.0 L556.5 286.0 L564.1 286.0 L571.7 286.0 L579.2 286.0 L586.8 286.0 L594.4 286.0 L602.0 286.0 L609.6 288.5 L617.2 290.8 L624.8 292.9 L632.3 294.8 L639.9 296.5 L647.5 298.0 L655.1 299.4 L662.7 300.6 L670.2 301.8 L677.8 302.8 L685.4 303.7 L693.0 304.6 L700.6 305.4 L708.2 306.0 L715.8 306.7 L723.3 307.2 L730.9 307.7 L738.5 308.2 L746.1 308.6 L753.7 309.0 L761.2 309.3 L768.8 309.7 L776.4 309.9 L784.0 310.2 L784.0 356 L56 356 Z"/><path class="l-bat" d="M56.0 310.5 L63.6 311.4 L71.2 312.2 L78.8 313.1 L86.3 314.0 L93.9 314.9 L101.5 315.8 L109.1 316.6 L116.7 317.5 L124.2 318.4 L131.8 319.2 L139.4 320.1 L147.0 321.0 L154.6 321.9 L162.2 322.8 L169.8 323.6 L177.3 324.5 L184.9 325.4 L192.5 326.2 L200.1 327.1 L207.7 328.0 L215.2 328.9 L222.8 329.8 L230.4 330.6 L238.0 331.5 L245.6 331.5 L253.2 331.5 L260.8 331.5 L268.3 331.5 L275.9 331.4 L283.5 331.0 L291.1 330.4 L298.7 329.5 L306.2 328.5 L313.8 327.3 L321.4 325.9 L329.0 324.4 L336.6 322.7 L344.2 320.9 L351.8 319.1 L359.3 317.1 L366.9 315.1 L374.5 313.0 L382.1 310.9 L389.7 308.8 L397.2 306.6 L404.8 304.5 L412.4 302.4 L420.0 300.4 L427.6 298.4 L435.2 296.6 L442.8 294.8 L450.3 293.1 L457.9 291.6 L465.5 290.2 L473.1 289.0 L480.7 288.0 L488.2 287.1 L495.8 286.5 L503.4 286.1 L511.0 286.0 L518.6 286.0 L526.2 286.0 L533.8 286.0 L541.3 286.0 L548.9 286.0 L556.5 286.0 L564.1 286.0 L571.7 286.0 L579.2 286.0 L586.8 286.0 L594.4 286.0 L602.0 286.0 L609.6 288.5 L617.2 290.8 L624.8 292.9 L632.3 294.8 L639.9 296.5 L647.5 298.0 L655.1 299.4 L662.7 300.6 L670.2 301.8 L677.8 302.8 L685.4 303.7 L693.0 304.6 L700.6 305.4 L708.2 306.0 L715.8 306.7 L723.3 307.2 L730.9 307.7 L738.5 308.2 L746.1 308.6 L753.7 309.0 L761.2 309.3 L768.8 309.7 L776.4 309.9 L784.0 310.2"/>
+</g>
+<g id="day-head"><path class="head" d="M0 18 V360"/><circle class="d-sun" r="5" cy="0"/><circle class="d-home" r="5" cy="0"/><circle class="d-bat" r="5" cy="0"/></g>
+</svg>
+      <figcaption id="day-cap">A home with 6.6 kW of panels and a 10 kWh battery on a clear November day near Erode. Solar output and home use in kW; battery charge in %.</figcaption>
+    </figure>
+  </div>
+</section>
 
 <section class="section" id="bill" aria-labelledby="bill-h">
   <div class="wrap bill-wrap">
@@ -136,8 +221,8 @@
       <div class="bill-row solar"><span>Made by a 3 kW roof</span><b data-b="solar">−792</b></div>
       <div class="bill-row"><span>Units left to pay for</span><b data-b="left">4</b></div>
       <div class="bill-total"><span>You pay</span><b data-b="total">₹0</b></div>
-      <div class="paid on" aria-hidden="true">Paid by<br>the sun</div>
-      <p class="fine" style="margin-top:14px">TNEB home tariff and 4.4 units per kW a day around Erode. Your free site visit gives the exact figures.</p>
+      <p class="paid on" aria-hidden="true">Covered by your roof</p>
+      <p class="fine">TNEB home tariff and 4.4 units per kW a day around Erode. Your free site visit gives the exact figures.</p>
     </div>
   </div>
 </section>
@@ -154,8 +239,8 @@
     </div>
     <div class="countdown" id="psg-left"><b id="psg-days">—</b><span>days left in this phase, which runs till 31 March 2027</span></div>
     <div class="sub-cta">
-      <button type="button" class="btn btn-sun btn-lg" data-lead="home" data-source="subsidy" data-title="Check my subsidy">Check if my home qualifies</button>
-      <a class="btn btn-ghost btn-lg" data-wa="Hi Sensoper, I’d like to know about the PM Surya Ghar subsidy for my home." href="https://wa.me/919043547047">Ask on WhatsApp</a>
+      <button type="button" class="btn btn-gold btn-lg" data-lead="home" data-source="subsidy" data-title="Check my subsidy">Check if my home qualifies</button>
+      <a class="btn btn-line btn-lg" data-wa="Hi Sensoper, I’d like to know about the PM Surya Ghar subsidy for my home." href="https://wa.me/919043547047">Ask on WhatsApp</a>
     </div>
   </div>
 </section>
@@ -169,11 +254,10 @@
     <div class="calc-shell" id="calc" data-reveal>
       <div class="calc-in">
         <div class="seg" role="tablist" aria-label="Where will the solar go?">
-          <button type="button" role="tab" aria-selected="true" data-mode="home"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M3.5 11L12 4l8.5 7"/><path d="M5.5 9.5V20h13V9.5"/><path d="M10 20v-5h4v5"/></svg>Home</button>
-          <button type="button" role="tab" aria-selected="false" data-mode="farm"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 3.5c3.2 4 5.5 7.2 5.5 10a5.5 5.5 0 0 1-11 0c0-2.8 2.3-6 5.5-10z"/></svg>Farm pump</button>
-          <button type="button" role="tab" aria-selected="false" data-mode="business"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M3 20V10l5 3V10l5 3V5h4v15z"/><path d="M3 20h18"/></svg>Business</button>
+          <button type="button" role="tab" aria-selected="true" data-mode="home"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M3.5 11L12 4l8.5 7"/><path d="M5.5 9.5V20h13V9.5"/><path d="M10 20v-5h4v5"/></svg>Home</button>
+          <button type="button" role="tab" aria-selected="false" data-mode="farm"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M12 3.5c3.2 4 5.5 7.2 5.5 10a5.5 5.5 0 0 1-11 0c0-2.8 2.3-6 5.5-10z"/></svg>Farm pump</button>
+          <button type="button" role="tab" aria-selected="false" data-mode="business"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M3 20V10l5 3V10l5 3V5h4v15z"/><path d="M3 20h18"/></svg>Business</button>
         </div>
-
         <div class="calc-pane row-gap" data-pane="home">
           <div>
             <label class="field-label" for="c-bill">Your last EB bill (2 months) <output data-out="bill" for="c-bill">₹4,000</output></label>
@@ -200,11 +284,9 @@
             <p class="help">Factories, shops, schools, hospitals and offices.</p>
           </div>
         </div>
-
         <button type="button" class="btn btn-leaf btn-lg btn-block" id="calc-cta" style="margin-top:26px">Get my exact quote</button>
         <p class="fine" style="margin-top:10px;text-align:center">Free site visit, no obligation.</p>
       </div>
-
       <div class="result" aria-live="polite">
         <div class="roof">
           <span class="roof-cap" data-out="panels-cap"></span>
@@ -214,8 +296,8 @@
               <rect class="panel-cell" x="0" y="21" width="29" height="17" rx="2"/><rect class="panel-cell" x="32" y="21" width="29" height="17" rx="2"/><rect class="panel-cell" x="64" y="21" width="29" height="17" rx="2"/><rect class="panel-cell" x="96" y="21" width="29" height="17" rx="2"/><rect class="panel-cell" x="128" y="21" width="29" height="17" rx="2"/><rect class="panel-cell" x="160" y="21" width="29" height="17" rx="2"/><rect class="panel-cell" x="192" y="21" width="29" height="17" rx="2"/><rect class="panel-cell" x="224" y="21" width="29" height="17" rx="2"/>
               <rect class="panel-cell" x="0" y="42" width="29" height="17" rx="2"/><rect class="panel-cell" x="32" y="42" width="29" height="17" rx="2"/><rect class="panel-cell" x="64" y="42" width="29" height="17" rx="2"/><rect class="panel-cell" x="96" y="42" width="29" height="17" rx="2"/><rect class="panel-cell" x="128" y="42" width="29" height="17" rx="2"/><rect class="panel-cell" x="160" y="42" width="29" height="17" rx="2"/><rect class="panel-cell" x="192" y="42" width="29" height="17" rx="2"/><rect class="panel-cell" x="224" y="42" width="29" height="17" rx="2"/>
             </g>
-            <path d="M6 100h288" stroke="#B9C8D6" stroke-width="5" stroke-linecap="round"/>
-            <rect x="12" y="102" width="276" height="30" fill="#E3EBF3"/>
+            <path d="M6 100h288" stroke="#B9C3CF" stroke-width="4" stroke-linecap="round"/>
+            <rect x="12" y="102" width="276" height="30" fill="#E7ECF1"/>
           </svg>
         </div>
         <div class="res-main"><p class="muted small" data-out="monthly-label">Saved on your EB bill each month</p><p class="big-num" data-out="monthly">₹2,000</p></div>
@@ -226,7 +308,7 @@
           <div hidden><dt>After subsidy</dt><dd data-out="net"></dd></div>
           <div hidden><dt>Pays for itself in</dt><dd data-out="payback"></dd></div>
           <div><dt>Saved over 25 years</dt><dd data-out="life"></dd></div>
-          <div class="wide"><dt>Space</dt><dd style="font-family:var(--body);font-size:1rem;font-weight:600;letter-spacing:0" data-out="roof"></dd></div>
+          <div class="wide"><dt>Space</dt><dd class="plain" data-out="roof"></dd></div>
         </dl>
         <p class="res-note" data-out="note"></p>
       </div>
@@ -240,105 +322,32 @@
     <p>Five steps. We take care of every one of them.</p>
   </div>
   <div class="how-track" id="how-track">
-    <article class="step"><span class="n" aria-hidden="true">1</span><h3>Free site visit</h3><p>We check your roof, shade, wiring and EB bill.</p></article>
-    <article class="step"><span class="n" aria-hidden="true">2</span><h3>Design and quote</h3><p>Panel layout, system size and a clear price with the subsidy shown.</p></article>
-    <article class="step"><span class="n" aria-hidden="true">3</span><h3>Installation</h3><p>Structure, panels, inverter, earthing and lightning arrester, fitted by our crew.</p></article>
-    <article class="step"><span class="n" aria-hidden="true">4</span><h3>Net meter and subsidy</h3><p>We apply to the electricity board and the PM Surya Ghar portal for you.</p></article>
-    <article class="step"><span class="n" aria-hidden="true">5</span><h3>Care for years</h3><p>Service, cleaning and AMC — all visible in your own customer login.</p></article>
+    <article class="step"><span class="n" aria-hidden="true">01</span><h3>Free site visit</h3><p>We check your roof, shade, wiring and EB bill.</p></article>
+    <article class="step"><span class="n" aria-hidden="true">02</span><h3>Design and quote</h3><p>Panel layout, system size and a clear price with the subsidy shown.</p></article>
+    <article class="step"><span class="n" aria-hidden="true">03</span><h3>Installation</h3><p>Structure, panels, inverter, earthing and lightning arrester, fitted by our crew.</p></article>
+    <article class="step"><span class="n" aria-hidden="true">04</span><h3>Net meter and subsidy</h3><p>We apply to the electricity board and the PM Surya Ghar portal for you.</p></article>
+    <article class="step"><span class="n" aria-hidden="true">05</span><h3>Care for years</h3><p>Service, cleaning and AMC — all visible in your own customer login.</p></article>
     <article class="step step-cta"><h3>Step one is a phone call.</h3><p>Tell us where you are. We’ll fix a time for the free site visit.</p><button type="button" class="btn btn-leaf btn-lg" data-lead="quiz" data-source="how" data-title="Book my free site visit">Book my free site visit</button></article>
   </div>
   <div class="how-bar" aria-hidden="true"><i></i></div>
 </section>
 
-<section class="section" id="solutions" aria-labelledby="sol-h">
-  <div class="wrap">
-    <div class="section-head">
-      <h2 id="sol-h" data-split>Solar for how you use power</h2>
-      <p>Homes, farms and businesses use power differently. We design each system around your bill, your roof and your supply.</p>
-    </div>
-    <div class="stack">
-      <article class="scard">
-        <span class="tag-big">Homes</span>
-        <h3>Cut the EB bill. Claim the subsidy.</h3>
-        <p>On-grid rooftop solar with net metering, sized from your bill.</p>
-        <ul>
-          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.2 4.2L19 7"/></svg>Up to ₹78,000 PM Surya Ghar subsidy</li>
-          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.2 4.2L19 7"/></svg>Subsidy and net-meter paperwork done for you</li>
-          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.2 4.2L19 7"/></svg>Hybrid option with a battery for power cuts</li>
-        </ul>
-        <button type="button" class="btn btn-leaf btn-lg" data-lead="home" data-source="solutions">Get my home plan</button>
-        <svg class="art" viewBox="0 0 320 240" aria-hidden="true"><path d="M40 120 160 40l120 80" fill="#E7F3DA"/><rect x="60" y="112" width="200" height="110" rx="6" fill="#fff" stroke="#C9D8C0" stroke-width="3"/><g transform="translate(92 70) skewX(-24)"><rect width="34" height="22" rx="3" fill="#1F4F8A"/><rect x="38" width="34" height="22" rx="3" fill="#1F4F8A"/><rect x="76" width="34" height="22" rx="3" fill="#1F4F8A"/><rect y="26" width="34" height="22" rx="3" fill="#2A66AE"/><rect x="38" y="26" width="34" height="22" rx="3" fill="#2A66AE"/><rect x="76" y="26" width="34" height="22" rx="3" fill="#2A66AE"/></g><rect x="90" y="146" width="40" height="34" rx="4" fill="#FFD772"/><rect x="190" y="146" width="40" height="34" rx="4" fill="#FFD772"/><rect x="142" y="160" width="36" height="62" rx="4" fill="#8B5E3C"/><circle cx="268" cy="44" r="26" fill="#FFB020"/></svg>
-      </article>
-      <article class="scard">
-        <span class="tag-big">Farms</span>
-        <h3>Water all day, without diesel.</h3>
-        <p>Solar pumps and controllers that run straight off the sun.</p>
-        <ul>
-          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.2 4.2L19 7"/></svg>Solar pumps from 3 to 10 HP</li>
-          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.2 4.2L19 7"/></svg>No waiting for three-phase supply</li>
-          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.2 4.2L19 7"/></svg>PM-KUSUM eligibility checked for you</li>
-        </ul>
-        <button type="button" class="btn btn-leaf btn-lg" data-lead="farm" data-source="solutions">Plan my solar pump</button>
-        <svg class="art" viewBox="0 0 320 240" aria-hidden="true"><path d="M0 200c60-14 120-14 180 0s100 14 140 0v40H0z" fill="#9BCB5A"/><g transform="translate(150 50) skewX(-18)"><rect width="56" height="34" rx="3" fill="#1F4F8A"/><rect x="60" width="56" height="34" rx="3" fill="#1F4F8A"/><rect y="38" width="56" height="34" rx="3" fill="#2A66AE"/><rect x="60" y="38" width="56" height="34" rx="3" fill="#2A66AE"/></g><path d="M196 128v70M236 128v70" stroke="#9AA6B2" stroke-width="6" stroke-linecap="round"/><rect x="40" y="150" width="54" height="40" rx="8" fill="#43851A"/><path d="M94 160h26c20 0 30 10 34 26" fill="none" stroke="#9AA6B2" stroke-width="8" stroke-linecap="round"/><path d="M156 188c6 10 8 20 4 30M166 186c10 8 14 18 12 30M148 190c2 10 0 20-6 28" fill="none" stroke="#5BB4F0" stroke-width="5" stroke-linecap="round"/><circle cx="60" cy="50" r="24" fill="#FFB020"/></svg>
-      </article>
-      <article class="scard">
-        <span class="tag-big">Businesses</span>
-        <h3>Lower running costs, every month.</h3>
-        <p>For factories, shops, schools, hospitals and offices.</p>
-        <ul>
-          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.2 4.2L19 7"/></svg>On-grid systems sized to your load</li>
-          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.2 4.2L19 7"/></svg>Generation readings and service visits</li>
-          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.2 4.2L19 7"/></svg>AMC and panel cleaning plans</li>
-        </ul>
-        <button type="button" class="btn btn-leaf btn-lg" data-lead="business" data-source="solutions">Talk about my site</button>
-        <svg class="art" viewBox="0 0 320 240" aria-hidden="true"><path d="M30 220V120l60 34v-34l60 34v-34l60 34V70h50v150z" fill="#fff" stroke="#B8CBE6" stroke-width="3" stroke-linejoin="round"/><g transform="translate(40 92) skewX(-30)"><rect width="40" height="14" rx="2" fill="#1F4F8A"/><rect x="60" width="40" height="14" rx="2" fill="#1F4F8A"/><rect x="120" width="40" height="14" rx="2" fill="#1F4F8A"/></g><rect x="60" y="170" width="30" height="24" rx="3" fill="#FFD772"/><rect x="120" y="170" width="30" height="24" rx="3" fill="#FFD772"/><rect x="180" y="170" width="30" height="24" rx="3" fill="#FFD772"/><rect x="226" y="40" width="18" height="34" fill="#B8CBE6"/><path d="M0 220h320" stroke="#B8CBE6" stroke-width="4"/></svg>
-      </article>
-      <article class="scard">
-        <span class="tag-big">Backup and service</span>
-        <h3>Batteries, cleaning and quick repairs.</h3>
-        <p>For systems we fitted and systems someone else fitted.</p>
-        <ul>
-          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.2 4.2L19 7"/></svg>Lithium batteries, inverters and UPS</li>
-          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.2 4.2L19 7"/></svg>Panel cleaning and AMC plans</li>
-          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.2 4.2L19 7"/></svg>EV chargers at home or at work</li>
-        </ul>
-        <button type="button" class="btn btn-sun btn-lg" data-lead="service" data-source="solutions" data-title="Book a service visit">Book a service visit</button>
-        <svg class="art" viewBox="0 0 320 240" aria-hidden="true"><rect x="70" y="50" width="110" height="170" rx="18" fill="none" stroke="#A6E36A" stroke-width="8"/><rect x="104" y="30" width="42" height="20" rx="6" fill="#A6E36A"/><rect x="84" y="120" width="82" height="86" rx="8" fill="#58A024"/><path d="M130 136l-14 22h18l-12 22" fill="none" stroke="#fff" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/><path d="M236 92a26 26 0 0 0-34 34l-42 42 18 18 42-42a26 26 0 0 0 34-34l-15 15-16-4-4-16z" fill="#FFB020"/></svg>
-      </article>
-    </div>
+<section class="brands" id="brands" aria-labelledby="brands-h">
+  <div class="ribbons" aria-hidden="true">
+    <div class="ribbon r-a"><div class="track"><span>Waaree</span><span>Vikram Solar</span><span>Avaada</span><span>Asha Power</span><span>Polycab</span><span>SolarEdge</span><span>Torque Lithium</span><span>Aviva</span><span>Textro</span><span>Waaree</span><span>Vikram Solar</span><span>Avaada</span><span>Asha Power</span><span>Polycab</span><span>SolarEdge</span><span>Torque Lithium</span><span>Aviva</span><span>Textro</span></div></div>
+    <div class="ribbon r-b"><div class="track"><span>TOPCon panels</span><span>Hybrid inverters</span><span>On-grid inverters</span><span>Lithium batteries</span><span>Solar pump controllers</span><span>UPS</span><span>Optimisers</span><span>TOPCon panels</span><span>Hybrid inverters</span><span>On-grid inverters</span><span>Lithium batteries</span><span>Solar pump controllers</span><span>UPS</span><span>Optimisers</span></div></div>
   </div>
-</section>
-
-<section class="section night" id="backup" aria-labelledby="night-h">
-  <div class="wrap night-wrap">
-    <div>
-      <h2 id="night-h" data-split>Power cut at 9 pm? Your fans keep turning.</h2>
-      <p class="lead">A hybrid system stores the afternoon’s extra sunshine in a lithium battery. When the grid goes off, lights, fans and the fridge keep running — no noise, no diesel.</p>
-      <p class="live-chip" id="live-chip"><i aria-hidden="true"></i><span id="live-text">A 3 kW roof in Perundurai, right now</span></p>
-      <div style="margin-top:26px"><button type="button" class="btn btn-sun btn-lg" data-lead="battery" data-source="backup">Plan backup for my home</button></div>
+  <div class="wrap brand-wrap">
+    <div class="section-head">
+      <h2 id="brands-h" data-split>Brands we deal with</h2>
+      <p>The same brands we keep in our Perundurai store and fit on our own sites.</p>
     </div>
-    <svg class="batt-scene" id="batt" viewBox="0 0 520 420" role="img" aria-label="A battery keeps a house lit through the night">
-      <defs>
-        <linearGradient id="b-fill" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#43851A"/><stop offset="1" stop-color="#A6E36A"/></linearGradient>
-        <radialGradient id="b-glow"><stop offset="0" stop-color="#FFD772" stop-opacity=".6"/><stop offset="1" stop-color="#FFD772" stop-opacity="0"/></radialGradient>
-        <clipPath id="b-clip"><rect x="354" y="98" width="112" height="232" rx="12"/></clipPath>
-      </defs>
-      <g class="b-stars" fill="#FFFFFF" opacity="0"><circle cx="40" cy="40" r="2"/><circle cx="170" cy="30" r="1.5"/><circle cx="250" cy="70" r="2"/><circle cx="300" cy="24" r="1.5"/><circle cx="210" cy="120" r="1.2"/><circle cx="30" cy="150" r="1.5"/></g>
-      <path class="b-moon" d="M110 34a30 30 0 1 0 24 50 24 24 0 1 1-24-50z" fill="#FFE7A6" opacity="0"/>
-      <circle cx="140" cy="290" r="150" fill="url(#b-glow)"/>
-      <path d="M30 230 140 150l110 80z" fill="#2E5C8A"/>
-      <rect x="50" y="226" width="180" height="140" rx="4" fill="#23486F"/>
-      <rect x="72" y="252" width="44" height="38" rx="4" fill="#FFD772"/><rect x="164" y="252" width="44" height="38" rx="4" fill="#FFD772"/>
-      <rect x="120" y="306" width="40" height="60" rx="4" fill="#FFC94D"/>
-      <g class="b-fan" transform="translate(94 271)"><path d="M0 0l-11-6M0 0l11-6M0 0v12" stroke="#23486F" stroke-width="3" stroke-linecap="round"/></g>
-      <path class="flow-on" d="M352 300 C 300 300, 280 320, 232 320" fill="none" stroke="#FFB020" stroke-width="5" stroke-linecap="round" stroke-dasharray="10 12"/>
-      <rect x="390" y="66" width="40" height="22" rx="6" fill="#58A024"/>
-      <rect x="342" y="86" width="136" height="256" rx="22" fill="#0F2747" stroke="#58A024" stroke-width="8"/>
-      <g clip-path="url(#b-clip)"><rect class="b-level" x="354" y="98" width="112" height="232" fill="url(#b-fill)"/></g>
-      <text class="b-pct" x="410" y="226" text-anchor="middle" fill="#FFFFFF" font-family="Unbounded, system-ui, sans-serif" font-weight="700" font-size="34">100%</text>
-      <text class="b-time" x="410" y="390" text-anchor="middle" fill="currentColor" font-family="Unbounded, system-ui, sans-serif" font-weight="700" font-size="22">7:00 pm</text>
-      <g transform="translate(60 386)"><rect width="118" height="28" rx="14" fill="#C2331F"/><text x="59" y="19" text-anchor="middle" fill="#FFFFFF" font-size="14" font-weight="700" font-family="system-ui, sans-serif">EB supply off</text></g>
-    </svg>
+    <div class="brand-grid">
+      <div class="bcol" data-reveal><h3>Solar panels</h3><ul><li>Waaree</li><li>Vikram Solar</li><li>Avaada</li></ul></div>
+      <div class="bcol" data-reveal><h3>Inverters</h3><ul><li>Asha Power</li><li>Polycab</li><li>SolarEdge</li></ul></div>
+      <div class="bcol" data-reveal><h3>Batteries and storage</h3><ul><li>Torque Lithium</li><li>Asha Power ESS</li><li>Aviva</li></ul></div>
+      <div class="bcol" data-reveal><h3>Solar pumps</h3><ul><li>Textro</li></ul></div>
+    </div>
   </div>
 </section>
 
@@ -346,31 +355,25 @@
   <div class="wrap">
     <p class="why-text" id="why-text">We’re a local team in Perundurai, backed by Sellandiamman Traders. We fit Indian-made panels, do the subsidy paperwork for you, and come back whenever you need us — for years.</p>
     <div class="pillars">
-      <div class="pillar" data-reveal><span class="pi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M3 20V9l9-5 9 5v11"/><path d="M8 20v-6h8v6"/></svg></span><h3>A name you already know</h3><p>Backed by Sellandiamman Traders, an established electrical materials business.</p></div>
-      <div class="pillar" data-reveal><span class="pi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M3 12h18M9 6v12M15 6v12"/></svg></span><h3>Indian-made panels</h3><p>DCR panels made in India and inverters from established brands.</p></div>
-      <div class="pillar" data-reveal><span class="pi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M13 3L5 13.5h6L10 21l8-10.5h-6z"/></svg></span><h3>Quick local service</h3><p>Our team is in Perundurai. Raise a request from your phone and follow it till it’s fixed.</p></div>
-      <div class="pillar" data-reveal><span class="pi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="6" y="3" width="12" height="18" rx="3"/><path d="M10 17h4"/></svg></span><h3>Your own customer login</h3><p>See your savings, units made, payments and service visits. <a href="https://sensoper.in/account/" data-to="account">Sign in</a></p></div>
+      <div class="pillar" data-reveal><span class="pi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M3 20V9l9-5 9 5v11"/><path d="M8 20v-6h8v6"/></svg></span><h3>A name you already know</h3><p>Backed by Sellandiamman Traders, an established electrical materials business.</p></div>
+      <div class="pillar" data-reveal><span class="pi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M3 12h18M9 6v12M15 6v12"/></svg></span><h3>Indian-made panels</h3><p>DCR panels made in India and inverters from established brands.</p></div>
+      <div class="pillar" data-reveal><span class="pi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M13 3L5 13.5h6L10 21l8-10.5h-6z"/></svg></span><h3>Quick local service</h3><p>Our team is in Perundurai. Raise a request from your phone and follow it till it’s fixed.</p></div>
+      <div class="pillar" data-reveal><span class="pi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><rect x="6" y="3" width="12" height="18" rx="3"/><path d="M10 17h4"/></svg></span><h3>Your own customer login</h3><p>See your savings, units made, payments and service visits. <a href="https://sensoper.in/account/" data-to="account">Sign in</a></p></div>
     </div>
   </div>
 </section>
 
-<section class="brands" aria-label="Brands we install and stock">
-  <p>Brands we install and stock</p>
-  <p class="sr">Waaree, Vikram Solar, Avada, Polycab, Asha Power, SolarEdge, Textro, Torque Lithium and Aviva.</p>
-  <div class="row r1" aria-hidden="true"><span>Waaree</span><span>Vikram Solar</span><span>Avada</span><span>Polycab</span><span>Asha Power</span><span>Waaree</span><span>Vikram Solar</span><span>Avada</span><span>Polycab</span><span>Asha Power</span></div>
-  <div class="row r2" aria-hidden="true"><span>SolarEdge</span><span>Textro</span><span>Torque Lithium</span><span>Aviva</span><span>SolarEdge</span><span>Textro</span><span>Torque Lithium</span><span>Aviva</span></div>
-</section>
-
-<section class="section" id="faq" aria-labelledby="faq-h">
+<section class="section faq-sec" id="faq" aria-labelledby="faq-h">
   <div class="wrap">
     <div class="section-head"><h2 id="faq-h" data-split>Questions people ask us</h2></div>
     <div class="faq">
+      <details><summary>Should I choose on-grid, off-grid or hybrid?</summary><p>On-grid is the cheapest per unit and gets the PM Surya Ghar subsidy, but it switches off in a power cut. Hybrid adds a battery so chosen loads keep running in a power cut. Off-grid has no grid connection at all and suits places where the supply is weak or missing. We suggest one after the site visit, from your bill and how often the power goes.</p></details>
       <details><summary>How much subsidy can I get?</summary><p>For homes, PM Surya Ghar pays ₹30,000 for 1 kW, ₹60,000 for 2 kW and ₹78,000 for 3 kW or more. It is paid into your bank account after the system is installed and inspected. We file the application on the national portal for you.</p></details>
       <details><summary>What size system do I need?</summary><p>Around Erode, each kW of panels makes about 4.4 units a day — roughly 130 units a month. Divide your monthly units by 130 for a starting size. The calculator above does this from your bill, and the site visit confirms it.</p></details>
+      <details><summary>How long does a lithium battery last?</summary><p>LiFePO4 batteries are made for thousands of charge cycles — many years of daily use. The exact cycle life and warranty depend on the brand and model; we show them on your quote.</p></details>
+      <details><summary>Can a solar pump run my existing borewell?</summary><p>Usually, yes. We check the depth, the water level and the pump size, then match the panels and the pump controller to it. PM-KUSUM subsidy depends on eligibility — we check that too.</p></details>
       <details><summary>How much roof space does it take?</summary><p>About 100 sq ft of shade-free roof for every kW. A 3 kW system needs about 300 sq ft. We mount panels on a raised structure so the terrace below stays usable.</p></details>
-      <details><summary>Will I have power during a power cut?</summary><p>An on-grid system switches off during a power cut, for the safety of the line workers. If you want backup, choose a hybrid system with a battery — it keeps chosen loads running.</p></details>
       <details><summary>How long does it take?</summary><p>Installation itself takes a few days once materials are on site. The net meter and subsidy steps depend on the electricity board’s timelines; we follow them up and you can track each step in your customer login.</p></details>
-      <details><summary>Do the panels need cleaning?</summary><p>Yes — dust lowers generation, especially in the dry months. A rinse every couple of weeks keeps output up. Our AMC plans include scheduled cleaning and check-ups.</p></details>
       <details><summary>Can I see how my system is doing?</summary><p>Yes. Every Sensoper customer can get a login to see their savings, units generated, CO₂ avoided, payments and service visits, and to raise a service request from their phone.</p></details>
     </div>
   </div>
@@ -386,15 +389,15 @@
         <label class="sr" for="f-phone">Your mobile number</label>
         <input id="f-phone" name="phone" type="tel" inputmode="numeric" autocomplete="tel-national" maxlength="14" placeholder="Mobile number">
         <input class="hp" name="website" tabindex="-1" autocomplete="off" aria-hidden="true">
-        <button class="btn btn-dark" type="submit">Get my free plan</button>
+        <button class="btn btn-gold" type="submit">Get my free plan</button>
       </form>
       <p class="quick-err" role="alert"></p>
     </div>
     <div class="final-side reach">
-      <a data-call href="tel:+919043547047"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2"/></svg><span><b>Call</b><span data-call-text data-call>+91 90435 47047</span></span></a>
-      <a data-wa href="https://wa.me/919043547047"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M4 19.5l1.3-3.8A8 8 0 1 1 8.4 18.6z"/><path d="M9.2 9.2c.3 1.9 2 3.6 3.9 4.1l1.1-1 1.7.8-.4 1.4c-3.5.2-6.9-3.2-6.8-6.6l1.4-.4.8 1.7z" fill="currentColor" stroke="none"/></svg><span><b>WhatsApp</b><span>Send photos of your roof or EB bill</span></span></a>
-      <a data-email href="mailto:info@sensoper.in"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M4 7l8 6 8-6"/></svg><span><b>Email</b><span data-email-text data-email>info@sensoper.in</span></span></a>
-      <a href="https://www.google.com/maps/search/?api=1&amp;query=Sensoper+Controls+%26+Renewables+Perundurai" target="_blank" rel="noopener"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 21s-7-6.2-7-11.5a7 7 0 0 1 14 0C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/></svg><span><b>Visit</b><span>518/3, Kunnathur – Perundurai Road, Perundurai, Tamil Nadu 638052</span></span></a>
+      <a data-call href="tel:+919043547047"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2"/></svg><span><b>Call</b><span data-call-text data-call>+91 90435 47047</span></span></a>
+      <a data-wa href="https://wa.me/919043547047"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M4 19.5l1.3-3.8A8 8 0 1 1 8.4 18.6z"/><path d="M9.2 9.2c.3 1.9 2 3.6 3.9 4.1l1.1-1 1.7.8-.4 1.4c-3.5.2-6.9-3.2-6.8-6.6l1.4-.4.8 1.7z" fill="currentColor" stroke="none"/></svg><span><b>WhatsApp</b><span>Send photos of your roof or EB bill</span></span></a>
+      <a data-email href="mailto:info@sensoper.in"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M4 7l8 6 8-6"/></svg><span><b>Email</b><span data-email-text data-email>info@sensoper.in</span></span></a>
+      <a href="https://www.google.com/maps/search/?api=1&amp;query=Sensoper+Controls+%26+Renewables+Perundurai" target="_blank" rel="noopener"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M12 21s-7-6.2-7-11.5a7 7 0 0 1 14 0C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/></svg><span><b>Visit</b><span>518/3, Kunnathur – Perundurai Road, Perundurai, Tamil Nadu 638052</span></span></a>
     </div>
   </div>
 </section>
@@ -408,11 +411,11 @@
         <p>Solar for homes, farms and businesses in and around Erode.</p>
         <p class="small">GSTIN 33AFTFS7681F1ZD</p>
       </div>
-      <div><h2>Explore</h2><ul><li><a href="#calculator">Savings calculator</a></li><li><a href="#subsidy">PM Surya Ghar subsidy</a></li><li><a href="#solutions">Solutions</a></li><li><a href="https://shop.sensoper.in/" data-to="shop">Shop</a></li><li><a href="#faq">Questions</a></li></ul></div>
+      <div><h2>Explore</h2><ul><li><a href="#systems">On-grid, off-grid and battery</a></li><li><a href="#sys-pump">Solar water pumps</a></li><li><a href="#calculator">Savings calculator</a></li><li><a href="#subsidy">PM Surya Ghar subsidy</a></li><li><a href="https://shop.sensoper.in/" data-to="shop">Shop</a></li></ul></div>
       <div><h2>Customers</h2><ul><li><a href="https://sensoper.in/account/" data-to="account">Customer login</a></li><li><a href="https://sensoper.in/account/" data-to="account">Raise a service request</a></li><li><a data-wa href="https://wa.me/919043547047">WhatsApp</a></li><li><a data-call href="tel:+919043547047">Call us</a></li></ul></div>
       <div><h2>Sensoper team</h2>
         <p class="small" style="margin-bottom:10px">Staff, partners and investors sign in to the Sensoper ERP here.</p>
-        <a class="foot-erp" href="https://quote.sensoper.in/login" data-to="erp"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>ERP login</a>
+        <a class="foot-erp" href="https://quote.sensoper.in/login" data-to="erp"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>ERP login</a>
       </div>
     </div>
     <div class="foot-legal"><span>© <span id="year">2026</span> Sensoper Controls &amp; Renewables, Perundurai</span><span>Savings and prices on this site are estimates; your quote has the exact figures.</span></div>
@@ -420,7 +423,7 @@
 </footer>
 
 <div class="mbar" id="mbar">
-  <a class="call" data-call href="tel:+919043547047" aria-label="Call Sensoper"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2"/></svg></a>
+  <a class="call" data-call href="tel:+919043547047" aria-label="Call Sensoper"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2"/></svg></a>
   <button type="button" class="btn btn-leaf" data-lead="quiz" data-source="mobile-bar">Get my free solar plan</button>
 </div>
 <aside aria-label="Chat with us"><a class="wa-float" data-wa href="https://wa.me/919043547047" aria-label="Chat with us on WhatsApp"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M4 19.5l1.3-3.8A8 8 0 1 1 8.4 18.6z"/><path d="M9.2 9.2c.3 1.9 2 3.6 3.9 4.1l1.1-1 1.7.8-.4 1.4c-3.5.2-6.9-3.2-6.8-6.6l1.4-.4.8 1.7z" fill="currentColor" stroke="none"/></svg><span>WhatsApp</span></a></aside>

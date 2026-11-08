@@ -193,7 +193,7 @@ export function openLead(ctx = {}) {
   const me = store.get('sp_me', {});
   Q = { source: 'quiz', ...ctx, name: me.name || '', phone: ctx.phone || me.phone || '', area: me.area || '' };
   if (ctx.calc) { Q.kind = ctx.calc.mode || ctx.kind || 'home'; Q.step = 'you'; }
-  else if (ctx.kind && ctx.kind !== 'other' && ctx.kind !== 'quiz') { Q.kind = ctx.kind; Q.step = BILL_OPTS[ctx.kind] ? 'bill' : 'you'; }
+  else if (ctx.kind && ctx.kind !== 'quiz') { Q.kind = ctx.kind; Q.step = BILL_OPTS[ctx.kind] ? 'bill' : 'you'; }   // 'other' and 'service' go straight to the details
   else Q.step = 'kind';
   const d = sheet('lead-sheet', '<div id="quiz"></div>');
   renderQuiz(d);
@@ -248,7 +248,7 @@ async function submitQuiz(f, d) {
   const answer = Q.billLabel ? `${BILL_OPTS[Q.kind].q.replace('?', '')}: ${Q.billLabel}` : '';
   try {
     const r = await api('/api/public/leads', { method: 'POST', body: {
-      name, phone, area: f.area.value, pincode: f.pincode.value, kind: Q.kind || 'home', message: [answer, f.message ? f.message.value : ''].filter(Boolean).join(' — '),
+      name, phone, area: f.area.value, pincode: f.pincode.value, kind: Q.kind || 'home', message: [Q.note, answer, f.message ? f.message.value : ''].filter(Boolean).join(' — '),
       source: Q.source || 'quiz', calc: (Q.est && Q.est.calc) || null, page: location.pathname + location.hash, utm: utm(), website: f.website.value } });
     store.set('sp_me', { name, phone, area: f.area.value.trim() });
     store.set('sp_lead_at', Date.now());
@@ -377,7 +377,7 @@ export function boot(where = 'site') {
     const b = e.target.closest('[data-lead]');
     if (!b) return;
     e.preventDefault();
-    openLead({ kind: b.dataset.lead || 'quiz', source: b.dataset.source || 'quiz', title: b.dataset.title });
+    openLead({ kind: b.dataset.lead || 'quiz', source: b.dataset.source || 'quiz', title: b.dataset.title, note: b.dataset.note });
   });
   $$('form[data-quick]').forEach(bindQuick);
   const y = $('#year'); if (y) y.textContent = new Date().getFullYear();

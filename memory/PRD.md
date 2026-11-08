@@ -456,6 +456,15 @@ See CHANGES.md for the full list. Highlights for the next agent:
   merged by phone within 30 days), then `openLead` quiz (kind → bill/pump → name/area, with estimate). New SOURCES:
   header, subsidy, how, solutions, backup, mobile-bar. LEAD_HITS 12 per 10 min per IP. Phone bar `#mbar`.
   dev-server gzips like nginx.
+- Premium pass (after "looks like kids animation"): hero is a three.js scene (website/src/hero3d.js → esbuild →
+  assets/hero3d.js, three 0.170): 8×24 instanced TOPCon panels (canvas cell texture, clearcoat), BESS + inverter cabinet,
+  sky shader with sun, stars, per-material envMap (RoomEnvironment PMREM) so shadows read; scroll p → hourAt → sun,
+  sky, camera (Catmull-Rom keyframes), flows (additive tube shader), battery bar. Loaded by dynamic import after load
+  (window.SP_HERO3D overrides the URL — the preview uses a blob), IntersectionObserver start/stop, 30 fps on phones.
+  Posters hero-{dawn,day}{,-m}.webp. Overlays: chapters, HUD (time, kW, battery), bill chip. New sections: proof
+  counters, #systems (4 sticky cards, gen'd SVG diagrams with SMIL pulses, data-note → lead message, source "systems"),
+  #day (24h chart, pinned on desktop), #brands (crossing ribbons + grid). Removed: cartoon SVG house, solutions, night.
+  Font Manrope variable (latin + ₹ subset). openLead: kind "other" goes straight to details.
 - Review fixes: staff may change/reset/join a client login only if every project on it is theirs (`_staff_may_change`),
   list filtered to own projects (`other_projects` count); reset no longer re-activates; `_clean` truncates before a
   linear tag regex, pydantic max_length on public bodies; repeat leads only fill empty fields (differences logged);

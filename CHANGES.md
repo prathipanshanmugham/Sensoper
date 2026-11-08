@@ -5,19 +5,22 @@
 A new public website whose main job is bringing in leads. Everything it collects lands in the ERP.
 
 ### On the website
-- **The home page is a story you scroll through.** It opens at night over an illustrated house near Erode. As the
-  visitor scrolls, the sun rises, the camera moves in, panels drop onto the roof, power flows to the meter, the
-  windows light up, and the EB bill counts down to ₹0 before a "₹78,000 back" stamp lands. Then come:
-  - **Why is your EB bill so high?** The TNEB slabs explained, with a bill that shrinks as the roof's units come off.
-  - **The subsidy**, with a giant ₹78,000 that fills with colour, the three slabs and a countdown to 31 March 2027.
-  - **The savings calculator.**
-  - **How it works**, five steps that slide sideways.
-  - **Solutions**, cards that stack as you scroll.
-  - **A night with a battery**, where the page turns dark and a battery runs down from 7 pm to 5 am.
-  - **Why us**, with the words lighting up as you read.
-  - A moving strip of brands, the FAQ and a sunny final call to action.
-  Anyone who has turned off animations on their phone sees the finished daytime picture instead. The animation
-  library (GSAP, free licence) is bundled with the site, not loaded from elsewhere.
+- **A premium 3D film opens the home page.** Rows of glass TOPCon panels and a white battery-and-inverter cabinet,
+  lit by a real sun that moves as the visitor scrolls: sunrise glinting off the glass, a high pass over the array at
+  noon, energy running into the cabinet, and the battery glowing under a starry sky after sunset. Readouts show the
+  time, what the roof is making and the battery level; four short captions tell the story; the EB bill counts down
+  to ₹0 at the end. The scene is drawn live (three.js, `website/src/hero3d.js`, built into `assets/hero3d.js`) and
+  loads after the page has shown — a still picture stands in until then, and for anyone who has turned animations off.
+- **Four ways to run on sunshine:** on-grid rooftop, off-grid, battery storage (BESS) and solar water pumps — each with
+  what it does, who it suits, what's in it, the brands, the subsidy and a diagram whose power lines draw themselves.
+  The cards stack as you scroll. Each card's button sends a lead marked with that system.
+- **A day on solar, hour by hour:** a 24-hour chart of solar output, home use and battery charge with a playhead that
+  follows the scroll (or the pointer).
+- **Brands we deal with:** two ribbons crossing the page (Waaree, Vikram Solar, Avaada, Asha Power, Polycab, SolarEdge,
+  Torque Lithium, Aviva, Textro) and the same brands listed by panels, inverters, batteries and pumps.
+- Also on the page: numbers that count up, why the EB bill is high, the subsidy with a countdown, the calculator, how
+  it works (sliding sideways), why us, FAQ (now including on-grid vs off-grid, batteries and pumps) and a final call
+  to action. One typeface (Manrope) and a calmer navy, white and sunlight-gold palette.
 - **White header with the logo**, a call button, **Get free quote**, and a reading-progress line.
 - **Leads first, everywhere.** The hero and the final section have a one-box form: type a mobile number, tap **Get
   my free plan**. The number is saved straight away, even if the visitor goes no further. A 3-tap quiz then asks
@@ -41,8 +44,8 @@ A new public website whose main job is bringing in leads. Everything it collects
   them, then choose their own. They see the same dashboard as the private link (savings, units, CO₂, payments,
   project steps, AMC, offers) for every project on their login, and can raise service requests.
 - **ERP login** in the footer of every page.
-- Fast and phone-first: no framework, about 130 KB compressed for the home page including the animation library,
-  under a second to first paint on slow 4G.
+- Fast and phone-first: no framework; the page shows in about a second on slow 4G, and the 3D scene (about 130 KB
+  compressed) loads afterwards and pauses when it's off screen. Phones draw it at 30 frames a second.
 
 ### In the ERP
 - New **Website** page under Sales & projects:
