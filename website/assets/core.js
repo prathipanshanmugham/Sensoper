@@ -1,9 +1,12 @@
 /* Sensoper website — shared by every page. No framework, no build step. */
 const HOST = location.hostname;
-export const LIVE = /(^|\.)sensoper\.in$/.test(HOST);
+// LIVE: the site has its own addresses (sensoper.in, www and shop). Anywhere else every page is on this one host:
+// quote.sensoper.in, where the site and the ERP share one address until sensoper.in's DNS moves, or a dev machine.
+export const LIVE = /^((www|shop)\.)?sensoper\.in$/.test(HOST);
+const WITH_ERP = /(^|\.)sensoper\.in$/.test(HOST);
 export const URLS = LIVE
   ? { home: 'https://sensoper.in/', shop: 'https://shop.sensoper.in/', account: 'https://sensoper.in/account/', erp: 'https://quote.sensoper.in/login' }
-  : { home: '/', shop: '/shop/', account: '/account/', erp: `${location.protocol}//${HOST}:3000/login` };
+  : { home: '/', shop: '/shop/', account: '/account/', erp: WITH_ERP ? '/login' : `${location.protocol}//${HOST}:3000/login` };
 
 export const ICON = {
   close: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>',

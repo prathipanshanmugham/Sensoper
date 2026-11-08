@@ -4,10 +4,35 @@ Your server already has `/root/Sensoper/deploy.sh`. It pulls the code, installs 
 copies the build to `/var/www/sensoper`, restarts the `sensoper` service and checks the live bundle. This release needs
 nothing new installed.
 
-## This release: the customer website (sensoper.in, shop.sensoper.in)
+## This release: the website and the ERP on quote.sensoper.in
 
-The backend and ERP deploy as usual (`/root/Sensoper/deploy.sh`). No new packages and no new settings. The public
-website is new. It needs a one-time setup: DNS, nginx and SSL.
+Until sensoper.in's DNS moves to this server, the website runs on quote.sensoper.in, next to the ERP:
+
+- `https://quote.sensoper.in/` is the website. `/shop/` is the shop and `/account/` is customer login.
+- `https://quote.sensoper.in/login` is the ERP, as before. So are `/dashboard` and everything else. The installed ERP
+  app on phones still opens the ERP.
+- On this address every link stays on it: **Shop** opens `/shop/`, and **ERP login** in the footer opens `/login`.
+
+No new packages and no new settings. On the server, as root:
+
+    cd /root/Sensoper && ./deploy.sh
+    bash website/deploy/deploy-website.sh
+    bash website/deploy/enable-on-quote.sh
+
+The last line runs once. It adds one `include` line to the quote.sensoper.in nginx file. It keeps a copy in
+`/root/nginx-backups` first, and if `nginx -t` doesn't accept the change, it puts the file back and reloads nothing.
+Running it again is safe. To make quote.sensoper.in the ERP only again: `bash website/deploy/enable-on-quote.sh --undo`.
+
+From then on, deploy with `./deploy.sh` and then `deploy-website.sh`. Or add the website line to `deploy.sh` once (step 1
+below). Then set the website up in the ERP and check it, as in steps 4 and 5 below, with quote.sensoper.in in place
+of sensoper.in.
+
+## When sensoper.in is ready: the website on its own addresses (sensoper.in, shop.sensoper.in)
+
+The backend and ERP deploy as usual (`/root/Sensoper/deploy.sh`). No new packages and no new settings. Moving the
+website to its own addresses needs a one-time setup: DNS, nginx and SSL. Once https://sensoper.in shows the website,
+run `bash /root/Sensoper/website/deploy/enable-on-quote.sh --undo` so quote.sensoper.in is the ERP only again. The
+website's links switch to sensoper.in and shop.sensoper.in by themselves.
 
 ### 1. Copy the website on every deploy (once)
 Add this line to `/root/Sensoper/deploy.sh`, after `git pull`:

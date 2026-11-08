@@ -34,5 +34,11 @@ Footer on every page: **ERP login** → https://quote.sensoper.in/login (staff, 
 On localhost the links to the shop, account and ERP point at the local copies automatically.
 
 ## Put it live
-See `DEPLOY.md` → "This release: the customer website". In short: DNS for sensoper.in, www and shop → the VPS;
-`deploy/nginx-sensoper-website.conf` into nginx; certbot for https; `deploy/deploy-website.sh` copies the files.
+**For now, on quote.sensoper.in with the ERP.** `deploy/deploy-website.sh` copies the files, then
+`deploy/enable-on-quote.sh` (once) gives the website quote.sensoper.in's front page, `/shop/` and `/account/`.
+The ERP keeps `/login`, `/dashboard` and the rest. On that address every link stays on it: Shop is `/shop/`, ERP
+login is `/login`. Undo with `deploy/enable-on-quote.sh --undo`. See `DEPLOY.md` → "This release".
+
+**Later, on its own addresses.** DNS for sensoper.in, www and shop → the VPS; `deploy/nginx-sensoper-website.conf`
+into nginx; certbot for https. On sensoper.in the links switch to sensoper.in and shop.sensoper.in by themselves.
+See `DEPLOY.md` → "When sensoper.in is ready".

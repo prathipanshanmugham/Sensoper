@@ -1,5 +1,18 @@
 # Sensoper — change log
 
+## November 2026 · The website and the ERP on one address (quote.sensoper.in)
+
+Until sensoper.in's DNS moves, the website runs on quote.sensoper.in next to the ERP.
+- `quote.sensoper.in` opens the website. `/shop/` and `/account/` are the shop and customer login. `/login`,
+  `/dashboard` and the rest are still the ERP. The installed ERP app opens the ERP, not the website.
+- On that address the website's links stay on it (Shop → `/shop/`, ERP login → `/login`). On sensoper.in and
+  shop.sensoper.in they point to those addresses, as before.
+- `website/deploy/enable-on-quote.sh` switches it on in nginx once and keeps a backup. It puts the file back if
+  nginx doesn't accept the change. `--undo` makes quote.sensoper.in the ERP only again.
+- The website's visitor forms and customer logins pass the visitor's real address to the backend on this address
+  too, so the lead limits work.
+- `deploy-website.sh` works on servers without rsync and reports which addresses show the website.
+
 ## November 2026 · The customer website — sensoper.in and shop.sensoper.in
 
 A new public website whose main job is bringing in leads. Everything it collects lands in the ERP.
