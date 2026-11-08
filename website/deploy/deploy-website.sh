@@ -4,12 +4,21 @@
 #     bash /root/Sensoper/website/deploy/deploy-website.sh
 set -euo pipefail
 SRC="$(cd "$(dirname "$0")/.." && pwd)"
-DEST=/var/www/sensoper-site
+DEST=${SITE_DIR:-/var/www/sensoper-site}
 mkdir -p "$DEST"
-rsync -a --delete --exclude 'deploy/' --exclude 'dev-server.mjs' --exclude 'README.md' --exclude 'src/' --exclude 'node_modules/' --exclude 'package.json' --exclude 'package-lock.json' "$SRC/" "$DEST/"
+if command -v rsync >/dev/null; then
+  rsync -a --delete --exclude 'deploy/' --exclude 'dev-server.mjs' --exclude 'README.md' --exclude 'src/' --exclude 'node_modules/' --exclude 'package.json' --exclude 'package-lock.json' "$SRC/" "$DEST/"
+else   # no rsync on this server: build a fresh copy next to it, then swap it in
+  rm -rf "$DEST.new" && mkdir -p "$DEST.new"
+  tar -C "$SRC" --exclude=./deploy --exclude=./src --exclude=./node_modules --exclude=./dev-server.mjs \
+      --exclude=./package.json --exclude=./package-lock.json --exclude=README.md -cf - . | tar -C "$DEST.new" -xf -
+  rm -rf "$DEST.old" && mv "$DEST" "$DEST.old" && mv "$DEST.new" "$DEST" && rm -rf "$DEST.old"
+fi
 echo "Website copied to $DEST ($(find "$DEST" -type f | wc -l) files)"
-# quick check that nginx serves it (skips quietly before DNS/SSL are set up)
-for u in https://sensoper.in/ https://shop.sensoper.in/ https://sensoper.in/api/public/site; do
-  code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 "$u" || true)
-  echo "  $u → $code"
+# where it's live: quote.sensoper.in once enable-on-quote.sh has run, sensoper.in once its DNS points here
+for u in https://quote.sensoper.in/ https://sensoper.in/ https://shop.sensoper.in/; do
+  case "$(curl -s --max-time 10 "$u" || true)" in
+    *'/assets/site.css'*) echo "  $u → this website" ;;
+    *)                    echo "  $u → not this website (yet)" ;;
+  esac
 done
