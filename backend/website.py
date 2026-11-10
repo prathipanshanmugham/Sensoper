@@ -80,7 +80,7 @@ SOURCES = {"calculator": "Savings calculator", "quote": "Free quote form", "cont
            "shop": "Shop", "service": "Service request", "account": "Customer login page", "quick": "Mobile number box",
            "quiz": "Free solar plan quiz", "header": "Header button", "subsidy": "Subsidy section", "how": "How it works section",
            "solutions": "Solutions section", "backup": "Battery backup section", "mobile-bar": "Phone bottom bar",
-           "systems": "Systems section (on-grid, off-grid, battery, pump)"}
+           "systems": "Systems section (on-grid, off-grid, hybrid, battery, pump)"}
 POPUP_ACTIONS = ("quote", "whatsapp", "shop", "link", "none")
 POPUP_WHERE = ("site", "shop", "both")
 IMAGE_TYPES = {"image/png", "image/jpeg", "image/webp", "image/gif"}   # never SVG: it can carry script

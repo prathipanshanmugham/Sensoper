@@ -445,7 +445,8 @@ function stories(list) {
       if (safeSrc(t.poster)) el.poster = t.poster;
       const src = document.createElement('source');
       src.src = v.url;
-      if (v.mime) src.type = v.mime;
+      // a phone's .mov is usually plain H.264: Chrome plays it, but skips a source labelled video/quicktime — so let it look
+      if (v.mime && v.mime !== 'video/quicktime') src.type = v.mime;
       src.addEventListener('error', () => failed(li, t));
       el.append(src);
       el.addEventListener('play', () => stopOthers(li));

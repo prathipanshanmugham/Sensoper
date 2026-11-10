@@ -28,6 +28,21 @@
 - `POST /api/website/testimonials/video` writes the upload to disk as it arrives and stops at 100 MB, whatever the request
   says its size is. nginx must allow request bodies of about 101 MB on that path.
 
+### Website
+- **Five systems:** on-grid, off-grid, **hybrid** (new card and diagram: solar + battery + grid for homes and shops that get
+  power cuts), **battery storage (BESS)** (rewritten for businesses: peak charges, backup, added to an existing plant) and
+  solar pumps. Menus, footer, FAQ and search data list all five.
+- **Brands we deal with** comes from the ERP's Brands: a logo when there is one, otherwise the name, in a column per category
+  (panels, inverters, batteries, pumps, then the rest). The section hides when no brand is on the website.
+- **In our customers' words:** testimonial videos from the ERP, after the calculator. A swipe row on phones, a grid on
+  computers; YouTube plays in place (youtube-nocookie), uploaded videos in the page's own player; one plays at a time.
+- **Shop pickup:** choosing "I'll pick it up" lists the pickup stores with address, hours, phone and directions;
+  **Find the nearest store** uses the phone's location to sort them and picks the closest. The order names the store, and
+  the confirmation says where to collect.
+- **shop.sensoper.in:** links follow the ERP's Main website and Shop addresses; once the Shop address is set, old
+  quote.sensoper.in/shop/ links go to shop.sensoper.in. `website/deploy/enable-shop.sh` sets up shop.sensoper.in on the
+  server (DNS check first, nginx test with roll-back, certbot), and testimonial uploads of up to 100 MB get through nginx.
+
 ## November 2026 · The website and the ERP on one address (quote.sensoper.in)
 
 Until sensoper.in's DNS moves, the website runs on quote.sensoper.in next to the ERP.

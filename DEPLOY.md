@@ -6,16 +6,15 @@ nothing new installed.
 
 ## This release: shop.sensoper.in, five systems, brands, testimonial videos, store pickup
 
-No new packages. Deploy as usual: `/root/Sensoper/deploy.sh`. The server side (steps 1–2) is in first; the website
-and ERP changes (Hybrid card, brands, testimonials, store pickup, the Shop address setting) follow in the next update.
+No new packages and no new server settings. On the server, as root:
 
-### 1. The video upload size (once)
-Testimonial videos can be up to 100 MB. Refresh the website's nginx settings on quote.sensoper.in so uploads of that
-size get through. It keeps a backup and puts it back if nginx doesn't accept it:
-
+    /root/Sensoper/deploy.sh
     bash /root/Sensoper/website/deploy/enable-on-quote.sh
 
-### 2. shop.sensoper.in (once)
+The second line refreshes the website's nginx settings on quote.sensoper.in so testimonial videos of up to 100 MB can be
+uploaded. It keeps a backup and puts it back if nginx doesn't accept the change.
+
+### 1. shop.sensoper.in (once)
 1. At your domain's DNS provider, add an **A record**: name `shop`, value `76.13.246.159` (this server). Delete any
    other A, AAAA or CNAME record for `shop`. Don't touch the records for `sensoper.in`, `www`, MX or TXT: the main
    site and email stay as they are.
@@ -25,10 +24,29 @@ size get through. It keeps a backup and puts it back if nginx doesn't accept it:
 
    It checks that shop.sensoper.in points here (and stops, changing nothing, if not yet), adds the shop's nginx site,
    tests it and gets the https certificate. The shop's Home and other links go to quote.sensoper.in.
-3. Once the next update is deployed, in the ERP, Website → Settings: set **Shop address** to `https://shop.sensoper.in`. From then on every Shop link
-   on the website opens shop.sensoper.in. Until you set it, the shop stays at quote.sensoper.in/shop/.
+3. In the ERP, **Website → Pop-ups & settings**: set **Shop address** to `https://shop.sensoper.in` and save. From then on
+   every Shop link on the website opens shop.sensoper.in, and old quote.sensoper.in/shop/ links go there too. Until you
+   set it, the shop stays at quote.sensoper.in/shop/.
 
-To take it off again: `bash /root/Sensoper/website/deploy/enable-shop.sh --undo`, and clear the Shop address.
+To take it off again: clear the Shop address, then `bash /root/Sensoper/website/deploy/enable-shop.sh --undo`.
+
+### 2. Fill it in, in the ERP
+- **Brands** (Stock & purchase → Brands): add the brands you sell or fit as **Dealership** or **Distribution**, with
+  their logo and a category (Panels, Inverters, Batteries, Pumps…). They show on the website by default; our own brands
+  show only when you switch **Show on the website** on.
+- **Pickup stores** (Website → Pickup stores): for each branch customers can collect from, **Set up pickup**: the name
+  customers see, address, phone, opening hours and the map pin. For the pin, open the store in Google Maps, long-press
+  it and paste the numbers (for example `11.2712, 77.5845`). With a pin, **Find the nearest store** and **Directions**
+  work for that store.
+- **Testimonials** (Website → Testimonials): **Add testimonial** with the customer's name, place, system and one line
+  in their words, and either a YouTube link or an uploaded video (MP4 from a phone works everywhere; up to 100 MB).
+  The section appears on the website once one is live.
+
+### 3. Check
+- https://quote.sensoper.in: five system cards; your brands; the testimonials once added.
+- Put something in the cart, choose **I'll pick it up**, tap **Find the nearest store**, send the order with your own
+  number. It shows in Website → Leads with the store.
+- https://shop.sensoper.in: the shop, with **Home** going back to quote.sensoper.in.
 
 ## Earlier release: the website and the ERP on quote.sensoper.in
 

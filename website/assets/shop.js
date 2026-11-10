@@ -6,7 +6,10 @@ boot('shop');
 
 /* pick-up stores: the ERP's locations with pick-up turned on. None set up → pick-up "from our office", as before. */
 let STORES = [];
-const storesReady = site('shop').then((s) => { STORES = (Array.isArray(s.stores) ? s.stores : []).filter((x) => x && x.id && x.name); });
+const coord = (v) => (v === null || v === undefined || v === '' ? NaN : Number(v));
+const storesReady = site('shop').then((s) => {
+  STORES = (Array.isArray(s.stores) ? s.stores : []).filter((x) => x && x.id && x.name).map((x) => ({ ...x, id: String(x.id), lat: coord(x.lat), lng: coord(x.lng) }));
+});
 const hasXY = (s) => Number.isFinite(s.lat) && Number.isFinite(s.lng) && !(s.lat === 0 && s.lng === 0);
 function km(a, b) {                       // straight-line distance (haversine)
   const r = Math.PI / 180, dLat = (b.lat - a.lat) * r, dLng = (b.lng - a.lng) * r;

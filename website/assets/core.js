@@ -18,6 +18,8 @@ function siteUrls(urls) {
   const site = baseUrl(urls.site), shop = baseUrl(urls.shop);
   if (!site) return;
   Object.assign(URLS, { home: sameOrigin(site + '/'), account: sameOrigin(site + '/account/'), shop: sameOrigin(shop ? shop + '/' : site + '/shop/') });
+  // the shop has its own address now: an old /shop/ link or bookmark on the main site goes there
+  if (shop && /^\/shop\/?$/.test(location.pathname) && new URL(shop).origin !== location.origin) location.replace(shop + '/' + location.search + location.hash);
 }
 
 export const ICON = {

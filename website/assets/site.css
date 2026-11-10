@@ -335,7 +335,7 @@ input[type=range]::-moz-range-thumb{width:24px;height:24px;border-radius:50%;bac
 
 /* customer videos: a swipeable row on phones and tablets, a grid on wide screens */
 .stories{background:var(--navy);color:#EEF2F8;overflow:hidden}
-.stories::before{content:"";position:absolute;width:900px;height:900px;left:-360px;bottom:-520px;border-radius:50%;background:radial-gradient(circle,rgba(233,180,76,.13),transparent 62%);pointer-events:none}
+.stories::before{content:"";position:absolute;width:900px;height:900px;right:-340px;top:-380px;border-radius:50%;background:radial-gradient(circle,rgba(233,180,76,.12),transparent 62%);pointer-events:none}
 .stories .wrap{position:relative}
 .stories h2{color:#fff}
 .stories .section-head p{color:rgba(238,242,248,.76)}
