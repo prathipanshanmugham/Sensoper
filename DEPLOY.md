@@ -6,7 +6,8 @@ nothing new installed.
 
 ## This release: shop.sensoper.in, five systems, brands, testimonial videos, store pickup
 
-No new packages. Deploy as usual: `/root/Sensoper/deploy.sh`.
+No new packages. Deploy as usual: `/root/Sensoper/deploy.sh`. The server side (steps 1–2) is in first; the website
+and ERP changes (Hybrid card, brands, testimonials, store pickup, the Shop address setting) follow in the next update.
 
 ### 1. The video upload size (once)
 Testimonial videos can be up to 100 MB. Refresh the website's nginx settings on quote.sensoper.in so uploads of that
@@ -24,7 +25,7 @@ size get through. It keeps a backup and puts it back if nginx doesn't accept it:
 
    It checks that shop.sensoper.in points here (and stops, changing nothing, if not yet), adds the shop's nginx site,
    tests it and gets the https certificate. The shop's Home and other links go to quote.sensoper.in.
-3. In the ERP, Website → Settings: set **Shop address** to `https://shop.sensoper.in`. From then on every Shop link
+3. Once the next update is deployed, in the ERP, Website → Settings: set **Shop address** to `https://shop.sensoper.in`. From then on every Shop link
    on the website opens shop.sensoper.in. Until you set it, the shop stays at quote.sensoper.in/shop/.
 
 To take it off again: `bash /root/Sensoper/website/deploy/enable-shop.sh --undo`, and clear the Shop address.
