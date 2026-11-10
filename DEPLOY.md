@@ -4,7 +4,32 @@ Your server already has `/root/Sensoper/deploy.sh`. It pulls the code, installs 
 copies the build to `/var/www/sensoper`, restarts the `sensoper` service and checks the live bundle. This release needs
 nothing new installed.
 
-## This release: the website and the ERP on quote.sensoper.in
+## This release: shop.sensoper.in, five systems, brands, testimonial videos, store pickup
+
+No new packages. Deploy as usual: `/root/Sensoper/deploy.sh`.
+
+### 1. The video upload size (once)
+Testimonial videos can be up to 100 MB. Refresh the website's nginx settings on quote.sensoper.in so uploads of that
+size get through. It keeps a backup and puts it back if nginx doesn't accept it:
+
+    bash /root/Sensoper/website/deploy/enable-on-quote.sh
+
+### 2. shop.sensoper.in (once)
+1. At your domain's DNS provider, add an **A record**: name `shop`, value `76.13.246.159` (this server). Delete any
+   other A, AAAA or CNAME record for `shop`. Don't touch the records for `sensoper.in`, `www`, MX or TXT: the main
+   site and email stay as they are.
+2. After 10–30 minutes, on the server:
+
+       bash /root/Sensoper/website/deploy/enable-shop.sh
+
+   It checks that shop.sensoper.in points here (and stops, changing nothing, if not yet), adds the shop's nginx site,
+   tests it and gets the https certificate. The shop's Home and other links go to quote.sensoper.in.
+3. In the ERP, Website → Settings: set **Shop address** to `https://shop.sensoper.in`. From then on every Shop link
+   on the website opens shop.sensoper.in. Until you set it, the shop stays at quote.sensoper.in/shop/.
+
+To take it off again: `bash /root/Sensoper/website/deploy/enable-shop.sh --undo`, and clear the Shop address.
+
+## Earlier release: the website and the ERP on quote.sensoper.in
 
 Until sensoper.in's DNS moves to this server, the website runs on quote.sensoper.in, next to the ERP:
 
@@ -29,10 +54,12 @@ of sensoper.in.
 
 ## When sensoper.in is ready: the website on its own addresses (sensoper.in, shop.sensoper.in)
 
-The backend and ERP deploy as usual (`/root/Sensoper/deploy.sh`). No new packages and no new settings. Moving the
-website to its own addresses needs a one-time setup: DNS, nginx and SSL. Once https://sensoper.in shows the website,
-run `bash /root/Sensoper/website/deploy/enable-on-quote.sh --undo` so quote.sensoper.in is the ERP only again. The
-website's links switch to sensoper.in and shop.sensoper.in by themselves.
+The backend and ERP deploy as usual (`/root/Sensoper/deploy.sh`). Moving the website to its own addresses needs a
+one-time setup: DNS, nginx and SSL. First run `bash /root/Sensoper/website/deploy/enable-shop.sh --undo` (the full
+nginx file below has its own shop.sensoper.in block). Once https://sensoper.in shows the website:
+- in the ERP, Website → Settings, set **Main website address** to `https://sensoper.in` (Shop address stays
+  `https://shop.sensoper.in`);
+- run `bash /root/Sensoper/website/deploy/enable-on-quote.sh --undo` so quote.sensoper.in is the ERP only again.
 
 ### 1. Copy the website on every deploy (once)
 Add this line to `/root/Sensoper/deploy.sh`, after `git pull`:
@@ -53,7 +80,8 @@ Don't switch Odoo off until the new site is live and checked.
 
 ### 3. nginx and https (once, after DNS has switched)
 
-    cp /root/Sensoper/website/deploy/nginx-sensoper-website.conf /etc/nginx/sites-available/sensoper-website
+    sed 's#127.0.0.1:8001#127.0.0.1:3001#g' /root/Sensoper/website/deploy/nginx-sensoper-website.conf \
+      > /etc/nginx/sites-available/sensoper-website       # 3001: the port your backend runs on
     ln -s /etc/nginx/sites-available/sensoper-website /etc/nginx/sites-enabled/
     nginx -t && systemctl reload nginx
     certbot --nginx -d sensoper.in -d www.sensoper.in -d shop.sensoper.in
