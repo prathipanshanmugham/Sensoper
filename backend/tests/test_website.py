@@ -93,10 +93,13 @@ def world(app, loop):
     async def tidy():
         db = server.db
         await db.users.delete_many({"email": {"$in": EMAILS}})
-        for coll in ("website_leads", "website_popups", "website_settings", "client_accounts", "client_login_attempts", "website_lead_hits"):
+        for coll in ("website_leads", "website_popups", "website_settings", "client_accounts", "client_login_attempts", "website_lead_hits",
+                     "website_testimonials"):
             await db[coll].delete_many({})
         await db.projects.delete_many({"reference_number": {"$regex": "^WEB-"}})
         await db.inventory_items.delete_many({"notes": TAG})
+        await db.brands.delete_many({"name": {"$regex": "^WT "}})
+        await db.locations.delete_many({"tag": TAG})
 
     yield run(loop, go())
     run(loop, tidy())

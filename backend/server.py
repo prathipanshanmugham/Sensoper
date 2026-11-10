@@ -2693,7 +2693,8 @@ api_router.include_router(_create_portal_router(db, get_current_user, require_ro
 from website import create_router as _create_website_router  # noqa: E402
 # Public website (sensoper.in / shop.sensoper.in): leads, shop, pop-ups, and customer logins staff make for customers
 api_router.include_router(_create_website_router(db, get_current_user, require_role, create_audit_log, JWT_SECRET, hash_password, verify_password,
-                                                 get_permissions, check_module_permission, app_name=APP_NAME, get_object=get_object))
+                                                 get_permissions, check_module_permission, app_name=APP_NAME, get_object=get_object,
+                                                 storage_path=_storage_path))
 
 # ═══════════ ECOMMERCE MARKETPLACES (Iter 46 Change 2) ═══════════
 from ecommerce import create_router as _create_ecommerce_router  # noqa: E402

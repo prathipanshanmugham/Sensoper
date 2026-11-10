@@ -6,6 +6,8 @@
   "next action" dates plan bell notes and show on the event calendar.
 * Stock items carry `brand_id`; the brand report adds up stock, purchases, sales (counter, online, projects) and
   returns per brand for a period.
+* `on_website` (Nov 2026): whether the brand shows under "Brands we deal with" on the public website. Not set (None)
+  means "follow the kind": the brands we deal or distribute show, our own brands don't.
 """
 from __future__ import annotations
 
@@ -48,6 +50,15 @@ def _ser(d: Dict[str, Any]) -> Dict[str, Any]:
     d = dict(d)
     d["id"] = str(d.pop("_id"))
     return d
+
+
+def shown_on_website(b: Dict[str, Any]) -> bool:
+    """Does this brand show on the public website? The switch when it has been set, otherwise every brand we deal or
+    distribute (our own brands have their own pages). Inactive brands never show. Pure."""
+    if b.get("active") is False:
+        return False
+    v = b.get("on_website")
+    return bool(v) if v is not None else b.get("kind") != "own"
 
 
 def add_years(d: date, years: int) -> date:
@@ -104,6 +115,7 @@ class BrandIn(BaseModel):
     agreement: Agreement = Agreement()
     notes: Optional[str] = None
     active: bool = True
+    on_website: Optional[bool] = None         # None = follow the kind (see shown_on_website)
 
 
 class TrademarkIn(BaseModel):
@@ -192,6 +204,9 @@ def create_router(db, get_current_user, require_role, create_audit_log, get_perm
         out["days_to_renewal"] = (due - notify.today_ist()).days if due else None
         return out
 
+    def _brand_out(b: Dict[str, Any]) -> Dict[str, Any]:
+        return {**_ser(b), "on_website": b.get("on_website"), "shown_on_website": shown_on_website(b)}
+
     # ═══════════════ brands ═══════════════
     @router.get("/brands")
     async def list_brands(request: Request, kind: Optional[str] = None, include_inactive: bool = False):
@@ -213,7 +228,7 @@ def create_router(db, get_current_user, require_role, create_audit_log, get_perm
             bid = str(b["_id"])
             marks = tms.get(bid, [])
             dues = sorted(d for d in (renewal_date(t) for t in marks if t.get("status") in TM_LIVE) if d)
-            rows.append({**_ser(b), **{k: round(v, 2) for k, v in items[bid].items()}, "trademarks": len(marks),
+            rows.append({**_brand_out(b), **{k: round(v, 2) for k, v in items[bid].items()}, "trademarks": len(marks),
                          "registered": sum(1 for t in marks if t.get("status") == "registered"),
                          "next_renewal": dues[0].isoformat() if dues else None})
         return rows
@@ -229,7 +244,7 @@ def create_router(db, get_current_user, require_role, create_audit_log, get_perm
         doc["_id"] = res.inserted_id
         await _plan_brand_notes(doc)
         await create_audit_log(user["id"], user["name"], "brand_created", "brand", str(res.inserted_id), None, {"name": doc["name"], "kind": doc["kind"]})
-        return _ser(doc)
+        return _brand_out(doc)
 
     @router.get("/brands/report")
     async def brand_report(request: Request, start: Optional[str] = None, end: Optional[str] = None):
@@ -382,7 +397,7 @@ def create_router(db, get_current_user, require_role, create_audit_log, get_perm
                   "quantity": i.get("quantity"), "unit_price": i.get("unit_price")}
                  async for i in db.inventory_items.find({"brand_id": brand_id}).sort("name", 1)]
         marks = [_tm_out(t) async for t in db.trademarks.find({"brand_id": brand_id}).sort("created_at", 1)]
-        return {**_ser(b), "items": items, "trademarks": marks}
+        return {**_brand_out(b), "items": items, "trademarks": marks}
 
     @router.put("/brands/{brand_id}")
     async def update_brand(brand_id: str, body: BrandIn, request: Request):
@@ -391,6 +406,8 @@ def create_router(db, get_current_user, require_role, create_audit_log, get_perm
         if not cur:
             raise HTTPException(status_code=404, detail="Brand not found")
         doc = _clean_brand(body)
+        if "on_website" not in body.model_fields_set:   # an older screen or an agent that doesn't know the switch keeps it as it is
+            doc.pop("on_website", None)
         clash = await db.brands.find_one({"name": {"$regex": f"^{re.escape(doc['name'])}$", "$options": "i"}, "_id": {"$ne": cur["_id"]}})
         if clash:
             raise HTTPException(status_code=400, detail="Another brand already has this name")
@@ -399,7 +416,7 @@ def create_router(db, get_current_user, require_role, create_audit_log, get_perm
         fresh = await db.brands.find_one({"_id": cur["_id"]})
         await _plan_brand_notes(fresh)
         await create_audit_log(user["id"], user["name"], "brand_updated", "brand", brand_id, {"name": cur.get("name")}, {"name": doc["name"]})
-        return _ser(fresh)
+        return _brand_out(fresh)
 
     @router.delete("/brands/{brand_id}")
     async def delete_brand(brand_id: str, request: Request):
