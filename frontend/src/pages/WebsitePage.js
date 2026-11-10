@@ -1,9 +1,9 @@
 /* Website — what staff run for sensoper.in and shop.sensoper.in:
- * leads from the site, the shop's products, customer logins, and the pop-ups visitors see. */
+ * leads from the site, the shop's products, client testimonials, pickup stores, customer logins, and the pop-ups visitors see. */
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
-import { Globe, Phone, MessageCircle, Search, Plus, Pencil, Trash2, Loader2, ExternalLink, FolderPlus, FolderOpen, KeyRound, Star, ImagePlus, X, Power, ShoppingBag, Users, Megaphone, Inbox, CalendarClock } from 'lucide-react';
+import { Globe, Phone, MessageCircle, Search, Plus, Pencil, Trash2, Loader2, ExternalLink, FolderPlus, FolderOpen, KeyRound, Star, ImagePlus, X, Power, ShoppingBag, Users, Megaphone, Inbox, CalendarClock, Video, Upload, Store, MapPin, Clock, PlayCircle } from 'lucide-react';
 import { websiteAPI, inventoryAPI, uploadAPI, projectsAPI, usersAPI } from '../utils/api';
 import { Button } from '../components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '../components/ui/dialog';
@@ -81,7 +81,8 @@ function LeadDialog({ id, onClose, onChanged, staff }) {
               </Card>
             )}
             {(l.items || []).length > 0 && (
-              <Card title={`Order request — ${l.delivery === 'pickup' ? 'they’ll pick it up' : 'deliver it'}`} sub={l.delivery !== 'pickup' ? [l.address, l.pincode].filter(Boolean).join(', ') : 'From the Perundurai store'}>
+              <Card title={`Order request — ${l.delivery !== 'pickup' ? 'deliver it' : l.pickup_store ? `they’ll pick it up at ${l.pickup_store.name}` : 'they’ll pick it up'}`} testid="lead-order"
+                sub={l.delivery !== 'pickup' ? [l.address, l.pincode].filter(Boolean).join(', ') : l.pickup_store ? [l.pickup_store.address, l.pickup_store.phone && `Store phone ${l.pickup_store.phone}`].filter(Boolean).join(' — ') : 'From our office'}>
                 <div className="divide-y divide-slate-100">
                   {l.items.map((it) => <div key={it.listing_id} className="flex justify-between gap-3 py-1.5"><span>{it.title} × {it.qty}</span><span className="tabular-nums">{inr(it.amount)}</span></div>)}
                   <div className="flex justify-between py-1.5 font-semibold"><span>Total, incl. GST</span><span className="tabular-nums">{inr(l.order_total)}</span></div>
@@ -389,6 +390,279 @@ function LoginsTab({ onCount }) {
   );
 }
 
+/* ───────────────────────── client testimonials ───────────────────────── */
+const VIDEO_MAX = 100 * 1024 * 1024;
+const VIDEO_TYPES = { mp4: 'video/mp4', webm: 'video/webm', mov: 'video/quicktime' };
+const EMPTY_T = { name: '', place: '', system: '', quote: '', youtube_url: '', video_path: '', poster_path: '', status: 'live', order: 0 };
+const mb = (n) => `${(Number(n || 0) / 1048576).toFixed(n < 10 * 1048576 ? 1 : 0)} MB`;
+const ytId = (url) => (String(url || '').match(/(?:[?&]v=|youtu\.be\/|\/shorts\/|\/embed\/|\/live\/)([A-Za-z0-9_-]{11})/) || [])[1] || '';
+
+function Thumb({ t, className = 'h-16 w-28' }) {
+  const [bad, setBad] = useState(false);
+  const src = t.poster_path ? imgSrc(t.poster_path) : ytId(t.youtube_url) ? `https://i.ytimg.com/vi/${ytId(t.youtube_url)}/hqdefault.jpg` : null;
+  return (
+    <span className={`relative flex shrink-0 items-center justify-center overflow-hidden rounded-lg bg-slate-100 ${className}`}>
+      {src && !bad ? <img src={src} alt="" onError={() => setBad(true)} className="h-full w-full object-cover" /> : <Video className="h-6 w-6 text-slate-400" />}
+      {src && !bad && <PlayCircle className="absolute h-6 w-6 text-white drop-shadow" aria-hidden="true" />}
+    </span>
+  );
+}
+
+function TestimonialDialog({ item, onClose, onSaved }) {
+  const editing = !!item?.id;
+  const [f, setF] = useState(editing ? { ...EMPTY_T, ...item } : EMPTY_T);
+  const [mode, setMode] = useState(item?.video_path ? 'file' : 'youtube');
+  const [size, setSize] = useState(item?.video_size || null);
+  const [preview, setPreview] = useState(null);         // the file just chosen, to watch before saving
+  const [progress, setProgress] = useState(null);
+  const [posterBusy, setPosterBusy] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const set = (p) => setF((x) => ({ ...x, ...p }));
+  useEffect(() => () => { if (preview) URL.revokeObjectURL(preview); }, [preview]);
+  const uploadVideo = async (file) => {
+    if (!file) return;
+    const ext = (file.name.split('.').pop() || '').toLowerCase();
+    if (!VIDEO_TYPES[ext]) { toast.error('Upload the video as an MP4, WebM or MOV file.'); return; }
+    if (file.size > VIDEO_MAX) { toast.error(`This video is ${mb(file.size)}. Keep it under 100 MB — trim it, or export it at 720p.`); return; }
+    // some phones and Windows don't say what a .mov is; the server checks the file itself as well
+    const sendable = file.type === VIDEO_TYPES[ext] ? file : new File([file], file.name, { type: VIDEO_TYPES[ext] });
+    setProgress(0);
+    try {
+      const r = await websiteAPI.testimonials.uploadVideo(sendable, setProgress);
+      set({ video_path: r.data.video_path }); setSize(r.data.size); setPreview(URL.createObjectURL(file)); toast.success('Video uploaded');
+    } catch (e) { toast.error(errText(e, 'Couldn’t upload the video')); } finally { setProgress(null); }
+  };
+  const uploadPoster = async (file) => {
+    if (!file) return;
+    if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) { toast.error('Choose a PNG, JPG or WebP picture.'); return; }
+    setPosterBusy(true);
+    try { const r = await uploadAPI.uploadImage(file); set({ poster_path: r.data.storage_path }); }
+    catch (e) { toast.error(errText(e, 'Couldn’t upload the picture')); } finally { setPosterBusy(false); }
+  };
+  const save = async () => {
+    setBusy(true);
+    const body = { name: f.name, place: f.place, system: f.system, quote: f.quote, poster_path: f.poster_path || '', status: f.status,
+      order: Number(f.order) || 0, youtube_url: mode === 'youtube' ? f.youtube_url : '', video_path: mode === 'file' ? f.video_path : '' };
+    try {
+      await (editing ? websiteAPI.testimonials.update(item.id, body) : websiteAPI.testimonials.create(body));
+      toast.success(f.status === 'live' ? 'Testimonial saved — it’s on the website' : 'Testimonial saved as a draft'); onSaved();
+    } catch (e) { toast.error(errText(e)); } finally { setBusy(false); }
+  };
+  const hasVideo = mode === 'youtube' ? !!f.youtube_url.trim() : !!f.video_path;
+  const tabCls = (on) => `rounded-full px-3 py-1.5 text-sm ${on ? 'bg-slate-900 text-white' : 'bg-white text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50'}`;
+  return (
+    <Dialog open onOpenChange={(o) => !o && progress === null && onClose()}>
+      <DialogContent className="max-h-[92dvh] max-w-lg overflow-y-auto" data-testid="testimonial-dialog">
+        <DialogHeader><DialogTitle>{editing ? 'Edit testimonial' : 'Add a client testimonial'}</DialogTitle><DialogDescription>A short video of a happy customer, shown on the website with their name and what they said.</DialogDescription></DialogHeader>
+        <div className="space-y-3">
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Customer’s name"><input className={inputCls} value={f.name} onChange={(e) => set({ name: e.target.value })} maxLength={80} placeholder="e.g. Ravi Kumar" data-testid="testimonial-name" /></Field>
+            <Field label="Place"><input className={inputCls} value={f.place} onChange={(e) => set({ place: e.target.value })} maxLength={80} placeholder="e.g. Perundurai" /></Field>
+          </div>
+          <Field label="Their system"><input className={inputCls} value={f.system} onChange={(e) => set({ system: e.target.value })} maxLength={80} placeholder="e.g. 5 kW on-grid" /></Field>
+          <Field label="What they said" hint={`${f.quote.length} of 400 characters. Shown under the video.`}>
+            <textarea className={textareaCls} value={f.quote} onChange={(e) => set({ quote: e.target.value })} maxLength={400} placeholder="e.g. Bill went from ₹4,200 to ₹300." data-testid="testimonial-quote" /></Field>
+          <div className="space-y-2">
+            <p className="text-xs font-medium text-slate-700">The video</p>
+            <div className="flex gap-1.5" role="group" aria-label="Where the video is">
+              <button type="button" className={tabCls(mode === 'youtube')} onClick={() => setMode('youtube')} aria-pressed={mode === 'youtube'} data-testid="testimonial-mode-youtube">YouTube link</button>
+              <button type="button" className={tabCls(mode === 'file')} onClick={() => setMode('file')} aria-pressed={mode === 'file'} data-testid="testimonial-mode-file">Upload a video</button>
+            </div>
+            {mode === 'youtube' ? (
+              <Field label="YouTube link" hint="Open the video on YouTube, tap Share, copy the link and paste it here. Shorts work too.">
+                <input className={inputCls} value={f.youtube_url} onChange={(e) => set({ youtube_url: e.target.value })} inputMode="url" placeholder="https://youtu.be/…" data-testid="testimonial-youtube" /></Field>
+            ) : (
+              <div className="space-y-2 rounded-lg border border-slate-200 p-3">
+                {f.video_path && <p className="text-sm text-slate-700">Uploaded video{size ? ` — ${mb(size)}` : ''}</p>}
+                {preview && <video src={preview} controls playsInline className="max-h-56 w-full rounded-md bg-black" />}
+                {progress !== null ? (
+                  <div className="space-y-1" aria-live="polite">
+                    <div className="h-2 overflow-hidden rounded-full bg-slate-100"><div className="h-full bg-emerald-600 transition-[width]" style={{ width: `${progress}%` }} /></div>
+                    <p className="text-[11px] text-slate-500">Uploading… {progress}% — keep this window open.</p>
+                  </div>
+                ) : (
+                  <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
+                    <Upload className="h-4 w-4" />{f.video_path ? 'Upload a different video' : 'Upload video'}
+                    <input type="file" accept="video/mp4,video/webm,video/quicktime,.mp4,.webm,.mov" className="sr-only" onChange={(e) => { uploadVideo(e.target.files?.[0]); e.target.value = ''; }} data-testid="testimonial-video-input" />
+                  </label>
+                )}
+                <p className="text-[11px] text-slate-500">MP4, WebM or MOV, up to 100 MB. A minute or two at 720p is plenty.</p>
+              </div>
+            )}
+          </div>
+          <div className="space-y-1.5">
+            <p className="text-xs font-medium text-slate-700">Poster picture <span className="font-normal text-slate-500">(optional)</span></p>
+            <div className="flex items-center gap-3">
+              {f.poster_path ? <img src={imgSrc(f.poster_path)} alt="" className="h-16 w-28 rounded-lg border border-slate-200 object-cover" /> : <span className="flex h-16 w-28 items-center justify-center rounded-lg border border-dashed border-slate-300 text-slate-400"><ImagePlus className="h-5 w-5" /></span>}
+              <div className="flex flex-col items-start gap-1">
+                <label className="cursor-pointer text-sm font-medium text-sky-700 underline">{posterBusy ? 'Uploading…' : f.poster_path ? 'Change picture' : 'Upload picture'}
+                  <input type="file" accept="image/png,image/jpeg,image/webp" className="sr-only" disabled={posterBusy} onChange={(e) => { uploadPoster(e.target.files?.[0]); e.target.value = ''; }} data-testid="testimonial-poster-input" /></label>
+                {f.poster_path && <button type="button" className="text-[11px] text-slate-500 underline" onClick={() => set({ poster_path: '' })}>Remove picture</button>}
+              </div>
+            </div>
+            <p className="text-[11px] text-slate-500">Shown before the video plays. Leave it empty on a YouTube video to use YouTube’s own picture.</p>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Show on the website"><select className={inputCls} value={f.status} onChange={(e) => set({ status: e.target.value })} data-testid="testimonial-status"><option value="live">Yes — show it</option><option value="draft">No — keep as a draft</option></select></Field>
+            <Field label="Order" hint="Smaller numbers show first."><input type="number" min="0" max="9999" className={inputCls} value={f.order} onChange={(e) => set({ order: e.target.value })} /></Field>
+          </div>
+        </div>
+        <DialogFooter><Button variant="outline" onClick={onClose} disabled={progress !== null}>Cancel</Button>
+          <Button onClick={save} disabled={busy || progress !== null || f.name.trim().length < 2 || !hasVideo} className="bg-emerald-600 text-white hover:bg-emerald-700" data-testid="testimonial-save">{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Save testimonial'}</Button></DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function TestimonialsTab() {
+  const { can } = useAuth();
+  const manage = can('can_manage_website');
+  const [list, setList] = useState(null);
+  const [edit, setEdit] = useState(null);
+  const load = useCallback(() => { websiteAPI.testimonials.list().then((r) => setList(r.data?.items || [])).catch((e) => { toast.error(errText(e, 'Couldn’t load testimonials')); setList([]); }); }, []);
+  useEffect(() => { load(); }, [load]);
+  const bodyOf = (t, patch) => ({ name: t.name, place: t.place, system: t.system, quote: t.quote, youtube_url: t.youtube_url, video_path: t.video_path,
+    poster_path: t.poster_path, status: t.status, order: t.order, ...patch });
+  const toggle = async (t) => {
+    try { await websiteAPI.testimonials.update(t.id, bodyOf(t, { status: t.status === 'live' ? 'draft' : 'live' })); toast.success(t.status === 'live' ? 'Taken off the website' : 'On the website now'); load(); }
+    catch (e) { toast.error(errText(e)); }
+  };
+  const remove = async (t) => {
+    if (!await confirmAction({ title: `Delete ${t.name}’s testimonial?`, message: t.video_path ? 'It comes off the website and the uploaded video is deleted.' : 'It comes off the website straight away.', confirmLabel: 'Delete', tone: 'danger' })) return;
+    try { await websiteAPI.testimonials.remove(t.id); toast.success('Testimonial deleted'); load(); } catch (e) { toast.error(errText(e)); }
+  };
+  const watch = (t) => (t.youtube_url ? t.youtube_url : t.status === 'live' && t.video_path ? `${API_URL}/api/public/testimonials/${t.id}/video` : null);
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-sm text-slate-600">Videos of happy customers on the website. Up to 24 show, smallest order number first.</p>
+        {manage && <Button onClick={() => setEdit({})} className="gap-1.5 bg-emerald-600 text-white hover:bg-emerald-700" data-testid="testimonial-new"><Plus className="h-4 w-4" />Add testimonial</Button>}
+      </div>
+      {!list ? <Loading /> : !list.length ? (
+        <Empty icon={Video} title="No testimonials yet" text="Add a YouTube link or upload a short video of a customer talking about their system. The website shows the section once there’s one.">
+          {manage && <Button onClick={() => setEdit({})} className="gap-1.5 bg-emerald-600 text-white hover:bg-emerald-700"><Plus className="h-4 w-4" />Add the first testimonial</Button>}
+        </Empty>
+      ) : (
+        <div className="grid gap-2 sm:grid-cols-2" data-testid="testimonials-list">
+          {list.map((t) => (
+            <div key={t.id} className="flex gap-3 rounded-xl border border-slate-200 bg-white p-3">
+              <Thumb t={t} />
+              <div className="min-w-0 flex-1">
+                <p className="flex flex-wrap items-center gap-1.5 font-medium text-slate-900"><span className="truncate">{t.name}</span><Chip tone={t.status === 'live' ? 'green' : 'slate'}>{t.status === 'live' ? 'On the website' : 'Draft'}</Chip></p>
+                <p className="truncate text-[11px] text-slate-500">{[t.place, t.system, t.youtube_url ? 'YouTube' : `Uploaded video${t.video_size ? `, ${mb(t.video_size)}` : ''}`, `order ${t.order}`].filter(Boolean).join(' — ')}</p>
+                {t.quote && <p className="mt-1 line-clamp-2 text-sm text-slate-700">“{t.quote}”</p>}
+                <div className="mt-2 flex flex-wrap gap-1">
+                  {watch(t) && <a href={watch(t)} target="_blank" rel="noopener noreferrer"><Button variant="ghost" size="sm" className="h-8 gap-1 px-2"><ExternalLink className="h-3.5 w-3.5" />Watch</Button></a>}
+                  {manage && <>
+                    <Button variant="ghost" size="sm" className="h-8 gap-1 px-2" onClick={() => setEdit(t)}><Pencil className="h-3.5 w-3.5" />Edit</Button>
+                    <Button variant="ghost" size="sm" className="h-8 gap-1 px-2" onClick={() => toggle(t)}><Power className="h-3.5 w-3.5" />{t.status === 'live' ? 'Hide' : 'Show'}</Button>
+                    <Button variant="ghost" size="sm" className="h-8 gap-1 px-2 text-rose-600" onClick={() => remove(t)}><Trash2 className="h-3.5 w-3.5" />Delete</Button>
+                  </>}
+                </div>
+              </div>
+            </div>))}
+        </div>
+      )}
+      {edit && <TestimonialDialog item={edit.id ? edit : null} onClose={() => setEdit(null)} onSaved={() => { setEdit(null); load(); }} />}
+    </div>
+  );
+}
+
+/* ───────────────────────── pickup stores (the ERP's locations) ───────────────────────── */
+const storeName = (st) => st.pickup?.public_name || String(st.name || '').replace(/_/g, ' ');
+const coordText = (p) => (p?.lat != null && p?.lng != null ? `${p.lat}, ${p.lng}` : '');
+const parseCoords = (text) => { const m = String(text || '').match(/^\s*(-?\d{1,3}(?:\.\d+)?)\s*[,\s]\s*(-?\d{1,3}(?:\.\d+)?)\s*$/); return m ? [Number(m[1]), Number(m[2])] : null; };
+
+function StoreDialog({ store, onClose, onSaved }) {
+  const p = store.pickup || {};
+  const fallback = String(store.name || '').replace(/_/g, ' ');
+  const [f, setF] = useState({ enabled: p.address ? !!p.enabled : true, public_name: p.public_name || '', address: p.address || store.address || '',
+    phone: p.phone || '', hours: p.hours || '', coordinates: coordText(p) });
+  const [busy, setBusy] = useState(false);
+  const set = (x) => setF((y) => ({ ...y, ...x }));
+  const ll = parseCoords(f.coordinates);
+  const save = async () => {
+    setBusy(true);
+    try { await websiteAPI.stores.save(store.location_id, f); toast.success(f.enabled ? 'Store saved — customers can pick up there' : 'Store saved — pickup is off'); onSaved(); }
+    catch (e) { toast.error(errText(e)); } finally { setBusy(false); }
+  };
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="max-h-[92dvh] max-w-lg overflow-y-auto" data-testid="store-dialog">
+        <DialogHeader><DialogTitle>Pickup from {fallback}</DialogTitle><DialogDescription>Customers who choose to pick up a shop order see this store’s name, address, phone, hours and a directions link.</DialogDescription></DialogHeader>
+        <div className="space-y-3">
+          <label className="flex items-start gap-2 text-sm text-slate-700"><input type="checkbox" checked={f.enabled} onChange={(e) => set({ enabled: e.target.checked })} className="mt-0.5 h-4 w-4" data-testid="store-enabled" />
+            <span>Customers can pick up orders here<span className="block text-[11px] text-slate-500">Untick to stop offering this store. The details are kept.</span></span></label>
+          <Field label="Name on the website" hint={`Leave it empty to show “${fallback}”.`}><input className={inputCls} value={f.public_name} onChange={(e) => set({ public_name: e.target.value })} maxLength={80} placeholder={fallback} /></Field>
+          <Field label="Address" hint="Door number, street, town and PIN code — as customers should find it.">
+            <textarea className={textareaCls} value={f.address} onChange={(e) => set({ address: e.target.value })} maxLength={300} data-testid="store-address" /></Field>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Phone" hint="Mobile, or landline with STD code"><input className={inputCls} value={f.phone} onChange={(e) => set({ phone: e.target.value })} inputMode="tel" placeholder="e.g. 9043547047" data-testid="store-phone" /></Field>
+            <Field label="Opening hours"><input className={inputCls} value={f.hours} onChange={(e) => set({ hours: e.target.value })} maxLength={80} placeholder="Mon–Sat, 9:30 am – 6:30 pm" /></Field>
+          </div>
+          <Field label="Map coordinates" hint="Open the store in Google Maps, long-press the pin and paste the numbers here (for example 11.2712, 77.5845)">
+            <input className={inputCls} value={f.coordinates} onChange={(e) => set({ coordinates: e.target.value })} inputMode="decimal" placeholder="11.2712, 77.5845" data-testid="store-coordinates" /></Field>
+          {ll && <a href={`https://www.google.com/maps?q=${ll[0]},${ll[1]}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-sm text-sky-700 underline"><MapPin className="h-3.5 w-3.5" />Check the pin on Google Maps</a>}
+        </div>
+        <DialogFooter><Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button onClick={save} disabled={busy || (f.enabled && f.address.trim().length < 5)} className="bg-emerald-600 text-white hover:bg-emerald-700" data-testid="store-save">{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Save store'}</Button></DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function StoresTab() {
+  const { can } = useAuth();
+  const navigate = useNavigate();
+  const manage = can('can_manage_website');
+  const [list, setList] = useState(null);
+  const [edit, setEdit] = useState(null);
+  const load = useCallback(() => { websiteAPI.stores.list().then((r) => setList(r.data?.items || [])).catch((e) => { toast.error(errText(e, 'Couldn’t load the stores')); setList([]); }); }, []);
+  useEffect(() => { load(); }, [load]);
+  const onOff = async (st) => {
+    const p = st.pickup || {};
+    try {
+      await websiteAPI.stores.save(st.location_id, { enabled: !p.enabled, public_name: p.public_name, address: p.address, phone: p.phone, hours: p.hours, coordinates: coordText(p) });
+      toast.success(p.enabled ? 'Pickup switched off for this store' : 'Customers can pick up here now'); load();
+    } catch (e) { toast.error(errText(e)); }
+  };
+  const on = (list || []).filter((x) => x.pickup?.enabled).length;
+  return (
+    <div className="space-y-3">
+      <p className="text-sm text-slate-600">When a shop customer chooses to pick up their order, they choose one of the stores switched on here. {list && !on ? 'None is on now, so the shop offers pickup from our office.' : ''}</p>
+      {!list ? <Loading /> : !list.length ? (
+        <Empty icon={Store} title="No locations yet" text="Add your branches on the Locations page first. Each one can then be offered as a pickup store.">
+          <Can module="module_locations" action="view"><Button variant="outline" className="gap-1.5" onClick={() => navigate('/dashboard/locations')}><MapPin className="h-4 w-4" />Open Locations</Button></Can>
+        </Empty>
+      ) : (
+        <div className="grid gap-2 sm:grid-cols-2" data-testid="stores-list">
+          {list.map((st) => {
+            const p = st.pickup || {};
+            return (
+              <div key={st.location_id} className="rounded-xl border border-slate-200 bg-white p-3" data-testid={`store-${st.location_id}`}>
+                <p className="flex flex-wrap items-center gap-1.5 font-medium text-slate-900">{storeName(st)}<Chip tone={p.enabled ? 'green' : 'slate'}>{p.enabled ? 'Pickup on' : 'Pickup off'}</Chip></p>
+                <p className="text-[11px] text-slate-500">{[String(st.type || '').replace(/_/g, ' '), st.district, p.public_name && `ERP name ${st.name}`].filter(Boolean).join(' — ')}</p>
+                {p.address ? (
+                  <div className="mt-1.5 space-y-0.5 text-sm text-slate-700">
+                    <p className="flex gap-1.5"><MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0 text-slate-400" />{p.address}</p>
+                    {p.phone && <p className="flex gap-1.5"><Phone className="mt-0.5 h-3.5 w-3.5 shrink-0 text-slate-400" />{p.phone}</p>}
+                    {p.hours && <p className="flex gap-1.5"><Clock className="mt-0.5 h-3.5 w-3.5 shrink-0 text-slate-400" />{p.hours}</p>}
+                    {p.lat == null && p.enabled && <p className="text-[11px] text-amber-700">No map pin yet — customers won’t get a directions link.</p>}
+                  </div>
+                ) : <p className="mt-1.5 text-sm text-slate-500">Not set up for pickup.</p>}
+                {manage && <div className="mt-2 flex flex-wrap gap-1">
+                  <Button variant="ghost" size="sm" className="h-8 gap-1 px-2" onClick={() => setEdit(st)} data-testid="store-edit"><Pencil className="h-3.5 w-3.5" />{p.address ? 'Edit' : 'Set up pickup'}</Button>
+                  {p.address && <Button variant="ghost" size="sm" className="h-8 gap-1 px-2" onClick={() => onOff(st)}><Power className="h-3.5 w-3.5" />{p.enabled ? 'Switch off' : 'Switch on'}</Button>}
+                </div>}
+              </div>);
+          })}
+        </div>
+      )}
+      {edit && <StoreDialog store={edit} onClose={() => setEdit(null)} onSaved={() => { setEdit(null); load(); }} />}
+    </div>
+  );
+}
+
 /* ───────────────────────── pop-ups & settings ───────────────────────── */
 const ACTIONS = [['quote', 'Opens the quote form'], ['whatsapp', 'Opens WhatsApp'], ['shop', 'Opens the shop'], ['link', 'Opens a link'], ['none', 'No button']];
 const EMPTY_POP = { title: '', message: '', cta_label: '', cta_action: 'quote', cta_url: '', where: 'site', delay_seconds: 8, valid_till: '', active: true };
@@ -450,7 +724,11 @@ function PopupsTab({ onCount }) {
   useEffect(() => { load(); }, [load]);
   const saveSettings = async () => {
     setSaving(true);
-    try { const r = await websiteAPI.settings.save({ whatsapp_number: s.whatsapp_number, call_number: s.call_number, show_price_estimate: s.show_price_estimate }); setS(r.data); toast.success('Website settings saved'); }
+    try {
+      const r = await websiteAPI.settings.save({ whatsapp_number: s.whatsapp_number, call_number: s.call_number, show_price_estimate: s.show_price_estimate,
+        site_url: (s.site_url || '').trim(), shop_url: (s.shop_url || '').trim() });
+      setS(r.data); toast.success('Website settings saved');
+    }
     catch (e) { toast.error(errText(e)); } finally { setSaving(false); }
   };
   const remove = async (p) => { if (!await confirmAction({ title: `Delete the pop-up “${p.title}”?`, confirmLabel: 'Delete', tone: 'danger' })) return; try { await websiteAPI.popups.remove(p.id); load(); } catch (e) { toast.error(errText(e)); } };
@@ -479,6 +757,10 @@ function PopupsTab({ onCount }) {
           <div className="space-y-3">
             <Field label="WhatsApp number" hint={`Empty = the company phone (${s.company_phone || 'not set'}). Now: ${s.effective_whatsapp || '—'}`}><input className={inputCls} value={s.whatsapp_number || ''} onChange={(e) => setS({ ...s, whatsapp_number: e.target.value })} disabled={!manage} inputMode="numeric" data-testid="settings-whatsapp" /></Field>
             <Field label="Phone number for calls" hint={`Empty = the company phone. Now: ${s.effective_call || '—'}`}><input className={inputCls} value={s.call_number || ''} onChange={(e) => setS({ ...s, call_number: e.target.value })} disabled={!manage} inputMode="numeric" /></Field>
+            <Field label="Main website address" hint={`Where the website opens, starting with https://. Empty = ${s.default_site_url || 'https://quote.sensoper.in'}`}>
+              <input className={inputCls} value={s.site_url || ''} onChange={(e) => setS({ ...s, site_url: e.target.value })} disabled={!manage} inputMode="url" placeholder={s.default_site_url || 'https://quote.sensoper.in'} data-testid="settings-site-url" /></Field>
+            <Field label="Shop address" hint={`For example https://shop.sensoper.in. Empty = the main website address + /shop/ (${(s.urls?.site || s.default_site_url || 'https://quote.sensoper.in')}/shop/)`}>
+              <input className={inputCls} value={s.shop_url || ''} onChange={(e) => setS({ ...s, shop_url: e.target.value })} disabled={!manage} inputMode="url" placeholder="https://shop.sensoper.in" data-testid="settings-shop-url" /></Field>
             <label className="flex items-start gap-2 text-sm text-slate-700"><input type="checkbox" checked={!!s.show_price_estimate} onChange={(e) => setS({ ...s, show_price_estimate: e.target.checked })} disabled={!manage} className="mt-0.5 h-4 w-4" /><span>Show an estimated price in the savings calculator<span className="block text-[11px] text-slate-500">Uses Price list → Package slabs — the per-kW rates you quote customers.</span></span></label>
             {manage && <Button onClick={saveSettings} disabled={saving} className="w-full bg-emerald-600 text-white hover:bg-emerald-700" data-testid="settings-save">{saving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Save settings'}</Button>}
           </div>
@@ -499,7 +781,7 @@ export default function WebsitePage() {
   const go = (t) => { const p = new URLSearchParams(params); p.set('tab', t); p.delete('lead'); setParams(p, { replace: true }); };
   return (
     <div className="space-y-4" data-testid="website-page">
-      <PageHeader icon={Globe} title="Website" sub="sensoper.in and shop.sensoper.in — leads, the shop, customer logins and pop-ups.">
+      <PageHeader icon={Globe} title="Website" sub="sensoper.in and shop.sensoper.in — leads, the shop, testimonials, pickup stores, customer logins and pop-ups.">
         <a href={LIVE_SITE} target="_blank" rel="noopener noreferrer"><Button variant="outline" className="gap-1.5"><ExternalLink className="h-4 w-4" />Website</Button></a>
         <a href={LIVE_SHOP} target="_blank" rel="noopener noreferrer"><Button variant="outline" className="gap-1.5"><ShoppingBag className="h-4 w-4" />Shop</Button></a>
       </PageHeader>
@@ -509,9 +791,11 @@ export default function WebsitePage() {
         <Tile label="In the shop" value={sum?.shop_products ?? '—'} sub="products live" icon={ShoppingBag} onClick={() => go('shop')} />
         <Tile label="Customer logins" value={sum?.client_logins ?? '—'} icon={Users} onClick={() => go('logins')} />
       </Tiles>
-      <PillTabs value={tab} onChange={go} testid="website-tab" tabs={[['leads', 'Leads', sum?.new_leads], ['shop', 'Shop'], ['logins', 'Customer logins'], ['popups', 'Pop-ups & settings']]} />
+      <PillTabs value={tab} onChange={go} testid="website-tab" tabs={[['leads', 'Leads', sum?.new_leads], ['shop', 'Shop'], ['testimonials', 'Testimonials'], ['stores', 'Pickup stores'], ['logins', 'Customer logins'], ['popups', 'Pop-ups & settings']]} />
       {tab === 'leads' && <LeadsTab onCount={refresh} />}
       {tab === 'shop' && <ShopTab onCount={refresh} />}
+      {tab === 'testimonials' && <TestimonialsTab />}
+      {tab === 'stores' && <StoresTab />}
       {tab === 'logins' && <LoginsTab onCount={refresh} />}
       {tab === 'popups' && <PopupsTab onCount={refresh} />}
     </div>

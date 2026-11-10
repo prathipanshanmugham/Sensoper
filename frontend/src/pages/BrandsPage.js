@@ -6,7 +6,7 @@ import { toast } from 'sonner';
 import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import * as XLSX from 'xlsx';
 import { saveAs } from 'file-saver';
-import { AlertTriangle, BadgeCheck, Building2, FileSpreadsheet, ImagePlus, Link2, Loader2, Package, Pencil, Plus, Search, Stamp, Trash2, X } from 'lucide-react';
+import { AlertTriangle, BadgeCheck, Building2, FileSpreadsheet, Globe, ImagePlus, Link2, Loader2, Package, Pencil, Plus, Search, Stamp, Trash2, X } from 'lucide-react';
 import { brandsAPI, inventoryAPI, uploadAPI } from '../utils/api';
 import { useAuth } from '../contexts/AuthContext';
 import { Button } from '../components/ui/button';
@@ -29,7 +29,9 @@ const OFFICES = ['Chennai', 'Mumbai', 'Delhi', 'Kolkata', 'Ahmedabad'];
 const SERIES = { counter: '#2a78d6', online: '#eb6834', projects: '#1baf7a' };   // validated categorical slots 1–3
 const statusLabel = (s) => (TM_STATUS.find(([k]) => k === s) || [s, s])[1];
 const logoSrc = (b) => (b?.logo_path ? uploadAPI.getFileUrl(b.logo_path) : null);
-const blankBrand = { name: '', kind: 'own', logo_path: null, tagline: '', website: '', notes: '', active: true,
+// on_website: null = follow the kind (dealerships and distribution show on the website, our own brands don't)
+const onWebsite = (b) => (b?.on_website ?? null) === null ? b?.kind !== 'own' : !!b.on_website;
+const blankBrand = { name: '', kind: 'own', logo_path: null, tagline: '', website: '', notes: '', active: true, on_website: null,
   contact: { company: '', person: '', phone: '', email: '' }, agreement: { start_date: '', end_date: '', territory: '', margin_pct: '', target_amount: '', credit_days: '', notes: '' } };
 const blankTm = { mark: '', mark_type: 'word', classes: '', application_number: '', filing_date: '', status: 'planned', registration_number: '', registration_date: '',
   valid_until: '', agent: '', office: 'Chennai', next_action: '', next_action_date: '', documents: [], notes: '' };
@@ -110,6 +112,16 @@ function BrandForm({ initial, onSaved, onCancel }) {
         </>
       )}
       <Field label="Notes"><textarea rows={2} value={f.notes || ''} onChange={set('notes')} className="w-full rounded-md border border-slate-200 p-2 text-sm outline-none focus:border-emerald-400" /></Field>
+      <div className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 px-3 py-2 text-sm" data-testid="brand-on-website">
+        <span>Show on the website
+          <span className="block text-[11px] text-slate-500">
+            {(f.on_website ?? null) === null
+              ? 'Follows the kind: on for dealerships and distribution, off for our own brands.'
+              : <>{f.on_website ? 'Listed under “Brands we deal with”, with its logo.' : 'Kept off the website.'} <button type="button" className="underline" onClick={() => setF((x) => ({ ...x, on_website: null }))}>Follow the kind instead</button></>}
+          </span>
+        </span>
+        <Switch checked={onWebsite(f)} onCheckedChange={(v) => setF((x) => ({ ...x, on_website: !!v }))} aria-label="Show on the website" data-testid="brand-on-website-switch" />
+      </div>
       {f.id && <label className="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2 text-sm"><span>Active<span className="block text-[11px] text-slate-500">Switch off to hide it from lists</span></span><Switch checked={f.active !== false} onCheckedChange={set('active')} /></label>}
       <div className="flex justify-end gap-2 pt-1">
         {onCancel && <Button variant="outline" onClick={onCancel}>Cancel</Button>}
@@ -240,6 +252,7 @@ function BrandSheet({ brandId, onOpenChange, onChanged, canEdit, isAdmin }) {
                     b.kind !== 'own' && ['Territory', b.agreement?.territory], b.kind !== 'own' && ['Our margin', b.agreement?.margin_pct != null && `${b.agreement.margin_pct}%`],
                     b.kind !== 'own' && ['Yearly target', b.agreement?.target_amount && inr(b.agreement.target_amount)], b.kind !== 'own' && ['Credit days', b.agreement?.credit_days],
                     b.kind !== 'own' && ['Contact', [b.contact?.person, b.contact?.company, b.contact?.phone, b.contact?.email].filter(Boolean).join(' · ')],
+                    ['Website listing', onWebsite(b) && b.active !== false ? 'Shown under “Brands we deal with”' : 'Not on the website'],
                     ['Notes', b.notes]].filter((r) => r && r[1]).map(([k, v]) => (
                     <div key={k} className="flex gap-3 px-3 py-2"><dt className="w-28 shrink-0 text-slate-500">{k}</dt><dd className="min-w-0 flex-1 text-slate-900">{v}</dd></div>
                   ))}
@@ -469,6 +482,7 @@ export default function BrandsPage() {
                         <div><p className="font-['Outfit'] text-lg font-bold tabular-nums">{b.registered}/{b.trademarks}</p><p className="text-[10px] text-slate-500">marks registered</p></div>
                       </div>
                       <div className="mt-2 flex flex-wrap gap-1">
+                        {b.shown_on_website && <Chip testid={`brand-web-${b.id}`}><Globe className="h-3 w-3" aria-hidden="true" />On the website</Chip>}
                         {b.next_renewal && <Chip tone="amber">Renew by {fmtDate(b.next_renewal)}</Chip>}
                         {daysToEnd != null && <Chip tone={daysToEnd < 0 ? 'red' : daysToEnd <= 60 ? 'amber' : 'slate'}>{daysToEnd < 0 ? 'Agreement ended' : `Agreement ends ${fmtDate(end)}`}</Chip>}
                       </div>

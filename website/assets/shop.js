@@ -1,7 +1,69 @@
-/* shop.sensoper.in — live products from the ERP, a cart in this browser, and an order request staff confirm. */
-import { $, $$, boot, api, inr, esc, store, mobile, sheet, openSheet, toast, waLink, utm, schedulePopups, ICON } from './core.js';
+/* shop.sensoper.in — live products from the ERP, a cart in this browser, and an order request staff confirm.
+   Served at / on shop.sensoper.in and at /shop/ on quote.sensoper.in: every file and API path here is absolute (/assets/…, /api/…). */
+import { $, $$, boot, api, site, inr, fmt, esc, store, mobile, sheet, openSheet, toast, waLink, utm, schedulePopups, ICON } from './core.js';
 
 boot('shop');
+
+/* pick-up stores: the ERP's locations with pick-up turned on. None set up → pick-up "from our office", as before. */
+let STORES = [];
+const storesReady = site('shop').then((s) => { STORES = (Array.isArray(s.stores) ? s.stores : []).filter((x) => x && x.id && x.name); });
+const hasXY = (s) => Number.isFinite(s.lat) && Number.isFinite(s.lng) && !(s.lat === 0 && s.lng === 0);
+function km(a, b) {                       // straight-line distance (haversine)
+  const r = Math.PI / 180, dLat = (b.lat - a.lat) * r, dLng = (b.lng - a.lng) * r;
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(a.lat * r) * Math.cos(b.lat * r) * Math.sin(dLng / 2) ** 2;
+  return 2 * 6371 * Math.asin(Math.min(1, Math.sqrt(h)));
+}
+const away = (d) => (d < 1 ? 'less than 1 km away' : `about ${fmt(d < 10 ? Math.round(d * 10) / 10 : Math.round(d), 1)} km away`);
+function phoneOf(p) {
+  const d = String(p || '').replace(/\D/g, ''), m = mobile(d);
+  if (m) return { href: `tel:+91${m}`, text: `+91 ${m.slice(0, 5)} ${m.slice(5)}` };
+  if (d.length < 6) return null;
+  return { href: `tel:+91${d.replace(/^0/, '')}`, text: d.startsWith('0') ? d : `0${d}` };
+}
+const httpsOnly = (u) => (/^https:\/\/[^\s"'<>]+$/.test(String(u || '')) ? String(u) : '');
+const LOCATE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="6.5"/><circle cx="12" cy="12" r="2" fill="currentColor"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3"/></svg>';
+function storeHtml(s, checked) {
+  const ph = phoneOf(s.phone), dir = httpsOnly(s.directions);
+  return `<div class="store" data-store="${esc(s.id)}">
+    <label class="store-pick"><input type="radio" name="store_id" value="${esc(s.id)}"${checked ? ' checked' : ''}>
+      <span class="store-txt"><b>${esc(s.name)}</b><span class="store-dist"></span>${s.address ? `<span>${esc(s.address)}</span>` : ''}${s.hours ? `<span>${esc(s.hours)}</span>` : ''}</span></label>
+    ${ph || dir ? `<div class="store-links">${ph ? `<a href="${ph.href}">Call ${esc(ph.text)}</a>` : ''}${dir ? `<a href="${esc(dir)}" target="_blank" rel="noopener">Directions<span class="sr"> to ${esc(s.name)}, opens Google Maps</span></a>` : ''}</div>` : ''}
+  </div>`;
+}
+function storePicker() {
+  if (!STORES.length) return '';
+  const one = STORES.length === 1, near = !one && STORES.some(hasXY);
+  return `<fieldset class="stores" id="store-f" hidden><legend>${one ? 'Pick it up from' : 'Which store will you pick it up from?'}</legend>
+    ${near ? `<div class="store-near"><button type="button" class="btn btn-ghost btn-sm" data-near>${LOCATE}Find the nearest store</button></div>` : ''}
+    <p class="store-msg" role="status"></p>
+    <div class="store-list">${STORES.map((s) => storeHtml(s, one)).join('')}</div></fieldset>`;
+}
+function findNearest(f) {
+  const msg = $('.store-msg', f), btn = $('[data-near]', f);
+  if (!('geolocation' in navigator)) { msg.textContent = 'This browser can’t share your location. Choose the store from the list.'; return; }
+  btn.disabled = true; msg.textContent = 'Finding where you are…';
+  navigator.geolocation.getCurrentPosition((pos) => {
+    btn.disabled = false;
+    const here = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+    const list = $('.store-list', f);
+    const rows = STORES.map((s, i) => ({ s, i, d: hasXY(s) ? km(here, s) : Infinity }));
+    rows.sort((a, b) => a.d - b.d || a.i - b.i);            // stores without a map pin keep their order, at the end
+    rows.forEach(({ s, d }) => {
+      const el = list.querySelector(`[data-store="${CSS.escape(s.id)}"]`);
+      $('.store-dist', el).textContent = Number.isFinite(d) ? away(d) : '';
+      list.append(el);
+    });
+    const best = rows[0];
+    if (!Number.isFinite(best.d)) { msg.textContent = 'None of our stores has a map location yet. Choose one from the list.'; return; }
+    $(`[data-store="${CSS.escape(best.s.id)}"] input`, list).checked = true;
+    msg.textContent = `Nearest to you: ${best.s.name}, ${away(best.d)}.`;
+  }, (e) => {
+    btn.disabled = false;
+    msg.textContent = e.code === 1
+      ? 'Location is turned off for this site, so we can’t find the nearest store. Choose one from the list.'
+      : 'We couldn’t find where you are just now. Choose the store from the list.';
+  }, { enableHighAccuracy: false, timeout: 12000, maximumAge: 10 * 60e3 });
+}
 
 const CAT_ICON = {
   solar_panels: '<path d="M3 15l2.5-9h13L21 15z"/><path d="M4.3 10.5h15.4M9 6l-1 9M15 6l1 9"/><path d="M12 15v4M8 19h8"/>',
@@ -129,6 +191,7 @@ function openCart(step = 'cart') {
           <label><input type="radio" name="delivery" value="pickup">I’ll pick it up</label>
         </div>
         <label class="fld" id="addr-f"><span>Delivery address</span><textarea class="input" name="address" rows="2" maxlength="300" autocomplete="street-address"></textarea></label>
+        ${storePicker()}
         <label class="fld"><span>PIN code</span><input class="input" name="pincode" inputmode="numeric" maxlength="6" autocomplete="postal-code"></label>
         <label class="fld"><span>Note for us <em>(optional)</em></span><input class="input" name="message" maxlength="600" placeholder="GST number for the invoice, best time to deliver…"></label>
         <input class="hp" name="website" tabindex="-1" autocomplete="off" aria-hidden="true">
@@ -137,8 +200,15 @@ function openCart(step = 'cart') {
         <button type="button" class="btn btn-ghost btn-block" data-back>Back to cart</button>
       </form>`;
     const f = $('#order-form', body);
-    const sync = () => { $('#addr-f', body).hidden = f.delivery.value !== 'delivery'; };
+    const sync = () => {
+      const pickup = f.delivery.value === 'pickup';
+      $('#addr-f', body).hidden = pickup;
+      const sf = $('#store-f', body);
+      if (sf) sf.hidden = !pickup;
+    };
     f.addEventListener('change', sync); sync();
+    const near = $('[data-near]', f);
+    if (near) near.addEventListener('click', () => findNearest(f));
     f.addEventListener('submit', (e) => { e.preventDefault(); placeOrder(f, ok); });
   }
   openSheet(d);
@@ -150,17 +220,24 @@ async function placeOrder(f, lines) {
   if (name.length < 2) { err.textContent = 'Tell us your name.'; f.name.focus(); return; }
   if (!phone) { err.textContent = 'Enter your 10-digit mobile number.'; f.phone.focus(); return; }
   if (f.delivery.value === 'delivery' && f.address.value.trim().length < 5) { err.textContent = 'Add the delivery address, or choose pick-up.'; f.address.focus(); return; }
+  const pickup = f.delivery.value === 'pickup';
+  const picked = pickup && STORES.length ? STORES.find((s) => s.id === ($('input[name=store_id]:checked', f) || {}).value) : null;
+  if (pickup && STORES.length && !picked) { err.textContent = 'Choose the store you’ll pick it up from.'; $('input[name=store_id]', f).focus(); return; }
   btn.disabled = true; btn.textContent = 'Sending…';
   try {
     const r = await api('/api/public/shop/order', { method: 'POST', body: {
       name, phone, delivery: f.delivery.value, address: f.address.value, pincode: f.pincode.value, message: f.message.value,
+      store_id: picked ? picked.id : undefined,
       items: lines.map((l) => ({ id: l.id, qty: l.qty })), utm: utm(), website: f.website.value } });
     store.set('sp_me', { ...store.get('sp_me', {}), name, phone });
     cart.set({});
     render();
-    const text = `Hi Sensoper, I sent an order request on your shop${r.number ? ` (${r.number})` : ''}:\n` + (r.lines || []).map((l) => `• ${l.title} × ${l.qty}`).join('\n') + `\nTotal ${inr(r.total)}. — ${name}`;
+    const text = `Hi Sensoper, I sent an order request on your shop${r.number ? ` (${r.number})` : ''}:\n` + (r.lines || []).map((l) => `• ${l.title} × ${l.qty}`).join('\n')
+      + `\nTotal ${inr(r.total)}.${picked ? `\nI’ll pick it up from ${picked.name}.` : ''} — ${name}`;
+    const dir = picked && httpsOnly(picked.directions);
     $('#cart-body').innerHTML = `<div class="done"><div class="done-ico">${ICON.check}</div><h2>Order request sent</h2>
-      <p class="muted">${r.number ? `Your reference is <b>${esc(r.number)}</b>. ` : ''}We’ll call you on <b>+91 ${phone.slice(0, 5)} ${phone.slice(5)}</b> to confirm stock, delivery and payment.</p>
+      <p class="muted">${r.number ? `Your reference is <b>${esc(r.number)}</b>. ` : ''}We’ll call you on <b>+91 ${phone.slice(0, 5)} ${phone.slice(5)}</b> to confirm stock${picked ? ' and payment, and tell you when it’s ready to collect' : ', delivery and payment'}.</p>
+      ${picked ? `<div class="pickup-at"><span class="pa-k">Collect it from</span><b>${esc(picked.name)}</b>${picked.address ? `<span>${esc(picked.address)}</span>` : ''}${picked.hours ? `<span>${esc(picked.hours)}</span>` : ''}${dir ? `<a href="${esc(dir)}" target="_blank" rel="noopener">Directions<span class="sr"> to ${esc(picked.name)}, opens Google Maps</span></a>` : ''}</div>` : ''}
       ${r.unavailable && r.unavailable.length ? '<p class="small muted">A few items had just gone out of the shop, so they’re not in this request.</p>' : ''}
       <a class="btn btn-wa btn-lg btn-block" target="_blank" rel="noopener" href="${waLink(text)}">${ICON.chat}Send it on WhatsApp too</a>
       <button type="button" class="btn btn-ghost btn-block" data-close>Keep browsing</button></div>`;
@@ -192,7 +269,7 @@ document.addEventListener('click', (e) => {
     return;
   }
   if (t.closest('#cart-btn')) { openCart('cart'); return; }
-  if (t.closest('[data-checkout]')) { openCart('checkout'); return; }
+  if (t.closest('[data-checkout]')) { storesReady.then(() => openCart('checkout')); return; }
   if (t.closest('[data-back]')) { openCart('cart'); return; }
   const chip = t.closest('[data-cat]');
   if (chip) { cat = chip.dataset.cat; render(); }

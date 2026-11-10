@@ -1288,7 +1288,7 @@ def create_router(db, get_current_user, require_role, create_audit_log, jwt_secr
         doc["status"] = status
         try:
             order = int(float(body.order or 0))
-        except (TypeError, ValueError):
+        except (TypeError, ValueError, OverflowError):
             raise HTTPException(status_code=400, detail="Order should be a whole number — smaller numbers show first.")
         doc["order"] = max(0, min(order, 9999))
         return doc
@@ -1354,7 +1354,7 @@ def create_router(db, get_current_user, require_role, create_audit_log, jwt_secr
         part_file = storage_path(f"{app_name}/videos/{name}.part")
         part_file.parent.mkdir(parents=True, exist_ok=True)
         st: Dict[str, Any] = {"headers": {}, "field": b"", "value": b"", "in_file": False, "seen": False, "size": 0,
-                              "head": b"", "ext": "", "pending": []}
+                              "head": b"", "ext": "", "pending": [], "ended": False}
 
         def on_part_begin():
             st["headers"], st["field"], st["value"] = {}, b"", b""
@@ -1396,10 +1396,13 @@ def create_router(db, get_current_user, require_role, create_audit_log, jwt_secr
         def on_part_end():
             st["in_file"] = False
 
+        def on_end():                       # only called once the form's closing line has arrived
+            st["ended"] = True
+
         parser = MultipartParser(boundary, {"on_part_begin": on_part_begin, "on_header_field": on_header_field,
                                             "on_header_value": on_header_value, "on_header_end": on_header_end,
                                             "on_headers_finished": on_headers_finished, "on_part_data": on_part_data,
-                                            "on_part_end": on_part_end})
+                                            "on_part_end": on_part_end, "on_end": on_end})
         received, saved = 0, False
         try:
             with open(part_file, "wb") as out:
@@ -1420,6 +1423,8 @@ def create_router(db, get_current_user, require_role, create_audit_log, jwt_secr
                     raise HTTPException(status_code=400, detail="The upload didn't come through properly. Try again.")
             if not st["seen"]:
                 raise HTTPException(status_code=400, detail="Choose a video file to upload.")
+            if not st["ended"]:             # the upload stopped part-way: don't keep half a video
+                raise HTTPException(status_code=400, detail="The upload didn't come through properly. Try again.")
             if not st["size"]:
                 raise HTTPException(status_code=400, detail="That video file is empty. Choose the video again.")
             head = st["head"]

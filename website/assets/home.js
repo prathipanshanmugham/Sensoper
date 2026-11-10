@@ -1,5 +1,6 @@
-/* Home page: a day on solar in 3D, four kinds of system with live diagrams, the day hour by hour, the bill, the subsidy,
-   the calculator, how it works, the brands we deal with and why us — with a way to ask for the free plan at every step.
+/* Home page: a day on solar in 3D, five kinds of system with live diagrams, the day hour by hour, the bill, the subsidy,
+   the calculator, customer videos, how it works, the brands we deal with and why us — with a way to ask for the free plan
+   at every step. Customer videos and brands come from the ERP (/api/public/site); each section hides when its list is empty.
    The animation library (GSAP + ScrollTrigger in /assets/vendor) and the 3D scene (/assets/hero3d.js, built from
    src/hero3d.js) are optional: without them, or with reduced motion, every section shows its finished state. */
 import { $, $$, boot, site, openLead, schedulePopups, exitIntent, notify, inr, fmt, esc, store, reduceMotion, reveal,
@@ -131,7 +132,7 @@ function proof() {
   });
 }
 
-/* ───────── 2. four systems, with diagrams that draw themselves ───────── */
+/* ───────── 2. five systems, with diagrams that draw themselves ───────── */
 function systems() {
   const sec = $('#systems'), cards = $$('.sys');
   if (!sec) return;
@@ -373,7 +374,135 @@ function how() {
   G.from($$('.step', sec), { y: 50, autoAlpha: 0, duration: 1, ease: 'expo.out', stagger: 0.08, scrollTrigger: { trigger: sec, start: 'top 70%' } });
 }
 
-/* ───────── 6. brands we deal with: ribbons that drift with the scroll ───────── */
+/* ───────── 5½. customer videos, from the ERP (Website → Testimonials) ───────── */
+const YT_ID = /^[A-Za-z0-9_-]{11}$/;
+// only our own API's files, or https pictures — never javascript: or data: addresses from the data
+const safeSrc = (u) => (typeof u === 'string' && (/^\/api\/public\/[\w./-]+$/.test(u) || /^https:\/\/[^\s"'<>]+$/.test(u)) ? u : '');
+const PLAY = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.6v12.8a1 1 0 0 0 1.52.85l10.4-6.4a1 1 0 0 0 0-1.7L9.52 4.75A1 1 0 0 0 8 5.6z"/></svg>';
+// a file video without a poster: a quiet array of panels on navy, in the diagrams' line style
+const PANELS = `<svg viewBox="0 0 480 270" preserveAspectRatio="xMidYMid slice"><g transform="translate(118 150) skewX(-24)">${
+  [0, 1, 2].map((r) => [0, 1, 2, 3, 4, 5, 6].map((c) => `<rect x="${c * 51}" y="${r * 31}" width="46" height="26" rx="2"/>`).join('')).join('')}</g><path d="M40 252 H440"/></svg>`;
+const storyWho = (t) => [t.name, t.place].filter(Boolean).join(', ');
+function storyOk(t) {
+  const v = t && t.video;
+  return Boolean(t && String(t.name || '').trim() && v && ((v.type === 'youtube' && YT_ID.test(v.id || '')) || (v.type === 'file' && safeSrc(v.url))));
+}
+function storyPoster(t) {
+  const v = t.video;
+  const src = safeSrc(t.poster) || (v.type === 'youtube' ? `https://i.ytimg.com/vi/${v.id}/hqdefault.jpg` : '');
+  return `<button type="button" class="story-play" aria-label="Play the video from ${esc(storyWho(t))}">${src
+    ? `<img src="${esc(src)}" alt="" width="480" height="270" loading="lazy" decoding="async">`
+    : `<span class="story-ph" aria-hidden="true">${PANELS}</span>`}<span class="play-ico" aria-hidden="true">${PLAY}</span></button>`;
+}
+function storyCard(t, i) {
+  const q = String(t.quote || '').trim().replace(/^["“”'‘’]+|["“”'‘’]+$/g, '');
+  return `<li class="story" data-i="${i}"><div class="story-media">${storyPoster(t)}</div>
+    ${q ? `<blockquote class="story-q"><p>“${esc(q)}”</p></blockquote>` : ''}
+    <div class="story-foot"><p class="story-who"><b>${esc(t.name)}</b>${t.place ? `<span>${esc(t.place)}</span>` : ''}</p>${t.system ? `<p class="story-sys">${esc(t.system)}</p>` : ''}</div></li>`;
+}
+function stories(list) {
+  const sec = $('#stories'), rail = $('#story-list'), more = $('#story-more');
+  if (!sec || !rail) return;
+  const items = (Array.isArray(list) ? list : []).filter(storyOk);
+  sec.hidden = !items.length;
+  $$('[data-sec="stories"]').forEach((a) => { a.hidden = !items.length; });
+  if (!items.length) { rail.innerHTML = ''; return; }
+  sec.dataset.n = String(items.length);
+  rail.innerHTML = items.map(storyCard).join('');
+  // wide screens show six; the rest wait behind a button (phones swipe through all of them)
+  const CLIP = 6;
+  sec.classList.toggle('clip', items.length > CLIP);
+  more.hidden = items.length <= CLIP;
+  more.textContent = `Show all ${items.length} videos`;
+  more.onclick = () => { sec.classList.remove('clip'); more.hidden = true; const b = $(`.story:nth-child(${CLIP + 1}) .story-play`, rail); if (b) b.focus(); if (MOTION) ST.refresh(); };
+
+  const reset = (li) => { $('.story-media', li).innerHTML = storyPoster(items[Number(li.dataset.i)]); li.classList.remove('playing'); };
+  // one video at a time: a file video just pauses, a YouTube player goes back to its poster
+  const stopOthers = (keep) => $$('.story.playing', rail).forEach((li) => {
+    if (li === keep) return;
+    const vid = $('video', li);
+    if (vid) vid.pause(); else reset(li);
+  });
+  const failed = (li, t) => {
+    $('.story-media', li).innerHTML = `<div class="story-fail"><p>This video won’t play in this browser.</p><a href="${esc(t.video.url)}" target="_blank" rel="noopener">Open the video<span class="sr"> from ${esc(storyWho(t))} (opens in a new tab)</span></a></div>`;
+  };
+  const play = (li) => {
+    const t = items[Number(li.dataset.i)], v = t.video;
+    stopOthers(li);
+    let el;
+    if (v.type === 'youtube') {
+      el = document.createElement('iframe');
+      el.src = `https://www.youtube-nocookie.com/embed/${v.id}?autoplay=1&rel=0&playsinline=1`;
+      el.title = `Video from ${storyWho(t)}`;
+      el.allow = 'autoplay; encrypted-media; picture-in-picture; fullscreen';
+      el.allowFullscreen = true;
+      el.referrerPolicy = 'strict-origin-when-cross-origin';
+    } else {
+      el = document.createElement('video');
+      el.controls = true; el.playsInline = true; el.preload = 'none';
+      el.setAttribute('playsinline', '');
+      el.setAttribute('aria-label', `Video from ${storyWho(t)}`);
+      if (safeSrc(t.poster)) el.poster = t.poster;
+      const src = document.createElement('source');
+      src.src = v.url;
+      if (v.mime) src.type = v.mime;
+      src.addEventListener('error', () => failed(li, t));
+      el.append(src);
+      el.addEventListener('play', () => stopOthers(li));
+    }
+    $('.story-media', li).replaceChildren(el);
+    li.classList.add('playing');
+    el.focus({ preventScroll: true });
+    if (el.tagName === 'VIDEO') el.play().catch(() => { /* the controls are there to try again */ });
+  };
+  rail.onclick = (e) => { const b = e.target.closest('.story-play'); if (b) play(b.closest('.story')); };
+  if (MOTION) headings(sec);
+}
+
+/* ───────── 6. brands we deal with: from the ERP's Brands, with ribbons that drift with the scroll ───────── */
+const CAT_ORDER = [/panel|module/i, /inverter/i, /batter|storage|\bess\b|\bups\b/i, /pump/i];
+const catRank = (c) => { const i = CAT_ORDER.findIndex((r) => r.test(c)); return i < 0 ? CAT_ORDER.length : i; };
+const brandItem = (b) => {
+  const src = safeSrc(b.logo);
+  return `<li>${src ? `<img class="blogo" src="${esc(src)}" alt="${esc(b.name)}" loading="lazy" decoding="async">` : esc(b.name)}</li>`;
+};
+function brandList(list) {
+  const sec = $('#brands'), grid = $('#brand-grid');
+  if (!sec || !grid || !Array.isArray(list)) return;            // the ERP didn't answer: the list in the page stays
+  const items = list.filter((b) => b && String(b.name || '').trim());
+  sec.hidden = !items.length;
+  $$('[data-sec="brands"]').forEach((a) => { a.hidden = !items.length; });
+  if (!items.length) return;
+  // a column per category (panels, inverters, batteries, pumps first); a brand in two categories shows in both
+  const groups = new Map();
+  items.forEach((b) => {
+    const cats = [...new Set((Array.isArray(b.categories) ? b.categories : []).map((c) => String(c).trim()).filter(Boolean))];
+    (cats.length ? cats : ['']).forEach((c) => {
+      const k = c.toLowerCase();
+      if (!groups.has(k)) groups.set(k, { label: c, items: [] });
+      groups.get(k).items.push(b);
+    });
+  });
+  const named = [...groups.values()].filter((g) => g.label).sort((a, b) => catRank(a.label) - catRank(b.label) || a.label.localeCompare(b.label));
+  if (!named.length) {
+    grid.className = 'brand-grid flat';
+    grid.innerHTML = `<ul>${items.map(brandItem).join('')}</ul>`;
+  } else {
+    if (groups.has('')) named.push({ label: 'More brands', items: groups.get('').items });
+    grid.className = 'brand-grid';
+    grid.innerHTML = named.map((g) => `<div class="bcol"><h3>${esc(g.label)}</h3><ul>${g.items.map(brandItem).join('')}</ul></div>`).join('');
+  }
+  // a logo that doesn't load becomes the brand's name
+  $$('img.blogo', grid).forEach((img) => img.addEventListener('error', () => img.replaceWith(document.createTextNode(img.alt)), { once: true }));
+  // the navy ribbon: every name, repeated until one copy is wider than a screen, then twice for the endless scroll
+  const track = $('.r-a .track', sec);
+  if (track) {
+    const names = items.map((b) => String(b.name).trim());
+    const one = Array.from({ length: Math.ceil(10 / names.length) }, () => names).flat();
+    track.innerHTML = [...one, ...one].map((n) => `<span>${esc(n)}</span>`).join('');
+    track.style.animationDuration = `${Math.max(30, Math.round(one.length * 5.3))}s`;
+  }
+}
 function brands() {
   const sec = $('#brands');
   if (!sec || !MOTION) return;
@@ -432,6 +561,12 @@ if (MOTION) {
 reveal();
 mobileBar();
 if (MOTION) addEventListener('load', () => ST.refresh());
+// customer videos and brands from the ERP; the pinned sections below them measure again once they're in
+site('site').then((s) => {
+  stories(s.testimonials);
+  brandList(s.brands);
+  if (MOTION) ST.refresh();
+});
 schedulePopups('site', left > 0 ? [{ id: 'psg-2027', title: 'Up to ₹78,000 back on home solar', message: 'PM Surya Ghar subsidy — this phase runs till 31 March 2027. We do the paperwork for you.', cta_label: 'Get my free plan', cta_action: 'quote', kind: 'home', delay_seconds: 14 }] : []);
 exitIntent({ id: 'exit', title: 'Before you go — a free site visit?', message: 'We’ll check your roof and EB bill and tell you exactly what solar will save.', cta_action: 'quote' });
 if (store.get('sp_lead_at', 0)) document.documentElement.classList.add('has-lead');
