@@ -927,6 +927,25 @@ export const websiteAPI = {
     update: (id, data) => api.put(`/website/shop/products/${id}`, data),
     remove: (id) => api.delete(`/website/shop/products/${id}`),
   },
+  testimonials: {
+    list: () => api.get('/website/testimonials'),
+    create: (data) => api.post('/website/testimonials', data),
+    update: (id, data) => api.put(`/website/testimonials/${id}`, data),
+    remove: (id) => api.delete(`/website/testimonials/${id}`),
+    // up to 100 MB — no time limit; onProgress(0–100) as it goes up
+    uploadVideo: (file, onProgress) => {
+      const formData = new FormData();
+      formData.append('file', file);
+      return api.post('/website/testimonials/video', formData, {
+        headers: { 'Content-Type': undefined }, timeout: 0,
+        onUploadProgress: (e) => { if (onProgress && e.total) onProgress(Math.round((e.loaded / e.total) * 100)); },
+      });
+    },
+  },
+  stores: {
+    list: () => api.get('/website/stores'),
+    save: (locationId, data) => api.put(`/website/stores/${locationId}`, data),
+  },
   accounts: {
     list: (params = {}) => api.get('/client-accounts', { params }),
     create: (data) => api.post('/client-accounts', data),

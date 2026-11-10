@@ -1,5 +1,48 @@
 # Sensoper — change log
 
+## November 2026 · Website: brands, testimonials, store pickup
+
+### In the ERP
+- **Website → Settings** has two new addresses: **Main website address** (empty = https://quote.sensoper.in) and **Shop address**
+  (e.g. https://shop.sensoper.in; empty = the main address + `/shop/`). Both must start with `https://`.
+- **Website → Testimonials:** add a customer's video with their name, place, system and a short quote (up to 400 characters).
+  The video is a YouTube link (normal, youtu.be, Shorts, embed or live links) or an uploaded MP4, WebM or MOV of up to 100 MB,
+  with an optional poster picture. Each one is live or a draft; a smaller order number shows first. Swapping or deleting an
+  uploaded video deletes the old file.
+- **Website → Pickup stores:** any active location (Locations page) can be offered as a pickup store, with its name on the
+  website, address, phone, opening hours and map coordinates pasted from Google Maps (checked to be in India). The location
+  itself isn't changed.
+- A shop order picked up from a store shows that store on the lead.
+- **Brands:** a **Show on the website** switch. Until it's set, dealership and distribution brands show and our own brands
+  don't. Brands on the website carry an "On the website" marker in the list.
+- Changing testimonials and pickup stores needs the same permission as the shop and pop-ups (Run the shop, pop-ups and website
+  settings).
+
+### Backend
+- `GET /api/public/site` adds `urls`, `brands`, `testimonials` (live only, at most 24) and `stores` (pickup on).
+- New public files: `/api/public/brands/{id}/logo`, `/api/public/testimonials/{id}/poster` and `/api/public/testimonials/{id}/video`.
+  They serve only a shown brand's logo or a live testimonial's files. The video supports HTTP Range (206/416), which iPhones need,
+  and is streamed from disk.
+- `POST /api/public/shop/order` takes `store_id`. When pickup stores are set up, a pickup order must name one of them;
+  with none set up, pickup works as before.
+- `POST /api/website/testimonials/video` writes the upload to disk as it arrives and stops at 100 MB, whatever the request
+  says its size is. nginx must allow request bodies of about 101 MB on that path.
+
+### Website
+- **Five systems:** on-grid, off-grid, **hybrid** (new card and diagram: solar + battery + grid for homes and shops that get
+  power cuts), **battery storage (BESS)** (rewritten for businesses: peak charges, backup, added to an existing plant) and
+  solar pumps. Menus, footer, FAQ and search data list all five.
+- **Brands we deal with** comes from the ERP's Brands: a logo when there is one, otherwise the name, in a column per category
+  (panels, inverters, batteries, pumps, then the rest). The section hides when no brand is on the website.
+- **In our customers' words:** testimonial videos from the ERP, after the calculator. A swipe row on phones, a grid on
+  computers; YouTube plays in place (youtube-nocookie), uploaded videos in the page's own player; one plays at a time.
+- **Shop pickup:** choosing "I'll pick it up" lists the pickup stores with address, hours, phone and directions;
+  **Find the nearest store** uses the phone's location to sort them and picks the closest. The order names the store, and
+  the confirmation says where to collect.
+- **shop.sensoper.in:** links follow the ERP's Main website and Shop addresses; once the Shop address is set, old
+  quote.sensoper.in/shop/ links go to shop.sensoper.in. `website/deploy/enable-shop.sh` sets up shop.sensoper.in on the
+  server (DNS check first, nginx test with roll-back, certbot), and testimonial uploads of up to 100 MB get through nginx.
+
 ## November 2026 · The website and the ERP on one address (quote.sensoper.in)
 
 Until sensoper.in's DNS moves, the website runs on quote.sensoper.in next to the ERP.

@@ -1,12 +1,26 @@
 /* Sensoper website — shared by every page. No framework, no build step. */
 const HOST = location.hostname;
-// LIVE: the site has its own addresses (sensoper.in, www and shop). Anywhere else every page is on this one host:
-// quote.sensoper.in, where the site and the ERP share one address until sensoper.in's DNS moves, or a dev machine.
-export const LIVE = /^((www|shop)\.)?sensoper\.in$/.test(HOST);
-const WITH_ERP = /(^|\.)sensoper\.in$/.test(HOST);
-export const URLS = LIVE
-  ? { home: 'https://sensoper.in/', shop: 'https://shop.sensoper.in/', account: 'https://sensoper.in/account/', erp: 'https://quote.sensoper.in/login' }
-  : { home: '/', shop: '/shop/', account: '/account/', erp: WITH_ERP ? '/login' : `${location.protocol}//${HOST}:3000/login` };
+/* Where the pages live. The HTML links to '/', '/shop/' and '/account/' (right on quote.sensoper.in and on a dev machine).
+   On any *.sensoper.in address the ERP's Website settings say where the site and the shop are (/api/public/site → urls):
+   once that arrives, every link marked data-to="home|shop|account" points there — relative when it's this same address.
+   The ERP is always on quote.sensoper.in (a dev machine runs it on port 3000). */
+const ON_SENSOPER = /(^|\.)sensoper\.in$/.test(HOST);
+export const URLS = {
+  home: '/', shop: '/shop/', account: '/account/',
+  erp: HOST === 'quote.sensoper.in' ? '/login' : ON_SENSOPER ? 'https://quote.sensoper.in/login' : `${location.protocol}//${HOST}:3000/login`,
+};
+// "https://shop.sensoper.in/" → "https://shop.sensoper.in"; anything that isn't an http(s) address → ''
+const baseUrl = (u) => { try { const x = new URL(String(u || '').trim()); return /^https?:$/.test(x.protocol) ? x.origin + x.pathname.replace(/\/+$/, '') : ''; } catch { return ''; } };
+// a link on this same address becomes relative, so it never switches http/https or port
+const sameOrigin = (href) => { try { const x = new URL(href, location.href); return x.origin === location.origin ? x.pathname + x.search + x.hash : x.href; } catch { return href; } };
+function siteUrls(urls) {
+  if (!ON_SENSOPER || !urls) return;
+  const site = baseUrl(urls.site), shop = baseUrl(urls.shop);
+  if (!site) return;
+  Object.assign(URLS, { home: sameOrigin(site + '/'), account: sameOrigin(site + '/account/'), shop: sameOrigin(shop ? shop + '/' : site + '/shop/') });
+  // the shop has its own address now: an old /shop/ link or bookmark on the main site goes there
+  if (shop && /^\/shop\/?$/.test(location.pathname) && new URL(shop).origin !== location.origin) location.replace(shop + '/' + location.search + location.hash);
+}
 
 export const ICON = {
   close: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>',
@@ -104,7 +118,7 @@ export function site(where = 'site') {
   if (!sitePromise) {
     const cached = store.get('sp_site_' + where, null, session);
     sitePromise = (cached && Date.now() - cached.t < 5 * 60e3 ? Promise.resolve(cached.d) : api(`/api/public/site?where=${where}`).then((d) => { store.set('sp_site_' + where, { t: Date.now(), d }, session); return d; }))
-      .then((d) => { SITE = { ...SITE, ...d, company: { ...SITE.company, ...Object.fromEntries(Object.entries(d.company || {}).filter(([, v]) => v)) } }; applyContacts(); return SITE; })
+      .then((d) => { SITE = { ...SITE, ...d, company: { ...SITE.company, ...Object.fromEntries(Object.entries(d.company || {}).filter(([, v]) => v)) } }; applyContacts(); siteUrls(d.urls); rewriteLinks(); return SITE; })
       .catch(() => SITE);
   }
   return sitePromise;
@@ -119,8 +133,10 @@ function applyContacts() {
   $$('[data-email]').forEach((a) => { if (c.email) { a.href = `mailto:${c.email}`; if (a.hasAttribute('data-email-text')) a.textContent = c.email; } });
 }
 function rewriteLinks() {
-  if (LIVE) return;
-  $$('a[data-to]').forEach((a) => { const hash = a.hash || ''; a.href = URLS[a.dataset.to] + hash; });
+  $$('a[data-to]').forEach((a) => {
+    const to = URLS[a.dataset.to];
+    if (to) a.setAttribute('href', sameOrigin(to.split('#')[0] + (a.hash || '')));     // keeps the link's own #section
+  });
 }
 
 /* ───────── where visitors came from (first touch, this visit) ───────── */
@@ -196,7 +212,7 @@ export function openLead(ctx = {}) {
   const me = store.get('sp_me', {});
   Q = { source: 'quiz', ...ctx, name: me.name || '', phone: ctx.phone || me.phone || '', area: me.area || '' };
   if (ctx.calc) { Q.kind = ctx.calc.mode || ctx.kind || 'home'; Q.step = 'you'; }
-  else if (ctx.kind && ctx.kind !== 'quiz') { Q.kind = ctx.kind; Q.step = BILL_OPTS[ctx.kind] ? 'bill' : 'you'; }   // 'other' and 'service' go straight to the details
+  else if (ctx.kind && ctx.kind !== 'quiz') { Q.kind = ctx.kind; Q.step = BILL_OPTS[ctx.kind] && ctx.step !== 'you' ? 'bill' : 'you'; }   // 'other', 'service' and data-step="you" go straight to the details
   else Q.step = 'kind';
   const d = sheet('lead-sheet', '<div id="quiz"></div>');
   renderQuiz(d);
@@ -380,7 +396,7 @@ export function boot(where = 'site') {
     const b = e.target.closest('[data-lead]');
     if (!b) return;
     e.preventDefault();
-    openLead({ kind: b.dataset.lead || 'quiz', source: b.dataset.source || 'quiz', title: b.dataset.title, note: b.dataset.note });
+    openLead({ kind: b.dataset.lead || 'quiz', source: b.dataset.source || 'quiz', title: b.dataset.title, note: b.dataset.note, step: b.dataset.step });
   });
   $$('form[data-quick]').forEach(bindQuick);
   const y = $('#year'); if (y) y.textContent = new Date().getFullYear();

@@ -5,21 +5,28 @@ Public — no sign-in, served on the website's own domain through nginx (only /a
     POST /api/public/leads                 a lead from any form on the site (calculator, quote, contact, pop-up)
     GET  /api/public/shop/products         products staff put live on the shop
     GET  /api/public/shop/image/{id}/{n}   a shop product's picture
-    POST /api/public/shop/order            an order request from the shop's cart (becomes a lead)
+    POST /api/public/shop/order            an order request from the shop's cart (becomes a lead); delivery or pick-up
+    GET  /api/public/brands/{id}/logo      the logo of a brand shown on the website
+    GET  /api/public/testimonials/{id}/poster | video   a live testimonial's poster picture / uploaded video (HTTP Range)
 
 Customer logins — staff create them, customers sign in on sensoper.in/account with their mobile number:
     POST /api/client/auth/login | logout | change-password,  GET /api/client/me
     GET  /api/client/projects/{id}/dashboard  (the same dashboard as the private customer link)
     POST /api/client/projects/{id}/tickets,  POST /api/client/projects/{id}/offers/{offer_id}/interest
 
-Staff (Website page in the ERP, permission "Website"):
+Staff (Website page in the ERP, permission "Website"; changes need "Run the shop, pop-ups and website settings"):
     /api/website/summary, /api/website/leads…, /api/website/popups…, /api/website/settings, /api/website/shop/products…
+    /api/website/testimonials… (+ /video upload), /api/website/stores…  (pick-up stores = ERP locations)
     /api/client-accounts…, /api/projects/{id}/client-login
 
 Storage
     website_leads        {number, name, phone, kind, status, source, calc{}, items[], activity[], project_id…}
     website_popups       {title, message, cta_label, cta_action, cta_url, where, delay_seconds, valid_till, active}
-    website_settings     {key: "main", whatsapp_number, show_price_estimate, shop_platform_id}
+    website_settings     {key: "main", whatsapp_number, call_number, show_price_estimate, shop_platform_id, site_url, shop_url}
+    website_testimonials {name, place, system, quote, youtube_id, youtube_url | video_path, video_size, video_type,
+                          poster_path, status (live|draft), order}
+    locations.pickup     {enabled, public_name, address, phone, hours, lat, lng}   (on the ERP's own locations)
+    brands.on_website    see brands.shown_on_website
     client_accounts      {name, phone, password_hash, password_version, must_change_password, project_ids[], active…}
     website_lead_hits    {ip, at}   (rate limit for the public forms)
     client_login_attempts {phone, ip, at}
@@ -27,18 +34,29 @@ Storage
 from __future__ import annotations
 
 import math
+import os
 import re
 import secrets
+import uuid
 from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
+from urllib.parse import parse_qs, urlsplit
 
+import anyio
 import jwt
 from bson import ObjectId
 from fastapi import APIRouter, HTTPException, Request, Response
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from pymongo import ReturnDocument
 
+try:   # python-multipart ≥ 0.0.13 names its module python_multipart; older ones only "multipart"
+    from python_multipart.multipart import MultipartParser, parse_options_header
+except ImportError:  # pragma: no cover
+    from multipart.multipart import MultipartParser, parse_options_header
+
 import notify
+from brands import shown_on_website
 from customer_portal import TicketIn, company_info, offer_interest_for, project_dashboard, raise_ticket_for
 
 IST = timezone(timedelta(hours=5, minutes=30))
@@ -62,11 +80,21 @@ SOURCES = {"calculator": "Savings calculator", "quote": "Free quote form", "cont
            "shop": "Shop", "service": "Service request", "account": "Customer login page", "quick": "Mobile number box",
            "quiz": "Free solar plan quiz", "header": "Header button", "subsidy": "Subsidy section", "how": "How it works section",
            "solutions": "Solutions section", "backup": "Battery backup section", "mobile-bar": "Phone bottom bar",
-           "systems": "Systems section (on-grid, off-grid, battery, pump)"}
+           "systems": "Systems section (on-grid, off-grid, hybrid, battery, pump)"}
 POPUP_ACTIONS = ("quote", "whatsapp", "shop", "link", "none")
 POPUP_WHERE = ("site", "shop", "both")
 IMAGE_TYPES = {"image/png", "image/jpeg", "image/webp", "image/gif"}   # never SVG: it can carry script
 UTM_KEYS = ("utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content", "gclid", "fbclid")
+DEFAULT_SITE_URL = "https://quote.sensoper.in"
+PICTURE_HEADERS = {"Cache-Control": "public, max-age=604800", "X-Content-Type-Options": "nosniff",
+                   "Content-Security-Policy": "default-src 'none'; sandbox"}
+VIDEO_TYPES = {"mp4": "video/mp4", "webm": "video/webm", "mov": "video/quicktime"}
+VIDEO_MAX_BYTES = 100 * 1024 * 1024
+VIDEO_CHUNK = 256 * 1024
+QUOTE_MAX = 400
+TESTIMONIALS_SHOWN, BRANDS_SHOWN = 24, 60
+YOUTUBE_HOSTS = {"youtube.com", "www.youtube.com", "m.youtube.com", "music.youtube.com", "youtube-nocookie.com", "www.youtube-nocookie.com"}
+YOUTUBE_ID = re.compile(r"[A-Za-z0-9_-]{11}")
 
 
 def _now() -> datetime:
@@ -158,6 +186,123 @@ def inr(n: Any) -> str:
     return f"{sign}₹{s}"
 
 
+def youtube_id(url: Any) -> Optional[str]:
+    """The 11-character video id from a YouTube link — watch?v=, youtu.be/, /shorts/, /embed/, /live/ — or None.
+    Links to any other site are refused, so the website only ever embeds YouTube."""
+    s = str(url or "").strip()
+    if not s or len(s) > 500 or re.search(r"[\s<>\"'\\]", s):
+        return None
+    if not re.match(r"^[a-z][a-z0-9+.-]*://", s, re.I):
+        s = "https://" + s                          # "youtu.be/…" pasted without the https://
+    try:
+        u = urlsplit(s)
+        port = u.port
+    except ValueError:
+        return None
+    host = (u.hostname or "").lower()
+    if u.scheme.lower() not in ("http", "https") or u.username or u.password or port not in (None, 80, 443):
+        return None
+    cand = ""
+    if host in ("youtu.be", "www.youtu.be"):
+        cand = u.path.lstrip("/").split("/")[0]
+    elif host in YOUTUBE_HOSTS:
+        if u.path.rstrip("/") == "/watch":
+            cand = (parse_qs(u.query).get("v") or [""])[0]
+        else:
+            m = re.match(r"^/(?:shorts|embed|live|v)/([^/]+)/?$", u.path)
+            cand = m.group(1) if m else ""
+    return cand if YOUTUBE_ID.fullmatch(cand or "") else None
+
+
+def site_address(v: Any) -> Optional[str]:
+    """An https:// web address for the settings, without a trailing slash ('' when empty) — or None when it isn't one."""
+    s = str(v or "").strip().rstrip("/")
+    if not s:
+        return ""
+    m = re.fullmatch(r"https://([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+)(:\d{2,5})?(/[A-Za-z0-9._~/-]*)?", s, re.I)
+    if not m or len(s) > 200 or "//" in (m.group(3) or ""):
+        return None
+    return "https://" + m.group(1).lower() + (m.group(2) or "") + (m.group(3) or "")
+
+
+def store_phone(v: Any) -> Optional[str]:
+    """A store's phone: a 10-digit mobile, or a landline with its STD code kept as 0 + 10 digits ('' when empty) — or None."""
+    d = _digits(v)
+    if not d:
+        return ""
+    if len(d) == 12 and d.startswith("91"):
+        d = d[2:]
+    elif len(d) == 11 and d.startswith("0"):
+        d = d[1:]
+    if len(d) != 10 or d[0] == "0":
+        return None
+    return d if d[0] in "6789" else "0" + d
+
+
+def coordinates(text: Any) -> Optional[Tuple[float, float]]:
+    """(lat, lng) from what was pasted out of Google Maps — '11.2712, 77.5845' or a maps link with @lat,lng in it.
+    None when empty; ValueError (with a message for staff) when it isn't a place in India."""
+    s = str(text or "").strip()[:2000]
+    if not s:
+        return None
+    m = (re.search(r"@(-?\d{1,3}(?:\.\d+)?),(-?\d{1,3}(?:\.\d+)?)", s) if "/" in s else None) or \
+        re.search(r"(?:[?&](?:q|query|destination|ll)=)(-?\d{1,3}(?:\.\d+)?)(?:,|%2C)\s*(-?\d{1,3}(?:\.\d+)?)", s, re.I) or \
+        re.fullmatch(r"\s*\(?\s*(-?\d{1,3}(?:\.\d+)?)\s*°?\s*N?\s*[,;\s]\s*(-?\d{1,3}(?:\.\d+)?)\s*°?\s*E?\s*\)?\s*", s, re.I)
+    if not m:
+        raise ValueError("Coordinates should be two numbers like 11.2712, 77.5845 — latitude first, then longitude.")
+    lat, lng = float(m.group(1)), float(m.group(2))
+    if not (6 <= lat <= 37 and 68 <= lng <= 98):
+        if 6 <= lng <= 37 and 68 <= lat <= 98:
+            raise ValueError("Those numbers look swapped — put latitude first (for example 11.2712, 77.5845).")
+        raise ValueError("Those coordinates aren't in India. Copy them again from Google Maps (for example 11.2712, 77.5845).")
+    return round(lat, 6), round(lng, 6)
+
+
+def byte_range(header: Optional[str], size: int) -> Optional[Tuple[int, int]]:
+    """The (first, last) byte asked for in a Range header, or None to send the whole file. A range we can't serve
+    raises LookupError (→ 416). A unit other than bytes, or several ranges at once, gets the whole file (RFC 9110)."""
+    h = (header or "").strip()
+    if not h:
+        return None
+    unit, _, spec = h.partition("=")
+    if unit.strip().lower() != "bytes":
+        return None
+    if "," in spec:
+        return None
+    m = re.fullmatch(r"\s*(\d{0,19})\s*-\s*(\d{0,19})\s*", spec)
+    if not m or not (m.group(1) or m.group(2)) or size <= 0:
+        raise LookupError("unsatisfiable")
+    a, b = m.groups()
+    if not a:                                        # the last N bytes
+        n = int(b)
+        if n == 0:
+            raise LookupError("unsatisfiable")
+        return max(size - n, 0), size - 1
+    first = int(a)
+    last = int(b) if b else size - 1
+    if first >= size or last < first:
+        raise LookupError("unsatisfiable")
+    return first, min(last, size - 1)
+
+
+def public_link(v: Any) -> str:
+    """A brand's own website as a safe https link for the public site ('' when it isn't a plain web address)."""
+    s = str(v or "").strip()
+    if not s or len(s) > 300 or re.search(r"[\s<>\"'\\]", s):
+        return ""
+    if not re.match(r"^https?://", s, re.I):
+        if not re.match(r"^[a-z0-9-]+(\.[a-z0-9-]+)+(/|$)", s, re.I):
+            return ""
+        s = "https://" + s
+    try:
+        u = urlsplit(s)
+    except ValueError:
+        return ""
+    if u.scheme.lower() not in ("http", "https") or not u.hostname or u.username or u.password:
+        return ""
+    return s
+
+
 def lead_summary(lead: Dict[str, Any]) -> str:
     """One line for the bell and the list: 'Home rooftop — ₹4,500 bill, about 3 kW · Perundurai'."""
     bits = [KINDS.get(lead.get("kind"), "Enquiry")]
@@ -207,6 +352,7 @@ class OrderIn(BaseModel):
     delivery: Optional[str] = Field("delivery", max_length=20)     # delivery | pickup
     message: Optional[str] = Field("", max_length=2000)
     items: List[OrderLineIn] = Field(default_factory=list, max_length=50)
+    store_id: Optional[str] = Field(None, max_length=40)            # the pick-up store (an ERP location) when delivery == pickup
     utm: Optional[Dict[str, Any]] = None
     website: Optional[str] = Field("", max_length=500)
 
@@ -236,6 +382,29 @@ class SettingsIn(BaseModel):
     whatsapp_number: Optional[str] = None
     show_price_estimate: Optional[bool] = None
     call_number: Optional[str] = None
+    site_url: Optional[str] = Field(None, max_length=500)          # "Main website address" ("" = https://quote.sensoper.in)
+    shop_url: Optional[str] = Field(None, max_length=500)          # "Shop address" ("" = <site>/shop/)
+
+
+class TestimonialIn(BaseModel):
+    name: str = Field("", max_length=300)
+    place: Optional[str] = Field("", max_length=300)
+    system: Optional[str] = Field("", max_length=300)
+    quote: Optional[str] = Field("", max_length=4000)              # checked against QUOTE_MAX with a plain message
+    youtube_url: Optional[str] = Field("", max_length=1000)
+    video_path: Optional[str] = Field("", max_length=300)
+    poster_path: Optional[str] = Field("", max_length=300)
+    status: Optional[str] = Field("live", max_length=20)           # live | draft
+    order: Optional[Any] = 0
+
+
+class StoreIn(BaseModel):
+    enabled: bool = False
+    public_name: Optional[str] = Field("", max_length=300)
+    address: Optional[str] = Field("", max_length=1000)
+    phone: Optional[str] = Field("", max_length=60)
+    hours: Optional[str] = Field("", max_length=300)
+    coordinates: Optional[str] = Field("", max_length=2000)
 
 
 class ShopProductIn(BaseModel):
@@ -289,14 +458,125 @@ async def ensure_indexes(db) -> None:
 
 
 def create_router(db, get_current_user, require_role, create_audit_log, jwt_secret: str, hash_password, verify_password,
-                  get_permissions, check_module_permission, app_name: str = "sensoper", get_object=None):
+                  get_permissions, check_module_permission, app_name: str = "sensoper", get_object=None, storage_path=None):
+    """get_object(path) → (bytes, content type) reads a small stored file; storage_path(path) → the file's place on disk
+    (refusing anything outside the storage folder) — used to stream videos in and out without holding them in memory."""
     router = APIRouter(tags=["website"])
+    picture_rx = re.compile(rf"{re.escape(app_name)}/images/[\w\-]+\.(png|jpe?g|webp|gif)", re.I)
+    video_rx = re.compile(rf"{re.escape(app_name)}/videos/[0-9a-f]{{32}}\.(mp4|webm|mov)")
 
     # ───────────────────────── shared helpers ─────────────────────────
     async def _settings() -> Dict[str, Any]:
         s = await db.website_settings.find_one({"key": "main"}) or {}
         return {"whatsapp_number": s.get("whatsapp_number") or "", "call_number": s.get("call_number") or "",
-                "show_price_estimate": s.get("show_price_estimate", True), "shop_platform_id": s.get("shop_platform_id")}
+                "show_price_estimate": s.get("show_price_estimate", True), "shop_platform_id": s.get("shop_platform_id"),
+                "site_url": s.get("site_url") or "", "shop_url": s.get("shop_url") or ""}
+
+    async def _site_editor(request: Request) -> Dict[str, Any]:
+        """Changing what the public sees (testimonials, pick-up stores) — the same people who run the shop and pop-ups:
+        admins, and managers (or anyone an admin gives it to) while their role has 'Run the shop, pop-ups and website
+        settings' switched on in Settings → Permissions."""
+        user = await require_role("admin", "manager")(request)
+        if user.get("role") != "admin":
+            perms = await get_permissions(user.get("role"))
+            if not perms.get("can_manage_website") or not (perms.get("module_website") or {}).get("view"):
+                raise HTTPException(status_code=403, detail="Your role isn’t allowed to run the shop, pop-ups and website settings. "
+                                                            "An admin can change this in Settings → Permissions.")
+        return user
+
+    def _send_picture(ref: Any, folders=("images",)) -> Response:
+        """A stored picture for the public site: only from our own upload folders, only raster images, safe headers."""
+        path = str(ref or "").split("/api/files/", 1)[-1].lstrip("/")
+        if (get_object is None or ".." in path or "\\" in path or len(path) > 300
+                or not any(path.startswith(f"{app_name}/{f}/") for f in folders)):
+            raise HTTPException(status_code=404, detail="Picture not found")
+        try:
+            data, ctype = get_object(path)
+        except Exception:
+            raise HTTPException(status_code=404, detail="Picture not found")
+        if str(ctype).split(";")[0].strip().lower() not in IMAGE_TYPES:
+            raise HTTPException(status_code=404, detail="Picture not found")
+        return Response(content=data, media_type=ctype, headers=dict(PICTURE_HEADERS))
+
+    def _video_file(path: Any):
+        """The video's place on disk — only files our upload made (videos/<random>.mp4|webm|mov)."""
+        p = str(path or "")
+        if storage_path is None or not video_rx.fullmatch(p):
+            return None
+        try:
+            full = storage_path(p)
+        except ValueError:
+            return None
+        return full if full.is_file() else None
+
+    async def _drop_video(path: Any, keep_id: Optional[ObjectId] = None) -> None:
+        """Delete an uploaded video nobody uses any more (a testimonial's old video, or a deleted testimonial's)."""
+        full = _video_file(path)
+        if not full:
+            return
+        others = {"video_path": path}
+        if keep_id is not None:
+            others["_id"] = {"$ne": keep_id}
+        if await db.website_testimonials.count_documents(others):
+            return
+        for f in (full, full.with_suffix(full.suffix + ".meta")):
+            try:
+                f.unlink()
+            except OSError:
+                pass
+
+    def _urls(s: Dict[str, Any]) -> Dict[str, str]:
+        return {"site": site_address(s.get("site_url")) or DEFAULT_SITE_URL, "shop": site_address(s.get("shop_url")) or ""}
+
+    def _logo_ref(b: Dict[str, Any]) -> Optional[str]:
+        path = str(b.get("logo_path") or "")
+        ok = re.fullmatch(rf"{re.escape(app_name)}/(images|documents)/[\w\-]+\.(png|jpe?g|webp|gif)", path, re.I)
+        return f"/api/public/brands/{b['_id']}/logo" if ok else None
+
+    async def _public_brands() -> List[Dict[str, Any]]:
+        out = []
+        async for b in db.brands.find({"active": {"$ne": False}}):
+            if not shown_on_website(b):
+                continue
+            out.append({"id": str(b["_id"]), "name": str(b.get("name") or "").strip(), "kind": b.get("kind") or "dealership",
+                        "categories": [str(c) for c in b.get("categories") or [] if str(c).strip()], "logo": _logo_ref(b),
+                        "website": public_link(b.get("website"))})
+        out.sort(key=lambda b: b["name"].lower())
+        return out[:BRANDS_SHOWN]
+
+    def _testimonial_public(t: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        tid = str(t["_id"])
+        if t.get("youtube_id") and YOUTUBE_ID.fullmatch(t["youtube_id"]):
+            video = {"type": "youtube", "id": t["youtube_id"]}
+        elif t.get("video_path") and video_rx.fullmatch(str(t["video_path"])):
+            video = {"type": "file", "url": f"/api/public/testimonials/{tid}/video",
+                     "mime": VIDEO_TYPES[str(t["video_path"]).rsplit(".", 1)[-1]]}
+        else:
+            return None
+        return {"id": tid, "name": t.get("name") or "", "place": t.get("place") or "", "system": t.get("system") or "",
+                "quote": t.get("quote") or "", "video": video,
+                "poster": f"/api/public/testimonials/{tid}/poster" if t.get("poster_path") else None}
+
+    async def _live_testimonials() -> List[Dict[str, Any]]:
+        rows = await db.website_testimonials.find({"status": "live"}).sort([("order", 1), ("created_at", -1)]).to_list(200)
+        return [o for o in (_testimonial_public(t) for t in rows) if o][:TESTIMONIALS_SHOWN]
+
+    def _store_name(loc: Dict[str, Any]) -> str:
+        p = loc.get("pickup") or {}
+        return p.get("public_name") or str(loc.get("name") or "").replace("_", " ").strip() or "Sensoper store"
+
+    async def _pickup_stores() -> List[Dict[str, Any]]:
+        out = []
+        async for loc in db.locations.find({"active": {"$ne": False}, "pickup.enabled": True}):
+            p = loc.get("pickup") or {}
+            lat, lng = p.get("lat"), p.get("lng")
+            here = isinstance(lat, (int, float)) and isinstance(lng, (int, float))
+            out.append({"id": str(loc["_id"]), "name": _store_name(loc), "address": p.get("address") or "",
+                        "district": loc.get("district") or "", "phone": p.get("phone") or "", "hours": p.get("hours") or "",
+                        "lat": lat if here else None, "lng": lng if here else None,
+                        "directions": f"https://www.google.com/maps/dir/?api=1&destination={lat},{lng}" if here else ""})
+        out.sort(key=lambda x: x["name"].lower())
+        return out
 
     async def _shop_platform(create: bool = False) -> Optional[Dict[str, Any]]:
         """The platform the shop's products are listed on (an Online orders platform of type 'custom website')."""
@@ -438,7 +718,9 @@ def create_router(db, get_current_user, require_role, create_audit_log, jwt_secr
         live = await db.ecommerce_listings.count_documents({"platform_id": str(shop["_id"]), "status": "live",
                                                              "superseded_by": {"$exists": False}}) if shop else 0
         return {"company": await _company_public(), "popups": popups, "shop": {"products": live},
-                "prices": (await _price_table()) if s.get("show_price_estimate", True) else None}
+                "prices": (await _price_table()) if s.get("show_price_estimate", True) else None,
+                "urls": _urls(s), "brands": await _public_brands(), "testimonials": await _live_testimonials(),
+                "stores": await _pickup_stores()}
 
     @router.post("/public/leads")
     async def public_lead(body: LeadIn, request: Request):
@@ -526,17 +808,70 @@ def create_router(db, get_current_user, require_role, create_audit_log, jwt_secr
         ref = str(imgs[n])
         if ref.startswith("https://") or ref.startswith("http://"):
             raise HTTPException(status_code=404, detail="Picture not found")    # outside pictures are linked directly
-        path = ref.split("/api/files/", 1)[-1].lstrip("/")
-        if not path.startswith(f"{app_name}/images/") or ".." in path or get_object is None:
+        return _send_picture(ref)
+
+    @router.get("/public/brands/{brand_id}/logo")
+    async def public_brand_logo(brand_id: str):
+        b = await db.brands.find_one({"_id": _oid(brand_id, "picture")})
+        if not b or not shown_on_website(b) or not _logo_ref(b):
             raise HTTPException(status_code=404, detail="Picture not found")
+        return _send_picture(b["logo_path"], folders=("images", "documents"))
+
+    async def _live_testimonial(testimonial_id: str) -> Dict[str, Any]:
+        t = await db.website_testimonials.find_one({"_id": _oid(testimonial_id, "testimonial"), "status": "live"})
+        if not t:
+            raise HTTPException(status_code=404, detail="Not found")
+        return t
+
+    @router.get("/public/testimonials/{testimonial_id}/poster")
+    async def public_testimonial_poster(testimonial_id: str):
+        t = await _live_testimonial(testimonial_id)
+        if not picture_rx.fullmatch(str(t.get("poster_path") or "")):
+            raise HTTPException(status_code=404, detail="Picture not found")
+        return _send_picture(t["poster_path"])
+
+    @router.api_route("/public/testimonials/{testimonial_id}/video", methods=["GET", "HEAD"])
+    async def public_testimonial_video(testimonial_id: str, request: Request):
+        """The uploaded video, in pieces as the player asks for them (Range) — iPhones won't play it otherwise."""
+        t = await _live_testimonial(testimonial_id)
+        full = _video_file(t.get("video_path"))
+        if not full:
+            raise HTTPException(status_code=404, detail="Video not found")
+        st = full.stat()
+        size, mime = st.st_size, VIDEO_TYPES[full.suffix.lstrip(".").lower()]
+        etag = f'"{size:x}-{int(st.st_mtime):x}"'
+        headers = {"Accept-Ranges": "bytes", "Cache-Control": "public, max-age=86400", "ETag": etag,
+                   "Last-Modified": datetime.fromtimestamp(st.st_mtime, timezone.utc).strftime("%a, %d %b %Y %H:%M:%S GMT"),
+                   "X-Content-Type-Options": "nosniff", "Content-Security-Policy": "default-src 'none'; sandbox"}
+        asked = request.headers.get("range")
+        if_range = request.headers.get("if-range")
+        if asked and if_range and if_range.strip() != etag:
+            asked = None                                  # the file changed since the player's first piece: send it whole
         try:
-            data, ctype = get_object(path)
-        except Exception:
-            raise HTTPException(status_code=404, detail="Picture not found")
-        if str(ctype).split(";")[0].strip().lower() not in IMAGE_TYPES:
-            raise HTTPException(status_code=404, detail="Picture not found")
-        return Response(content=data, media_type=ctype, headers={"Cache-Control": "public, max-age=604800", "X-Content-Type-Options": "nosniff",
-                                                                  "Content-Security-Policy": "default-src 'none'; sandbox"})
+            rng = byte_range(asked, size)
+        except LookupError:
+            return Response(status_code=416, headers={**headers, "Content-Range": f"bytes */{size}"})
+        first, last = rng if rng else (0, size - 1)
+        length = max(last - first + 1, 0)
+        headers["Content-Length"] = str(length)
+        status = 200
+        if rng:
+            status = 206
+            headers["Content-Range"] = f"bytes {first}-{last}/{size}"
+        if request.method == "HEAD":
+            return Response(status_code=status, headers=headers, media_type=mime)
+
+        async def chunks():
+            async with await anyio.open_file(full, "rb") as f:
+                await f.seek(first)
+                left = length
+                while left > 0:
+                    part = await f.read(min(VIDEO_CHUNK, left))
+                    if not part:
+                        break
+                    left -= len(part)
+                    yield part
+        return StreamingResponse(chunks(), status_code=status, media_type=mime, headers=headers)
 
     @router.post("/public/shop/order")
     async def public_order(body: OrderIn, request: Request):
@@ -572,16 +907,26 @@ def create_router(db, get_current_user, require_role, create_audit_log, jwt_secr
         address = _clean(body.address, 300)
         if delivery == "delivery" and len(address) < 5:
             raise HTTPException(status_code=400, detail="Add the delivery address, or choose to pick it up from our store.")
+        store = None
+        if delivery == "pickup":
+            stores = await _pickup_stores()
+            if stores:      # with no store set up, pick-up is "from our office", as before
+                store = next((x for x in stores if x["id"] == (body.store_id or "").strip()), None)
+                if not store:
+                    raise HTTPException(status_code=400, detail="Choose the store you'll pick it up from.")
         pin = _digits(body.pincode)[:6]
         fields = {"name": name, "phone": phone, "kind": "shop_order", "source": "shop", "page": "shop",
                   "address": address, "pincode": pin if len(pin) == 6 else "", "delivery": delivery,
                   "message": _clean(body.message, 600), "items": lines, "order_total": round(total, 2),
                   "utm": {k: _clean(v, 120) for k, v in (body.utm or {}).items() if k in UTM_KEYS and v}}
+        if store:
+            fields["pickup_store"] = {k: store[k] for k in ("id", "name", "address", "phone")}
         # an order is always its own lead (two orders are two jobs), so don't merge it into an open enquiry
         now = _iso()
         doc = {**fields, "number": await _next_number(), "status": "new", "needs_attention": True, "submissions": 1, "ip": ip,
                "created_at": now, "updated_at": now, "last_submitted_at": now,
-               "activity": [{"at": now, "by": "Website", "type": "submitted", "text": f"Order request — {len(lines)} item(s), {inr(total)}"}]}
+               "activity": [{"at": now, "by": "Website", "type": "submitted",
+                             "text": f"Order request — {len(lines)} item(s), {inr(total)}" + (f" — pick up at {store['name']}" if store else "")}]}
         res = await db.website_leads.insert_one(doc)
         doc["_id"] = res.inserted_id
         await _tell_staff(doc)
@@ -869,7 +1214,8 @@ def create_router(db, get_current_user, require_role, create_audit_log, jwt_secr
         c = await _company_public()
         shop = await _shop_platform()
         return {**s, "company_phone": mobile((await company_info(db)).get("phone")) or "", "effective_whatsapp": c["whatsapp"],
-                "effective_call": c["phone"], "shop_platform": {"id": str(shop["_id"]), "name": shop.get("name")} if shop else None}
+                "effective_call": c["phone"], "shop_platform": {"id": str(shop["_id"]), "name": shop.get("name")} if shop else None,
+                "default_site_url": DEFAULT_SITE_URL, "urls": _urls(s)}
 
     @router.put("/website/settings")
     async def put_settings(body: SettingsIn, request: Request):
@@ -883,9 +1229,261 @@ def create_router(db, get_current_user, require_role, create_audit_log, jwt_secr
                 upd[key] = mobile(v) or ""
         if body.show_price_estimate is not None:
             upd["show_price_estimate"] = bool(body.show_price_estimate)
+        if body.site_url is not None:
+            v = site_address(body.site_url)
+            if v is None:
+                raise HTTPException(status_code=400, detail="The main website address should start with https://, for example "
+                                                            "https://quote.sensoper.in (or leave it empty).")
+            upd["site_url"] = v
+        if body.shop_url is not None:
+            v = site_address(body.shop_url)
+            if v is None:
+                raise HTTPException(status_code=400, detail="The shop address should start with https://, for example https://shop.sensoper.in "
+                                                            "(or leave it empty to use the main website address + /shop/).")
+            upd["shop_url"] = v
         await db.website_settings.update_one({"key": "main"}, {"$set": upd}, upsert=True)
         await create_audit_log(user["id"], user.get("name", ""), "update", "website_settings", "main", None, upd)
         return await get_settings(request)
+
+    # ───────────────────────── staff: client testimonials ─────────────────────────
+    def _testimonial_out(t: Dict[str, Any]) -> Dict[str, Any]:
+        return {"id": str(t["_id"]), "name": t.get("name") or "", "place": t.get("place") or "", "system": t.get("system") or "",
+                "quote": t.get("quote") or "", "youtube_url": t.get("youtube_url") or "", "youtube_id": t.get("youtube_id") or "",
+                "video_path": t.get("video_path") or "", "video_size": t.get("video_size"), "video_type": t.get("video_type") or "",
+                "poster_path": t.get("poster_path") or "", "status": t.get("status") or "draft", "order": int(t.get("order") or 0),
+                "created_at": t.get("created_at"), "updated_at": t.get("updated_at"), "created_by_name": t.get("created_by_name")}
+
+    def _check_testimonial(body: TestimonialIn) -> Dict[str, Any]:
+        name = _clean(body.name, 80)
+        if len(name) < 2:
+            raise HTTPException(status_code=400, detail="Enter the customer's name.")
+        quote = _clean(body.quote, 4000)
+        if len(quote) > QUOTE_MAX:
+            raise HTTPException(status_code=400, detail=f"Keep the quote to {QUOTE_MAX} characters or fewer — it's {len(quote)} now.")
+        yt_text, path = (body.youtube_url or "").strip(), (body.video_path or "").strip()
+        if not yt_text and not path:
+            raise HTTPException(status_code=400, detail="Add a YouTube link or upload a video.")
+        if yt_text and path:
+            raise HTTPException(status_code=400, detail="Use either a YouTube link or an uploaded video, not both.")
+        doc: Dict[str, Any] = {"name": name, "place": _clean(body.place, 80), "system": _clean(body.system, 80), "quote": quote,
+                               "youtube_id": None, "youtube_url": "", "video_path": None, "video_size": None, "video_type": None}
+        if yt_text:
+            vid = youtube_id(yt_text)
+            if not vid:
+                raise HTTPException(status_code=400, detail="That isn't a YouTube video link. Open the video on YouTube, tap Share, "
+                                                            "copy the link and paste it here (for example https://youtu.be/dQw4w9WgXcQ).")
+            doc.update({"youtube_id": vid, "youtube_url": f"https://www.youtube.com/watch?v={vid}"})
+        else:
+            full = _video_file(path)
+            if not full:
+                raise HTTPException(status_code=400, detail="That video isn't uploaded any more. Upload it again.")
+            doc.update({"video_path": path, "video_size": full.stat().st_size, "video_type": VIDEO_TYPES[full.suffix.lstrip(".").lower()]})
+        poster = (body.poster_path or "").strip().split("/api/files/", 1)[-1].lstrip("/")
+        if poster and not picture_rx.fullmatch(poster):
+            raise HTTPException(status_code=400, detail="Upload the poster as a picture (PNG, JPG or WebP).")
+        doc["poster_path"] = poster or None
+        status = (body.status or "live").strip()
+        if status not in ("live", "draft"):
+            raise HTTPException(status_code=400, detail="Show it on the website (live) or keep it as a draft.")
+        doc["status"] = status
+        try:
+            order = int(float(body.order or 0))
+        except (TypeError, ValueError, OverflowError):
+            raise HTTPException(status_code=400, detail="Order should be a whole number — smaller numbers show first.")
+        doc["order"] = max(0, min(order, 9999))
+        return doc
+
+    @router.get("/website/testimonials")
+    async def list_testimonials(request: Request):
+        await get_current_user(request)
+        rows = await db.website_testimonials.find({}).sort([("order", 1), ("created_at", -1)]).to_list(500)
+        return {"items": [_testimonial_out(t) for t in rows]}
+
+    @router.post("/website/testimonials")
+    async def create_testimonial(body: TestimonialIn, request: Request):
+        user = await _site_editor(request)
+        now = _iso()
+        doc = {**_check_testimonial(body), "created_at": now, "updated_at": now, "created_by_name": user.get("name", "")}
+        res = await db.website_testimonials.insert_one(doc)
+        await create_audit_log(user["id"], user.get("name", ""), "create", "website_testimonial", str(res.inserted_id), None,
+                               {"name": doc["name"], "status": doc["status"]})
+        return _testimonial_out({**doc, "_id": res.inserted_id})
+
+    @router.put("/website/testimonials/{testimonial_id}")
+    async def update_testimonial(testimonial_id: str, body: TestimonialIn, request: Request):
+        user = await _site_editor(request)
+        cur = await db.website_testimonials.find_one({"_id": _oid(testimonial_id, "testimonial")})
+        if not cur:
+            raise HTTPException(status_code=404, detail="That testimonial doesn't exist")
+        doc = {**_check_testimonial(body), "updated_at": _iso()}
+        await db.website_testimonials.update_one({"_id": cur["_id"]}, {"$set": doc})
+        if cur.get("video_path") and cur["video_path"] != doc.get("video_path"):
+            await _drop_video(cur["video_path"], keep_id=cur["_id"])
+        await create_audit_log(user["id"], user.get("name", ""), "update", "website_testimonial", testimonial_id, None,
+                               {"name": doc["name"], "status": doc["status"]})
+        return _testimonial_out(await db.website_testimonials.find_one({"_id": cur["_id"]}))
+
+    @router.delete("/website/testimonials/{testimonial_id}")
+    async def delete_testimonial(testimonial_id: str, request: Request):
+        user = await _site_editor(request)
+        cur = await db.website_testimonials.find_one({"_id": _oid(testimonial_id, "testimonial")})
+        if not cur:
+            raise HTTPException(status_code=404, detail="That testimonial doesn't exist")
+        await db.website_testimonials.delete_one({"_id": cur["_id"]})
+        if cur.get("video_path"):
+            await _drop_video(cur["video_path"])
+        await create_audit_log(user["id"], user.get("name", ""), "delete", "website_testimonial", testimonial_id, {"name": cur.get("name")})
+        return {"deleted": True}
+
+    @router.post("/website/testimonials/video")
+    async def upload_testimonial_video(request: Request):
+        """multipart/form-data, field "file": an MP4, WebM or MOV of at most 100 MB. Written to disk piece by piece as it
+        arrives, and stopped as soon as it passes 100 MB — whatever Content-Length says."""
+        user = await _site_editor(request)
+        if storage_path is None:
+            raise HTTPException(status_code=503, detail="Video uploads aren't set up on this server yet.")
+        too_big = HTTPException(status_code=413, detail="The video is bigger than 100 MB. Trim it, or export it at 720p, and upload it again.")
+        ctype, params = parse_options_header(request.headers.get("content-type", ""))
+        boundary = params.get(b"boundary")
+        if ctype.lower() != b"multipart/form-data" or not boundary:
+            raise HTTPException(status_code=400, detail="Choose a video file to upload.")
+        declared = request.headers.get("content-length", "")
+        if declared.isdigit() and int(declared) > VIDEO_MAX_BYTES + 1024 * 1024:
+            raise too_big                                       # a cheap early "no"; the real limit is counted below
+        name = uuid.uuid4().hex
+        part_file = storage_path(f"{app_name}/videos/{name}.part")
+        part_file.parent.mkdir(parents=True, exist_ok=True)
+        st: Dict[str, Any] = {"headers": {}, "field": b"", "value": b"", "in_file": False, "seen": False, "size": 0,
+                              "head": b"", "ext": "", "pending": [], "ended": False}
+
+        def on_part_begin():
+            st["headers"], st["field"], st["value"] = {}, b"", b""
+
+        def on_header_field(data, start, end):
+            st["field"] += data[start:end]
+
+        def on_header_value(data, start, end):
+            st["value"] += data[start:end]
+
+        def on_header_end():
+            st["headers"][st["field"].strip().lower()] = st["value"].strip()
+            st["field"], st["value"] = b"", b""
+
+        def on_headers_finished():
+            _, opts = parse_options_header(st["headers"].get(b"content-disposition", b""))
+            st["in_file"] = opts.get(b"name") == b"file" and not st["seen"]
+            if not st["in_file"]:
+                return
+            st["seen"] = True
+            filename = opts.get(b"filename", b"").decode("utf-8", "replace").replace("\\", "/").rsplit("/", 1)[-1]
+            ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+            part_type = st["headers"].get(b"content-type", b"").decode("latin-1").split(";")[0].strip().lower()
+            if ext not in VIDEO_TYPES or part_type not in VIDEO_TYPES.values():
+                raise HTTPException(status_code=400, detail="Upload the video as an MP4, WebM or MOV file.")
+            st["ext"] = ext
+
+        def on_part_data(data, start, end):
+            if not st["in_file"]:
+                return
+            piece = bytes(data[start:end])
+            st["size"] += len(piece)
+            if st["size"] > VIDEO_MAX_BYTES:
+                raise too_big
+            if len(st["head"]) < 16:
+                st["head"] += piece[:16]
+            st["pending"].append(piece)
+
+        def on_part_end():
+            st["in_file"] = False
+
+        def on_end():                       # only called once the form's closing line has arrived
+            st["ended"] = True
+
+        parser = MultipartParser(boundary, {"on_part_begin": on_part_begin, "on_header_field": on_header_field,
+                                            "on_header_value": on_header_value, "on_header_end": on_header_end,
+                                            "on_headers_finished": on_headers_finished, "on_part_data": on_part_data,
+                                            "on_part_end": on_part_end, "on_end": on_end})
+        received, saved = 0, False
+        try:
+            with open(part_file, "wb") as out:
+                async for chunk in request.stream():
+                    received += len(chunk)
+                    if received > VIDEO_MAX_BYTES + 1024 * 1024:  # the video plus a little room for the form's own lines
+                        raise too_big
+                    try:
+                        parser.write(chunk)
+                    except ValueError:
+                        raise HTTPException(status_code=400, detail="The upload didn't come through properly. Try again.")
+                    if st["pending"]:
+                        out.write(b"".join(st["pending"]))
+                        st["pending"].clear()
+                try:
+                    parser.finalize()
+                except ValueError:
+                    raise HTTPException(status_code=400, detail="The upload didn't come through properly. Try again.")
+            if not st["seen"]:
+                raise HTTPException(status_code=400, detail="Choose a video file to upload.")
+            if not st["ended"]:             # the upload stopped part-way: don't keep half a video
+                raise HTTPException(status_code=400, detail="The upload didn't come through properly. Try again.")
+            if not st["size"]:
+                raise HTTPException(status_code=400, detail="That video file is empty. Choose the video again.")
+            head = st["head"]
+            looks_ok = head.startswith(b"\x1a\x45\xdf\xa3") if st["ext"] == "webm" else \
+                head[4:8] in (b"ftyp", b"moov", b"mdat", b"free", b"wide", b"skip", b"pnot")
+            if not looks_ok:
+                raise HTTPException(status_code=400, detail="That file doesn't play as a video. Export it again as MP4 and upload that.")
+            path = f"{app_name}/videos/{name}.{st['ext']}"
+            final = storage_path(path)
+            os.replace(part_file, final)
+            mime = VIDEO_TYPES[st["ext"]]
+            final.with_suffix(final.suffix + ".meta").write_text(mime)
+            saved = True
+        finally:
+            if not saved:
+                try:
+                    part_file.unlink()
+                except OSError:
+                    pass
+        await create_audit_log(user["id"], user.get("name", ""), "create", "website_video", path, None, {"size": st["size"]})
+        return {"video_path": path, "size": st["size"], "content_type": mime}
+
+    # ───────────────────────── staff: pick-up stores (the ERP's locations) ─────────────────────────
+    def _store_row(loc: Dict[str, Any]) -> Dict[str, Any]:
+        p = loc.get("pickup") or {}
+        return {"location_id": str(loc["_id"]), "name": loc.get("name") or "", "type": loc.get("type") or "",
+                "district": loc.get("district") or "", "address": loc.get("address") or "",
+                "pickup": {"enabled": bool(p.get("enabled")), "public_name": p.get("public_name") or "", "address": p.get("address") or "",
+                           "phone": p.get("phone") or "", "hours": p.get("hours") or "", "lat": p.get("lat"), "lng": p.get("lng")}}
+
+    @router.get("/website/stores")
+    async def list_stores(request: Request):
+        await get_current_user(request)
+        return {"items": [_store_row(l) async for l in db.locations.find({"active": {"$ne": False}}).sort("name", 1)]}
+
+    @router.put("/website/stores/{location_id}")
+    async def save_store(location_id: str, body: StoreIn, request: Request):
+        user = await _site_editor(request)
+        loc = await db.locations.find_one({"_id": _oid(location_id, "location"), "active": {"$ne": False}})
+        if not loc:
+            raise HTTPException(status_code=404, detail="That location doesn't exist. Add it in Settings → Locations first.")
+        address = _clean(body.address, 300)
+        if body.enabled and len(address) < 5:
+            raise HTTPException(status_code=400, detail="Add the store's address — customers see it when they choose to pick up there.")
+        phone = store_phone(body.phone)
+        if phone is None:
+            raise HTTPException(status_code=400, detail="Enter the store's phone as a 10-digit mobile number, or a landline with its "
+                                                        "STD code (for example 0424 2233445).")
+        try:
+            where = coordinates(body.coordinates)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        pickup = {"enabled": bool(body.enabled), "public_name": _clean(body.public_name, 80), "address": address, "phone": phone,
+                  "hours": _clean(body.hours, 80), "lat": where[0] if where else None, "lng": where[1] if where else None,
+                  "updated_at": _iso(), "updated_by": user.get("name", "")}
+        await db.locations.update_one({"_id": loc["_id"]}, {"$set": {"pickup": pickup}})
+        await create_audit_log(user["id"], user.get("name", ""), "update", "pickup_store", location_id, loc.get("pickup"),
+                               {k: v for k, v in pickup.items() if k != "updated_at"})
+        return _store_row(await db.locations.find_one({"_id": loc["_id"]}))
 
     # ───────────────────────── staff: shop products ─────────────────────────
     def _shop_row(l: Dict[str, Any], item: Optional[Dict[str, Any]], ref_price: Optional[float]) -> Dict[str, Any]:

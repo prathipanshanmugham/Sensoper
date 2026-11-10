@@ -93,10 +93,13 @@ def world(app, loop):
     async def tidy():
         db = server.db
         await db.users.delete_many({"email": {"$in": EMAILS}})
-        for coll in ("website_leads", "website_popups", "website_settings", "client_accounts", "client_login_attempts", "website_lead_hits"):
+        for coll in ("website_leads", "website_popups", "website_settings", "client_accounts", "client_login_attempts", "website_lead_hits",
+                     "website_testimonials"):
             await db[coll].delete_many({})
         await db.projects.delete_many({"reference_number": {"$regex": "^WEB-"}})
         await db.inventory_items.delete_many({"notes": TAG})
+        await db.brands.delete_many({"name": {"$regex": "^WT "}})
+        await db.locations.delete_many({"tag": TAG})
 
     yield run(loop, go())
     run(loop, tidy())
@@ -433,3 +436,356 @@ def test_number_first_lead_is_filled_in_by_the_quiz(app, loop, world):
         assert any("New website lead: Lakshmi" in t for t in notes)
     run(loop, go())
 
+
+
+# ───────────── Nov 2026: brands, testimonials, pick-up stores, site addresses ─────────────
+def test_youtube_links_addresses_phones_coordinates_and_ranges():
+    vid = "dQw4w9WgXcQ"
+    for url in (f"https://www.youtube.com/watch?v={vid}", f"https://m.youtube.com/watch?feature=share&v={vid}&t=42",
+                f"https://youtu.be/{vid}?si=abc", f"youtu.be/{vid}", f"https://youtube.com/shorts/{vid}?feature=share",
+                f"https://www.youtube.com/embed/{vid}", f"https://www.youtube.com/live/{vid}", f"https://www.youtube-nocookie.com/embed/{vid}"):
+        assert website.youtube_id(url) == vid, url
+    for bad in (f"https://vimeo.com/{vid}", f"https://evil.example/watch?v={vid}", f"https://youtube.com.evil.example/watch?v={vid}",
+                f"https://user@youtube.com/watch?v={vid}", "https://www.youtube.com/watch?v=short", "https://www.youtube.com/@sensoper",
+                f"javascript:alert('{vid}')", f"https://www.youtube.com/embed/{vid}/../x", "", None, vid):
+        assert website.youtube_id(bad) is None, bad
+    assert website.site_address("https://Shop.Sensoper.in/") == "https://shop.sensoper.in"
+    assert website.site_address("https://quote.sensoper.in/shop/") == "https://quote.sensoper.in/shop"
+    assert website.site_address("") == "" and website.site_address("   ") == ""
+    for bad in ("http://shop.sensoper.in", "shop.sensoper.in", "https://localhost", "javascript:alert(1)", "https://x.in/a b", "https://x.in/?q=1"):
+        assert website.site_address(bad) is None, bad
+    assert website.store_phone("+91 90435 47047") == "9043547047" and website.store_phone("0424 2233445") == "04242233445"
+    assert website.store_phone("") == "" and website.store_phone("12345") is None and website.store_phone("0000000000") is None
+    assert website.coordinates("11.2712, 77.5845") == (11.2712, 77.5845) and website.coordinates("") is None
+    assert website.coordinates("https://www.google.com/maps/place/Sensoper/@11.27121,77.58452,17z") == (11.27121, 77.58452)
+    for bad in ("77.5845, 11.2712", "40.71, -74.00", "near the bus stand"):
+        with pytest.raises(ValueError):
+            website.coordinates(bad)
+    assert website.byte_range("bytes=0-1", 10) == (0, 1) and website.byte_range("bytes=4-", 10) == (4, 9)
+    assert website.byte_range("bytes=-3", 10) == (7, 9) and website.byte_range("bytes=2-999", 10) == (2, 9)
+    assert website.byte_range(None, 10) is None and website.byte_range("items=0-1", 10) is None and website.byte_range("bytes=0-1,4-5", 10) is None
+    for bad in ("bytes=10-", "bytes=5-2", "bytes=abc", "bytes=-0", "bytes=-"):
+        with pytest.raises(LookupError):
+            website.byte_range(bad, 10)
+
+
+def test_site_and_shop_addresses_in_settings(app, loop, world):
+    async def go():
+        mgr, st = world["mgr"], world["staff"]
+        pub = client(app, "10.11.1.1")
+        assert (await pub.get("/api/public/site")).json()["urls"] == {"site": "https://quote.sensoper.in", "shop": ""}
+        assert (await st.put("/api/website/settings", json={"shop_url": "https://shop.sensoper.in"})).status_code == 403
+        r = await mgr.put("/api/website/settings", json={"shop_url": "http://shop.sensoper.in"})
+        assert r.status_code == 400 and "https://" in r.json()["detail"]
+        r = await mgr.put("/api/website/settings", json={"site_url": "quote.sensoper.in"})
+        assert r.status_code == 400 and "main website address" in r.json()["detail"]
+        r = await mgr.put("/api/website/settings", json={"site_url": "https://Sensoper.in/", "shop_url": "https://shop.sensoper.in/"})
+        assert r.status_code == 200 and r.json()["site_url"] == "https://sensoper.in" and r.json()["shop_url"] == "https://shop.sensoper.in"
+        assert r.json()["default_site_url"] == "https://quote.sensoper.in"
+        assert (await pub.get("/api/public/site")).json()["urls"] == {"site": "https://sensoper.in", "shop": "https://shop.sensoper.in"}
+        r = await mgr.put("/api/website/settings", json={"site_url": "", "shop_url": ""})
+        assert r.json()["site_url"] == "" and r.json()["urls"]["site"] == "https://quote.sensoper.in"
+        assert (await pub.get("/api/public/site")).json()["urls"] == {"site": "https://quote.sensoper.in", "shop": ""}
+        r = await mgr.put("/api/website/settings", json={"whatsapp_number": "9043547047"})   # the other settings leave the addresses alone
+        assert r.status_code == 200 and r.json()["site_url"] == ""
+    run(loop, go())
+
+
+def test_brands_on_the_website(app, loop, world):
+    async def go():
+        a, mgr = world["admin"], world["mgr"]
+        server.put_object(f"{server.APP_NAME}/images/wt-logo.png", b"\x89PNG fake logo", "image/png")
+        server.put_object(f"{server.APP_NAME}/images/wt-evil.png", b"<svg onload=alert(1)>", "image/svg+xml")
+        made = {}
+        for name, kind, extra in (("WT Own Coat", "own", {}), ("WT Aasha Power", "dealership", {"logo_path": f"{server.APP_NAME}/images/wt-logo.png",
+                                                                                               "categories": ["Inverters"], "website": "www.ashapower.in"}),
+                                  ("WT Hidden Dist", "distribution", {"on_website": False, "logo_path": f"{server.APP_NAME}/images/wt-logo.png"}),
+                                  ("WT Own Shown", "own", {"on_website": True, "logo_path": f"{server.APP_NAME}/images/wt-evil.png"}),
+                                  ("WT Gone Dealer", "dealership", {"active": False}), ("WT bharat Cables", "distribution", {"website": "javascript:alert(1)"})):
+            r = await a.post("/api/brands", json={"name": name, "kind": kind, **extra})
+            assert r.status_code == 200, r.text
+            made[name] = r.json()
+        assert made["WT Own Coat"]["on_website"] is None and made["WT Own Coat"]["shown_on_website"] is False
+        assert made["WT Aasha Power"]["shown_on_website"] is True and made["WT Hidden Dist"]["on_website"] is False
+        rows = {b["name"]: b for b in (await a.get("/api/brands", params={"include_inactive": True})).json()}
+        assert rows["WT Own Shown"]["on_website"] is True and rows["WT Gone Dealer"]["shown_on_website"] is False
+
+        pub = client(app, "10.11.2.2")
+        brands = [b for b in (await pub.get("/api/public/site")).json()["brands"] if b["name"].startswith("WT ")]
+        assert [b["name"] for b in brands] == ["WT Aasha Power", "WT bharat Cables", "WT Own Shown"]       # by name, case ignored
+        aasha = brands[0]
+        assert aasha == {"id": made["WT Aasha Power"]["id"], "name": "WT Aasha Power", "kind": "dealership", "categories": ["Inverters"],
+                         "logo": f"/api/public/brands/{made['WT Aasha Power']['id']}/logo", "website": "https://www.ashapower.in"}
+        assert brands[1]["logo"] is None and brands[1]["website"] == ""
+        r = await pub.get(aasha["logo"])
+        assert r.status_code == 200 and r.content == b"\x89PNG fake logo" and r.headers["x-content-type-options"] == "nosniff"
+        assert "sandbox" in r.headers["content-security-policy"] and "604800" in r.headers["cache-control"]
+        assert (await pub.get(f"/api/public/brands/{made['WT Hidden Dist']['id']}/logo")).status_code == 404     # not shown → no logo
+        assert (await pub.get(f"/api/public/brands/{made['WT Own Shown']['id']}/logo")).status_code == 404       # SVG never served
+        assert (await pub.get(f"/api/public/brands/{made['WT bharat Cables']['id']}/logo")).status_code == 404   # no logo
+        assert (await pub.get("/api/public/brands/not-an-id/logo")).status_code == 404
+
+        # editing a brand from a screen that doesn't send the switch keeps it; sending null goes back to "follow the kind"
+        hid = made["WT Hidden Dist"]["id"]
+        r = await mgr.put(f"/api/brands/{hid}", json={"name": "WT Hidden Dist", "kind": "distribution", "tagline": "Cables"})
+        assert r.status_code == 200 and r.json()["on_website"] is False and r.json()["shown_on_website"] is False
+        r = await mgr.put(f"/api/brands/{hid}", json={"name": "WT Hidden Dist", "kind": "distribution", "on_website": None})
+        assert r.json()["on_website"] is None and r.json()["shown_on_website"] is True
+        assert "WT Hidden Dist" in [b["name"] for b in (await pub.get("/api/public/site")).json()["brands"]]
+    run(loop, go())
+
+
+def _mp4(n: int) -> bytes:
+    return b"\x00\x00\x00\x18ftypmp42" + bytes((i * 7) % 251 for i in range(n - 12))
+
+
+def test_testimonials_youtube_and_uploaded_video(app, loop, world, monkeypatch):
+    async def go():
+        st, mgr = world["staff"], world["mgr"]
+        db = server.db
+        url = "/api/website/testimonials/video"
+        # who may upload, and what
+        assert (await st.post(url, files={"file": ("clip.mp4", _mp4(2000), "video/mp4")})).status_code == 403
+        for fname, ctype, data in (("notes.txt", "text/plain", b"hello"), ("clip.mp4", "application/octet-stream", _mp4(2000)),
+                                   ("clip.avi", "video/mp4", _mp4(2000)), ("clip.mp4", "video/x-msvideo", _mp4(2000))):
+            r = await mgr.post(url, files={"file": (fname, data, ctype)})
+            assert r.status_code == 400 and "MP4, WebM or MOV" in r.json()["detail"], (fname, ctype)
+        r = await mgr.post(url, files={"file": ("clip.mp4", b"<html><script>alert(1)</script></html>" * 10, "video/mp4")})
+        assert r.status_code == 400 and "doesn't play as a video" in r.json()["detail"]
+        assert (await mgr.post(url, files={"other": ("clip.mp4", _mp4(2000), "video/mp4")})).status_code == 400
+        assert (await mgr.post(url, json={"file": "x"})).status_code == 400
+
+        # the size limit is counted as the bytes arrive — even with no Content-Length at all
+        monkeypatch.setattr(website, "VIDEO_MAX_BYTES", 50_000)
+        boundary = "wt-boundary-123"
+        head = (f'--{boundary}\r\nContent-Disposition: form-data; name="file"; filename="big.mp4"\r\n'
+                f"Content-Type: video/mp4\r\n\r\n").encode()
+
+        async def body():
+            yield head
+            yield _mp4(16_000)
+            for _ in range(10):
+                yield b"\x01" * 16_000
+            yield f"\r\n--{boundary}--\r\n".encode()
+        r = await mgr.post(url, content=body(), headers={"content-type": f"multipart/form-data; boundary={boundary}"})
+        assert r.status_code == 413 and "100 MB" in r.json()["detail"]
+        r = await mgr.post(url, files={"file": ("clip.mp4", _mp4(60_000), "video/mp4")})
+        assert r.status_code == 413
+
+        async def cut_short():                                                       # the closing line never arrives
+            yield head
+            yield _mp4(5_000)
+        r = await mgr.post(url, content=cut_short(), headers={"content-type": f"multipart/form-data; boundary={boundary}"})
+        assert r.status_code == 400 and "didn't come through" in r.json()["detail"]
+        monkeypatch.setattr(website, "VIDEO_MAX_BYTES", 100 * 1024 * 1024)
+        folder = server.STORAGE_ROOT / server.APP_NAME / "videos"
+        assert not list(folder.glob("*.part"))                                        # nothing half-written is left behind
+
+        clip = _mp4(300_000)
+        r = await mgr.post(url, files={"file": ("Ravi testimonial.MP4", clip, "video/mp4")})
+        assert r.status_code == 200, r.text
+        up = r.json()
+        assert re.fullmatch(rf"{server.APP_NAME}/videos/[0-9a-f]{{32}}\.mp4", up["video_path"]) and up["size"] == len(clip)
+        assert up["content_type"] == "video/mp4" and (server.STORAGE_ROOT / up["video_path"]).read_bytes() == clip
+        r = await mgr.post(url, files={"file": ("x.webm", b"\x1a\x45\xdf\xa3" + b"\x00" * 500, "video/webm")})
+        assert r.status_code == 200 and r.json()["video_path"].endswith(".webm") and r.json()["content_type"] == "video/webm"
+        webm = r.json()["video_path"]
+
+        # saving: one video each, a real YouTube link, a short quote
+        t = "/api/website/testimonials"
+        assert (await st.post(t, json={"name": "Ravi Kumar", "youtube_url": "https://youtu.be/dQw4w9WgXcQ"})).status_code == 403
+        bad = [({"name": "R", "youtube_url": "https://youtu.be/dQw4w9WgXcQ"}, "name"),
+               ({"name": "Ravi Kumar"}, "YouTube link or upload"),
+               ({"name": "Ravi Kumar", "youtube_url": "https://youtu.be/dQw4w9WgXcQ", "video_path": up["video_path"]}, "not both"),
+               ({"name": "Ravi Kumar", "youtube_url": "https://vimeo.com/123456"}, "YouTube"),
+               ({"name": "Ravi Kumar", "video_path": "../../etc/passwd"}, "Upload it again"),
+               ({"name": "Ravi Kumar", "video_path": f"{server.APP_NAME}/videos/{'0' * 32}.mp4"}, "Upload it again"),
+               ({"name": "Ravi Kumar", "youtube_url": "https://youtu.be/dQw4w9WgXcQ", "quote": "x" * 401}, "400 characters"),
+               ({"name": "Ravi Kumar", "youtube_url": "https://youtu.be/dQw4w9WgXcQ", "poster_path": "sensoper-solar/documents/a.pdf"}, "picture"),
+               ({"name": "Ravi Kumar", "youtube_url": "https://youtu.be/dQw4w9WgXcQ", "status": "public"}, "draft"),
+               ({"name": "Ravi Kumar", "youtube_url": "https://youtu.be/dQw4w9WgXcQ", "order": "inf"}, "whole number")]
+        for body_, word in bad:
+            r = await mgr.post(t, json=body_)
+            assert r.status_code == 400 and word in r.json()["detail"], (body_, r.text)
+
+        server.put_object(f"{server.APP_NAME}/images/wt-poster.jpg", b"\xff\xd8\xff fake jpeg", "image/jpeg")
+        r = await mgr.post(t, json={"name": "Ravi Kumar", "place": "Perundurai", "system": "5 kW on-grid", "quote": "Bill went from ₹4,200 to ₹300.",
+                                    "youtube_url": "https://www.youtube.com/shorts/dQw4w9WgXcQ?feature=share", "order": 2})
+        assert r.status_code == 200, r.text
+        yt = r.json()
+        assert yt["youtube_url"] == "https://www.youtube.com/watch?v=dQw4w9WgXcQ" and yt["status"] == "live" and yt["video_path"] == ""
+        r = await mgr.post(t, json={"name": "Selvi K", "video_path": up["video_path"], "poster_path": f"{server.APP_NAME}/images/wt-poster.jpg", "order": 1})
+        assert r.status_code == 200 and r.json()["video_size"] == len(clip)
+        filed = r.json()
+        r = await mgr.post(t, json={"name": "Draft Person", "youtube_url": "https://youtu.be/dQw4w9WgXcQ", "status": "draft", "order": 0})
+        draft = r.json()
+        await db.website_testimonials.update_one({"_id": ObjectId(draft["id"])}, {"$set": {"created_at": "2026-01-01T00:00:00+00:00"}})
+        r = await mgr.post(t, json={"name": "Newer Same Order", "youtube_url": "youtu.be/dQw4w9WgXcQ", "order": 2})
+        newer = r.json()
+        await db.website_testimonials.update_one({"_id": ObjectId(yt["id"])}, {"$set": {"created_at": "2026-01-01T00:00:00+00:00"}})
+        staff_rows = (await st.get(t)).json()["items"]                      # staff can see the list, drafts included
+        assert {x["name"] for x in staff_rows} >= {"Ravi Kumar", "Selvi K", "Draft Person"}
+        assert {"id", "name", "place", "system", "quote", "youtube_url", "video_path", "video_size", "poster_path", "status", "order", "created_at"} <= set(staff_rows[0])
+
+        pub = client(app, "10.11.3.3")
+        site = (await pub.get("/api/public/site")).json()
+        shown = site["testimonials"]
+        assert [x["name"] for x in shown] == ["Selvi K", "Newer Same Order", "Ravi Kumar"]   # order, then newest first; no drafts
+        assert shown[2] == {"id": yt["id"], "name": "Ravi Kumar", "place": "Perundurai", "system": "5 kW on-grid",
+                            "quote": "Bill went from ₹4,200 to ₹300.", "video": {"type": "youtube", "id": "dQw4w9WgXcQ"}, "poster": None}
+        vurl = f"/api/public/testimonials/{filed['id']}/video"
+        assert shown[0]["video"] == {"type": "file", "url": vurl, "mime": "video/mp4"}
+        assert shown[0]["poster"] == f"/api/public/testimonials/{filed['id']}/poster"
+        assert "video_path" not in str(site) and "videos/" not in str(site)
+
+        # the poster and the video, as a phone's player asks for them
+        r = await pub.get(shown[0]["poster"])
+        assert r.status_code == 200 and r.headers["content-type"] == "image/jpeg" and r.headers["x-content-type-options"] == "nosniff"
+        assert (await pub.get(f"/api/public/testimonials/{yt['id']}/poster")).status_code == 404
+        r = await pub.get(vurl)
+        assert r.status_code == 200 and r.content == clip and r.headers["accept-ranges"] == "bytes"
+        assert r.headers["content-length"] == str(len(clip)) and r.headers["content-type"] == "video/mp4" and "86400" in r.headers["cache-control"]
+        r = await pub.get(vurl, headers={"range": "bytes=0-1"})
+        assert r.status_code == 206 and r.content == clip[:2] and r.headers["content-range"] == f"bytes 0-1/{len(clip)}" and r.headers["content-length"] == "2"
+        r = await pub.get(vurl, headers={"range": "bytes=299990-"})
+        assert r.status_code == 206 and r.content == clip[299990:] and r.headers["content-range"] == f"bytes 299990-{len(clip) - 1}/{len(clip)}"
+        r = await pub.get(vurl, headers={"range": "bytes=-100"})
+        assert r.status_code == 206 and r.content == clip[-100:]
+        r = await pub.get(vurl, headers={"range": "bytes=1000-262143"})
+        assert r.status_code == 206 and r.content == clip[1000:262144]                 # spans more than one read
+        for rng in (f"bytes={len(clip)}-", "bytes=9-3", "bytes=x-y"):
+            r = await pub.get(vurl, headers={"range": rng})
+            assert r.status_code == 416 and r.headers["content-range"] == f"bytes */{len(clip)}", rng
+        r = await pub.get(vurl, headers={"range": "bytes=0-1", "if-range": '"stale"'})
+        assert r.status_code == 200 and len(r.content) == len(clip)
+        r = await pub.head(vurl)
+        assert r.status_code == 200 and r.headers["content-length"] == str(len(clip)) and r.content == b""
+        assert (await pub.get(f"/api/public/testimonials/{draft['id']}/video")).status_code == 404       # drafts aren't public
+        assert (await pub.get(f"/api/public/testimonials/{yt['id']}/video")).status_code == 404          # YouTube ones have no file
+        assert (await pub.get("/api/public/testimonials/not-an-id/video")).status_code == 404
+
+        # a video stored outside the videos folder is never served, even if the record is changed behind our back
+        await db.website_testimonials.update_one({"_id": ObjectId(filed["id"])}, {"$set": {"video_path": f"{server.APP_NAME}/images/wt-poster.jpg"}})
+        assert (await pub.get(vurl)).status_code == 404
+        await db.website_testimonials.update_one({"_id": ObjectId(filed["id"])}, {"$set": {"video_path": up["video_path"]}})
+
+        # swapping the video removes the old file; deleting the testimonial removes its file
+        old = server.STORAGE_ROOT / up["video_path"]
+        r = await mgr.put(f"{t}/{filed['id']}", json={"name": "Selvi K", "video_path": webm, "order": 1})
+        assert r.status_code == 200 and r.json()["video_type"] == "video/webm" and r.json()["poster_path"] == ""
+        assert not old.exists()
+        assert (await pub.get(vurl)).headers["content-type"] == "video/webm"
+        r = await mgr.put(f"{t}/{draft['id']}", json={"name": "Draft Person", "youtube_url": "https://youtu.be/dQw4w9WgXcQ", "status": "live"})
+        assert r.status_code == 200 and r.json()["status"] == "live"
+        assert (await st.delete(f"{t}/{filed['id']}")).status_code == 403
+        assert (await mgr.delete(f"{t}/{filed['id']}")).status_code == 200
+        assert not (server.STORAGE_ROOT / webm).exists()
+        assert (await pub.get(vurl)).status_code == 404
+        assert (await mgr.put(f"{t}/{filed['id']}", json={"name": "Selvi K", "youtube_url": "https://youtu.be/dQw4w9WgXcQ"})).status_code == 404
+        for x in (yt, draft, newer):
+            await mgr.delete(f"{t}/{x['id']}")
+        assert (await pub.get("/api/public/site")).json()["testimonials"] == []
+    run(loop, go())
+
+
+async def _store(db, name, **extra):
+    res = await db.locations.insert_one({"name": name, "type": "branch", "address": "Main road", "district": "Erode", "state": "Tamil Nadu",
+                                         "active": True, "tag": TAG, **extra})
+    return str(res.inserted_id)
+
+
+def test_pickup_stores_are_set_up_from_locations(app, loop, world):
+    async def go():
+        st, mgr = world["staff"], world["mgr"]
+        db = server.db
+        erode = await _store(db, "WT_Erode_Branch")
+        gobi = await _store(db, "WT Gobi")
+        closed = await _store(db, "WT Closed", active=False, pickup={"enabled": True, "address": "Old shop street"})
+        rows = {x["location_id"]: x for x in (await st.get("/api/website/stores")).json()["items"]}
+        assert erode in rows and gobi in rows and closed not in rows
+        assert rows[erode]["pickup"] == {"enabled": False, "public_name": "", "address": "", "phone": "", "hours": "", "lat": None, "lng": None}
+        assert rows[erode]["name"] == "WT_Erode_Branch" and rows[erode]["type"] == "branch" and rows[erode]["district"] == "Erode"
+
+        u = f"/api/website/stores/{erode}"
+        good = {"enabled": True, "address": "518/3, Kunnathur – Perundurai Rd, Perundurai 638052", "phone": "+91 90435 47047",
+                "hours": "Mon–Sat, 9:30 am – 6:30 pm", "coordinates": "11.2712, 77.5845"}
+        assert (await st.put(u, json=good)).status_code == 403
+        assert (await mgr.put(f"/api/website/stores/{closed}", json=good)).status_code == 404
+        assert (await mgr.put("/api/website/stores/not-an-id", json=good)).status_code == 404
+        for patch, word in (({"address": ""}, "address"), ({"phone": "12345"}, "STD code"), ({"coordinates": "near the temple"}, "two numbers"),
+                            ({"coordinates": "77.5845, 11.2712"}, "swapped"), ({"coordinates": "51.5, -0.12"}, "India")):
+            r = await mgr.put(u, json={**good, **patch})
+            assert r.status_code == 400 and word in r.json()["detail"], (patch, r.text)
+        assert (await mgr.put(u, json={"enabled": False})).status_code == 200            # switched off, nothing else is needed
+        r = await mgr.put(u, json=good)
+        assert r.status_code == 200, r.text
+        assert r.json()["pickup"] == {"enabled": True, "public_name": "", "address": good["address"], "phone": "9043547047",
+                                      "hours": "Mon–Sat, 9:30 am – 6:30 pm", "lat": 11.2712, "lng": 77.5845}
+        r = await mgr.put(f"/api/website/stores/{gobi}", json={"enabled": True, "public_name": "Sensoper Gobi", "address": "Gobi main road, 638452",
+                                                              "phone": "0424 2233445", "coordinates": ""})
+        assert r.status_code == 200 and r.json()["pickup"]["phone"] == "04242233445" and r.json()["pickup"]["lat"] is None
+        loc = await db.locations.find_one({"_id": ObjectId(erode)})
+        assert loc["name"] == "WT_Erode_Branch" and loc["address"] == "Main road"       # the location itself isn't changed
+
+        pub = client(app, "10.11.4.4")
+        stores = [x for x in (await pub.get("/api/public/site")).json()["stores"] if x["id"] in (erode, gobi, closed)]
+        assert [x["name"] for x in stores] == ["Sensoper Gobi", "WT Erode Branch"]      # by name; closed locations never show
+        assert stores[1] == {"id": erode, "name": "WT Erode Branch", "address": good["address"], "district": "Erode", "phone": "9043547047",
+                             "hours": "Mon–Sat, 9:30 am – 6:30 pm", "lat": 11.2712, "lng": 77.5845,
+                             "directions": "https://www.google.com/maps/dir/?api=1&destination=11.2712,77.5845"}
+        assert stores[0]["lat"] is None and stores[0]["directions"] == ""
+        # clearing the coordinates, then switching the store off
+        r = await mgr.put(u, json={**good, "coordinates": ""})
+        assert r.json()["pickup"]["lat"] is None and r.json()["pickup"]["lng"] is None
+        for sid in (erode, gobi):
+            await mgr.put(f"/api/website/stores/{sid}", json={"enabled": False})
+        assert [x for x in (await pub.get("/api/public/site")).json()["stores"] if x["id"] in (erode, gobi)] == []
+    run(loop, go())
+
+
+def test_shop_order_pickup_store(app, loop, world):
+    async def go():
+        mgr = world["mgr"]
+        db = server.db
+        item = await db.inventory_items.insert_one({"name": "WT Luminous 1100VA Inverter", "sku_code": "WEB-INV", "category": "inverters",
+                                                    "unit_price": 5000, "quantity": 5, "notes": TAG})
+        r = await mgr.post("/api/website/shop/products", json={"inventory_item_id": str(item.inserted_id), "price": 6500})
+        assert r.status_code == 200, r.text
+        pid = r.json()["id"]
+        order = {"name": "Kumar", "phone": "9443300011", "delivery": "pickup", "items": [{"id": pid, "qty": 1}]}
+
+        # no pick-up store set up: pick-up from the office, as before (a stray store_id is ignored)
+        pub = client(app, "10.11.5.5")
+        r = await pub.post("/api/public/shop/order", json={**order, "store_id": "6a90aaaaaaaaaaaaaaaaaaaa"})
+        assert r.status_code == 200, r.text
+        lead = await db.website_leads.find_one({"number": r.json()["number"]})
+        assert lead["delivery"] == "pickup" and "pickup_store" not in lead
+
+        erode = await _store(db, "WT_Erode_Shop")
+        await mgr.put(f"/api/website/stores/{erode}", json={"enabled": True, "public_name": "Sensoper Erode", "address": "Perundurai Rd, 638052",
+                                                           "phone": "9043547047", "hours": "9:30 am – 6:30 pm"})
+        off = await _store(db, "WT_Off_Shop")
+        pub = client(app, "10.11.6.6")
+        r = await pub.post("/api/public/shop/order", json=order)
+        assert r.status_code == 400 and r.json()["detail"] == "Choose the store you'll pick it up from."
+        for sid in ("6a90aaaaaaaaaaaaaaaaaaaa", off, "../x", ""):
+            r = await pub.post("/api/public/shop/order", json={**order, "store_id": sid})
+            assert r.status_code == 400 and r.json()["detail"] == "Choose the store you'll pick it up from.", sid
+        r = await pub.post("/api/public/shop/order", json={**order, "store_id": erode})
+        assert r.status_code == 200, r.text
+        lead = await db.website_leads.find_one({"number": r.json()["number"]})
+        assert lead["pickup_store"] == {"id": erode, "name": "Sensoper Erode", "address": "Perundurai Rd, 638052", "phone": "9043547047"}
+        assert "Sensoper Erode" in lead["activity"][0]["text"]
+        got = (await mgr.get(f"/api/website/leads/{lead['_id']}")).json()
+        assert got["pickup_store"]["name"] == "Sensoper Erode"
+        # delivery needs no store, and a store sent with a delivery isn't saved
+        r = await pub.post("/api/public/shop/order", json={**order, "delivery": "delivery", "address": "12, Gandhi St, Bhavani", "store_id": erode})
+        assert r.status_code == 200
+        lead = await db.website_leads.find_one({"number": r.json()["number"]})
+        assert lead["delivery"] == "delivery" and "pickup_store" not in lead
+
+        await mgr.put(f"/api/website/stores/{erode}", json={"enabled": False})
+        r = await client(app, "10.11.7.7").post("/api/public/shop/order", json=order)
+        assert r.status_code == 200                                                    # no store left → from the office again
+        await mgr.delete(f"/api/website/shop/products/{pid}")
+    run(loop, go())
