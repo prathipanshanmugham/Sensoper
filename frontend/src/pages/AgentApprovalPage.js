@@ -82,7 +82,7 @@ export default function AgentApprovalPage() {
         <p className="font-medium">What will happen</p>
         <p className="mt-1">{a.what}</p>
         {a.summary && <p className="mt-2 text-xs text-amber-900">Details: {a.summary}</p>}
-        <p className="mt-2 break-all font-mono text-[11px] text-amber-800">{a.method} {a.path}</p>
+        <p className="mt-2 break-all font-mono text-[11px] text-amber-800">{a.detail || `${a.method} ${a.path}`}</p>
       </div>
 
       {waiting ? (
