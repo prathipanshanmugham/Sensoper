@@ -35,7 +35,7 @@
     "/app/frontend/src/pages/InventoryManagement.js"
   ],
   "success_rate": {"backend": "100%", "frontend": "100%"},
-  "test_credentials": "admin@sensoper.com / Admin@123",
+  "test_credentials": "admin@sensoper.com / <TEST_ADMIN_PASSWORD>",
   "seed_data_creation": "Import test created/updated SKU 'SP-540-MONO' and a couple of TEST-* SKUs (TEST-GOOD-1, TEST-NEG-1). Item count visible in UI = 12.",
   "retest_needed": false,
   "should_main_agent_self_test": true,

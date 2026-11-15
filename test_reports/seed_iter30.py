@@ -4,10 +4,10 @@ import os
 import sys
 import requests
 
-BASE_URL = 'https://solar-ops-management.preview.emergentagent.com'
+BASE_URL = os.environ['REACT_APP_BACKEND_URL'].rstrip('/')   # a test server — never the live one
 s = requests.Session()
 r = s.post(f'{BASE_URL}/api/auth/login',
-           json={'email': 'admin@sensoper.com', 'password': 'Admin@123'})
+           json={'email': 'admin@sensoper.com', 'password': os.environ['TEST_ADMIN_PASSWORD']})
 assert r.status_code == 200, f'login {r.status_code} {r.text}'
 
 payload = {

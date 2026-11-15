@@ -8,6 +8,7 @@ ledger the Accounts module already uses for other payables (entry_type
 `partner_payment`) rather than a parallel bookkeeping system.
 """
 from __future__ import annotations
+import re
 from typing import List, Optional, Dict, Any
 from datetime import datetime, timezone
 from pydantic import BaseModel
@@ -183,7 +184,7 @@ def create_router(db, get_current_user, require_role, create_audit_log):
             if wanted:
                 q["service_districts"] = {"$in": wanted}   # OR across districts — "Erode or Namakkal or Karur"
         if status: q["status"] = status
-        if search: q["name"] = {"$regex": search, "$options": "i"}
+        if search: q["name"] = {"$regex": re.escape(search), "$options": "i"}
         if min_rating is not None:
             q["rating"] = {"$gte": float(min_rating)}
         docs = await db.partners.find(q).sort("name", 1).to_list(2000)
@@ -615,7 +616,7 @@ def create_router(db, get_current_user, require_role, create_audit_log):
         tag = payload.tag.strip()
         if not tag:
             raise HTTPException(status_code=400, detail="Tag cannot be empty")
-        existing = await db.speciality_tags.find_one({"tag": {"$regex": f"^{tag}$", "$options": "i"}})
+        existing = await db.speciality_tags.find_one({"tag": {"$regex": f"^{re.escape(tag)}$", "$options": "i"}})
         if existing:
             if not existing.get("active", True):
                 await db.speciality_tags.update_one({"_id": existing["_id"]}, {"$set": {"active": True}})

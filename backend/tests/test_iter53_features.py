@@ -5,11 +5,15 @@ import uuid
 import pyotp
 import pytest
 import requests
+from http_env import ensure_vendor, require_server, throwaway_password, TEST_ADMIN_EMAIL, TEST_MANAGER_EMAIL, TEST_MANAGER_PASSWORD, TEST_STAFF_EMAIL, TEST_STAFF_PASSWORD  # noqa: E402,F401
+_SERVER_URL, TEST_ADMIN_PASSWORD = require_server(manager=False, staff=False)
+_TMP_PW_3 = throwaway_password()
+_TMP_PW_4 = throwaway_password()
 
 BASE_URL = os.environ.get("REACT_APP_BACKEND_URL").rstrip("/")
 API = f"{BASE_URL}/api"
 TAG = f"TEST53B_{uuid.uuid4().hex[:5]}"
-ADMIN_PW = os.environ.get("TEST_ADMIN_PASSWORD", "Admin@123")
+ADMIN_PW = os.environ.get("TEST_ADMIN_PASSWORD", TEST_ADMIN_PASSWORD)
 
 
 def _login(email, pw):
@@ -55,7 +59,7 @@ class TestTermsLinkage:
 
 
 class TestCredentialsAnd2FA:
-    EMAIL, PW = f"{TAG.lower()}_2fa@test.com", "Totp@12345"
+    EMAIL, PW = f"{TAG.lower()}_2fa@test.com", _TMP_PW_4
 
     @pytest.fixture(scope="class")
     def user(self, admin):
@@ -102,7 +106,7 @@ class TestCredentialsAnd2FA:
         assert admin.post(f"{API}/security/credentials/{user}/disable-2fa", timeout=60).json()["enabled"] is False
         s5, payload = _login(self.EMAIL, self.PW)
         assert payload.get("must_reset_password") is True and payload.get("requires_2fa") is None
-        assert s5.post(f"{API}/auth/change-password", json={"current_password": self.PW, "new_password": "Totp@123456"}, timeout=60).status_code == 200
+        assert s5.post(f"{API}/auth/change-password", json={"current_password": self.PW, "new_password": _TMP_PW_3}, timeout=60).status_code == 200
         row = next(r for r in admin.get(f"{API}/security/credentials", timeout=60).json()["rows"] if r["id"] == user)
         assert row["must_reset_password"] is False and row["password_changed_at"]
         assert any(l["action_type"] == "password_changed" for l in admin.get(f"{API}/audit-logs", params={"entity_type": "user"}, timeout=60).json())
@@ -169,6 +173,7 @@ class TestAmcOps:
 class TestStructuredInboundLocation:
     def test_free_text_rejected_and_struct_written_to_item(self, admin):
         inv = admin.post(f"{API}/inventory/items", json={"name": f"{TAG} Fuse", "sku_code": f"{TAG}-F", "category": "bos", "quantity": 0, "unit_price": 10, "gst_percentage": 18, "margin_pct": 5}, timeout=60).json()["id"]
+        ensure_vendor(admin, API, f"{TAG} S")
         po = admin.post(f"{API}/purchase-orders", json={"supplier_name": f"{TAG} S", "items": [{"name": "f", "qty": 2, "unit_price": 10, "inventory_item_id": inv}]}, timeout=60).json()
         po_id = po.get("id") or po.get("po_id")
         admin.put(f"{API}/purchase-orders/{po_id}/approve", timeout=60); admin.put(f"{API}/purchase-orders/{po_id}/arrival", json={}, timeout=60); admin.put(f"{API}/purchase-orders/{po_id}/qc", json={}, timeout=60)

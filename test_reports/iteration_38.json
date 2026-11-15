@@ -29,7 +29,7 @@
     "/app/backend/tests/test_iteration38.py (new — 5 auth+regression tests, all passing)"
   ],
   "success_rate": {"backend": "100%", "frontend": "~90% (1 HIGH bug: submit-disabled contradicts drive-optional spec)"},
-  "test_credentials": "admin@sensoper.com / Admin@123",
+  "test_credentials": "admin@sensoper.com / <TEST_ADMIN_PASSWORD>",
   "seed_data_creation": "",
   "retest_needed": true,
   "should_main_agent_self_test": true,

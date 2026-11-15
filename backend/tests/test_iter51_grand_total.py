@@ -12,6 +12,8 @@ import os
 import uuid
 import pytest
 import requests
+from http_env import require_server, throwaway_password, TEST_ADMIN_EMAIL, TEST_MANAGER_EMAIL, TEST_MANAGER_PASSWORD, TEST_STAFF_EMAIL, TEST_STAFF_PASSWORD  # noqa: E402,F401
+_SERVER_URL, TEST_ADMIN_PASSWORD = require_server(manager=False, staff=False)
 
 BASE_URL = os.environ.get("REACT_APP_BACKEND_URL").rstrip("/")
 API = f"{BASE_URL}/api"
@@ -30,7 +32,7 @@ SYSTEM_GST = 24840.0   # Iter 52: per-line GST from the calculator (13.8% compos
 @pytest.fixture(scope="module")
 def client():
     s = requests.Session()
-    r = s.post(f"{API}/auth/login", json={"email": "admin@sensoper.com", "password": os.environ.get("TEST_ADMIN_PASSWORD", "Admin@123")}, timeout=60)
+    r = s.post(f"{API}/auth/login", json={"email": "admin@sensoper.com", "password": os.environ.get("TEST_ADMIN_PASSWORD", TEST_ADMIN_PASSWORD)}, timeout=60)
     assert r.status_code == 200, r.text
     return s
 
@@ -93,7 +95,7 @@ class TestGrandTotalIncludesBaseSystem:
         # intra-state: CGST + SGST split of the system GST, never IGST
         assert round(sys_line["cgst"] + sys_line["sgst"], 2) == expected["system_gst"] and sys_line["igst"] == 0
         assert inv["total_taxable_value"] == round(SYSTEM_COST + 8800 + 6000 + 2500, 2)
-        assert round(inv["total_cgst"] + inv["total_sgst"], 2) == round(expected["system_gst"] + 1440 + 720 + 450, 2)
+        assert round(inv["total_cgst"] + inv["total_sgst"], 2) == round(expected["system_gst"] + 1584 + 720 + 450, 2)
         assert inv["grand_total"] == expected["grand"], "invoice grand total must equal the corrected project total"
 
     def test_profit_calculator_uses_corrected_total(self, client, project, expected):
@@ -102,7 +104,7 @@ class TestGrandTotalIncludesBaseSystem:
             pytest.skip("profit endpoint not available for this project state")
         d = r.json()
         # revenue = gross (before subsidy) minus GST pass-through → must include the base system
-        assert abs(d["revenue"] - (expected["gross"] - (expected["system_gst"] + 1440 + 720 + 450))) < 1, d
+        assert abs(d["revenue"] - (expected["gross"] - (expected["system_gst"] + 1584 + 720 + 450))) < 1, d
         assert d["revenue"] > SYSTEM_COST
 
     def test_updating_calculator_result_recomputes_total(self, client, project, gst_pct):
@@ -128,7 +130,7 @@ class TestGrandTotalIncludesBaseSystem:
         assert r.status_code in (200, 201), r.text
         pid = r.json().get("id")
         ce = client.get(f"{API}/projects/{pid}", timeout=60).json()["cost_estimation"]
-        assert ce["system_cost"] == 0 and ce["subsidy"] == 0 and ce["total_cost"] == 10240
+        assert ce["system_cost"] == 0 and ce["subsidy"] == 0 and ce["total_cost"] == 10384   # GST on cost + margin (Oct 2026): 8,000 + 800 + 1,584
         client.delete(f"{API}/projects/{pid}/hard", json={"reason": "cleanup"}, timeout=60)
         client.delete(f"{API}/projects/{pid}", timeout=60)
 

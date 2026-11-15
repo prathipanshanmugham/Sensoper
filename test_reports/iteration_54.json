@@ -27,7 +27,7 @@
   ],
   "updated_files": [],
   "success_rate": {"backend": "100% (52/52 non-skipped)", "frontend": "100% of required testids + PDF acceptance"},
-  "test_credentials": "admin@sensoper.com / Admin@123 (login-email-input / login-password-input / login-submit-btn)",
+  "test_credentials": "admin@sensoper.com / <TEST_ADMIN_PASSWORD> (login-email-input / login-password-input / login-submit-btn)",
   "seed_data_creation": "None created this run — used existing DB state.",
   "retest_needed": false,
   "should_main_agent_self_test": true,

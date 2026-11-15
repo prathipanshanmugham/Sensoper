@@ -30,7 +30,7 @@
     "/app/backend/tests/test_iteration26_solar_report.py (new)"
   ],
   "success_rate": {"backend": "100% (19/19)", "frontend": "100% — all data-testids present and integrations working"},
-  "test_credentials": "admin@sensoper.com / Admin@123 (cookie session via /api/auth/login)",
+  "test_credentials": "admin@sensoper.com / <TEST_ADMIN_PASSWORD> (cookie session via /api/auth/login)",
   "seed_data_creation": "None — pure read/calc/PDF endpoints; no DB writes",
   "retest_needed": false,
   "main_agent_can_self_test": true,

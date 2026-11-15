@@ -36,6 +36,15 @@ def location_scope_filter(user: Dict[str, Any], location_id_param: Optional[str]
     return {"$or": [{"location_id": {"$in": scope}}, {"location_id": None}, {"location_id": {"$exists": False}}]}
 
 
+def location_allowed(user: Dict[str, Any], location_id: Optional[str]) -> bool:
+    """One record's location against the user's scope — the same rule as location_scope_filter: admins and users with
+    no assigned location see everything, records without a location are shared, everyone else only their own."""
+    if user.get("role") == "admin" or not location_id:
+        return True
+    scope = user.get("location_ids") or []
+    return not scope or location_id in scope
+
+
 def _strip_id(d: Dict[str, Any]) -> Dict[str, Any]:
     oid = d.pop("_id")
     return {**d, "id": str(oid)}

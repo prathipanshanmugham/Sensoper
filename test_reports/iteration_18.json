@@ -13,7 +13,7 @@
   },
 
   "passed_tests": [
-    "Admin login with credentials (admin@sensoper.com / Admin@123)",
+    "Admin login with credentials (admin@sensoper.com / <TEST_ADMIN_PASSWORD>)",
     "Sidebar: All 5 new nav links exist (Customer Credits, Purchase Inbound, Delivery Outbound, Brand Returns, Weekly Audits)",
     
     "CUSTOMER CREDITS MODULE:",
@@ -87,7 +87,7 @@
   },
 
   "test_credentials": {
-    "admin": "admin@sensoper.com / Admin@123"
+    "admin": "admin@sensoper.com / <TEST_ADMIN_PASSWORD>"
   },
 
   "seed_data_creation": "Test data created via API and UI: credits (UI_Test_Customer Rs 75000), POs (UI_Test_Supplier), deliveries (UI_Test_Delivery_Customer), returns (UI_Test_Defective_Panel), audits (UI_Test_Weekly_Audit)",

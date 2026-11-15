@@ -4,6 +4,8 @@ import uuid
 
 import pytest
 import requests
+from http_env import require_server, throwaway_password, TEST_ADMIN_EMAIL, TEST_MANAGER_EMAIL, TEST_MANAGER_PASSWORD, TEST_STAFF_EMAIL, TEST_STAFF_PASSWORD  # noqa: E402,F401
+_SERVER_URL, TEST_ADMIN_PASSWORD = require_server(manager=False, staff=False)
 
 API = f"{os.environ.get('REACT_APP_BACKEND_URL').rstrip('/')}/api"
 TAG = f"TEST57_{uuid.uuid4().hex[:5]}"
@@ -12,7 +14,7 @@ TAG = f"TEST57_{uuid.uuid4().hex[:5]}"
 @pytest.fixture(scope="module")
 def admin():
     s = requests.Session()
-    assert s.post(f"{API}/auth/login", json={"email": "admin@sensoper.com", "password": os.environ.get("TEST_ADMIN_PASSWORD", "Admin@123")}, timeout=60).status_code == 200
+    assert s.post(f"{API}/auth/login", json={"email": "admin@sensoper.com", "password": os.environ.get("TEST_ADMIN_PASSWORD", TEST_ADMIN_PASSWORD)}, timeout=60).status_code == 200
     return s
 
 

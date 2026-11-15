@@ -6,6 +6,7 @@ tracks SLA (response + resolution), enforces a status workflow, can link back to
 Employee Performance report through the assigned technician's satisfaction average.
 """
 from __future__ import annotations
+import re
 from typing import List, Optional, Dict, Any
 from datetime import datetime, timezone
 from bson import ObjectId
@@ -254,9 +255,9 @@ def create_router(db, get_current_user, require_role, create_audit_log):
             if date_to: q["created_at"]["$lte"] = date_to + "T23:59:59"
         if search:
             q["$or"] = [
-                {"ticket_number": {"$regex": search, "$options": "i"}},
-                {"customer_name": {"$regex": search, "$options": "i"}},
-                {"description": {"$regex": search, "$options": "i"}},
+                {"ticket_number": {"$regex": re.escape(search), "$options": "i"}},
+                {"customer_name": {"$regex": re.escape(search), "$options": "i"}},
+                {"description": {"$regex": re.escape(search), "$options": "i"}},
             ]
         docs = await db.support_tickets.find(q).sort("created_at", -1).to_list(5000)
         sla = await _get_sla_config(db)

@@ -7,7 +7,7 @@ Rate for a size = flat rate_per_unit × size for the whole system (not progressi
 LOWER slab (1–3 and 3–5 → 3 kW prices in 1–3). Several versions of the same range may coexist with different
 `effective_from`; the latest one on/before the quote date wins, so old quotes stay reproducible.
 """
-from datetime import date, datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
 from bson import ObjectId
@@ -19,7 +19,8 @@ DEFAULT_UNIT = {"on-grid": "kw", "off-grid": "kw", "hybrid": "kw", "solar-pump":
 
 
 def _today() -> str:
-    return date.today().isoformat()
+    """Today in India — the server's own clock is UTC, so a rate effective from 1 Dec applied only from 5:30 am IST."""
+    return (datetime.now(timezone.utc) + timedelta(hours=5, minutes=30)).date().isoformat()
 
 
 def pick_slab(slabs: List[Dict[str, Any]], value: float, on_date: Optional[str] = None) -> Optional[Dict[str, Any]]:
@@ -36,6 +37,9 @@ def pick_slab(slabs: List[Dict[str, Any]], value: float, on_date: Optional[str] 
     matches = [s for (lo, hi), s in latest.items() if value >= lo and (hi is None or value <= hi)]
     if not matches:
         return None
+    # lowest range first (a boundary value belongs to the lower slab); between ranges that start at the same value
+    # (an old 1–3 and a newer 1–4), the newer rate card wins instead of whichever happened to be stored first
+    matches.sort(key=lambda s: str(s.get("effective_from") or "")[:10], reverse=True)
     return min(matches, key=lambda s: float(s.get("from_value") or 0))
 
 

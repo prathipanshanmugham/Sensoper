@@ -15,7 +15,7 @@
   ],
   "updated_files": [],
   "success_rate": {"backend": "N/A (skipped per request)", "frontend": "100% of iter58 flows verified"},
-  "test_credentials": "admin@sensoper.com / Admin@123 (from /app/memory/test_credentials.md). Temp staff test58staff@sensoper.com / Staff@12345 created via POST /api/auth/register and cleaned up.",
+  "test_credentials": "admin@sensoper.com / <TEST_ADMIN_PASSWORD> (from /app/memory/test_credentials.md). Temp staff test58staff@sensoper.com / <TEST_STAFF_PASSWORD>45 created via POST /api/auth/register and cleaned up.",
   "seed_data_creation": "All TEST58 data cleaned: 3 purchase_orders, 1 material_kit, 1 kit_category, 1 user deleted via Mongo. Brand-returns TEST58 items were already deleted through the tested flows themselves.",
   "retest_needed": false,
   "should_main_agent_self_test": false,

@@ -21,7 +21,7 @@
     "/app/backend/tests/test_iteration33.py"
   ],
   "success_rate": {"backend": "100% (8/8)", "frontend": "95% (all critical refactor verifications green; ProposedSolutionSection live-metric in-page interaction skipped because wizard validation on Site & Electrical step prevented playwright auto-advance to Materials. Section code & testids verified via source grep.)"},
-  "test_credentials": "admin@sensoper.com / Admin@123",
+  "test_credentials": "admin@sensoper.com / <TEST_ADMIN_PASSWORD>",
   "seed_data_creation": "Backend pytest creates TEST_ITER33_* projects (one per test) and cleans them up at teardown. A throwaway completed project (id 6a106ba9468021116468ed68, customer TEST_ITER33_COMPLETED) was created + force-set to status=completed in Mongo for the Playwright universal-Notes test on completed status. All test data deleted at end of run.",
   "retest_needed": false,
   "should_main_agent_self_test": true,

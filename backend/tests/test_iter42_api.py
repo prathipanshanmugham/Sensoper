@@ -2,9 +2,11 @@
 import os
 import pytest
 import requests
+from http_env import require_server, throwaway_password, TEST_ADMIN_EMAIL, TEST_MANAGER_EMAIL, TEST_MANAGER_PASSWORD, TEST_STAFF_EMAIL, TEST_STAFF_PASSWORD  # noqa: E402,F401
+_SERVER_URL, TEST_ADMIN_PASSWORD = require_server(manager=False, staff=True)
 
 BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "https://solar-ops-management.preview.emergentagent.com").rstrip("/")
-ADMIN = {"email": "admin@sensoper.com", "password": "Admin@123"}
+ADMIN = {"email": "admin@sensoper.com", "password": TEST_ADMIN_PASSWORD}
 
 
 @pytest.fixture(scope="module")
@@ -127,10 +129,10 @@ def test_expansion_branches_crud(admin_client):
 
 def test_staff_forbidden_on_expansion():
     # try login as staff if we can — otherwise skip
-    r = requests.post(f"{BASE_URL}/api/auth/login", json={"email": "staff@sensoper.com", "password": "Staff@123"}, timeout=15)
+    r = requests.post(f"{BASE_URL}/api/auth/login", json={"email": TEST_STAFF_EMAIL, "password": TEST_STAFF_PASSWORD}, timeout=15)
     if r.status_code != 200:
         pytest.skip("no staff account available")
     s = requests.Session()
-    s.post(f"{BASE_URL}/api/auth/login", json={"email": "staff@sensoper.com", "password": "Staff@123"}, timeout=15)
+    s.post(f"{BASE_URL}/api/auth/login", json={"email": TEST_STAFF_EMAIL, "password": TEST_STAFF_PASSWORD}, timeout=15)
     r2 = s.get(f"{BASE_URL}/api/expansion/overview", timeout=15)
     assert r2.status_code == 403

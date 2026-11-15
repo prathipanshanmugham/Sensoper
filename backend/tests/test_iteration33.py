@@ -16,9 +16,8 @@ import requests
 from datetime import datetime, timezone
 from bson import ObjectId
 from pymongo import MongoClient
-TEST_ADMIN_PASSWORD = os.environ.get("TEST_ADMIN_PASSWORD") or "Admin@123"
-
-
+from http_env import require_server, throwaway_password, TEST_ADMIN_EMAIL, TEST_MANAGER_EMAIL, TEST_MANAGER_PASSWORD, TEST_STAFF_EMAIL, TEST_STAFF_PASSWORD  # noqa: E402,F401
+_SERVER_URL, TEST_ADMIN_PASSWORD = require_server(manager=False, staff=False)
 BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "https://solar-ops-management.preview.emergentagent.com").rstrip("/")
 ADMIN_EMAIL = "admin@sensoper.com"
 ADMIN_PASSWORD = TEST_ADMIN_PASSWORD
@@ -42,6 +41,8 @@ def session():
 
 @pytest.fixture(scope="session")
 def mongo_db():
+    if not os.environ.get("MONGO_URL"):
+        pytest.skip("set MONGO_URL / DB_NAME (the MongoDB of the server under test) to run the direct-database checks")
     # Resolve actual DB name from backend/.env (preferred)
     try:
         with open("/app/backend/.env") as f:

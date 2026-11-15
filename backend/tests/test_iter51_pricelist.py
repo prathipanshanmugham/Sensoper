@@ -5,6 +5,8 @@ import uuid
 import pytest
 import requests
 from pymongo import MongoClient
+from http_env import require_server, throwaway_password, TEST_ADMIN_EMAIL, TEST_MANAGER_EMAIL, TEST_MANAGER_PASSWORD, TEST_STAFF_EMAIL, TEST_STAFF_PASSWORD  # noqa: E402,F401
+_SERVER_URL, TEST_ADMIN_PASSWORD = require_server(manager=False, staff=True)
 
 BASE_URL = os.environ.get("REACT_APP_BACKEND_URL").rstrip("/")
 API = f"{BASE_URL}/api"
@@ -12,17 +14,18 @@ TAG = f"TEST51_{uuid.uuid4().hex[:5]}"
 
 
 def _env(key):
-    with open("/app/backend/.env") as f:
-        for line in f:
-            if line.startswith(key + "="):
-                return line.split("=", 1)[1].strip().strip('"').strip("'")
-    return os.environ.get(key)
+    # was read from /app/backend/.env (not in the repository): the server's MongoDB comes from the environment,
+    # and a test that reads the database directly is skipped without it
+    value = os.environ.get(key)
+    if not value:
+        pytest.skip(f"set {key} (the MongoDB of the server under test) to run this check")
+    return value
 
 
 @pytest.fixture(scope="module")
 def client():
     s = requests.Session()
-    r = s.post(f"{API}/auth/login", json={"email": "admin@sensoper.com", "password": "Admin@123"}, timeout=60)
+    r = s.post(f"{API}/auth/login", json={"email": "admin@sensoper.com", "password": TEST_ADMIN_PASSWORD}, timeout=60)
     assert r.status_code == 200, r.text
     return s
 
@@ -137,7 +140,7 @@ class TestPricelistEdits:
 
     def test_staff_cannot_write(self, items):
         s = requests.Session()
-        r = s.post(f"{API}/auth/login", json={"email": "staff@sensoper.com", "password": "Staff@123"}, timeout=60)
+        r = s.post(f"{API}/auth/login", json={"email": TEST_STAFF_EMAIL, "password": TEST_STAFF_PASSWORD}, timeout=60)
         if r.status_code != 200:
             pytest.skip("no staff account")
         assert s.put(f"{API}/pricelist/items/{items[0]}", json={"margin_pct": 1}, timeout=60).status_code == 403

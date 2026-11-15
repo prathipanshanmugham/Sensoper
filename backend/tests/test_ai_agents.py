@@ -7,6 +7,7 @@ import base64
 import hashlib
 import json
 import os
+import secrets
 import sys
 from urllib.parse import parse_qs, urlparse
 
@@ -20,7 +21,7 @@ os.environ.setdefault("MONGO_URL", "mongodb://localhost:27017")
 os.environ.setdefault("DB_NAME", "ai_agents_test")
 os.environ.setdefault("JWT_SECRET", "t" * 48)
 os.environ.setdefault("ADMIN_EMAIL", "boss@example.com")
-os.environ.setdefault("ADMIN_PASSWORD", "Adm1n-pass-123")
+os.environ.setdefault("ADMIN_PASSWORD", "t-" + secrets.token_hex(12))   # random per run — the in-memory app seeds this admin
 os.environ.setdefault("STORAGE_ROOT", "/tmp/sensoper-ai-agents-test")
 ADMIN = {"email": os.environ["ADMIN_EMAIL"], "password": os.environ["ADMIN_PASSWORD"]}
 
@@ -29,7 +30,7 @@ _m.AsyncIOMotorClient = mongomock_motor.AsyncMongoMockClient
 import agents  # noqa: E402
 import server  # noqa: E402
 
-PW = "Passw0rd!x"
+PW = "pw-" + secrets.token_hex(8)   # for the users this test creates (random per run)
 BASE = "https://quote.example.in"
 
 

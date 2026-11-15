@@ -13,7 +13,7 @@
   },
   
   "passed_tests": [
-    "Admin login with credentials (admin@sensoper.com / Admin@123)",
+    "Admin login with credentials (admin@sensoper.com / <TEST_ADMIN_PASSWORD>)",
     "GET /api/permissions returns permissions for all 3 roles (admin, manager, staff) with 16 keys each",
     "GET /api/permissions/{role} returns permissions for specific role",
     "PUT /api/permissions/manager updates manager permissions",
@@ -70,7 +70,7 @@
   },
   
   "test_credentials": {
-    "admin": "admin@sensoper.com / Admin@123"
+    "admin": "admin@sensoper.com / <TEST_ADMIN_PASSWORD>"
   },
   
   "seed_data_creation": "Test approvals created during backend tests with TEST_ prefix (TEST_Delete project for testing, TEST_Margin change request, TEST_Quotation approval request, TEST_Inventory edit request, TEST_User access change request, etc.). Some were approved/rejected during UI testing.",

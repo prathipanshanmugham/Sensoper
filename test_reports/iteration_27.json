@@ -37,7 +37,7 @@
     "/app/frontend/src/pages/SiteVisitForm.js (FIX: removed stray 'v>' + duplicate JSX at EOF; added missing SolarReportSection import)"
   ],
   "success_rate": {"backend": "100% (10/10)", "frontend": "Partial — sidebar/route/wizard-mount verified after fixing 2 critical bugs; full E2E flow (sizing calc + PDF) not interactively reached due to Location step validation"},
-  "test_credentials": "admin@sensoper.com / Admin@123 (cookie auth)",
+  "test_credentials": "admin@sensoper.com / <TEST_ADMIN_PASSWORD> (cookie auth)",
   "seed_data_creation": "Test projects created (prefixed customer name TEST_SolarQAUser); auto-deleted in teardown_class via DELETE /api/projects/{id}.",
   "retest_needed": true,
   "main_agent_can_self_test": true,

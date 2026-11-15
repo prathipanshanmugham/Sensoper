@@ -6,19 +6,23 @@ import uuid
 
 import pytest
 import requests
+from http_env import ensure_vendor, require_mongo, require_server, throwaway_password, TEST_ADMIN_EMAIL, TEST_MANAGER_EMAIL, TEST_MANAGER_PASSWORD, TEST_STAFF_EMAIL, TEST_STAFF_PASSWORD  # noqa: E402,F401
+_SERVER_URL, TEST_ADMIN_PASSWORD = require_server(manager=False, staff=False)
+_DATA_PW_4 = throwaway_password()   # test data, random per run
+_TMP_PW_0 = throwaway_password()
 
 BASE_URL = os.environ.get("REACT_APP_BACKEND_URL").rstrip("/")
 API = f"{BASE_URL}/api"
 TAG = f"TEST58_{uuid.uuid4().hex[:5]}"
-ADMIN_PW = os.environ.get("TEST_ADMIN_PASSWORD", "Admin@123")
+ADMIN_PW = os.environ.get("TEST_ADMIN_PASSWORD", TEST_ADMIN_PASSWORD)
 STAFF_EMAIL = f"{TAG.lower()}_staff@sensoper.com"
-STAFF_PW = "Staff@12345"
+STAFF_PW = _TMP_PW_0
 
 
 def _db():
     import pymongo
     from dotenv import dotenv_values
-    env = dotenv_values("/app/backend/.env")
+    env = dict(zip(("MONGO_URL", "DB_NAME"), require_mongo()))
     return pymongo.MongoClient(env["MONGO_URL"])[env["DB_NAME"]]
 
 
@@ -56,14 +60,14 @@ def cleanup():
 # ───────────────────────── 1. Vault reveal ─────────────────────────
 class TestVaultReveal:
     def test_reveal_returns_password_and_updates_view_stats(self, admin):
-        r = admin.post(f"{API}/vault", json={"service_name": f"{TAG} Portal", "account_identifier": "ops@x", "password": "S3cret!x", "category": "other"}, timeout=60)
+        r = admin.post(f"{API}/vault", json={"service_name": f"{TAG} Portal", "account_identifier": "ops@x", "password": _DATA_PW_4, "category": "other"}, timeout=60)
         assert r.status_code in (200, 201), r.text
         vid = r.json()["id"]
         row = next(x for x in admin.get(f"{API}/vault", timeout=60).json() if x["id"] == vid)
         assert row["view_count"] == 0 and row["last_viewed"] is None and "password" not in row
         for _ in range(2):
             rv = admin.post(f"{API}/vault/{vid}/reveal", timeout=60)
-            assert rv.status_code == 200 and rv.json()["password"] == "S3cret!x" and rv.json()["revealed_at"]
+            assert rv.status_code == 200 and rv.json()["password"] == _DATA_PW_4 and rv.json()["revealed_at"]
         # bookkeeping the dashboard-only refresh relies on
         row = next(x for x in admin.get(f"{API}/vault", timeout=60).json() if x["id"] == vid)
         assert row["view_count"] == 2 and row["last_viewed"]
@@ -133,6 +137,17 @@ class TestKitCategories:
 
 
 # ───────────────────────── 3. Brand return delete ─────────────────────────
+@pytest.fixture
+def staff_sees_returns(admin):
+    """Staff can't open Brand returns by default (Permissions page). Give them the page (not delete) for these tests,
+    so a delete becomes a request for approval, then put it back."""
+    before = admin.get(f"{API}/permissions", timeout=60).json()["staff"]["module_returns"]
+    r = admin.put(f"{API}/permissions/staff", json={"permissions": {"module_returns": {**before, "view": True, "create": True, "delete": False}}}, timeout=60)
+    assert r.status_code == 200, r.text
+    yield
+    admin.put(f"{API}/permissions/staff", json={"permissions": {"module_returns": before}}, timeout=60)
+
+
 class TestBrandReturnDelete:
     def _mk(self, s, name):
         r = s.post(f"{API}/returns", json={"project_id": "", "supplier_name": f"{TAG} Supplier", "item_name": name, "quantity": 2, "reason": "damage", "notes": ""}, timeout=60)
@@ -150,7 +165,7 @@ class TestBrandReturnDelete:
         assert snap["item_name"] == f"{TAG} admin-del" and snap["quantity"] == 2 and snap["supplier_name"] == f"{TAG} Supplier"
         assert "entered twice" in (log.get("details") or "")
 
-    def test_staff_delete_requires_approval_then_deletes(self, admin, staff):
+    def test_staff_delete_requires_approval_then_deletes(self, admin, staff, staff_sees_returns):
         rid = self._mk(admin, f"{TAG} staff-del")
         r = staff.delete(f"{API}/returns/{rid}", json={"reason": "wrong item logged"}, timeout=60)
         assert r.status_code == 200 and r.json()["status"] == "pending_approval"
@@ -171,7 +186,7 @@ class TestBrandReturnDelete:
         hist = admin.get(f"{API}/approvals/inbox/history", timeout=60).json()
         assert any(h["source"] == "action_request" and h["id"] == item["id"] and h["status"] == "approved" for h in hist)
 
-    def test_staff_request_rejected_keeps_record(self, admin, staff):
+    def test_staff_request_rejected_keeps_record(self, admin, staff, staff_sees_returns):
         rid = self._mk(admin, f"{TAG} staff-rej")
         staff.delete(f"{API}/returns/{rid}", json={"reason": "please remove"}, timeout=60)
         inbox = admin.get(f"{API}/approvals/inbox", params={"source": "action_request"}, timeout=60).json()
@@ -196,6 +211,7 @@ class TestManualPoNumber:
         body = {"supplier_name": supplier, "items": [{"name": "Cable", "qty": 1, "unit_price": 100}]}
         if number is not None:
             body["po_number"] = number
+        ensure_vendor(s, API, supplier)
         return s.post(f"{API}/purchase-orders", json=body, timeout=60)
 
     def test_auto_default_and_preview(self, admin):

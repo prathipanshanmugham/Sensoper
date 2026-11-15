@@ -2,6 +2,7 @@
 value of goods returned, resolution time, open vs resolved, and a supplier ranking by return rate
 (returned qty ÷ qty purchased from that supplier). Plugged into GET /api/reports/brand_returns."""
 from __future__ import annotations
+import re
 from collections import defaultdict
 from datetime import datetime
 from typing import Any, Dict, Optional
@@ -24,7 +25,7 @@ async def brand_returns_report(db, date_from: Optional[str], date_to: Optional[s
         if date_from: q["created_at"]["$gte"] = date_from
         if date_to: q["created_at"]["$lte"] = date_to + "T23:59:59"
     if supplier:
-        q["supplier_name"] = {"$regex": f"^{supplier}$", "$options": "i"}
+        q["supplier_name"] = {"$regex": f"^{re.escape(supplier)}$", "$options": "i"}
     if loc_filter.get("location_id"):
         q["location_id"] = loc_filter["location_id"]
     returns = await db.brand_returns.find(q).to_list(20000)

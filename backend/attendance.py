@@ -50,7 +50,7 @@ def today_ist(now: Optional[datetime] = None) -> str:
 
 def _month_ok(m: Optional[str]) -> str:
     m = m or _now().astimezone(IST).strftime("%Y-%m")
-    if not re.fullmatch(r"\d{4}-\d{2}", m):
+    if not re.fullmatch(r"\d{4}-(0[1-9]|1[0-2])", m):   # 2026-13 used to pass and crash the register
         raise HTTPException(status_code=400, detail="Month must look like 2026-10")
     return m
 
@@ -246,7 +246,8 @@ def create_router(db, get_current_user, require_role, create_audit_log):
             rec = await db.attendance.find_one({"_id": ObjectId(record_id)})
         except Exception:
             rec = None
-        if not rec:
+        # a manager corrects only the people they can see (their branch) — not another branch's register
+        if not rec or (viewer.get("role") != "admin" and rec.get("user_id") not in {p["id"] for p in await _people_for(viewer)}):
             raise HTTPException(status_code=404, detail="Record not found")
         upd: Dict[str, Any] = {"updated_at": _now().isoformat()}
         if body.check_in_at:

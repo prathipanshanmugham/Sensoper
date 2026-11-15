@@ -27,7 +27,7 @@
     "/app/backend/tests/test_iteration36.py (new — 9 pytest cases across 5 classes)"
   ],
   "success_rate": {"backend": "100% (9/9)", "frontend": "100% on Inventory UI checks (HSN column, HSN input, Import hint). Wizard install-dates + PDF banner verified via source-code presence (testids + code blocks) — same E2E nav limitation as iter-35 prevents click-through of full wizard."},
-  "test_credentials": "admin@sensoper.com / Admin@123",
+  "test_credentials": "admin@sensoper.com / <TEST_ADMIN_PASSWORD>",
   "seed_data_creation": "Pytest fixture created 1 inventory item TEST_HSN_NEW_36X (deleted in same test) and 6 project drafts named TEST_Iter36_DateProject (cleanup attempt failed — see action_items).",
   "retest_needed": false,
   "should_main_agent_self_test": true,

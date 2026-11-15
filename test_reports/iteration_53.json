@@ -21,7 +21,7 @@
   ],
   "updated_files": [],
   "success_rate": {"backend": "100% spot-check (1/1)", "frontend": "≈92% — 12/13 requested UI scenarios pass; pump-input focus bug + invoice-PDF text not verifiable"},
-  "test_credentials": "admin@sensoper.com / Admin@123 (login testids are login-email-input / login-password-input / login-submit-btn — NOT email-input/password-input as in the request)",
+  "test_credentials": "admin@sensoper.com / <TEST_ADMIN_PASSWORD> (login testids are login-email-input / login-password-input / login-submit-btn — NOT email-input/password-input as in the request)",
   "seed_data_creation": "Created draft projects during test flow; the successful full-flow one (visible on /dashboard/projects): SCR-B14444 (id 6a9c74a2860afd7f5cb14444, customer 'TEST48 Full2'). Earlier ones (TEST48 Customer, TEST48 CaseA, TEST48 Overrides, TEST48 Hybrid, TEST48 Guard, TEST48 Nav, TEST48 Pump, TEST48 Pump2, TEST48 Pump3) were abandoned before Submit-for-Review and should NOT have been persisted, but if any partial rows remain please purge by customer_name prefix 'TEST48'. Sales-Copy fields left on the active Sensoper Controls & Renewables profile as realistic values (founded_year 2015, warranty '25-year performance warranty on panels', 2 certifications, 2 financing options, sales phone 9876543210) — safe to keep or clear.",
   "retest_needed": true,
   "should_main_agent_self_test": false,

@@ -76,7 +76,7 @@
     "backend": "89% (8/9 pytest) — 1 failure is a real product bug, not a test issue",
     "frontend": "100% of structural + integration assertions for Accounts/Expenses tabs, CEO Dashboard 4-card grid, and W3W GPS button pass. One integration-level bug: Expenses MTD cards show ₹0 (root cause = backend bug)."
   },
-  "test_credentials": {"admin": "admin@sensoper.com / Admin@123"},
+  "test_credentials": {"admin": "admin@sensoper.com / <TEST_ADMIN_PASSWORD>"},
   "seed_data_creation": "Auto-cleanup in pytest TestAccountTypes.test_cleanup + TestAccountsSummary.teardown_class deletes all TEST_IT24-prefixed entries.",
   "retest_needed": true,
   "should_main_agent_self_test": true,

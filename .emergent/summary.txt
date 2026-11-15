@@ -123,7 +123,7 @@ Mocked: Admin-Controlled Dynamic Tabs do not exist yet.
   - Known regressions:  unverified.
 
 **Credentials to test flow:**
-Admin: admin@sensoper.com / Admin@123
+Admin: admin@sensoper.com / (the ADMIN_PASSWORD set in backend/.env)
 
 **What agent forgot to execute**
 The agent completely forgot to implement the **Dynamic Form Engine (Admin-Controlled Dynamic Tabs)** requested in the last prompt. It only handled the hardcoded merging of the Site Measurements tab.

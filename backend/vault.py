@@ -7,6 +7,7 @@ Entirely separate from this app's user accounts. Highest-sensitivity data in the
   * list/detail responses never include the password; it is only returned by the explicit /reveal action.
 """
 from __future__ import annotations
+import re
 import logging
 import os
 import pathlib
@@ -223,7 +224,7 @@ def create_router(db, require_role, create_audit_log):
         if category and category != "all":
             q["category"] = category
         if search:
-            q["$or"] = [{"service_name": {"$regex": search, "$options": "i"}}, {"account_identifier": {"$regex": search, "$options": "i"}}]
+            q["$or"] = [{"service_name": {"$regex": re.escape(search), "$options": "i"}}, {"account_identifier": {"$regex": re.escape(search), "$options": "i"}}]
         days = await _rotation_days()
         return [_public(d, days) async for d in db.credential_vault.find(q).sort("service_name", 1)]
 

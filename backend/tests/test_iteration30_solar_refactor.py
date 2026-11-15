@@ -6,9 +6,9 @@
 import os
 import pytest
 import requests
-TEST_ADMIN_PASSWORD = os.environ.get("TEST_ADMIN_PASSWORD") or "Admin@123"
-
-
+from http_env import require_server, throwaway_password, TEST_ADMIN_EMAIL, TEST_MANAGER_EMAIL, TEST_MANAGER_PASSWORD, TEST_STAFF_EMAIL, TEST_STAFF_PASSWORD  # noqa: E402,F401
+_SERVER_URL, TEST_ADMIN_PASSWORD = require_server(manager=False, staff=False)
+_DATA_PW_6 = throwaway_password()   # test data, random per run
 BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', 'https://solar-ops-management.preview.emergentagent.com').rstrip('/')
 ADMIN_EMAIL = 'admin@sensoper.com'
 ADMIN_PASSWORD = TEST_ADMIN_PASSWORD
@@ -132,7 +132,7 @@ class TestCompleteProjectRegression:
         try:
             body = {
                 'completion_drive_link': 'https://drive.google.com/folder/ITER30',
-                'inverter_login': {'url': 'https://inv.example.com', 'username': 'admin', 'password': 'p@ss', 'notes': 'WiFi: SolarNet'},
+                'inverter_login': {'url': 'https://inv.example.com', 'username': 'admin', 'password': _DATA_PW_6, 'notes': 'WiFi: SolarNet'},
                 'customer_feedback': 'Great install',
             }
             r = session.post(f'{BASE_URL}/api/projects/{pid}/complete', json=body)
@@ -144,7 +144,8 @@ class TestCompleteProjectRegression:
             il = data.get('inverter_login') or {}
             assert il.get('url') == 'https://inv.example.com'
             assert il.get('username') == 'admin'
-            assert il.get('password') == 'p@ss'
+            assert il.get('password') is None and il.get('has_password') is True   # the password is sent only on request, and logged
+            assert session.get(f'{BASE_URL}/api/projects/{pid}/inverter-password').json() == {'password': _DATA_PW_6}
             assert il.get('notes') == 'WiFi: SolarNet'
         finally:
             session.delete(f'{BASE_URL}/api/projects/{pid}/force')

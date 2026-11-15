@@ -6,11 +6,16 @@ from datetime import datetime, timezone, timedelta
 
 import pytest
 import requests
+from http_env import require_mongo, require_server, throwaway_password, TEST_ADMIN_EMAIL, TEST_MANAGER_EMAIL, TEST_MANAGER_PASSWORD, TEST_STAFF_EMAIL, TEST_STAFF_PASSWORD  # noqa: E402,F401
+_SERVER_URL, TEST_ADMIN_PASSWORD = require_server(manager=False, staff=False)
+_DATA_PW_2 = throwaway_password()   # test data, random per run
+_DATA_PW_3 = throwaway_password()   # test data, random per run
+_TMP_PW_0 = throwaway_password()
 
 BASE_URL = os.environ.get("REACT_APP_BACKEND_URL").rstrip("/")
 API = f"{BASE_URL}/api"
 TAG = f"TEST56_{uuid.uuid4().hex[:5]}"
-ADMIN_PW = os.environ.get("TEST_ADMIN_PASSWORD", "Admin@123")
+ADMIN_PW = os.environ.get("TEST_ADMIN_PASSWORD", TEST_ADMIN_PASSWORD)
 
 
 @pytest.fixture(scope="module")
@@ -23,7 +28,7 @@ def admin():
 def _db():
     import pymongo
     from dotenv import dotenv_values
-    env = dotenv_values("/app/backend/.env")
+    env = dict(zip(("MONGO_URL", "DB_NAME"), require_mongo()))
     return pymongo.MongoClient(env["MONGO_URL"])[env["DB_NAME"]]
 
 
@@ -46,7 +51,7 @@ def test_rotation_state_pure():
 
 
 def test_service_flagged_once_interval_elapses_and_surfaces_in_bell(admin):
-    r = admin.post(f"{API}/vault", json={"service_name": f"{TAG} GoDaddy", "account_identifier": "domains@sensoper.com", "password": "Old#Pass1",
+    r = admin.post(f"{API}/vault", json={"service_name": f"{TAG} GoDaddy", "account_identifier": "domains@sensoper.com", "password": _DATA_PW_2,
                                           "category": "domain", "two_fa_enabled": True, "two_fa_method": "sms", "rotation_days": 30}, timeout=60)
     assert r.status_code == 200, r.text
     item = r.json(); vid = item["id"]
@@ -71,7 +76,7 @@ def test_service_flagged_once_interval_elapses_and_surfaces_in_bell(admin):
     admin.get(f"{API}/vault/dashboard", timeout=60)
     assert sum(1 for n in admin.get(f"{API}/notifications", timeout=60).json()["rows"] if n.get("vault_id") == vid) == 1
     # rotating the password resolves the reminder and clears the flag
-    upd = admin.put(f"{API}/vault/{vid}", json={"password": "New#Pass2"}, timeout=60).json()
+    upd = admin.put(f"{API}/vault/{vid}", json={"password": _DATA_PW_3}, timeout=60).json()
     assert upd["rotation_stale"] is False and upd["days_overdue"] == 0
     assert not any(n.get("vault_id") == vid for n in admin.get(f"{API}/notifications", timeout=60).json()["rows"])
     assert vid not in [i["id"] for i in admin.get(f"{API}/vault/dashboard", timeout=60).json()["rotation_overdue"]]
@@ -96,8 +101,8 @@ def test_two_fa_off_risk_list_and_reveal_logged(admin):
 
 def test_staff_never_reaches_vault_or_its_alerts(admin):
     email = f"{TAG.lower()}@sensoper.com"
-    u = admin.post(f"{API}/users", json={"email": email, "password": "Staff@12345", "name": f"{TAG} Staff", "role": "staff"}, timeout=60).json()
-    s = requests.Session(); s.post(f"{API}/auth/login", json={"email": email, "password": "Staff@12345"}, timeout=60)
+    u = admin.post(f"{API}/users", json={"email": email, "password": _TMP_PW_0, "name": f"{TAG} Staff", "role": "staff"}, timeout=60).json()
+    s = requests.Session(); s.post(f"{API}/auth/login", json={"email": email, "password": _TMP_PW_0}, timeout=60)
     assert s.get(f"{API}/vault/dashboard", timeout=60).status_code == 403
     assert not any(n.get("kind") == "vault_rotation" for n in s.get(f"{API}/notifications", timeout=60).json()["rows"])
     admin.delete(f"{API}/users/{u['id']}", timeout=60)

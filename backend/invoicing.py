@@ -13,7 +13,7 @@ existing `cost_estimation` (never recompute their own numbers):
    project, enforced server-side (not just hidden in the UI).
 """
 from __future__ import annotations
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Optional, Dict, Any, List
 import re
 from fastapi import APIRouter, HTTPException, Request
@@ -43,10 +43,12 @@ def _three_digit_words(n: int) -> str:
 
 def amount_in_words(amount: float) -> str:
     """Indian numbering (crore/lakh/thousand) — 'Rupees X Lakh Y Thousand ... and Z Paise Only'."""
-    rupees = int(amount)
-    paise = round((amount - rupees) * 100)
+    # whole paise first: 99.999 used to give 100 paise (and an IndexError), and a negative amount garbage words
+    rupees, paise = divmod(int(round(abs(float(amount or 0)) * 100)), 100)
     if rupees == 0 and paise == 0:
         return "Rupees Zero Only"
+    if float(amount or 0) < 0:
+        return "Minus " + amount_in_words(abs(float(amount)))
     parts = []
     crore, rupees = divmod(rupees, 10000000)
     lakh, rupees = divmod(rupees, 100000)
@@ -60,6 +62,12 @@ def amount_in_words(amount: float) -> str:
     if paise:
         words += f" and {_two_digit_words(paise)} Paise"
     return words + " Only"
+
+
+def _sgst_half(gst: float) -> float:
+    """SGST is the GST less the (rounded) CGST, so CGST + SGST always equals the GST on the line — halving and
+    rounding both sides lost or added a paisa on odd amounts (₹181.25 → 90.62 + 90.62)."""
+    return round(round(float(gst), 2) - round(float(gst) / 2, 2), 2)
 
 
 class InvoiceSettingsUpdate(BaseModel):
@@ -241,7 +249,7 @@ def create_router(db, get_current_user, create_audit_log):
                     line_items.append({
                         "description": f"{labels[k][0]}{f' — {kw} kWp system' if k == 'panels' and kw else ''}", "hsn_sac": labels[k][1], "quantity": 1,
                         "unit_price": round(amt, 2), "taxable_value": round(amt, 2), "gst_pct": ln.get("gst_pct"), "gst_amount": round(g, 2),
-                        "cgst": round(g / 2, 2) if not inter_state else 0, "sgst": round(g / 2, 2) if not inter_state else 0, "igst": round(g, 2) if inter_state else 0,
+                        "cgst": round(g / 2, 2) if not inter_state else 0, "sgst": _sgst_half(g) if not inter_state else 0, "igst": round(g, 2) if inter_state else 0,
                     })
             else:
                 sys_gst = float(ce.get("system_gst", 0) or 0)
@@ -249,7 +257,7 @@ def create_router(db, get_current_user, create_audit_log):
                     "description": f"{kw} kWp Solar Power System (panels, inverter, structure, BOS, installation)" if kw else "Solar Power System (panels, inverter, structure, BOS, installation)",
                     "hsn_sac": "8541", "quantity": 1, "unit_price": round(system_cost, 2), "taxable_value": round(system_cost, 2),
                     "gst_pct": round(sys_gst / system_cost * 100, 2) if system_cost else None, "gst_amount": round(sys_gst, 2),
-                    "cgst": round(sys_gst / 2, 2) if not inter_state else 0, "sgst": round(sys_gst / 2, 2) if not inter_state else 0,
+                    "cgst": round(sys_gst / 2, 2) if not inter_state else 0, "sgst": _sgst_half(sys_gst) if not inter_state else 0,
                     "igst": round(sys_gst, 2) if inter_state else 0,
                 })
         for it in ce.get("items_breakdown", []):
@@ -271,7 +279,7 @@ def create_router(db, get_current_user, create_audit_log):
                 "gst_pct": it.get("gst_percentage", 0),
                 "gst_amount": round(gst_amt, 2),
                 "cgst": round(gst_amt / 2, 2) if not inter_state else 0,
-                "sgst": round(gst_amt / 2, 2) if not inter_state else 0,
+                "sgst": _sgst_half(gst_amt) if not inter_state else 0,
                 "igst": round(gst_amt, 2) if inter_state else 0,
             })
         for mc in ce.get("manual_costs", []) or []:
@@ -281,7 +289,7 @@ def create_router(db, get_current_user, create_audit_log):
                 "description": mc.get("description", ""), "hsn_sac": "", "quantity": 1,
                 "unit_price": round(taxable, 2), "taxable_value": round(taxable, 2),
                 "gst_pct": mc.get("gst_pct"), "gst_amount": round(g, 2),
-                "cgst": round(g / 2, 2) if not inter_state else 0, "sgst": round(g / 2, 2) if not inter_state else 0, "igst": round(g, 2) if inter_state else 0,
+                "cgst": round(g / 2, 2) if not inter_state else 0, "sgst": _sgst_half(g) if not inter_state else 0, "igst": round(g, 2) if inter_state else 0,
             })
 
         total_taxable = round(sum(li["taxable_value"] for li in line_items), 2)
@@ -301,7 +309,7 @@ def create_router(db, get_current_user, create_audit_log):
         doc = {
             "project_id": project_id,
             "invoice_number": invoice_number,
-            "invoice_date": now.date().isoformat(),
+            "invoice_date": (now + timedelta(hours=5, minutes=30)).date().isoformat(),   # India date: an invoice made at 00:30 IST on 1 April is in the new financial year
             "reverse_charge": payload.reverse_charge,
             "place_of_supply": place_of_supply,
             "company": {

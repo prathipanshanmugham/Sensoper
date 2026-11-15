@@ -1,6 +1,7 @@
 """Iter 52 — Internal Teams: named sub-teams (Alpha, Beta…) with rosters, multi-team project assignment
 and per-team performance (projects handled / completed / on-time %, revenue)."""
 from __future__ import annotations
+import re
 
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
@@ -128,7 +129,7 @@ def create_router(db, get_current_user, require_role, create_audit_log):
         name = payload.name.strip()
         if not name:
             raise HTTPException(status_code=400, detail="Team name is required")
-        if await db.internal_teams.find_one({"name": {"$regex": f"^{name}$", "$options": "i"}}):
+        if await db.internal_teams.find_one({"name": {"$regex": f"^{re.escape(name)}$", "$options": "i"}}):
             raise HTTPException(status_code=400, detail=f"A team named '{name}' already exists")
         if payload.status not in ("active", "inactive"):
             raise HTTPException(status_code=400, detail="status must be active or inactive")

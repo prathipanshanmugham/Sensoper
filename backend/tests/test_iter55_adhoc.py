@@ -4,11 +4,14 @@ import uuid
 
 import pytest
 import requests
+from http_env import require_server, throwaway_password, TEST_ADMIN_EMAIL, TEST_MANAGER_EMAIL, TEST_MANAGER_PASSWORD, TEST_STAFF_EMAIL, TEST_STAFF_PASSWORD  # noqa: E402,F401
+_SERVER_URL, TEST_ADMIN_PASSWORD = require_server(manager=False, staff=False)
+_TMP_PW_0 = throwaway_password()
 
 BASE_URL = os.environ.get("REACT_APP_BACKEND_URL").rstrip("/")
 API = f"{BASE_URL}/api"
 TAG = f"TEST55_{uuid.uuid4().hex[:5]}"
-ADMIN_PW = os.environ.get("TEST_ADMIN_PASSWORD", "Admin@123")
+ADMIN_PW = os.environ.get("TEST_ADMIN_PASSWORD", TEST_ADMIN_PASSWORD)
 
 
 @pytest.fixture(scope="module")
@@ -88,14 +91,14 @@ class TestPromotion:
         inv = admin.post(f"{API}/projects/{project}/invoice", json={}, timeout=60)
         assert inv.status_code == 200, inv.text
         li = next(l for l in inv.json()["line_items"] if l["description"] == ADHOC["name"])
-        assert li["sku_code"] == res["sku_code"] and li["hsn_sac"] == "8541" and li["inventory_item_id"] == inv_id and li["unit_price"] == 12500
+        assert li["sku_code"] == res["sku_code"] and li["hsn_sac"] == "8541" and li["inventory_item_id"] == inv_id and li["unit_price"] == 13750   # the invoice shows the selling price (12,500 + 10% margin), so qty × price = taxable value
         # price lock: editing the new item's price must not change the project or the invoice
         assert admin.put(f"{API}/inventory/items/{inv_id}", json={"unit_price": 99999}, timeout=60).status_code == 200
         p2 = admin.get(f"{API}/projects/{project}", timeout=60).json()
         assert next(si for si in p2["selected_items"] if si["line_id"] == line_id)["unit_price"] == 12500
         assert next(b for b in p2["cost_estimation"]["items_breakdown"] if b["line_id"] == line_id)["unit_price"] == 12500
         inv2 = admin.get(f"{API}/projects/{project}/invoice", timeout=60).json()
-        assert next(l for l in inv2["line_items"] if l["description"] == ADHOC["name"])["unit_price"] == 12500
+        assert next(l for l in inv2["line_items"] if l["description"] == ADHOC["name"])["unit_price"] == 13750
         # audit trail
         logs = admin.get(f"{API}/audit-logs", params={"action_type": "promote_adhoc_line"}, timeout=60).json()
         assert any(l.get("entity_id") == project and res["sku_code"] in (l.get("details") or "") for l in logs)
@@ -144,8 +147,8 @@ class TestPromotion:
 
     def test_staff_cannot_promote(self, admin):
         email = f"{TAG.lower()}_staff@sensoper.com"
-        u = admin.post(f"{API}/users", json={"email": email, "password": "Staff@12345", "name": f"{TAG} Staff", "role": "staff"}, timeout=60).json()
+        u = admin.post(f"{API}/users", json={"email": email, "password": _TMP_PW_0, "name": f"{TAG} Staff", "role": "staff"}, timeout=60).json()
         s = requests.Session()
-        s.post(f"{API}/auth/login", json={"email": email, "password": "Staff@12345"}, timeout=60)
+        s.post(f"{API}/auth/login", json={"email": email, "password": _TMP_PW_0}, timeout=60)
         assert s.post(f"{API}/projects/000000000000000000000000/adhoc-lines/promote", json={}, timeout=60).status_code == 403
         admin.delete(f"{API}/users/{u['id']}", timeout=60)
