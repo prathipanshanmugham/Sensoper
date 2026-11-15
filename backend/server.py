@@ -692,6 +692,50 @@ async def _policy_gate(request: Request, user: dict) -> None:
     if ok is False:
         raise HTTPException(status_code=403, detail=reason)
     request.state.policy_grant = bool(ok and grantable)
+    await _branch_gate(request, user)
+
+
+# Records that belong to a branch (location_id) and are opened by id in the URL. The lists were already filtered by
+# branch, but an id from another branch still opened, changed or deleted that record. (path param, paths it means
+# this kind of record on — None = every path, collection, what to call it)
+_BRANCH_RECORDS = [
+    ("project_id", None, "projects", "Project"),
+    ("item_id", ("/api/inventory/items/", "/api/pricelist/items/", "/api/ecommerce/products/", "/api/brands/"), "inventory_items", "Item"),
+    ("delivery_id", None, "deliveries", "Delivery"),
+    ("po_id", None, "purchase_orders", "Purchase order"),
+    ("sale_id", None, "sales", "Sale"),
+    ("credit_id", None, "customer_credits", "Credit"),
+    ("asset_id", None, "assets", "Asset"),
+    ("contract_id", None, "amc_contracts", "AMC contract"),
+    ("pr_id", None, "purchase_requests", "Purchase request"),
+    ("ticket_id", ("/api/support/",), "support_tickets", "Ticket"),
+]
+
+
+async def _branch_gate(request: Request, user: dict) -> None:
+    """A login tied to branches can't reach another branch's record by its id — it reads as not found, like a
+    record that doesn't exist. Admins and logins with no branch (all branches) aren't limited; records with no
+    branch are shared."""
+    if user.get("role") == "admin" or not (user.get("location_ids") or []):
+        return
+    params, path = request.path_params or {}, request.url.path
+    for name, prefixes, coll, label in _BRANCH_RECORDS:
+        rid = params.get(name)
+        if not rid or not ObjectId.is_valid(str(rid)) or (prefixes and not path.startswith(prefixes)):
+            continue
+        doc = await db[coll].find_one({"_id": ObjectId(str(rid))}, {"location_id": 1})
+        if doc and not location_allowed(user, doc.get("location_id")):
+            raise HTTPException(status_code=404, detail=f"{label} not found")
+
+
+async def project_in_scope(user: dict, project_id: Optional[str]) -> Optional[dict]:
+    """The project named in a request body, if this login's branch may use it (404 otherwise)."""
+    if not project_id:
+        return None
+    project = await db.projects.find_one({"_id": ObjectId(str(project_id))}) if ObjectId.is_valid(str(project_id)) else None
+    if not project or not location_allowed(user, project.get("location_id")):
+        raise HTTPException(status_code=404, detail="Project not found")
+    return project
 
 
 def role_ok(request: Request, user: dict, *roles) -> bool:
@@ -6589,7 +6633,7 @@ async def delete_daily_update(update_id: str, request: Request):
 @api_router.post("/payments")
 async def create_payment(payment: PaymentCreate, request: Request):
     user = await get_current_user(request)
-    project = await db.projects.find_one({"_id": ObjectId(payment.project_id)})
+    project = await project_in_scope(user, payment.project_id)   # another branch's project reads as not found
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
     doc = {
@@ -7435,6 +7479,10 @@ async def reject_action_request(req_id: str, request: Request):
 @api_router.post("/deliveries")
 async def create_delivery(delivery: DeliveryOutboundCreate, request: Request):
     user = await require_module(request, "module_delivery_outbound", "create")
+    pid = str(delivery.project_id or "")
+    project = await db.projects.find_one({"_id": ObjectId(pid)}, {"location_id": 1}) if ObjectId.is_valid(pid) else None
+    if project and not location_allowed(user, project.get("location_id")):
+        raise HTTPException(status_code=404, detail="Project not found")   # not to another branch's project
     doc = {
         "project_id": delivery.project_id, "customer_name": delivery.customer_name,
         "customer_address": delivery.customer_address, "customer_contact": delivery.customer_contact,
@@ -7442,7 +7490,7 @@ async def create_delivery(delivery: DeliveryOutboundCreate, request: Request):
         "vehicle_number": delivery.vehicle_number, "driver_contact": delivery.driver_contact,
         "dispatch_date": delivery.dispatch_date, "delivery_date": delivery.delivery_date,
         "distance_km": delivery.distance_km, "notes": delivery.notes,
-        "location_id": user.get("default_location_id"),
+        "location_id": (project or {}).get("location_id") or user.get("default_location_id"),
         "status": "dispatched", "created_by": user["id"], "created_by_name": user["name"],
         "created_at": datetime.now(timezone.utc).isoformat()
     }

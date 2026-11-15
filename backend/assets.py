@@ -121,12 +121,12 @@ def create_router(db, get_current_user, require_role, create_audit_log, check_mo
     @router.get("/assets")
     async def list_assets(request: Request, category: str | None = None, status: str | None = None,
                            location_id: str | None = None, search: str | None = None):
-        await get_current_user(request)
+        user = await get_current_user(request)
         query: dict[str, Any] = {"active": {"$ne": False}}
         # "all" / blank sentinels mean "no filter" — never matched literally against the record
         if category and category.lower() != "all": query["category"] = category
         if status and status.lower() != "all": query["status"] = status
-        if location_id: query["location_id"] = location_id
+        query.update(location_scope_filter(user, location_id))   # a branch sees its own assets (and shared ones)
         if search: query["name"] = {"$regex": re.escape(search), "$options": "i"}
         docs = await db.assets.find(query).sort("created_at", -1).to_list(2000)
         return [_serialize(d) for d in docs]
