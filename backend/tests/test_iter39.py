@@ -1,6 +1,10 @@
 """Unit tests for Iter 39 additions — sales math + CAC divide-by-zero."""
 import sys, os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+# sales imports server helpers, and server reads these at import — fine for pure maths, no database is used
+os.environ.setdefault("MONGO_URL", "mongodb://localhost:27017")
+os.environ.setdefault("DB_NAME", "iter39_unit")
+os.environ.setdefault("JWT_SECRET", "u" * 48)
 
 from sales import _compute_line, _split_gst, _round
 

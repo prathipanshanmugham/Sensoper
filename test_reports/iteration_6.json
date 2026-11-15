@@ -13,7 +13,7 @@
   },
   
   "passed_tests": [
-    "Admin login with credentials (admin@sensoper.com / Admin@123)",
+    "Admin login with credentials (admin@sensoper.com / <TEST_ADMIN_PASSWORD>)",
     "POST /api/projects creates project with service_type field (single_phase, three_phase, ht_service)",
     "GET /api/projects/{id} returns service_type in electrical details",
     "POST /api/projects creates project with per-item margin_percentage field",
@@ -59,7 +59,7 @@
   },
   
   "test_credentials": {
-    "admin": "admin@sensoper.com / Admin@123"
+    "admin": "admin@sensoper.com / <TEST_ADMIN_PASSWORD>"
   },
   
   "seed_data_creation": "Test projects created and cleaned up during backend tests. TEST_Full_Workflow project created for UI testing.",

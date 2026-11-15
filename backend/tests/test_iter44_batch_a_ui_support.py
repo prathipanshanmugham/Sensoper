@@ -7,6 +7,8 @@ import os
 import pytest
 import requests
 from dotenv import dotenv_values
+from http_env import require_server, throwaway_password, TEST_ADMIN_EMAIL, TEST_MANAGER_EMAIL, TEST_MANAGER_PASSWORD, TEST_STAFF_EMAIL, TEST_STAFF_PASSWORD  # noqa: E402,F401
+_SERVER_URL, TEST_ADMIN_PASSWORD = require_server(manager=True, staff=True)
 
 frontend_env = dotenv_values("/app/frontend/.env")
 base_url = os.environ.get("REACT_APP_BACKEND_URL") or frontend_env.get("REACT_APP_BACKEND_URL")
@@ -16,9 +18,9 @@ BASE_URL = base_url.rstrip("/")
 API = f"{BASE_URL}/api"
 
 CREDS = {
-    "admin": ("admin@sensoper.com", "Admin@123"),
-    "manager": ("qa_mgr_iter46@sensoper.com", "Manager@123"),
-    "staff": ("qa_staff_iter46@sensoper.com", "Staff@123"),
+    "admin": ("admin@sensoper.com", TEST_ADMIN_PASSWORD),
+    "manager": (TEST_MANAGER_EMAIL, TEST_MANAGER_PASSWORD),
+    "staff": (TEST_STAFF_EMAIL, TEST_STAFF_PASSWORD),
 }
 
 

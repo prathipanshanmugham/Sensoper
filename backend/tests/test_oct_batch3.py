@@ -4,6 +4,7 @@ HR (people, hiring, cover, exits, shifts), loans, event calendar and the org cha
 """
 import asyncio
 import os
+import secrets
 import sys
 from datetime import date, datetime, timedelta, timezone
 
@@ -17,7 +18,7 @@ os.environ.setdefault("MONGO_URL", "mongodb://localhost:27017")
 os.environ.setdefault("DB_NAME", "oct_batch3_test")
 os.environ.setdefault("JWT_SECRET", "t" * 48)
 os.environ.setdefault("ADMIN_EMAIL", "boss@example.com")
-os.environ.setdefault("ADMIN_PASSWORD", "Adm1n-pass-123")
+os.environ.setdefault("ADMIN_PASSWORD", "t-" + secrets.token_hex(12))   # random per run — the in-memory app seeds this admin
 os.environ.setdefault("STORAGE_ROOT", "/tmp/sensoper-oct-batch3-test")
 ADMIN = {"email": os.environ["ADMIN_EMAIL"], "password": os.environ["ADMIN_PASSWORD"]}
 
@@ -32,7 +33,8 @@ import procurement  # noqa: E402
 import server  # noqa: E402
 import vendors  # noqa: E402
 
-PW = "Passw0rd!x"
+PW = "pw-" + secrets.token_hex(8)   # for the users this test creates (random per run)
+_TEMP_LOGIN_PW = "pw-" + secrets.token_hex(8)
 TODAY = (datetime.now(timezone.utc) + timedelta(hours=5, minutes=30)).date()
 D = lambda n: (TODAY + timedelta(days=n)).isoformat()  # noqa: E731
 
@@ -315,9 +317,9 @@ def test_hr_people_hiring_cover_exits_and_shifts(app, loop, world):
         assert (await server.db.hr_candidates.find_one({"name": "Karthik R"}))["stage"] == "interview"
         assert await server.db.notifications.find_one({"kind": "hr_interview", "user_id": mgr["id"]})
         assert (await m.post(f"/api/hr/candidates/{c['id']}/hire", json={"joining_date": D(15), "create_login": True, "email": "karthik@example.com",
-                                                                           "temp_password": "Welcome@123"})).status_code == 403
+                                                                           "temp_password": _TEMP_LOGIN_PW})).status_code == 403
         h = await a.post(f"/api/hr/candidates/{c['id']}/hire", json={"joining_date": D(15), "designation": "Technician", "department": "Projects & installation",
-                                                                      "reports_to": mgr["id"], "create_login": True, "email": "karthik@example.com", "temp_password": "Welcome@123"})
+                                                                      "reports_to": mgr["id"], "create_login": True, "email": "karthik@example.com", "temp_password": _TEMP_LOGIN_PW})
         assert h.status_code == 200, h.text
         new_user = await server.db.users.find_one({"email": "karthik@example.com"})
         assert new_user["role"] == "staff" and new_user["must_reset_password"] and new_user["reports_to"] == mgr["id"]
@@ -434,7 +436,7 @@ def test_calendar(app, loop, world):
         # people change their own events; others need the edit switch
         m = await login(app, "mgr3@example.com", PW)
         assert (await s.put(f"/api/calendar/events/{ev['event_id']}", json={"title": "Safety training (PPE)", "type": "training", "date": D(4)})).status_code == 200
-        s2 = await login(app, "karthik@example.com", "Welcome@123")
+        s2 = await login(app, "karthik@example.com", _TEMP_LOGIN_PW)
         assert (await s2.delete(f"/api/calendar/events/{ev['event_id']}")).status_code == 403
         assert (await m.delete(f"/api/calendar/events/{ev['event_id']}")).status_code == 200
         assert (await a.get(f"/api/calendar?start={start}&end={start + timedelta(days=200)}")).status_code == 400

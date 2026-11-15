@@ -5,13 +5,18 @@ from datetime import datetime, timezone, timedelta
 
 import pytest
 import requests
+from http_env import require_mongo, require_server, throwaway_password, TEST_ADMIN_EMAIL, TEST_MANAGER_EMAIL, TEST_MANAGER_PASSWORD, TEST_STAFF_EMAIL, TEST_STAFF_PASSWORD  # noqa: E402,F401
+_SERVER_URL, TEST_ADMIN_PASSWORD = require_server(manager=False, staff=False)
+_DATA_PW_0 = throwaway_password()   # test data, random per run
+_DATA_PW_1 = throwaway_password()   # test data, random per run
+_TMP_PW_0 = throwaway_password()
 
 BASE_URL = os.environ.get("REACT_APP_BACKEND_URL").rstrip("/")
 API = f"{BASE_URL}/api"
 TAG = f"TEST54_{uuid.uuid4().hex[:5]}"
-ADMIN_PW = os.environ.get("TEST_ADMIN_PASSWORD", "Admin@123")
+ADMIN_PW = os.environ.get("TEST_ADMIN_PASSWORD", TEST_ADMIN_PASSWORD)
 STAFF_EMAIL = f"{TAG.lower()}_staff@sensoper.com"
-STAFF_PW = "Staff@12345"
+STAFF_PW = _TMP_PW_0
 
 
 @pytest.fixture(scope="module")
@@ -42,7 +47,7 @@ class TestTermsCategoryFilter:
         # simulate a pre-category document
         import pymongo
         from dotenv import dotenv_values
-        env = dotenv_values("/app/backend/.env")
+        env = dict(zip(("MONGO_URL", "DB_NAME"), require_mongo()))
         db = pymongo.MongoClient(env["MONGO_URL"])[env["DB_NAME"]]
         from bson import ObjectId
         db.terms_conditions.update_one({"_id": ObjectId(tid)}, {"$unset": {"category": ""}})
@@ -130,7 +135,7 @@ class TestPermissionNav:
 # ── 4. Credential vault ───────────────────────────────────────────────────────
 class TestVault:
     def test_admin_crud_reveal_logged_and_masked(self, admin):
-        r = admin.post(f"{API}/vault", json={"service_name": f"{TAG} Workspace", "account_identifier": "ops@sensoper.com", "password": "Sup3r$ecret", "category": "email", "two_fa_enabled": False}, timeout=60)
+        r = admin.post(f"{API}/vault", json={"service_name": f"{TAG} Workspace", "account_identifier": "ops@sensoper.com", "password": _DATA_PW_0, "category": "email", "two_fa_enabled": False}, timeout=60)
         assert r.status_code == 200, r.text
         item = r.json(); vid = item["id"]
         assert "password" not in item and "password_encrypted" not in item
@@ -138,7 +143,7 @@ class TestVault:
         row = next(i for i in listing if i["id"] == vid)
         assert "password" not in row and row["view_count"] == 0
         rev = admin.post(f"{API}/vault/{vid}/reveal", timeout=60).json()
-        assert rev["password"] == "Sup3r$ecret"
+        assert rev["password"] == _DATA_PW_0
         log = admin.get(f"{API}/vault/{vid}/access-log", timeout=60).json()
         assert log[0]["action"] == "reveal" and log[0]["user_name"]
         row = next(i for i in admin.get(f"{API}/vault", timeout=60).json() if i["id"] == vid)
@@ -147,12 +152,12 @@ class TestVault:
         import pymongo
         from dotenv import dotenv_values
         from bson import ObjectId
-        env = dotenv_values("/app/backend/.env")
+        env = dict(zip(("MONGO_URL", "DB_NAME"), require_mongo()))
         doc = pymongo.MongoClient(env["MONGO_URL"])[env["DB_NAME"]].credential_vault.find_one({"_id": ObjectId(vid)})
-        assert doc["password_encrypted"] != "Sup3r$ecret" and doc["password_encrypted"].startswith("gAAAA")
+        assert doc["password_encrypted"] != _DATA_PW_0 and doc["password_encrypted"].startswith("gAAAA")
         # rotation stamps
         old = row["last_rotated"]
-        upd = admin.put(f"{API}/vault/{vid}", json={"password": "N3w$ecret", "two_fa_enabled": True, "two_fa_method": "authenticator_app"}, timeout=60).json()
+        upd = admin.put(f"{API}/vault/{vid}", json={"password": _DATA_PW_1, "two_fa_enabled": True, "two_fa_method": "authenticator_app"}, timeout=60).json()
         assert upd["last_rotated"] >= old and upd["two_fa_enabled"] is True
         dash = admin.get(f"{API}/vault/dashboard", timeout=60).json()
         assert "two_fa_disabled" in dash and "rotation_overdue" in dash and dash["encryption"]["configured"] is True

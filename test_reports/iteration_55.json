@@ -29,7 +29,7 @@
   ],
   "updated_files": [],
   "success_rate": {"backend": "100%", "frontend": "100% (all mandated flows pass; one non-blocking duplicate testid)"},
-  "test_credentials": "admin@sensoper.com / Admin@123",
+  "test_credentials": "admin@sensoper.com / <TEST_ADMIN_PASSWORD>",
   "seed_data_creation": "Test asset 'TEST50 UI asset' created and archived within the run. Backend pytest creates and cleans up TEST50_* locations/assets/projects. Advanced-config save test restored the location target field (blank) at teardown.",
   "retest_needed": false,
   "main_agent_can_self_test": true,

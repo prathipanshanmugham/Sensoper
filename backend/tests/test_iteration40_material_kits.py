@@ -3,10 +3,12 @@ import os
 
 import pytest
 import requests
+from http_env import require_server, throwaway_password, TEST_ADMIN_EMAIL, TEST_MANAGER_EMAIL, TEST_MANAGER_PASSWORD, TEST_STAFF_EMAIL, TEST_STAFF_PASSWORD  # noqa: E402,F401
+_SERVER_URL, TEST_ADMIN_PASSWORD = require_server(manager=False, staff=False)
 
 BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "https://solar-ops-management.preview.emergentagent.com").rstrip("/")
 ADMIN_EMAIL = "admin@sensoper.com"
-ADMIN_PASSWORD = os.environ.get("TEST_ADMIN_PASSWORD", "Admin@123")
+ADMIN_PASSWORD = os.environ.get("TEST_ADMIN_PASSWORD", TEST_ADMIN_PASSWORD)
 
 
 @pytest.fixture(scope="module")

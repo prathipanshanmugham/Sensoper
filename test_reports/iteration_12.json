@@ -13,7 +13,7 @@
   },
 
   "passed_tests": [
-    "Admin login with credentials (admin@sensoper.com / Admin@123)",
+    "Admin login with credentials (admin@sensoper.com / <TEST_ADMIN_PASSWORD>)",
     "GET /api/form-tabs returns all 8 tabs with 'system' flag",
     "Tabs returned in correct order: Customer, Location, Site & Electrical, Materials, Subsidy Details, Customer Preferences, Finance Details, Site Docs",
     "PUT /api/form-tabs/{system_tab_id} returns 403 'System tabs cannot be edited'",
@@ -54,7 +54,7 @@
   },
 
   "test_credentials": {
-    "admin": "admin@sensoper.com / Admin@123"
+    "admin": "admin@sensoper.com / <TEST_ADMIN_PASSWORD>"
   },
 
   "seed_data_creation": "System tabs (Customer, Location, Site & Electrical, Materials, Site Docs) are seeded on backend startup. Custom tabs (Subsidy Details, Customer Preferences, Finance Details) exist from previous iterations.",

@@ -14,7 +14,7 @@
   ],
   "updated_files": ["/app/backend/tests/test_iteration39.py (new — 3 tests, all passing)"],
   "success_rate": {"backend": "100% (8/8)", "frontend": "100% (code review + smoke verified)"},
-  "test_credentials": "admin@sensoper.com / Admin@123",
+  "test_credentials": "admin@sensoper.com / <TEST_ADMIN_PASSWORD>",
   "seed_data_creation": "2 TEST_iter39_* draft projects created via /api/projects to validate null-drive-link persistence. Safe to leave (TEST_ prefix identifies them).",
   "retest_needed": false,
   "should_main_agent_self_test": false,

@@ -4,6 +4,7 @@
 """
 import asyncio
 import os
+import secrets
 import sys
 from datetime import date, datetime, timedelta, timezone
 
@@ -17,7 +18,7 @@ os.environ.setdefault("MONGO_URL", "mongodb://localhost:27017")
 os.environ.setdefault("DB_NAME", "amc_sales_test")
 os.environ.setdefault("JWT_SECRET", "t" * 48)
 os.environ.setdefault("ADMIN_EMAIL", "boss@example.com")
-os.environ.setdefault("ADMIN_PASSWORD", "Adm1n-pass-123")
+os.environ.setdefault("ADMIN_PASSWORD", "t-" + secrets.token_hex(12))   # random per run — the in-memory app seeds this admin
 os.environ.setdefault("STORAGE_ROOT", "/tmp/sensoper-amc-sales-test")
 ADMIN = {"email": os.environ["ADMIN_EMAIL"], "password": os.environ["ADMIN_PASSWORD"]}
 
@@ -26,7 +27,7 @@ _m.AsyncIOMotorClient = mongomock_motor.AsyncMongoMockClient
 import amc_sales  # noqa: E402
 import server  # noqa: E402
 
-PW = "Passw0rd!x"
+PW = "pw-" + secrets.token_hex(8)   # for the users this test creates (random per run)
 
 
 # ───────────── pure helpers ─────────────

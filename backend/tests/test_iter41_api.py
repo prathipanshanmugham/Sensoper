@@ -2,6 +2,8 @@
 import os
 import pytest
 import requests
+from http_env import require_server, throwaway_password, TEST_ADMIN_EMAIL, TEST_MANAGER_EMAIL, TEST_MANAGER_PASSWORD, TEST_STAFF_EMAIL, TEST_STAFF_PASSWORD  # noqa: E402,F401
+_SERVER_URL, TEST_ADMIN_PASSWORD = require_server(manager=False, staff=False)
 
 BASE = os.environ.get("REACT_APP_BACKEND_URL", "https://solar-ops-management.preview.emergentagent.com").rstrip("/")
 
@@ -9,7 +11,7 @@ BASE = os.environ.get("REACT_APP_BACKEND_URL", "https://solar-ops-management.pre
 @pytest.fixture(scope="module")
 def s():
     sess = requests.Session()
-    r = sess.post(f"{BASE}/api/auth/login", json={"email": "admin@sensoper.com", "password": "Admin@123"})
+    r = sess.post(f"{BASE}/api/auth/login", json={"email": "admin@sensoper.com", "password": TEST_ADMIN_PASSWORD})
     assert r.status_code == 200, r.text
     return sess
 

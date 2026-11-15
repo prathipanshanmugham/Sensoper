@@ -4,6 +4,7 @@ In-process, no MongoDB server:
 """
 import asyncio
 import os
+import secrets
 import sys
 
 import pytest
@@ -16,7 +17,7 @@ os.environ.setdefault("MONGO_URL", "mongodb://localhost:27017")
 os.environ.setdefault("DB_NAME", "qa_nov_test")
 os.environ.setdefault("JWT_SECRET", "t" * 48)
 os.environ.setdefault("ADMIN_EMAIL", "boss@example.com")
-os.environ.setdefault("ADMIN_PASSWORD", "Adm1n-pass-123")
+os.environ.setdefault("ADMIN_PASSWORD", "t-" + secrets.token_hex(12))   # random per run — the in-memory app seeds this admin
 os.environ.setdefault("STORAGE_ROOT", "/tmp/sensoper-qa-test")
 ADMIN = {"email": os.environ["ADMIN_EMAIL"], "password": os.environ["ADMIN_PASSWORD"]}
 
@@ -29,7 +30,8 @@ import expansion  # noqa: E402
 import sales  # noqa: E402
 import notify  # noqa: E402
 
-PW = "Passw0rd!x"
+PW = "pw-" + secrets.token_hex(8)   # for the users this test creates (random per run)
+_INVERTER_PW = "pw-" + secrets.token_hex(8)
 EMAILS = ["qa.staff@example.com", "qa.mgr@example.com"]
 TAG = "qa-nov-test"
 
@@ -168,15 +170,15 @@ def test_inverter_password_is_sent_only_on_request(app, loop, world):
         a, st = world["admin"], world["staff"]
         res = await server.db.projects.insert_one({"reference_number": "QA-INV-1", "status": "completed", "created_by": "someone-else",
                                                    "customer": {"name": "QA Customer", "phone": "9000000000", "address": "Erode"},
-                                                   "inverter_login": {"url": "https://inv.example", "username": "cust", "password": "s3cret!"},
+                                                   "inverter_login": {"url": "https://inv.example", "username": "cust", "password": _INVERTER_PW},
                                                    "created_at": "2026-05-01T00:00:00+00:00", "updated_at": "2026-05-01T00:00:00+00:00"})
         pid = str(res.inserted_id)
         r = await a.get(f"/api/projects/{pid}")
         assert r.status_code == 200, r.text
         il = r.json()["inverter_login"]
-        assert "s3cret!" not in r.text and il["has_password"] and il["username"] == "cust"
+        assert _INVERTER_PW not in r.text and il["has_password"] and il["username"] == "cust"
         r = await a.get(f"/api/projects/{pid}/inverter-password")
-        assert r.status_code == 200 and r.json()["password"] == "s3cret!"
+        assert r.status_code == 200 and r.json()["password"] == _INVERTER_PW
         assert await server.db.audit_logs.find_one({"action_type": "inverter_password_viewed", "entity_id": pid})
         assert (await st.get(f"/api/projects/{pid}/inverter-password")).status_code == 403
     run(loop, go())

@@ -10,9 +10,8 @@ from datetime import date
 
 import pytest
 import requests
-TEST_ADMIN_PASSWORD = os.environ.get("TEST_ADMIN_PASSWORD") or "Admin@123"
-
-
+from http_env import require_server, throwaway_password, TEST_ADMIN_EMAIL, TEST_MANAGER_EMAIL, TEST_MANAGER_PASSWORD, TEST_STAFF_EMAIL, TEST_STAFF_PASSWORD  # noqa: E402,F401
+_SERVER_URL, TEST_ADMIN_PASSWORD = require_server(manager=False, staff=False)
 def _load_backend_url():
     env_url = os.environ.get("REACT_APP_BACKEND_URL")
     if env_url:

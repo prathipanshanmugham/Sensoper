@@ -21,7 +21,7 @@
   ],
   "updated_files": [],
   "success_rate": {"backend": "100% (4/4 spot-check)", "frontend": "≈95% (all 9 flows pass; 2 minor UX/consistency gaps)"},
-  "test_credentials": "admin@sensoper.com / Admin@123 (from /app/memory/test_credentials.md)",
+  "test_credentials": "admin@sensoper.com / <TEST_ADMIN_PASSWORD> (from /app/memory/test_credentials.md)",
   "seed_data_creation": "Created and cleaned up: 2 internal teams (TEST52_Alpha_*, TEST52_Beta_*) via UI then deleted via DELETE /api/internal-teams/{id}; 1 partner (TEST52_Throwaway_*) created via UI and deleted via the delete-partner-dialog flow (verified redirect + gone from list); 1 asset document uploaded to the existing 'QA Pending Archive Asset' and deleted via asset-doc-delete-{id}. Pricelist DC Cable 50m Roll margin was temporarily set to 15 then reverted to empty (missing).",
   "retest_needed": false,
   "should_main_agent_self_test": true,

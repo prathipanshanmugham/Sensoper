@@ -26,7 +26,7 @@
     "/app/backend/tests/test_iter55_pdf_and_extras.py (new — PDF privacy + invoice SKU + smoke)"
   ],
   "success_rate": {"backend": "100% (11/11)", "frontend": "100% of tested flows"},
-  "test_credentials": "admin@sensoper.com / Admin@123",
+  "test_credentials": "admin@sensoper.com / <TEST_ADMIN_PASSWORD>",
   "seed_data_creation": "Ephemeral only — all test projects, inventory items, kits and staff users are cleaned up (DELETE ... /force, DELETE /api/inventory/items/{id}, DELETE /api/material-kits/{id}, DELETE /api/users/{id}) within each test.",
   "retest_needed": false,
   "should_main_agent_self_test": true,

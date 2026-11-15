@@ -13,7 +13,7 @@
   },
 
   "passed_tests": [
-    "Admin login with credentials (admin@sensoper.com / Admin@123)",
+    "Admin login with credentials (admin@sensoper.com / <TEST_ADMIN_PASSWORD>)",
     "GET /api/form-tabs returns all 8 tabs with 'id' field for edit/toggle/delete",
     "All system tabs (customer, location, site_electrical, materials, site_docs) have edit/toggle/delete buttons",
     "PUT /api/form-tabs/{system_tab_id} with name change - slug preserved (customer slug stays 'customer' when renamed to 'Client Details')",
@@ -54,7 +54,7 @@
   },
 
   "test_credentials": {
-    "admin": "admin@sensoper.com / Admin@123"
+    "admin": "admin@sensoper.com / <TEST_ADMIN_PASSWORD>"
   },
 
   "seed_data_creation": "System tabs (Customer, Location, Site & Electrical, Materials, Site Docs) are seeded on backend startup. Custom tabs (Customer Preferences, Subsidy Details, Finance Details) exist from previous iterations. Test data (renamed tabs, added fields) was cleaned up after testing.",

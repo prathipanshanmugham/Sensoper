@@ -13,7 +13,7 @@
   },
   
   "passed_tests": [
-    "Admin login with credentials (admin@sensoper.com / Admin@123)",
+    "Admin login with credentials (admin@sensoper.com / <TEST_ADMIN_PASSWORD>)",
     "PUT /api/projects/{id}/reference - updates reference number successfully",
     "PUT /api/projects/{id}/reference - rejects empty reference number (400)",
     "PUT /api/projects/{id}/reference - rejects whitespace-only reference number (400)",
@@ -62,7 +62,7 @@
   },
   
   "test_credentials": {
-    "admin": "admin@sensoper.com / Admin@123"
+    "admin": "admin@sensoper.com / <TEST_ADMIN_PASSWORD>"
   },
   
   "seed_data_creation": "Test projects created and cleaned up during backend tests (TEST_RefNum_Customer, TEST_Status_Customer, TEST_Gallery_Customer, TEST_Complete_Customer, TEST_Edit_Draft, TEST_Edit_Approved, TEST_Custom_ServiceType, TEST_Custom_SystemType, TEST_Custom_Complexity).",

@@ -16,7 +16,7 @@
   ],
   "updated_files": [],
   "success_rate": {"backend": "n/a (frontend-only iteration)", "frontend": "100% (13/13 scenarios pass)"},
-  "test_credentials": "admin@sensoper.com / Admin@123",
+  "test_credentials": "admin@sensoper.com / <TEST_ADMIN_PASSWORD>",
   "seed_data_creation": "None — wizard exercised in-memory; no project was submitted (Auto Calculate / overrides / smart recalc are all client-state). Persistence (feature #10) was not exercised end-to-end via UI submit, but the data flows through formData.custom_fields.proposed_solution = ps (SiteVisitForm.js line 869) and the create_project endpoint already accepts custom_fields verbatim (verified in iter-33). Recommend a single smoke test by the main agent: POST /api/projects with custom_fields.proposed_solution = {...AUTO_FIELDS, _overrides: {system_size_kw:true}, _derived: {...}} → GET should round-trip the entire object.",
   "retest_needed": false,
   "should_main_agent_self_test": false,

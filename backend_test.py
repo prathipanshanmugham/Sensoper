@@ -4,13 +4,16 @@ Backend API Testing for Solar Project Cost Estimator
 Tests all API endpoints with proper authentication and data validation
 """
 
+import os
 import requests
 import sys
 import json
 from datetime import datetime
 
 class SolarEstimatorAPITester:
-    def __init__(self, base_url="https://solar-ops-management.preview.emergentagent.com"):
+    def __init__(self, base_url=None):
+        # The server and the admin password come from the environment (REACT_APP_BACKEND_URL, TEST_ADMIN_PASSWORD)
+        base_url = base_url or os.environ.get("REACT_APP_BACKEND_URL", "").rstrip("/")
         self.base_url = base_url
         self.session = requests.Session()
         self.admin_token = None
@@ -42,7 +45,7 @@ class SolarEstimatorAPITester:
         try:
             response = self.session.post(f"{self.base_url}/api/auth/login", json={
                 "email": "admin@sensoper.com",
-                "password": "Admin@123"
+                "password": os.environ.get("TEST_ADMIN_PASSWORD", "")
             })
             
             if response.status_code == 200:
@@ -504,6 +507,9 @@ class SolarEstimatorAPITester:
             return 1
 
 def main():
+    if not os.environ.get("REACT_APP_BACKEND_URL") or not os.environ.get("TEST_ADMIN_PASSWORD"):
+        print("Set REACT_APP_BACKEND_URL and TEST_ADMIN_PASSWORD (a test server, never the live one) to run these checks.")
+        return 0
     tester = SolarEstimatorAPITester()
     return tester.run_all_tests()
 

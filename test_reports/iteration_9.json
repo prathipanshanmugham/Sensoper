@@ -18,7 +18,7 @@
   },
   
   "passed_tests": [
-    "Admin login with credentials (admin@sensoper.com / Admin@123)",
+    "Admin login with credentials (admin@sensoper.com / <TEST_ADMIN_PASSWORD>)",
     "POST /api/projects accepts drive_folder_name, drive_folder_link, drive_folder_id fields",
     "GET /api/projects/{id} returns drive_folder_name, drive_folder_link, drive_folder_id in response",
     "PUT /api/projects/{id} can update drive fields",
@@ -66,7 +66,7 @@
   },
   
   "test_credentials": {
-    "admin": "admin@sensoper.com / Admin@123"
+    "admin": "admin@sensoper.com / <TEST_ADMIN_PASSWORD>"
   },
   
   "seed_data_creation": "Test projects created during backend tests with TEST_ prefix (TEST_DriveFields_*, TEST_NoDrive_*, TEST_SiteDocs_UITest). These have drive folder fields populated for testing.",

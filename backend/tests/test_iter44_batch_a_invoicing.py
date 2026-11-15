@@ -3,11 +3,13 @@ import os
 import uuid
 import pytest
 import requests
+from http_env import require_server, throwaway_password, TEST_ADMIN_EMAIL, TEST_MANAGER_EMAIL, TEST_MANAGER_PASSWORD, TEST_STAFF_EMAIL, TEST_STAFF_PASSWORD  # noqa: E402,F401
+_SERVER_URL, TEST_ADMIN_PASSWORD = require_server(manager=True, staff=True)
 
 BASE_URL = (os.environ.get("REACT_APP_BACKEND_URL") or open("/app/frontend/.env").read().split("REACT_APP_BACKEND_URL=")[1].splitlines()[0]).rstrip("/")
-ADMIN = {"email": "admin@sensoper.com", "password": "Admin@123"}
-MANAGER = {"email": "qa_mgr_iter46@sensoper.com", "password": "Manager@123"}
-STAFF = {"email": "qa_staff_iter46@sensoper.com", "password": "Staff@123"}
+ADMIN = {"email": "admin@sensoper.com", "password": TEST_ADMIN_PASSWORD}
+MANAGER = {"email": TEST_MANAGER_EMAIL, "password": TEST_MANAGER_PASSWORD}
+STAFF = {"email": TEST_STAFF_EMAIL, "password": TEST_STAFF_PASSWORD}
 
 
 @pytest.fixture(scope="module")

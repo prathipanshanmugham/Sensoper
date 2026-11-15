@@ -4,6 +4,7 @@ payslips, bank / EPFO / ESIC files, My pay) and the staff help desk. In-process,
 """
 import asyncio
 import os
+import secrets
 import sys
 
 import pytest
@@ -16,7 +17,7 @@ os.environ.setdefault("MONGO_URL", "mongodb://localhost:27017")
 os.environ.setdefault("DB_NAME", "payroll_test")
 os.environ.setdefault("JWT_SECRET", "t" * 48)
 os.environ.setdefault("ADMIN_EMAIL", "boss@example.com")
-os.environ.setdefault("ADMIN_PASSWORD", "Adm1n-pass-123")
+os.environ.setdefault("ADMIN_PASSWORD", "t-" + secrets.token_hex(12))   # random per run — the in-memory app seeds this admin
 os.environ.setdefault("STORAGE_ROOT", "/tmp/sensoper-payroll-test")
 ADMIN = {"email": os.environ["ADMIN_EMAIL"], "password": os.environ["ADMIN_PASSWORD"]}
 
@@ -26,7 +27,7 @@ import payroll as pr  # noqa: E402
 import helpdesk as hd  # noqa: E402
 import server  # noqa: E402
 
-PW = "Passw0rd!x"
+PW = "pw-" + secrets.token_hex(8)   # for the users this test creates (random per run)
 MONTH = "2026-11"
 S = pr.DEFAULT_SETTINGS
 

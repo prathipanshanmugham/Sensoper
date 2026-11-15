@@ -7,6 +7,9 @@ from pathlib import Path
 import pytest
 import requests
 from dotenv import dotenv_values
+from http_env import require_server, throwaway_password, TEST_ADMIN_EMAIL, TEST_MANAGER_EMAIL, TEST_MANAGER_PASSWORD, TEST_STAFF_EMAIL, TEST_STAFF_PASSWORD  # noqa: E402,F401
+_SERVER_URL, TEST_ADMIN_PASSWORD = require_server(manager=False, staff=False)
+_TMP_PW_1 = throwaway_password()
 
 frontend_env = dotenv_values("/app/frontend/.env")
 base_url = os.environ.get("REACT_APP_BACKEND_URL") or frontend_env.get("REACT_APP_BACKEND_URL")
@@ -18,13 +21,8 @@ API = f"{BASE_URL}/api"
 
 @pytest.fixture(scope="session")
 def creds():
-    p = Path("/app/memory/test_credentials.md")
-    c = p.read_text(encoding="utf-8")
-    e = re.search(r"(?im)^\s*[-*]?\s*(?:\*\*)?Email(?:\*\*)?\s*:\s*`?([^`\s]+)", c)
-    pw = re.search(r"(?im)^\s*[-*]?\s*(?:\*\*)?Password(?:\*\*)?\s*:\s*`?([^`\s]+)", c)
-    assert e and pw, "credentials not parseable"
-    return {"email": e.group(1), "password": pw.group(1)}
-
+    # was read from /app/memory/test_credentials.md (not in the repository) — now the environment (tests/http_env.py)
+    return {"email": TEST_ADMIN_EMAIL, "password": TEST_ADMIN_PASSWORD}
 
 @pytest.fixture(scope="session")
 def client(creds):
@@ -432,13 +430,13 @@ class TestRbac:
         reg_sess = requests.Session()
         reg_sess.headers.update({"Content-Type": "application/json"})
         reg = reg_sess.post(f"{API}/auth/register", json={
-            "email": email, "password": "Staff@1234", "name": "TEST Staff", "role": "staff",
+            "email": email, "password": _TMP_PW_1, "name": "TEST Staff", "role": "staff",
         }, timeout=60)
         if reg.status_code not in (200, 201):
             pytest.skip(f"could not create staff user: {reg.status_code} {reg.text[:200]}")
         s = requests.Session()
         s.headers.update({"Content-Type": "application/json"})
-        lr = s.post(f"{API}/auth/login", json={"email": email, "password": "Staff@1234"}, timeout=60)
+        lr = s.post(f"{API}/auth/login", json={"email": email, "password": _TMP_PW_1}, timeout=60)
         assert lr.status_code == 200, lr.text[:300]
         tok = lr.json().get("access_token") or lr.json().get("token")
         if tok:

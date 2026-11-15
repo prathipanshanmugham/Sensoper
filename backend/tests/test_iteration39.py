@@ -7,8 +7,9 @@ import os
 import uuid
 import pytest
 import requests
+from http_env import require_server, throwaway_password, TEST_ADMIN_EMAIL, TEST_MANAGER_EMAIL, TEST_MANAGER_PASSWORD, TEST_STAFF_EMAIL, TEST_STAFF_PASSWORD  # noqa: E402,F401
+_SERVER_URL, TEST_ADMIN_PASSWORD = require_server(manager=False, staff=False)
 
-TEST_ADMIN_PASSWORD = os.environ.get("TEST_ADMIN_PASSWORD") or "Admin@123"
 ADMIN_EMAIL = "admin@sensoper.com"
 SENTINEL = "drive/folders/draft"
 

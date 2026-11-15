@@ -13,7 +13,7 @@
   },
 
   "passed_tests": [
-    "Admin login with credentials (admin@sensoper.com / Admin@123)",
+    "Admin login with credentials (admin@sensoper.com / <TEST_ADMIN_PASSWORD>)",
     "GET /api/dashboard/ceo returns 200 with kpis, status_distribution, revenue_trend, sales_funnel, top_staff",
     "CEO Dashboard KPIs: total_revenue, total_profit, conversion_rate, active_projects, completed_projects, pending_approvals, inventory_value, low_stock_alerts",
     "CEO Dashboard status_distribution is list with name/value pairs",
@@ -75,7 +75,7 @@
   },
 
   "test_credentials": {
-    "admin": "admin@sensoper.com / Admin@123"
+    "admin": "admin@sensoper.com / <TEST_ADMIN_PASSWORD>"
   },
 
   "seed_data_creation": "No new seed data created. Tests used existing 53 projects and inventory items.",
