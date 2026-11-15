@@ -1779,8 +1779,20 @@ async def upload_document(request: Request, file: UploadFile = File(...)):
         logger.error(f"Document upload failed: {e}")
         raise HTTPException(status_code=500, detail="Upload failed")
 
+def _publicly_servable(path: str) -> bool:
+    """/files is open (photos in the public gallery and QR links use it), so it must never hand out what is kept next
+    to the uploads: hidden folders such as .keys (the vault master key), the .meta content-type notes, and the
+    audit-log archives (downloaded through their own admin/manager route)."""
+    parts = [p for p in str(path or "").replace("\\", "/").split("/") if p]
+    if not parts or any(p.startswith(".") for p in parts) or parts[-1].endswith(".meta"):
+        return False
+    return "log-archives" not in parts
+
+
 @api_router.get("/files/{path:path}")
 async def serve_file(path: str, request: Request):
+    if not _publicly_servable(path):
+        raise HTTPException(status_code=404, detail="File not found")
     try:
         data, content_type = get_object(path)
         return Response(content=data, media_type=content_type)
@@ -2563,7 +2575,7 @@ from live_sync import create_router as _create_live_sync_router  # noqa: E402
 api_router.include_router(_create_live_sync_router(db, get_current_user))
 
 # ═══════════ MULTI-LOCATION ACCESS CONTROL (Iter 42 Change 8) ═══════════
-from locations import create_router as _create_locations_router, location_scope_filter
+from locations import create_router as _create_locations_router, location_scope_filter, location_allowed
 _locations_router = _create_locations_router(
     db=db, get_current_user=get_current_user, require_role=require_role,
     create_audit_log=create_audit_log,
@@ -6683,11 +6695,21 @@ async def get_project_report(project_id: str, request: Request):
 @api_router.post("/credits")
 async def create_credit(credit: CustomerCreditCreate, request: Request):
     user = await require_module(request, "module_credits", "create")
+    if not math.isfinite(credit.total_amount) or credit.total_amount <= 0 or credit.total_amount > 1e10:
+        raise HTTPException(status_code=400, detail="Enter the amount owed (more than ₹0)")
+    if not credit.customer_name.strip():
+        raise HTTPException(status_code=400, detail="Enter the customer's name")
+    if credit.due_date:
+        try:
+            datetime.strptime(credit.due_date[:10], "%Y-%m-%d")
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Due date must be a date (YYYY-MM-DD)")
     doc = {
-        "customer_name": credit.customer_name, "customer_phone": credit.customer_phone,
-        "invoice_ref": credit.invoice_ref, "total_amount": credit.total_amount,
-        "amount_paid": 0, "balance": credit.total_amount,
+        "customer_name": credit.customer_name.strip(), "customer_phone": credit.customer_phone,
+        "invoice_ref": credit.invoice_ref, "total_amount": round(credit.total_amount, 2),
+        "amount_paid": 0, "balance": round(credit.total_amount, 2),
         "due_date": credit.due_date, "status": "active", "notes": credit.notes,
+        "location_id": user.get("default_location_id"),
         "created_by": user["id"], "created_by_name": user["name"],
         "created_at": datetime.now(timezone.utc).isoformat()
     }
@@ -6696,25 +6718,22 @@ async def create_credit(credit: CustomerCreditCreate, request: Request):
 
 @api_router.get("/credits")
 async def list_credits(request: Request, status: str = None):
-    await get_current_user(request)
+    user = await get_current_user(request)
     query = {}
     if status and status != "all": query["status"] = status
+    query.update(location_scope_filter(user))   # a branch sees its own customers' credit (and unassigned ones)
     credits = await db.customer_credits.find(query).sort("created_at", -1).to_list(500)
     now = datetime.now(timezone.utc)
+    today = _today_ist()
     from credit_interest import load_rate_inputs, annotate_credit
     _ri = await load_rate_inputs(db)
     for c in credits:
         c["id"] = str(c.pop("_id"))
-        if c.get("due_date") and c["status"] == "active":
-            try:
-                due = datetime.fromisoformat(c["due_date"])
-                if due.tzinfo is None:
-                    due = due.replace(tzinfo=timezone.utc)
-                if now > due:
-                    c["status"] = "overdue"
-                    await db.customer_credits.update_one({"_id": ObjectId(c["id"])}, {"$set": {"status": "overdue"}})
-            except (ValueError, TypeError):
-                pass
+        # Overdue from the day AFTER the due date in India — comparing with midnight UTC made credits overdue
+        # at 5:30 in the morning of the day they were due
+        if c.get("due_date") and c.get("status") == "active" and len(str(c["due_date"])) >= 10 and today > str(c["due_date"])[:10]:
+            c["status"] = "overdue"
+            await db.customer_credits.update_one({"_id": ObjectId(c["id"])}, {"$set": {"status": "overdue"}})
         c.update(annotate_credit(c, _ri["default_pct"], _ri["customer_rates"], now))
     return credits
 
@@ -6768,11 +6787,30 @@ async def set_customer_rate(payload: CustomerRateIn, request: Request):
 async def record_credit_payment(credit_id: str, payment: CreditPaymentCreate, request: Request):
     user = await get_current_user(request)
     credit = await db.customer_credits.find_one({"_id": ObjectId(credit_id)})
-    if not credit: raise HTTPException(status_code=404, detail="Credit not found")
-    pay_doc = {"credit_id": credit_id, "amount": payment.amount, "payment_method": payment.payment_method, "notes": payment.notes, "recorded_by": user["name"], "created_at": datetime.now(timezone.utc).isoformat()}
+    if not credit or not location_allowed(user, credit.get("location_id")): raise HTTPException(status_code=404, detail="Credit not found")
+    amount = float(payment.amount or 0)
+    if not math.isfinite(amount) or amount <= 0:
+        raise HTTPException(status_code=400, detail="The payment amount must be more than ₹0")
+    if credit.get("status") in ("closed", "cancelled"):
+        raise HTTPException(status_code=400, detail=f"This credit is already {credit['status']} — nothing is due on it")
+    # Credits made by a direct sale kept the paid part as paid_amount; reading only amount_paid ignored it, so
+    # paying the rest left the credit open (and the sale itself never saw the payment)
+    paid_before = float(credit.get("amount_paid", credit.get("paid_amount", 0)) or 0)
+    due = round(float(credit.get("total_amount") or 0) - paid_before, 2)
+    if amount > due + 1:
+        raise HTTPException(status_code=400, detail=f"₹{amount:,.2f} is more than the ₹{max(due, 0):,.2f} still due")
+    if credit.get("reference_type") == "sale" and credit.get("reference_id"):
+        from sales import record_sale_payment as _sale_payment  # noqa: E402
+        sale = await db.sales.find_one({"_id": ObjectId(credit["reference_id"])}) if ObjectId.is_valid(str(credit["reference_id"])) else None
+        if sale:
+            out = await _sale_payment(db, sale, {"amount": amount, "mode": payment.payment_method, "reference": payment.notes, "received_by": user.get("id")})
+            await db.credit_payments.insert_one({"credit_id": credit_id, "amount": round(amount, 2), "payment_method": payment.payment_method, "notes": payment.notes,
+                                                 "recorded_by": user["name"], "created_at": datetime.now(timezone.utc).isoformat()})
+            return {"message": "Payment recorded", "new_balance": max(out["balance_due"], 0)}
+    pay_doc = {"credit_id": credit_id, "amount": round(amount, 2), "payment_method": payment.payment_method, "notes": payment.notes, "recorded_by": user["name"], "created_at": datetime.now(timezone.utc).isoformat()}
     await db.credit_payments.insert_one(pay_doc)
-    new_paid = credit.get("amount_paid", 0) + payment.amount
-    new_balance = max(0, credit["total_amount"] - new_paid)
+    new_paid = round(paid_before + amount, 2)
+    new_balance = round(max(0, float(credit["total_amount"]) - new_paid), 2)
     new_status = "closed" if new_balance <= 0 else credit.get("status", "active")
     await db.customer_credits.update_one({"_id": ObjectId(credit_id)}, {"$set": {"amount_paid": new_paid, "balance": new_balance, "status": new_status}})
     return {"message": "Payment recorded", "new_balance": new_balance}
@@ -6786,8 +6824,15 @@ async def get_credit_payments(credit_id: str, request: Request):
 
 @api_router.delete("/credits/{credit_id}")
 async def delete_credit(credit_id: str, request: Request):
-    await require_module(request, "module_credits", "delete")
-    await db.customer_credits.delete_one({"_id": ObjectId(credit_id)})
+    user = await require_module(request, "module_credits", "delete")
+    credit = await db.customer_credits.find_one({"_id": ObjectId(credit_id)})
+    if not credit or not location_allowed(user, credit.get("location_id")):
+        raise HTTPException(status_code=404, detail="Credit not found")
+    if credit.get("reference_type") == "sale" and credit.get("status") not in ("closed", "cancelled"):
+        raise HTTPException(status_code=400, detail=f"This credit belongs to sale {credit.get('invoice_number') or ''} — cancel or return the sale instead, so the sale and its stock stay right".replace("  ", " "))
+    await db.customer_credits.delete_one({"_id": credit["_id"]})
+    await db.credit_payments.delete_many({"credit_id": credit_id})
+    await create_audit_log(user["id"], user["name"], "delete", "customer_credit", credit_id, {k: v for k, v in credit.items() if k != "_id"}, None)
     return {"message": "Credit deleted"}
 
 # ================== PURCHASE ORDERS (INBOUND) ==================
@@ -6810,9 +6855,24 @@ async def preview_po_number(request: Request, location_id: Optional[str] = None)
     counter = await db.counters.find_one({"_id": f"po_number_{loc_code or 'HO'}"}) or {}
     return {"po_number": f"PO-{loc_code or 'HO'}-{int(counter.get('seq', 0)) + 1:04d}"}
 
+def _check_po_items(items) -> None:
+    """PO lines must be real: at least one, a quantity above 0, no negative price (a negative quantity would take
+    stock away when the PO is received)."""
+    if not isinstance(items, list) or not items or not all(isinstance(i, dict) for i in items):
+        raise HTTPException(status_code=400, detail="Add at least one item to the purchase order")
+    for i in items:
+        try:
+            q, p = float(i.get("qty", 0) or 0), float(i.get("unit_price", 0) or 0)
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=400, detail=f"{i.get('name') or 'An item'}: enter the quantity and price as numbers")
+        if not (math.isfinite(q) and math.isfinite(p)) or q <= 0 or p < 0 or q > 1e7 or p > 1e10:
+            raise HTTPException(status_code=400, detail=f"{i.get('name') or 'An item'}: the quantity must be more than 0 and the price can't be negative")
+
+
 async def insert_purchase_order(user: dict, *, supplier_name: str, supplier_contact: str, items: list, expected_delivery: str,
                                 notes: str, location_id: Optional[str], po_number: Optional[str] = None, extra: Optional[dict] = None) -> dict:
     """Number and save a purchase order (status pending → normal approval). Used by New PO and by a chosen vendor quote."""
+    _check_po_items(items)
     total = sum(float(i.get("qty", 0) or 0) * float(i.get("unit_price", 0) or 0) for i in items)
     location_id = location_id or user.get("default_location_id")
     loc_code = None
@@ -6873,6 +6933,7 @@ async def create_po(po: PurchaseOrderCreate, request: Request):
     # Admins may still raise a PO directly; the reason is kept on the PO.
     from procurement import merge_settings as _proc_settings  # noqa: E402
     ps = _proc_settings(await db.procurement_settings.find_one({"key": "defaults"}))
+    _check_po_items(po.items)
     total = sum(float(i.get("qty", 0) or 0) * float(i.get("unit_price", 0) or 0) for i in po.items)
     direct = ps["require_quotes"] and total >= float(ps["skip_below_amount"] or 0)
     if direct and user["role"] != "admin":
@@ -6951,34 +7012,62 @@ async def reject_po(po_id: str, request: Request):
     await create_audit_log(user["id"], user["name"], "reject", "purchase_order", po_id, None, {"reason": body.get("reason", "")})
     return {"message": "PO rejected"}
 
+async def _json_object(request: Request) -> Dict[str, Any]:
+    """The request's JSON body as a dict — an empty or malformed body reads as {} instead of a server error."""
+    try:
+        body = await request.json()
+    except Exception:
+        return {}
+    return body if isinstance(body, dict) else {}
+
+
+# A PO is received only after approval: pending / rejected ones never reach stock, and a received (completed) one
+# can't be put back to "arrived" and received a second time.
+_PO_STEP_FROM = {"arrival": ("approved", "arrived"), "qc": ("approved", "arrived", "qc_done"), "inbound": ("approved", "arrived", "qc_done")}
+
+
+async def _po_for_step(po_id: str, step: str, user: Dict[str, Any]) -> Dict[str, Any]:
+    po = await db.purchase_orders.find_one({"_id": ObjectId(po_id)})
+    if not po or not location_allowed(user, po.get("location_id")):
+        raise HTTPException(status_code=404, detail="Purchase order not found")
+    status = po.get("status")
+    if status not in _PO_STEP_FROM[step]:
+        if status == "completed":
+            raise HTTPException(status_code=400, detail="This PO has already been received. Use Edit to correct a quantity, or Reverse to undo it.")
+        if status == "pending":
+            raise HTTPException(status_code=400, detail="This PO hasn't been approved yet — approve it first")
+        if status == "rejected":
+            raise HTTPException(status_code=400, detail="This PO was rejected — raise a new PO instead")
+        raise HTTPException(status_code=400, detail=f"Record the arrival before the QC check (this PO is '{status}')")
+    return po
+
+
 @api_router.put("/purchase-orders/{po_id}/arrival")
 async def record_arrival(po_id: str, request: Request):
-    body = await request.json()
-    await get_current_user(request)
+    body = await _json_object(request)
+    user = await get_current_user(request)
+    await _po_for_step(po_id, "arrival", user)
     transport = {"transporter": body.get("transporter",""), "vehicle": body.get("vehicle",""), "driver_contact": body.get("driver_contact",""), "lr_number": body.get("lr_number","")}
     await db.purchase_orders.update_one({"_id": ObjectId(po_id)}, {"$set": {"status": "arrived", "transport": transport, "arrived_at": datetime.now(timezone.utc).isoformat()}})
     return {"message": "Arrival recorded"}
 
 @api_router.put("/purchase-orders/{po_id}/qc")
 async def record_qc(po_id: str, request: Request):
-    body = await request.json()
-    await get_current_user(request)
+    body = await _json_object(request)
+    user = await get_current_user(request)
+    await _po_for_step(po_id, "qc", user)
     qc = {"qty_check": body.get("qty_check", "pass"), "damage_check": body.get("damage_check", "pass"), "spec_match": body.get("spec_match", "pass"), "overall": body.get("overall", "pass"), "notes": body.get("notes", "")}
     await db.purchase_orders.update_one({"_id": ObjectId(po_id)}, {"$set": {"status": "qc_done", "qc": qc, "qc_at": datetime.now(timezone.utc).isoformat()}})
     return {"message": "QC recorded"}
 
 @api_router.put("/purchase-orders/{po_id}/inbound")
 async def complete_inbound(po_id: str, request: Request):
-    body = await request.json()
+    body = await _json_object(request)
     current_user = await get_current_user(request)
     if not await check_module_permission(current_user, "module_purchase_inbound", "create"):
         raise HTTPException(status_code=403, detail="You don't have permission to receive inventory against a purchase order")
 
-    po = await db.purchase_orders.find_one({"_id": ObjectId(po_id)})
-    if not po:
-        raise HTTPException(status_code=404, detail="Purchase order not found")
-    if po.get("status") == "completed":
-        raise HTTPException(status_code=400, detail="This PO has already been received. Use Edit to correct a quantity, or Reverse to undo it.")
+    po = await _po_for_step(po_id, "inbound", current_user)
 
     # Iter 53: structured storage location {zone, aisle, shelf, rack, bin} (deeper levels optional) — no free text
     raw_loc = body.get("storage_location") or {}
@@ -6989,38 +7078,51 @@ async def complete_inbound(po_id: str, request: Request):
         raise HTTPException(status_code=400, detail="Pick at least a zone or a bin for where this stock is being placed")
     location = " / ".join(f"{k.title()} {v}" for k, v in loc_struct.items() if v)
     now_iso = datetime.now(timezone.utc).isoformat()
-    received_items, failed_lines, movements = [], [], []
+    received_items, failed_lines, movements, matched = [], [], [], []
+    # Match every line first: the old loop added stock line by line and then refused on an unmatched line, so the
+    # earlier lines' stock stayed added and a retry added it again
     for item in po.get("items", []):
         inv_item = None
-        if item.get("inventory_item_id"):
+        if item.get("inventory_item_id") and ObjectId.is_valid(str(item["inventory_item_id"])):
             inv_item = await db.inventory_items.find_one({"_id": ObjectId(item["inventory_item_id"])})
         if not inv_item and item.get("sku_code"):
             inv_item = await db.inventory_items.find_one({"sku_code": item["sku_code"]})
         if not inv_item:
             failed_lines.append(item.get("name", "Unknown item"))
             continue
-        qty = float(item.get("qty", 0))
-        loc_set = {k: v for k, v in {"zone": loc_struct["zone"], "aisle": loc_struct["aisle"], "shelf": loc_struct["shelf"], "rack": loc_struct["rack"], "bin_location": loc_struct["bin"]}.items() if v}
-        await db.inventory_items.update_one({"_id": inv_item["_id"]}, {"$inc": {"quantity": qty}, "$set": loc_set})
+        try:
+            qty = float(item.get("qty", 0) or 0)
+        except (TypeError, ValueError):
+            qty = -1
+        if not math.isfinite(qty) or qty < 0:
+            raise HTTPException(status_code=400, detail=f"{inv_item['name']}: the PO quantity isn't a valid number — fix the PO first")
+        matched.append((inv_item, qty))
+    if failed_lines:
+        raise HTTPException(status_code=400,
+            detail=f"Could not match to an inventory item: {', '.join(failed_lines)}. Link each PO line to an inventory item before completing the inbound.")
+    for inv_item, qty in matched:
         received_items.append({
             "inventory_item_id": str(inv_item["_id"]), "name": inv_item["name"],
             "sku_code": inv_item.get("sku_code"), "qty_received": qty, "received_at": now_iso,
         })
+    # Claim the PO before touching stock, so two clicks on "Complete inbound" can't both add the stock
+    claimed = await db.purchase_orders.update_one({"_id": po["_id"], "status": po.get("status")}, {"$set": {
+        "status": "completed", "storage_location": location, "storage_location_struct": loc_struct, "completed_at": now_iso,
+        "received_items": received_items,
+        "completed_by": current_user["id"], "completed_by_name": current_user["name"],
+    }})
+    if claimed.matched_count == 0:
+        raise HTTPException(status_code=400, detail="This PO has already been received. Use Edit to correct a quantity, or Reverse to undo it.")
+    loc_set = {k: v for k, v in {"zone": loc_struct["zone"], "aisle": loc_struct["aisle"], "shelf": loc_struct["shelf"], "rack": loc_struct["rack"], "bin_location": loc_struct["bin"]}.items() if v}
+    for inv_item, qty in matched:
+        await db.inventory_items.update_one({"_id": inv_item["_id"]}, {"$inc": {"quantity": qty}, "$set": loc_set})
         movements.append({
             "inventory_item_id": str(inv_item["_id"]), "movement_type": "purchase_inbound", "quantity": qty,
             "reference_type": "purchase_order", "reference_id": po_id,
             "note": f"PO inbound: {inv_item['name']}", "created_by": current_user["id"], "created_at": now_iso,
         })
-    if failed_lines:
-        raise HTTPException(status_code=400,
-            detail=f"Could not match to an inventory item: {', '.join(failed_lines)}. Link each PO line to an inventory item before completing the inbound.")
     if movements:
         await db.inventory_movements.insert_many(movements)
-    await db.purchase_orders.update_one({"_id": ObjectId(po_id)}, {"$set": {
-        "status": "completed", "storage_location": location, "storage_location_struct": loc_struct, "completed_at": now_iso,
-        "received_items": received_items,
-        "completed_by": current_user["id"], "completed_by_name": current_user["name"],
-    }})
     await create_audit_log(current_user["id"], current_user["name"], "inbound_completed", "purchase_order", po_id,
                             None, received_items)
     return {"message": "Inbound completed, inventory updated", "received_items": received_items}
@@ -7042,20 +7144,31 @@ async def edit_inbound(po_id: str, payload: InboundEditRequest, request: Request
     now_iso = datetime.now(timezone.utc).isoformat()
     new_received, deltas, movements = [], [], []
 
+    # Check every line before changing any stock (a refusal half-way used to leave the earlier lines' stock changed)
+    seen, planned = set(), []
     for line in lines:
         inv_id = line.inventory_item_id
         new_qty = float(line.qty_received)
+        if not math.isfinite(new_qty) or new_qty < 0 or new_qty > 1e7:
+            raise HTTPException(status_code=400, detail="A received quantity can't be negative — enter 0 or more")
+        if not ObjectId.is_valid(str(inv_id)):
+            raise HTTPException(status_code=400, detail=f"Inventory item {inv_id} not found")
+        if inv_id in seen:
+            raise HTTPException(status_code=400, detail="The same item is listed twice — enter its total received quantity once")
+        seen.add(inv_id)
         old_entry = old_by_id.get(inv_id, {})
         old_qty = float(old_entry.get("qty_received", 0))
         delta = new_qty - old_qty
         inv_item = await db.inventory_items.find_one({"_id": ObjectId(inv_id)})
         if not inv_item:
             raise HTTPException(status_code=400, detail=f"Inventory item {inv_id} not found")
+        if delta != 0 and inv_item.get("quantity", 0) + delta < 0:
+            raise HTTPException(status_code=400,
+                detail=f"Cannot reduce '{inv_item['name']}' by {abs(delta)} — only {inv_item.get('quantity', 0)} left in stock (some has already been issued or sold elsewhere)")
+        planned.append((line, inv_id, inv_item, old_entry, old_qty, new_qty, delta))
+
+    for line, inv_id, inv_item, old_entry, old_qty, new_qty, delta in planned:
         if delta != 0:
-            projected = inv_item.get("quantity", 0) + delta
-            if projected < 0:
-                raise HTTPException(status_code=400,
-                    detail=f"Cannot reduce '{inv_item['name']}' by {abs(delta)} — only {inv_item.get('quantity', 0)} left in stock (some has already been issued or sold elsewhere)")
             await db.inventory_items.update_one({"_id": ObjectId(inv_id)}, {"$inc": {"quantity": delta}})
             deltas.append({"inventory_item_id": inv_id, "name": inv_item["name"], "old_qty": old_qty, "new_qty": new_qty, "delta": delta})
             movements.append({
@@ -7068,6 +7181,8 @@ async def edit_inbound(po_id: str, payload: InboundEditRequest, request: Request
                               "sku_code": inv_item.get("sku_code"), "qty_received": new_qty,
                               "notes": line.notes if line.notes is not None else old_entry.get("notes"),
                               "received_at": old_entry.get("received_at", now_iso)})
+    # Lines the edit didn't mention stay as received — dropping them made a later reversal leave their stock behind
+    new_received += [r for iid, r in old_by_id.items() if iid not in seen]
 
     if movements:
         await db.inventory_movements.insert_many(movements)
