@@ -6464,6 +6464,8 @@ async def delete_form_tab(tab_id: str, request: Request):
     tab = await db.form_tabs.find_one({"_id": ObjectId(tab_id)})
     if not tab:
         raise HTTPException(status_code=404, detail="Tab not found")
+    if tab.get("system"):   # Customer, Location… are the New project form's own steps
+        raise HTTPException(status_code=400, detail="A system tab can't be deleted — add or remove its extra fields instead")
     await db.form_tabs.delete_one({"_id": ObjectId(tab_id)})
     await create_audit_log(user["id"], user["name"], "delete", "form_tab", tab_id, {"name": tab.get("name")})
     return {"message": "Tab deleted"}
