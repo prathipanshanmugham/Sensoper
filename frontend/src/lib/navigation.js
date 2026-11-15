@@ -464,9 +464,10 @@ export const NAV_SECTIONS = [
         keywords: 'ai agent mcp api key claude chatgpt connector n8n automation bot',
         help: {
           what: 'Let AI agents (Claude, ChatGPT, n8n or your own) read and work with Sensoper — each one as a chosen login, with only the access you give it.',
-          steps: ['Switch on “Let AI agents connect”.', 'For Claude or ChatGPT: add Sensoper as a custom connector with the MCP address, then approve it here.',
-            'For your own agents: Add an agent → copy its key once → paste it into the agent.', 'Check Activity to see every call an agent made.'],
-          tip: 'An agent works as the login you choose, so that login’s permissions and branches apply. Start with Read only.',
+          steps: ['Switch on “Let AI agents connect”.', 'Claude or ChatGPT: copy the connector address, add it as a custom connector in the app, then press Allow when Sensoper asks.',
+            'Your own tools and n8n: Keys & scripts → Add an API key → copy the key once.', 'Approve what an agent asks for (deletes, logins, bank details, anything customers see) from the bell or the list at the top.',
+            'Pause or revoke any agent with one click; Activity lists every call.'],
+          tip: 'An agent works as the login you choose, so that login’s permissions and branches apply. Start with Read only. The AI can’t approve its own requests — only you, in Sensoper.',
         },
       },
       {

@@ -61,6 +61,7 @@ import InvestorsPage from "./pages/InvestorsPage";
 import InvestorPortal from "./pages/InvestorPortal";
 import AIAgentsPage from "./pages/AIAgentsPage";
 import ConnectAgentPage from "./pages/ConnectAgentPage";
+import AgentApprovalPage from "./pages/AgentApprovalPage";
 import MyPayPage from "./pages/MyPayPage";
 import HelpDeskPage from "./pages/HelpDeskPage";
 import { nextPath } from "./lib/nextPath";
@@ -188,6 +189,8 @@ function AppRoutes() {
       <Route path="/dashboard/ai-agents" element={<ProtectedRoute allowedRoles={["admin"]} module="module_agents"><DashboardLayout><AIAgentsPage /></DashboardLayout></ProtectedRoute>} />
       {/* An AI app (Claude, ChatGPT…) asks to connect: an admin signs in and approves it here */}
       <Route path="/connect-agent" element={<ConnectAgentPage />} />
+      {/* An AI agent asks to delete, change logins, bank details or anything customers see: a person approves it here */}
+      <Route path="/connect-agent/approve/:id" element={<AgentApprovalPage />} />
       <Route path="/dashboard/vault" element={<ProtectedRoute allowedRoles={["admin"]} module="module_vault"><DashboardLayout><VaultPage /></DashboardLayout></ProtectedRoute>} />
       <Route path="/dashboard/ecommerce" element={<ProtectedRoute module="module_ecommerce"><DashboardLayout><EcommercePage /></DashboardLayout></ProtectedRoute>} />
       {/* Google sign-in comes back here (Settings → Google Drive → Connect). Public: the one-time state authorises it. */}

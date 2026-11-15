@@ -4,6 +4,35 @@ Your server already has `/root/Sensoper/deploy.sh`. It pulls the code, installs 
 copies the build to `/var/www/sensoper`, restarts the `sensoper` service and checks the live bundle. This release needs
 nothing new installed.
 
+## AI connector update (Claude / ChatGPT): safer, clearer, easier
+
+Nothing to install and nothing to set. The Claude connector you already use keeps working: no reconnecting.
+
+What changes for you:
+- **Settings → AI agents** opens with a *Connect Claude or ChatGPT* panel: the address to paste and three steps per app.
+  Each agent shows when it was last used and its calls today, with **Pause** and **Revoke** buttons.
+- When Claude wants to **delete, change many records at once, touch logins or passwords, change bank or company
+  details, end someone's employment, or change anything a customer or the public sees**, nothing happens until you
+  approve it **in Sensoper**: Claude gives you a link, the bell shows it, and Settings → AI agents lists it at the top.
+  Press **Approve** (or **Decline**), then tell Claude to go ahead. Claude can't approve its own requests.
+- **Activity** can be filtered: changes, asked for approval, refused, failed, by words and by day.
+- Pausing an agent or switching agents off stops it at once; resuming works without connecting again.
+- If an old sign-in token is ever used twice, Sensoper signs that connection out and says so on its card. Connect it
+  again from Claude.
+
+For your own scripts or n8n using an API key: those calls answer 403 until you send them again with the header
+`X-Sensoper-Confirm: yes`. Claude and ChatGPT can't use this header.
+
+Recommended nginx line (protects every ERP page from being shown inside another website), in the `server` block for
+quote.sensoper.in — and in any `location` that has its own `add_header`, because nginx doesn't inherit them there:
+
+    add_header Content-Security-Policy "frame-ancestors 'none'" always;
+    add_header X-Frame-Options "DENY" always;
+
+Smoke test after deploy: in Claude, ask "Which vendors do we have?" (works as before), then "Delete vendor X": Claude
+answers that it is waiting for your approval, the bell shows it, and after you approve and say "go ahead" it runs once.
+Settings → AI agents → Activity shows both.
+
 ## This release: shop.sensoper.in, five systems, brands, testimonial videos, store pickup
 
 No new packages and no new server settings. On the server, as root:
