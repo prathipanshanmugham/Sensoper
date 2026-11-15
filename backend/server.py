@@ -2829,6 +2829,15 @@ async def get_subsidy_tracking(project_id: str, request: Request):
 @api_router.post("/subsidy/tracking")
 async def upsert_subsidy_tracking(payload: SubsidyTracking, request: Request):
     user = await get_current_user(request)
+    # The subsidy card sits on the project page: changing it is changing the project (Permissions → Projects, edit),
+    # on a project this login can see — its branch, and for staff their own projects, as on the project page
+    if user["role"] != "admin" and not await check_module_permission(user, "module_projects", "edit"):
+        raise HTTPException(status_code=403, detail="Your role can’t change projects. An admin can change this in Settings → Permissions.")
+    if not payload.project_id:
+        raise HTTPException(status_code=400, detail="Say which project this subsidy belongs to")
+    project = await project_in_scope(user, payload.project_id)
+    if user["role"] == "staff" and project.get("created_by") != user["id"]:
+        raise HTTPException(status_code=403, detail="Access denied")
     body = payload.model_dump(exclude_unset=True)
     body["updated_at"] = datetime.now(timezone.utc).isoformat()
     body["updated_by"] = user.get("id")
