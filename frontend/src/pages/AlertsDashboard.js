@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { alertsAPI, thresholdsAPI } from '../utils/api';
+import { toast } from 'sonner';
+import { errText } from '../components/kit/PageBits';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
@@ -38,7 +40,8 @@ export default function AlertsDashboard() {
       await thresholdsAPI.update(thresholds);
       await fetchData();
       setShowSettings(false);
-    } catch (err) { console.error(err); }
+      toast.success('Alert settings saved');
+    } catch (err) { toast.error(errText(err, 'Could not save the alert settings')); }
     finally { setSaving(false); }
   };
 

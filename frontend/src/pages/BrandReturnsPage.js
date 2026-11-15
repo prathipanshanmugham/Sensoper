@@ -43,10 +43,11 @@ export default function BrandReturnsPage() {
   };
 
   const handleCreate = async () => {
-    if (!form.item_name || !form.quantity) return;
+    if (!form.item_name.trim()) { toast.error('Enter the item being returned'); return; }
+    if (!(parseFloat(form.quantity) > 0)) { toast.error('Enter a quantity of more than 0'); return; }
     setSaving(true);
-    try { await returnsAPI.create({...form, quantity: parseFloat(form.quantity)}); setShowForm(false); setForm({ project_id: '', supplier_name: '', item_name: '', quantity: '', reason: 'damage', notes: '' }); await fetch(); }
-    catch (err) { console.error(err); } finally { setSaving(false); }
+    try { await returnsAPI.create({...form, item_name: form.item_name.trim(), quantity: parseFloat(form.quantity)}); setShowForm(false); setForm({ project_id: '', supplier_name: '', item_name: '', quantity: '', reason: 'damage', notes: '' }); await fetch(); toast.success('Return recorded'); }
+    catch (err) { toast.error(errText(err, 'Could not record the return')); } finally { setSaving(false); }
   };
 
   const totalPending = returns.filter(r => r.status === 'pending').length;

@@ -13,6 +13,8 @@ import GstSection from '../components/GstSection';
 import CustomerSection from '../components/CustomerSection';
 import { CreditInterestCell } from '../components/CreditInterestCell';
 import Can from '../components/Can';
+import { errText } from '../components/kit/PageBits';
+import { toast } from 'sonner';
 
 const STATUS_COLORS = { active: 'bg-blue-100 text-blue-700', overdue: 'bg-red-100 text-red-700', closed: 'bg-emerald-100 text-emerald-700' };
 
@@ -35,17 +37,22 @@ export default function CustomerCreditsPage() {
   useEffect(() => { fetch(); }, [fetch]);
 
   const handleCreate = async () => {
-    if (!form.customer_name || !form.total_amount) return;
+    if (!form.customer_name.trim()) { toast.error('Enter the customer name'); return; }
+    if (!(parseFloat(form.total_amount) > 0)) { toast.error('Enter the amount owed (more than ₹0)'); return; }
     setSaving(true);
-    try { await creditsAPI.create({ ...form, total_amount: parseFloat(form.total_amount) }); setShowForm(false); setForm({ customer_name: '', customer_phone: '', invoice_ref: '', total_amount: '', due_date: '', notes: '' }); await fetch(); }
-    catch (err) { console.error(err); } finally { setSaving(false); }
+    try { await creditsAPI.create({ ...form, total_amount: parseFloat(form.total_amount) }); setShowForm(false); setForm({ customer_name: '', customer_phone: '', invoice_ref: '', total_amount: '', due_date: '', notes: '' }); await fetch(); toast.success('Credit added'); }
+    catch (err) { toast.error(errText(err, 'Could not add the credit')); } finally { setSaving(false); }
   };
 
   const handlePay = async () => {
-    if (!payForm.amount || !showPay) return;
+    if (!showPay) return;
+    const owed = credits.find(c => c.id === showPay)?.balance;
+    const amt = parseFloat(payForm.amount);
+    if (!(amt > 0)) { toast.error('Enter the amount received (more than ₹0)'); return; }
+    if (owed != null && amt > owed + 0.5) { toast.error(`That is more than the ₹${Math.round(owed).toLocaleString('en-IN')} still owed`); return; }
     setSaving(true);
-    try { await creditsAPI.pay(showPay, { credit_id: showPay, amount: parseFloat(payForm.amount), payment_method: payForm.payment_method, notes: payForm.notes }); setShowPay(null); setPayForm({ amount: '', payment_method: 'cash', notes: '' }); await fetch(); }
-    catch (err) { console.error(err); } finally { setSaving(false); }
+    try { await creditsAPI.pay(showPay, { credit_id: showPay, amount: parseFloat(payForm.amount), payment_method: payForm.payment_method, notes: payForm.notes }); setShowPay(null); setPayForm({ amount: '', payment_method: 'cash', notes: '' }); await fetch(); toast.success('Payment recorded'); }
+    catch (err) { toast.error(errText(err, 'Could not record the payment')); } finally { setSaving(false); }
   };
 
   const totalOutstanding = credits.reduce((s, c) => s + (c.balance || 0), 0);
