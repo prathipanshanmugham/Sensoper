@@ -268,7 +268,7 @@ export default function DirectSalesPage() {
               <Select onValueChange={(v) => { const it = items.find(i => i.id === v); if (it) addLine(it); }}>
                 <SelectTrigger className="h-9" data-testid="qs-item-picker"><SelectValue placeholder="Search inventory..." /></SelectTrigger>
                 <SelectContent>
-                  {items.map(it => <SelectItem key={it.id} value={it.id}>{it.name} · Stock: {it.quantity} · ₹{it.unit_price}</SelectItem>)}
+                  {items.map(it => <SelectItem key={it.id} value={it.id}>{it.name} · Stock: {it.quantity} · ₹{Number(it.unit_price || 0).toLocaleString('en-IN')}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>

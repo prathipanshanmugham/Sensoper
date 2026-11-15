@@ -464,7 +464,8 @@ export default function ProjectDetails() {
                 )}
               </DropdownMenuContent>
             </DropdownMenu>
-            {can('can_make_invoice') && <ProjectInvoiceCard projectId={id} companyProfile={companyProfile} terms={invoiceTerms || terms} />}
+            {/* A GST tax invoice takes the next number in the series — only once the quotation is approved */}
+            {can('can_make_invoice') && ['approved', 'completed'].includes(project.status) && <ProjectInvoiceCard projectId={id} companyProfile={companyProfile} terms={invoiceTerms || terms} />}
             {['approved', 'completed', 'submitted'].includes(project.status) && (
               <Link to={`/dashboard/site-diary?project=${id}`}><Button variant="outline" className="gap-2" data-testid="open-site-diary-btn"><NotebookPen className="h-4 w-4" />Site diary</Button></Link>
             )}

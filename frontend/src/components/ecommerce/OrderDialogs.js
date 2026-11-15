@@ -118,7 +118,7 @@ export function ImportOrdersDialog({ open, onOpenChange, platforms, onImported }
                 <table className="w-full text-xs" data-testid="import-preview-table">
                   <thead><tr className="bg-slate-50 text-left"><th className="p-1.5">Order ID</th><th className="p-1.5">SKU</th><th className="p-1.5">Item</th><th className="p-1.5">Qty</th><th className="p-1.5">Price</th><th className="p-1.5">Matched</th></tr></thead>
                   <tbody>{preview.rows.map((r, i) => (
-                    <tr key={i} className={r.matched ? '' : 'bg-red-50'}><td className="p-1.5">{r.platform_order_id}</td><td className="p-1.5">{r.sku}</td><td className="p-1.5">{r.item_name || '—'}</td><td className="p-1.5">{r.quantity}</td><td className="p-1.5">₹{r.sold_price}</td><td className="p-1.5">{r.matched ? '✓' : '✗'}</td></tr>
+                    <tr key={i} className={r.matched ? '' : 'bg-red-50'}><td className="p-1.5">{r.platform_order_id}</td><td className="p-1.5">{r.sku}</td><td className="p-1.5">{r.item_name || '—'}</td><td className="p-1.5">{r.quantity}</td><td className="p-1.5">₹{Number(r.sold_price || 0).toLocaleString('en-IN')}</td><td className="p-1.5">{r.matched ? '✓' : '✗'}</td></tr>
                   ))}</tbody>
                 </table>
               </div>

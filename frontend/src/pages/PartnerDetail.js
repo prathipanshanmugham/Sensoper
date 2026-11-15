@@ -284,7 +284,7 @@ export default function PartnerDetail() {
                   </tr>
                 ) : (
                   <tr key={i} className="border-b last:border-0" data-testid={`rate-row-${i}`}>
-                    <td className="py-2">{r.activity}</td><td>{r.unit}</td><td>₹{r.rate}</td><td>{r.effective_from}</td>
+                    <td className="py-2">{r.activity}</td><td>{r.unit}</td><td>₹{Number(r.rate || 0).toLocaleString('en-IN')}</td><td>{r.effective_from}</td>
                     {canManage && <td><Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => startRateEdit(i, r)} data-testid={`edit-rate-${i}`}><Pencil className="h-3 w-3 text-slate-500" /></Button></td>}
                   </tr>
                 )
