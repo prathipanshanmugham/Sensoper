@@ -101,13 +101,14 @@ export default function UserManagement() {
   };
 
   const handleSubmit = async () => {
+    if (!String(formData.name || '').trim()) { setError('Enter the person’s name'); return; }
     setActionLoading(true);
     setError('');
 
     try {
       if (editingUser) {
         await usersAPI.update(editingUser.id, {
-          name: formData.name,
+          name: formData.name.trim(),
           phone: formData.phone,
           role: formData.role,
           daily_report_required: !!formData.daily_report_required,
@@ -119,7 +120,7 @@ export default function UserManagement() {
           setActionLoading(false);
           return;
         }
-        await usersAPI.create(formData);
+        await usersAPI.create({ ...formData, name: formData.name.trim() });
       }
       setShowDialog(false);
       fetchUsers();
@@ -325,7 +326,7 @@ export default function UserManagement() {
             </Button>
             <Button
               onClick={handleSubmit}
-              disabled={actionLoading || !formData.name}
+              disabled={actionLoading || !String(formData.name || '').trim()}
               className="bg-[#4ADE40] hover:bg-[#3dba35] text-black"
               data-testid="save-user-btn"
             >

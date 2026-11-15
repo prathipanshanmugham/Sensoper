@@ -101,8 +101,10 @@ export default function AssetsPage() {
 
   const openEdit = (a) => { setShowEdit(a); setEditForm({ name: a.name, make: a.make || '', model: a.model || '', serial_number: a.serial_number || '', purchase_cost: a.purchase_cost || '', useful_life_years: a.useful_life_years || 5, insurance_expiry: a.insurance_expiry || '', registration_expiry: a.registration_expiry || '', fitness_certificate_expiry: a.fitness_certificate_expiry || '', pollution_certificate_expiry: a.pollution_certificate_expiry || '', notes: a.notes || '' }); setActionError(''); };
   const saveEdit = async () => {
+    if (!String(editForm.name || '').trim()) { setActionError('Enter the asset name'); return; }
+    if (Number(editForm.purchase_cost) < 0 || Number(editForm.useful_life_years) <= 0) { setActionError('The cost can’t be negative and the useful life must be more than 0 years'); return; }
     setSaving(true); setActionError('');
-    try { await assetsAPI.update(showEdit.id, { ...editForm, purchase_cost: parseFloat(editForm.purchase_cost) || 0, useful_life_years: parseFloat(editForm.useful_life_years) || 5 }); setShowEdit(null); await fetchAssets(); await fetchReport(reportType); }
+    try { await assetsAPI.update(showEdit.id, { ...editForm, name: editForm.name.trim(), purchase_cost: parseFloat(editForm.purchase_cost) || 0, useful_life_years: parseFloat(editForm.useful_life_years) || 5 }); setShowEdit(null); await fetchAssets(); await fetchReport(reportType); }
     catch (e) { setActionError(errText(e, 'Could not save changes')); } finally { setSaving(false); }
   };
 
@@ -117,16 +119,19 @@ export default function AssetsPage() {
   };
 
   const handleCreate = async () => {
+    if (!form.name.trim()) { toast.error('Enter the asset name'); return; }
+    if (Number(form.purchase_cost) < 0 || Number(form.useful_life_years) <= 0) { toast.error('The cost can’t be negative and the useful life must be more than 0 years'); return; }
     setSaving(true);
     try {
-      await assetsAPI.create({ ...form, purchase_cost: parseFloat(form.purchase_cost) || 0, calibration_interval_days: form.calibration_interval_days ? parseInt(form.calibration_interval_days) : null });
+      await assetsAPI.create({ ...form, name: form.name.trim(), purchase_cost: parseFloat(form.purchase_cost) || 0, calibration_interval_days: form.calibration_interval_days ? parseInt(form.calibration_interval_days) : null });
       setShowCreate(false);
       setForm({ name: '', category: 'power_tool', make: '', model: '', serial_number: '', purchase_date: '', purchase_cost: '', useful_life_years: 5, requires_calibration: false, calibration_interval_days: '', insurance_expiry: '', registration_expiry: '', fitness_certificate_expiry: '', pollution_certificate_expiry: '', notes: '' });
       await fetchAssets(); await fetchReport(reportType); await loadFilters();
-    } catch (e) { console.error(e); } finally { setSaving(false); }
+    } catch (e) { toast.error(errText(e, 'Could not add the asset')); } finally { setSaving(false); }
   };
 
   const handleIssue = async () => {
+    if (!String(issueForm.assigned_to_name || '').trim()) { toast.error('Enter who the asset is issued to'); return; }
     setSaving(true);
     try {
       await assetsAPI.issue(showIssue.id, { ...issueForm, assigned_to: issueForm.assigned_to_name });
@@ -141,11 +146,12 @@ export default function AssetsPage() {
   };
 
   const handleMaintenance = async () => {
+    if (Number(maintenanceForm.cost) < 0) { toast.error('The cost can’t be negative'); return; }
     setSaving(true);
     try {
       await assetsAPI.logMaintenance(showMaintenance.id, { ...maintenanceForm, cost: parseFloat(maintenanceForm.cost) || 0 });
       setShowMaintenance(null); await fetchAssets(); await fetchReport(reportType);
-    } catch (e) { toast.error('Could not log maintenance'); } finally { setSaving(false); }
+    } catch (e) { toast.error(errText(e, 'Could not log maintenance')); } finally { setSaving(false); }
   };
 
   const openQr = async (asset) => {
@@ -324,7 +330,7 @@ export default function AssetsPage() {
             <Input type="date" placeholder="Fitness Cert. Expiry" value={form.fitness_certificate_expiry} onChange={e => setForm(p => ({ ...p, fitness_certificate_expiry: e.target.value }))} className="h-9" />
             <Input type="date" placeholder="Pollution Cert. Expiry" value={form.pollution_certificate_expiry} onChange={e => setForm(p => ({ ...p, pollution_certificate_expiry: e.target.value }))} className="h-9" />
           </div>
-          <DialogFooter><Button variant="outline" onClick={() => setShowCreate(false)}>Cancel</Button><Button onClick={handleCreate} disabled={saving || !form.name} className="bg-emerald-600 text-white" data-testid="save-asset-btn">{saving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Save'}</Button></DialogFooter>
+          <DialogFooter><Button variant="outline" onClick={() => setShowCreate(false)}>Cancel</Button><Button onClick={handleCreate} disabled={saving || !form.name.trim()} className="bg-emerald-600 text-white" data-testid="save-asset-btn">{saving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Save'}</Button></DialogFooter>
         </DialogContent>
       </Dialog>
 
@@ -337,7 +343,7 @@ export default function AssetsPage() {
             <Input type="date" placeholder="Expected return" value={issueForm.expected_return_date} onChange={e => setIssueForm(p => ({ ...p, expected_return_date: e.target.value }))} className="h-9" />
             <Select value={issueForm.condition_out} onValueChange={v => setIssueForm(p => ({ ...p, condition_out: v }))}><SelectTrigger className="h-9"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="new">New</SelectItem><SelectItem value="good">Good</SelectItem><SelectItem value="fair">Fair</SelectItem><SelectItem value="poor">Poor</SelectItem></SelectContent></Select>
           </div>
-          <DialogFooter><Button variant="outline" onClick={() => setShowIssue(null)}>Cancel</Button><Button onClick={handleIssue} disabled={saving || !issueForm.assigned_to_name} className="bg-blue-600 text-white" data-testid="confirm-issue-btn">Issue</Button></DialogFooter>
+          <DialogFooter><Button variant="outline" onClick={() => setShowIssue(null)}>Cancel</Button><Button onClick={handleIssue} disabled={saving || !String(issueForm.assigned_to_name || '').trim()} className="bg-blue-600 text-white" data-testid="confirm-issue-btn">Issue</Button></DialogFooter>
         </DialogContent>
       </Dialog>
 
