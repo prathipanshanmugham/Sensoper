@@ -116,6 +116,8 @@ _hard("DELETE", "/api/integrations/google-drive", "never", "Disconnecting Google
 _hard("PUT", "/api/audit-logs/archive-config", "never", "Archiving and clearing the activity log is for an admin.")
 _hard("POST", "/api/audit-logs/archives/**", "never", "Archiving and clearing the activity log is for an admin.")
 _hard("PUT", "/api/vault/config", "never", "Company logins settings are for an admin.")
+_hard("GET", "/api/audit-logs/archives/{}/download", "never", "Activity log archives hold old values, passwords included. An admin downloads them.")
+_hard("*", "/api/agent-approvals/**", "never", "Only a person signed in to Sensoper can approve what an AI agent asks to do.")
 # logins, roles, permissions and login security
 _hard("*", "/api/security/**", "manage_access", LOGINS_MSG)
 _hard("POST,PUT,PATCH,DELETE", "/api/users/**", "manage_access", LOGINS_MSG)
@@ -172,6 +174,10 @@ _confirm("POST", "/api/projects/{}/client-login", "Creates a website login for t
 _confirm("POST", "/api/projects/{}/portal-link", "Makes a link the customer can open to see their project.")
 _confirm("POST,PUT,PATCH,DELETE", "/api/website/popups/**", "Changes a pop-up that every visitor to sensoper.in sees.")
 _confirm("PUT", "/api/website/settings", "Changes the public website's settings (WhatsApp number, contact details).")
+_confirm("DELETE", "/api/website/leads/**", "Deletes this record.")
+_confirm("PUT,PATCH", "/api/website/leads/**", None)                  # a lead's own follow-up is everyday work, not public
+_confirm("POST,PUT,PATCH,DELETE", "/api/website/**", "Changes what the public website or shop shows (products, prices, testimonials, stores).")
+_confirm("POST,PUT,PATCH,DELETE", "/api/customer-offers/**", "Changes offers that customers see on their dashboards.")
 _confirm("POST", "/api/tneb/fetch", "Sends this customer's details to the bill-fetch service outside Sensoper.")
 _confirm("POST", "/api/amc/contracts/{}/schedule", "Schedules visit reminders that go to the customer.")
 # company, bank and pay details, and settings that decide who sees what
@@ -190,6 +196,7 @@ for _p in ("/api/deletion-requests/{}/approve", "/api/action-requests/{}/approve
     _confirm("POST", _p, "Approves a request to delete or reverse a record. It runs as soon as it is approved.")
 _confirm("PUT", "/api/approvals/{}/approve", "Approves a request, which may delete or change records.")
 _confirm("POST", "/api/hr/exits/{}/complete", "Completes this exit. Their login closes on the last working day.")
+_confirm("POST,PUT,PATCH,DELETE", "/api/hr/exits/**", "Starts or changes someone's exit. Their Sensoper login stops working after the last working day.")
 # many records at once
 for _p in ("/api/inventory/import", "/api/ecommerce/orders/import-commit", "/api/catalogue/products/{}/import",
            "/api/calculate/pincodes/import"):
@@ -213,22 +220,28 @@ def _bank_keys(body: Any, depth: int = 0) -> bool:
     return False
 
 
+_PUBLIC_KEY = re.compile(r"^(on_website|show_on_website|shown_on_website|published|is_public|public|show_on_shop)$", re.I)
+
+
 def confirm_reason(path: str, method: str, body: Any = None) -> Optional[str]:
-    """What will happen, when this call needs a person's yes first (None = it runs straight away)."""
+    """What will happen, when this call needs a person's approval first (None = it runs straight away)."""
     method = (method or "GET").upper()
     forms = _forms(path)
     for methods, rx, what in _CONFIRM:
         if (methods is None or method in methods) and any(rx.match(p) for p in forms):
+            if what is None:
+                break                 # an exception listed before a broader hold
             return what
     if method in ("POST", "PUT", "PATCH") and _bank_keys(body):
         return "Changes bank or payment details."
+    if method in ("POST", "PUT", "PATCH") and isinstance(body, dict) and any(_PUBLIC_KEY.match(str(k)) for k in body):
+        return "Changes what the public website shows."
     return None
 
 
 # Answers that are meant to carry a password (and are only reachable with the right switch and a person's yes)
-_PASSWORD_ANSWERS = [(_rx("/api/vault/{}/reveal"), "read_saved_logins"), (_rx("/api/projects/{}/inverter-password"), "read_saved_logins"),
-                     (_rx("/api/client-accounts"), None), (_rx("/api/client-accounts/{}/reset-password"), None),
-                     (_rx("/api/projects/{}/client-login"), None)]
+# Customer logins and resets are not here: their new password never reaches an agent (the person who approved sees it).
+_PASSWORD_ANSWERS = [(_rx("/api/vault/{}/reveal"), "read_saved_logins"), (_rx("/api/projects/{}/inverter-password"), "read_saved_logins")]
 
 
 def passwords_allowed(path: str, method: str, agent: Dict[str, Any]) -> bool:
@@ -244,31 +257,73 @@ def passwords_allowed(path: str, method: str, agent: Dict[str, Any]) -> bool:
 HIDDEN = "[hidden]"
 _SECRET_KEY = re.compile(
     r"(password|passwd|pwd)_?(hash|enc|encrypted)|hashed_?password|(^|_)hash(es)?$|_hashes$|_enc$|^enc_|encrypted|cipher|"
-    r"secret|api_?key|private_?key|manual_key|(access|refresh|id|auth|session|bearer|reset|invite|preauth|csrf|consent)_?token|"
-    r"totp|backup_?codes?|otp_?(secret|code)|recovery_?codes?", re.I)
+    r"secret|api_?key|private_?key|manual_key|(^|_)token$|(^|_)tokens$|token_(hash|enc)|"
+    r"(^|_)(pin|mpin|upi_pin|login_pin|otp|otp_code|otp_secret)$|totp|backup_?codes?|recovery_?codes?", re.I)
 _PASSWORD_KEY = re.compile(r"(^|_)(password|passwd|pwd|passcode|new_password|temp_password)$", re.I)
 _SECRET_VALUE = re.compile(r"snp_(key|at|rt)_[A-Za-z0-9_-]{20,}|\$2[aby]\$\d\d\$[./A-Za-z0-9]{53}|"
                            r"eyJ[A-Za-z0-9_-]{8,}\.eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}|gAAAAA[A-Za-z0-9_=-]{40,}")
+# "password: hunter2" or "api_key=xyz" written inside text (not PIN: in India that is also a postal code)
+_SECRET_TEXT = re.compile(r"(?i)\b(password|passwd|pwd|passcode|secret|client[_ -]?secret|api[_ -]?key|access[_ -]?token|"
+                          r"refresh[_ -]?token|otp)(\s*[:=]\s*)(\"[^\"]*\"|'[^']*'|[^\s,;&\"']+)")
+_CAMEL = re.compile(r"(?<=[a-z0-9])(?=[A-Z])")
+
+
+def _key(k: Any) -> str:
+    """'passwordHash' and 'password-hash' read as 'password_hash'."""
+    return _CAMEL.sub("_", str(k)).replace("-", "_").lower()
+
+
+def secret_key(k: Any, allow_passwords: bool = False) -> bool:
+    kk = _key(k)
+    return bool(_SECRET_KEY.search(kk) or (not allow_passwords and _PASSWORD_KEY.search(kk)))
+
+
+def scrub_text(text: str) -> str:
+    text = _SECRET_VALUE.sub(HIDDEN, text)
+    return _SECRET_TEXT.sub(lambda m: f"{m.group(1)}{m.group(2)}{HIDDEN}", text)
+
+
+def _scrub_str(v: str, allow_passwords: bool, depth: int) -> str:
+    t = v.strip()
+    if len(t) > 1 and t[0] in "{[" and t[-1] in "}]":     # JSON kept as text (audit old_data / new_data)
+        try:
+            inner = json.loads(t)
+        except ValueError:
+            inner = None
+        if isinstance(inner, (dict, list)):
+            return json.dumps(scrub(inner, allow_passwords, depth + 1), ensure_ascii=False, default=str)
+    return scrub_text(v) if len(v) > 6 else v
 
 
 def scrub(data: Any, allow_passwords: bool = False, _depth: int = 0) -> Any:
-    """The same data with secrets replaced by "[hidden]" (yes/no flags such as totp_enabled stay)."""
+    """The same data with secrets replaced by "[hidden]" (yes/no flags such as totp_enabled stay). A hidden value is
+    also taken out of the other fields next to it (a portal token inside its link)."""
     if _depth > 40:
         return data
     if isinstance(data, dict):
-        out = {}
+        out: Dict[str, Any] = {}
+        found: List[str] = []
+        pair_name = next((data[n] for n in ("key", "name", "field", "label") if isinstance(data.get(n), str)), None)
+        pair_secret = pair_name is not None and secret_key(pair_name, allow_passwords)    # {"key": "api_key", "value": "…"}
         for k, v in data.items():
-            ks = str(k)
-            secret = _SECRET_KEY.search(ks) or (not allow_passwords and _PASSWORD_KEY.search(ks))
-            if secret and v not in (None, "", [], {}) and not isinstance(v, (bool, int, float)):
+            hide = secret_key(k, allow_passwords) or (pair_secret and str(k) in ("value", "val", "secret"))
+            if hide and v not in (None, "", [], {}) and not isinstance(v, (bool, int, float)):
                 out[k] = HIDDEN
+                if isinstance(v, str) and len(v) >= 8:
+                    found.append(v)
             else:
                 out[k] = scrub(v, allow_passwords, _depth + 1)
+        if found:
+            for k, v in out.items():
+                if isinstance(v, str) and v != HIDDEN:
+                    for f in found:
+                        v = v.replace(f, HIDDEN)
+                    out[k] = v
         return out
     if isinstance(data, list):
         return [scrub(x, allow_passwords, _depth + 1) for x in data]
-    if isinstance(data, str) and len(data) > 20 and _SECRET_VALUE.search(data):
-        return _SECRET_VALUE.sub(HIDDEN, data)
+    if isinstance(data, str):
+        return _scrub_str(data, allow_passwords, _depth)
     return data
 
 
@@ -276,8 +331,27 @@ def scrub_json_bytes(raw: bytes, allow_passwords: bool = False) -> bytes:
     try:
         data = json.loads(raw)
     except (ValueError, UnicodeDecodeError):
-        return _SECRET_VALUE.sub(HIDDEN, raw.decode("utf-8", "replace")).encode()
+        return scrub_text(raw.decode("utf-8", "replace")).encode()
     return json.dumps(scrub(data, allow_passwords), ensure_ascii=False, default=str, separators=(",", ":")).encode()
+
+
+def scrub_csv(text: str) -> str:
+    """A CSV download: columns whose header names a secret are blanked, and secrets written in cells are hidden."""
+    import csv
+    import io
+    try:
+        rows = list(csv.reader(io.StringIO(text)))
+    except csv.Error:
+        return scrub_text(text)
+    if not rows:
+        return text
+    bad = {i for i, h in enumerate(rows[0]) if secret_key(h.strip())}
+    out = io.StringIO()
+    w = csv.writer(out, lineterminator="\n")
+    w.writerow(rows[0])
+    for r in rows[1:]:
+        w.writerow([HIDDEN if i in bad and c else scrub_text(c) for i, c in enumerate(r)])
+    return out.getvalue()
 
 
 def summarize(body: Any, limit: int = 180) -> str:

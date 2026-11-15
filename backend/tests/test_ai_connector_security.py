@@ -221,10 +221,18 @@ async def _leaky(request: "server.Request"):
     return {k: (str(v) if k == "_id" else v) for k, v in u.items()}
 
 
+async def _leaky_csv(request: "server.Request"):
+    """A test-only CSV download with a secret column and a secret written in a cell."""
+    from fastapi.responses import PlainTextResponse
+    await server.get_current_user(request)
+    return PlainTextResponse("name,api_key,notes\nDrive,AIzaSyLEAKED123,password: hunter2\n", media_type="text/csv")
+
+
 @pytest.fixture(scope="module")
 def world(app, loop):
     if not any(getattr(r, "path", "") == "/api/sec-test/leaky" for r in app.routes):
         app.add_api_route("/api/sec-test/leaky", _leaky, methods=["GET"])
+        app.add_api_route("/api/sec-test/leaky.csv", _leaky_csv, methods=["GET"])
 
     async def go():
         server._agents_router.reset_limits()
@@ -251,17 +259,23 @@ def world(app, loop):
         await db.locations.delete_many({"name": {"$regex": "^SEC "}})
         await db.vendors.delete_many({"name": {"$regex": "^(SEC |IGNORE)"}})
         await db.projects.delete_many({"reference_number": {"$regex": "^SECP-"}})
-        for col in ("agents", "agent_tokens", "agent_activity", "agent_settings", "agent_confirms", "oauth_clients", "oauth_codes", "oauth_requests"):
+        for col in ("agents", "agent_tokens", "agent_activity", "agent_settings", "agent_approvals", "oauth_clients", "oauth_codes", "oauth_requests"):
             await db[col].delete_many({})
+        await db.notifications.delete_many({"kind": "ai_approval"})
+        await db.hr_exits.delete_many({"user_id": {"$in": list(ids_holder.values())}})
         server._agents_router.reset_limits()
 
-    yield run(loop, go())
+    ids_holder: dict = {}
+    w = run(loop, go())
+    ids_holder.update(w["ids"])
+    yield w
     run(loop, tidy())
 
 
 @pytest.fixture(autouse=True)
 def fresh_limits():
     server._agents_router.reset_limits()
+    agents.CONFIRM_WAIT_SECONDS = 0          # confirm_action answers "still waiting" at once in tests
     yield
 
 
@@ -345,13 +359,23 @@ def test_refresh_rotation_reuse_revoke_and_switches(app, loop, world):
         t = await connect(app, a, access="write", state="state with spaces & = /")
         cc = client(app, t["access_token"])
         assert (await rpc(cc, "ping"))["result"] == {}
-        # rotation; a parallel refresh inside the grace minute still works (so a race never logs the owner out)
-        r1 = (await anon.post("/api/oauth/token", data={"grant_type": "refresh_token", "refresh_token": t["refresh_token"]})).json()
-        r1b = (await anon.post("/api/oauth/token", data={"grant_type": "refresh_token", "refresh_token": t["refresh_token"]})).json()
-        assert r1["refresh_token"] != t["refresh_token"] and "access_token" in r1b
-        r2 = (await anon.post("/api/oauth/token", data={"grant_type": "refresh_token", "refresh_token": r1["refresh_token"], "client_id": t["client_id"]})).json()
+        cid = t["client_id"]
+        refresh = lambda rt, c=cid: anon.post("/api/oauth/token", data={"grant_type": "refresh_token", "refresh_token": rt, **({"client_id": c} if c else {})})  # noqa: E731
+        # the refresh must name this connection's app
+        assert (await refresh(t["refresh_token"], None)).status_code == 400
+        assert (await refresh(t["refresh_token"], "snpc_other")).status_code == 400
+        # rotation; one retry inside the grace minute gets the very same pair back (a race never logs the owner out) …
+        r1 = (await refresh(t["refresh_token"])).json()
+        r1b = (await refresh(t["refresh_token"])).json()
+        assert r1["refresh_token"] != t["refresh_token"] and r1b == r1
+        # … and a second retry is reuse: the whole connection is signed out
+        assert (await refresh(t["refresh_token"])).status_code == 400
+        assert (await rpc(client(app, r1["access_token"]), "ping", status=401))["error"] == "invalid_token"
+        t = await connect(app, a, access="write")
+        cid = t["client_id"]
+        r1 = (await refresh(t["refresh_token"], cid)).json()
+        r2 = (await refresh(r1["refresh_token"], cid)).json()
         assert (await rpc(client(app, r2["access_token"]), "ping"))["result"] == {}
-        assert (await anon.post("/api/oauth/token", data={"grant_type": "refresh_token", "refresh_token": r2["refresh_token"], "client_id": "snpc_x"})).status_code == 400
         # pause / switch off: 403 at once, and the same token works again on resume (no reconnecting)
         aid = str((await db.agent_tokens.find_one({"hash": agents.token_hash(r2["access_token"])}))["agent_id"])
         live = client(app, r2["access_token"])
@@ -365,21 +389,21 @@ def test_refresh_rotation_reuse_revoke_and_switches(app, loop, world):
         assert (await live.get("/api/vendors")).status_code == 200
         # reuse after the grace minute: the whole connection is signed out, the admin sees why, it is logged
         await db.agent_tokens.update_one({"hash": agents.token_hash(r1["refresh_token"])}, {"$set": {"rotated_at": "2020-01-01T00:00:00+00:00"}})
-        assert (await anon.post("/api/oauth/token", data={"grant_type": "refresh_token", "refresh_token": r1["refresh_token"]})).status_code == 400
+        assert (await refresh(r1["refresh_token"], cid)).status_code == 400
         assert (await rpc(live, "ping", status=401))["error"] == "invalid_token"
-        assert (await anon.post("/api/oauth/token", data={"grant_type": "refresh_token", "refresh_token": r2["refresh_token"]})).status_code == 400
+        assert (await refresh(r2["refresh_token"], cid)).status_code == 400
         row = [x for x in (await a.get("/api/agents")).json()["agents"] if x["id"] == aid][0]
         assert "used again" in row["signed_out_reason"]
         assert await db.agent_activity.find_one({"agent_id": aid, "method": "AUTH", "status": 401})
         # revoke: an access token alone, then the refresh token takes everything with it
         t = await connect(app, a)
-        t2 = (await anon.post("/api/oauth/token", data={"grant_type": "refresh_token", "refresh_token": t["refresh_token"]})).json()
+        t2 = (await refresh(t["refresh_token"], t["client_id"])).json()
         assert (await anon.post("/api/oauth/revoke", data={"token": t["access_token"]})).status_code == 200
         assert (await client(app, t["access_token"]).get("/api/vendors")).status_code == 401
         assert (await client(app, t2["access_token"]).get("/api/vendors")).status_code == 200
         assert (await anon.post("/api/oauth/revoke", data={"token": t2["refresh_token"]})).status_code == 200
         assert (await client(app, t2["access_token"]).get("/api/vendors")).status_code == 401
-        assert (await anon.post("/api/oauth/token", data={"grant_type": "refresh_token", "refresh_token": t2["refresh_token"]})).status_code == 400
+        assert (await refresh(t2["refresh_token"], t["client_id"])).status_code == 400
         assert (await anon.post("/api/oauth/revoke", data={"token": "nonsense"})).status_code == 200
     run(loop, go())
 
@@ -405,9 +429,10 @@ def test_a_connector_made_before_this_release_keeps_working(app, loop, world):
         assert r.status_code == 200 and {"call_api", "app_map"} <= {t["name"] for t in r.json()["result"]["tools"]}
         got, err = await tool(c, "call_api", method="GET", path="/api/vendors")
         assert not err and got["ok"]
-        assert (await anon.post("/api/oauth/token", data={"grant_type": "refresh_token", "refresh_token": old_rt})).status_code == 400
+        legacy = {"grant_type": "refresh_token", "client_id": "snpc_legacy"}     # the MCP SDK sends client_id for public clients
+        assert (await anon.post("/api/oauth/token", data={**legacy, "refresh_token": old_rt})).status_code == 400
         assert (await rpc(c, "ping"))["result"] == {}        # an old, already-swapped token isn't treated as theft
-        new = (await anon.post("/api/oauth/token", data={"grant_type": "refresh_token", "refresh_token": rt})).json()
+        new = (await anon.post("/api/oauth/token", data={**legacy, "refresh_token": rt})).json()
         assert (await rpc(client(app, new["access_token"]), "ping"))["result"] == {}
         await db.agents.delete_one({"_id": res.inserted_id})
         await db.agent_tokens.delete_many({"agent_id": res.inserted_id})
@@ -433,7 +458,7 @@ def test_mcp_endpoint_checks(app, loop, world):
         assert (await c.post("/api/mcp", content=b"<xml/>", headers={"content-type": "text/xml"})).status_code == 415
         assert (await c.post("/api/mcp", content=b"{nope", headers={"content-type": "application/json"})).status_code == 400
         assert (await c.post("/api/mcp", json={"jsonrpc": "2.0", "id": 1, "method": "ping"}, headers={"mcp-protocol-version": "1999-01-01"})).status_code == 400
-        assert (await c.post("/api/mcp", json=[{"jsonrpc": "2.0", "id": i, "method": "ping"} for i in range(21)])).status_code == 400
+        assert (await c.post("/api/mcp", json=[{"jsonrpc": "2.0", "id": i, "method": "ping"} for i in range(11)])).status_code == 400
         assert len((await c.post("/api/mcp", json=[{"jsonrpc": "2.0", "id": i, "method": "ping"} for i in range(3)])).json()) == 3
         nope = await rpc(c, "tools/call", {"name": "drop_tables", "arguments": {}})
         assert "The tools are" in nope["error"]["message"]
@@ -487,41 +512,57 @@ def test_call_api_tricks_access_and_the_confirm_step(app, loop, world):
         assert made["ok"] and made["summary"].startswith("200 OK")
         got, err = await tool(cw, "call_api", method="DELETE", path=f"/api/vendors/{vid}")
         assert err and "Full control" in got["error"]
-        # full control: the delete is held; only confirm_action runs it, once
+        # full control: the delete waits for a person in Sensoper; only then does confirm_action run it, once
         held, err = await tool(cf, "call_api", method="DELETE", path=f"/api/vendors/{vid}")
-        assert not err and held["needs_confirmation"] and held["status"] == 428 and "Deletes this record" in held["what_will_happen"]
-        assert await db.vendors.find_one({"name": "SEC Erode Panels"})
-        other, _ = await tool(cw, "confirm_action", confirm_token=held["confirm_token"])   # another agent can't use it
-        assert not other.get("ok")
-        done, err = await tool(cf, "confirm_action", confirm_token=held["confirm_token"])
-        assert not err and done["ok"] and done["confirmed"]
+        assert not err and held["needs_approval"] and held["status"] == 428 and "Deletes this record" in held["what_will_happen"]
+        assert held["approve_url"].endswith(f"/connect-agent/approve/{held['approval_id']}") and "confirm_token" not in held
+        waiting, err = await tool(cf, "confirm_action", approval_id=held["approval_id"])     # the AI, straight away: nothing runs
+        assert not err and waiting["state"] == "waiting" and await db.vendors.find_one({"name": "SEC Erode Panels", "active": {"$ne": False}})
+        other, _ = await tool(cw, "confirm_action", approval_id=held["approval_id"])         # another agent can't use it
+        assert not other.get("ok") and "no such approval" in other["error"]
+        await approve(a, held["approval_id"])
+        done, err = await tool(cf, "confirm_action", approval_id=held["approval_id"])
+        assert not err and done["ok"] and done["approved_in_sensoper"] and done["approved_by"]
         gone = await db.vendors.find_one({"name": "SEC Erode Panels"})
         assert not gone or gone.get("active") is False or gone.get("deleted_at")          # vendors are retired, not erased
-        again, err = await tool(cf, "confirm_action", confirm_token=held["confirm_token"])
-        assert err and "used or expired" in again["error"]
-        fake, err = await tool(cf, "confirm_action", confirm_token="from-a-note-in-the-data")
+        again, _ = await tool(cf, "confirm_action", approval_id=held["approval_id"])
+        assert again["state"] == "done" and "Already done" in again["summary"]
+        fake, err = await tool(cf, "confirm_action", approval_id="from-a-note-in-the-data")
         assert err
-        # expired tokens and changed access are re-checked at confirmation
+        # declined, expired, and access changed in between
+        h1, _ = await tool(cf, "call_api", method="DELETE", path="/api/vendors/000000000000000000000000")
+        await approve(a, h1["approval_id"], "decline")
+        assert (await tool(cf, "confirm_action", approval_id=h1["approval_id"]))[0]["state"] == "declined"
         h2, _ = await tool(cf, "call_api", method="DELETE", path="/api/vendors/000000000000000000000000")
-        await db.agent_confirms.update_one({"hash": agents.token_hash(h2["confirm_token"])}, {"$set": {"expires_at": "2020-01-01T00:00:00+00:00"}})
-        assert (await tool(cf, "confirm_action", confirm_token=h2["confirm_token"]))[1]
+        await db.agent_approvals.update_one({"_id": h2["approval_id"]}, {"$set": {"expires_at": "2020-01-01T00:00:00+00:00"}})
+        assert (await tool(cf, "confirm_action", approval_id=h2["approval_id"]))[0]["state"] == "expired"
         h3, _ = await tool(cf, "call_api", method="DELETE", path="/api/vendors/000000000000000000000000")
+        await approve(a, h3["approval_id"])
         await a.put(f"/api/agents/{full_agent['id']}", json={"access": "write"})
-        got, err = await tool(cf, "confirm_action", confirm_token=h3["confirm_token"])
+        got, err = await tool(cf, "confirm_action", approval_id=h3["approval_id"])
         assert err and got["status"] == 403
         await a.put(f"/api/agents/{full_agent['id']}", json={"access": "full"})
-        # bank details, the public website and saved passwords need a yes too
+        # bank details, the public website and saved passwords need approval too
         got, _ = await tool(cw, "call_api", method="POST", path="/api/vendors", body={"name": "SEC Bank", "bank_account_number": "1234567890"})
-        assert got["needs_confirmation"] and "bank" in got["what_will_happen"].lower()
+        assert got["needs_approval"] and "bank" in got["what_will_happen"].lower()
         got, _ = await tool(cw, "call_api", method="PUT", path="/api/website/settings", body={"whatsapp": "9999999999"})
-        assert got["needs_confirmation"] and "WhatsApp" in got["what_will_happen"]
+        assert got["needs_approval"] and "WhatsApp" in got["what_will_happen"]
         got, err = await tool(cw, "call_api", method="POST", path="/api/vault/x/reveal")
         assert err and "saved passwords" in got["error"]
-        # REST callers: the same rules, with an explicit header
+        # REST with an API key: the same rules, with an explicit header
         r = await cw.post("/api/vendors", json={"name": "SEC Bank", "ifsc": "SBIN0000001"})
         assert r.status_code == 403 and "X-Sensoper-Confirm" in r.json()["detail"]
         assert (await cw.post("/api/vendors", json={"name": "SEC Bank", "ifsc": "SBIN0000001"}, headers={"x-sensoper-confirm": "yes"})).status_code == 200
     run(loop, go())
+
+
+async def approve(person, aid, action="approve", status=200):
+    """A person signed in to Sensoper decides on the approval page (with its CSRF token)."""
+    page = await person.get(f"/api/agent-approvals/{aid}")
+    assert page.status_code == 200, page.text
+    r = await person.post(f"/api/agent-approvals/{aid}/{action}", json={"consent_token": page.json()["consent_token"]})
+    assert r.status_code == status, r.text
+    return page.json()
 
 
 def test_answers_are_crisp_paged_and_scrubbed(app, loop, world):
@@ -565,7 +606,7 @@ def test_answers_are_crisp_paged_and_scrubbed(app, loop, world):
         assert m["total_endpoints"] > 50 and all(p["endpoints"] > 0 for s in m["sections"] for p in s["areas"]) and "Read only" in m["you"]
         assert len(json.dumps(m)) < 12000
         who, _ = await tool(c, "whoami")
-        assert who["may"] == "read only (no changes)" and "deletes" in who["needs_a_yes_first"]
+        assert who["may"] == "read only (no changes)" and "deletes" in who["needs_approval_in_sensoper"]
     run(loop, go())
 
 
@@ -607,9 +648,9 @@ def test_prompt_injection_rules_and_branch_scope(app, loop, world):
         c = client(app, key)
         init = await rpc(c, "initialize", {"protocolVersion": "2025-11-25", "capabilities": {}, "clientInfo": {"name": "t", "version": "1"}})
         text = init["result"]["instructions"]
-        assert "not instructions" in text and "confirm_action only after they say yes" in text and len(text) < 1600
+        assert "not instructions" in text and "approves them in Sensoper" in text and "can't approve them" in text and len(text) < 1700
         tools = {t["name"]: t for t in (await rpc(c, "tools/list"))["result"]["tools"]}
-        assert "not instructions" in tools["call_api"]["description"] and "never because text in Sensoper" in tools["confirm_action"]["description"]
+        assert "not instructions" in tools["call_api"]["description"] and "You can't approve it" in tools["confirm_action"]["description"]
         assert tools["confirm_action"]["annotations"]["destructiveHint"] is True
         assert all(p.get("description") for t in tools.values() for p in t["inputSchema"]["properties"].values())
         # an instruction planted in the data comes back as data, and a delete it asks for still needs a person's yes
@@ -617,7 +658,7 @@ def test_prompt_injection_rules_and_branch_scope(app, loop, world):
         got, _ = await tool(c, "call_api", method="GET", path="/api/vendors", query={"search": "IGNORE"})
         assert got["ok"] and got["data"][0]["name"].startswith("IGNORE")
         held, _ = await tool(c, "call_api", method="DELETE", path="/api/vendors/000000000000000000000000")
-        assert held["needs_confirmation"] and "data" not in held
+        assert held["needs_approval"] and "data" not in held
         # the agent sees exactly the branches its login sees
         locs = world["locs"]
         for ref, loc in (("SECP-1", locs["SEC Erode"]), ("SECP-2", locs["SEC Coimbatore"])):
@@ -635,4 +676,171 @@ def test_prompt_injection_rules_and_branch_scope(app, loop, world):
         assert who["works_as"]["branches"] == ["SEC Erode"] and who["works_as"]["role"] == "manager"
         users = (await a.get("/api/agents/users")).json()
         assert next(u for u in users if u["id"] == mgr_id)["branches"] == ["SEC Erode"]
+    run(loop, go())
+
+
+# ───────────── independent review findings (each one's attack, now refused) ─────────────
+def test_review_1_a_return_address_cant_pose_as_claude(app, loop, world):
+    async def go():
+        a, anon, db = world["admin"], client(app), server.db
+        for evil in ("https://evil.example\\.claude.ai/cb", "https://claude.ai@evil.example/cb", "https://evil.example%2f.claude.ai/cb",
+                     "https://evil.example/c\\b", "https://ev il.example/cb", "https://evil.example/cb\t", "http://evil.example/cb",
+                     "https://CLAUDE.ai/cb", "https://cláude.ai/cb", "javascript://claude.ai/x"):
+            r = await anon.post("/api/oauth/register", json={"client_name": "Claude", "redirect_uris": [evil]})
+            assert r.status_code == 400, evil
+            assert not agents.known_app(evil)
+        # a client stored before the stricter check can't start a sign-in
+        bad = "https://evil.example\\.claude.ai/cb"
+        await db.oauth_clients.insert_one({"client_id": "snpc_prefix", "client_name": "Claude", "redirect_uris": [bad], "used": False,
+                                           "created_at": agents.now_utc().isoformat()})
+        r = await anon.get("/api/oauth/authorize", params={"response_type": "code", "client_id": "snpc_prefix", "redirect_uri": bad,
+                                                           "code_challenge": CHALLENGE, "code_challenge_method": "S256"})
+        assert r.status_code == 400 and "location" not in r.headers
+        # a look-alike host is shown exactly, with a warning; only Claude's own hosts get the trusted badge
+        cid = (await anon.post("/api/oauth/register", json={"client_name": "Claude", "redirect_uris": ["https://claude.ai.evil.example/cb"]})).json()["client_id"]
+        q = {"response_type": "code", "client_id": cid, "redirect_uri": "https://claude.ai.evil.example/cb", "code_challenge": CHALLENGE, "code_challenge_method": "S256"}
+        rid = parse_qs(urlparse((await anon.get("/api/oauth/authorize", params=q)).headers["location"]).query)["request"][0]
+        info = (await a.get(f"/api/oauth/requests/{rid}")).json()
+        assert info["return_host"] == "claude.ai.evil.example" and not info["known_app"] and "claude.ai.evil.example" in info["warning"]
+        assert agents.known_app("https://claude.ai/api/mcp/auth_callback") and agents.known_app("https://api.claude.ai/cb")
+        assert agents.return_place("http://localhost:6274/cb") == "this computer (localhost:6274)"
+    run(loop, go())
+
+
+def test_review_2_only_a_person_can_approve_and_tokens_cant_self_confirm(app, loop, world):
+    async def go():
+        a, db = world["admin"], server.db
+        agent, key = await key_agent(a, name="Injected", access="full")
+        c = client(app, key)
+        made, _ = await tool(c, "call_api", method="POST", path="/api/vendors", body={"name": "SEC SelfConfirm"})
+        vid = made["data"]["id"]
+        held, _ = await tool(c, "call_api", method="DELETE", path=f"/api/vendors/{vid}")
+        aid = held["approval_id"]
+        done, err = await tool(c, "confirm_action", approval_id=aid)                 # the model itself, same turn
+        assert not err and done["state"] == "waiting" and not done["ok"]
+        assert await db.vendors.find_one({"_id": server.ObjectId(vid), "active": {"$ne": False}})
+        # the agent can't approve: not through call_api, not with its key, and it can't see the approvals
+        got, err = await tool(c, "call_api", method="POST", path=f"/api/agent-approvals/{aid}/approve", body={"consent_token": "x"})
+        assert err and got["status"] == 403
+        assert (await c.post(f"/api/agent-approvals/{aid}/approve", json={"consent_token": "x"})).status_code == 403
+        assert (await c.get("/api/agent-approvals")).status_code == 403
+        assert (await c.delete(f"/api/vendors/{vid}", headers={agents.APPROVED_HEADER: f"{aid}.forged"})).status_code == 403
+        # the person: a bell note with the link, a CSRF token, a page from Sensoper only
+        note = await db.notifications.find_one({"kind": "ai_approval", "source_id": aid})
+        assert note and note["link"] == f"/connect-agent/approve/{aid}" and note["status"] == "pending"
+        page = (await a.get(f"/api/agent-approvals/{aid}")).json()
+        assert page["status"] == "waiting" and "Deletes this record" in page["what"] and page["agent_name"] == "Injected"
+        assert (await a.post(f"/api/agent-approvals/{aid}/approve", json={})).status_code == 403
+        evil = client(app, origin="https://evil.example")
+        evil.cookies = a.cookies
+        assert (await evil.post(f"/api/agent-approvals/{aid}/approve", json={"consent_token": page["consent_token"]})).status_code == 403
+        mgr = await login(app, EMAILS[0], PW)                                       # not the login it works as, not an admin
+        assert (await mgr.get(f"/api/agent-approvals/{aid}")).status_code == 404
+        assert aid not in {x["id"] for x in (await mgr.get("/api/agent-approvals")).json()["approvals"]}
+        listed = (await a.get("/api/agent-approvals")).json()
+        assert listed["waiting"] >= 1 and any(x["id"] == aid for x in listed["approvals"])
+        await approve(a, aid)
+        assert not await db.notifications.find_one({"kind": "ai_approval", "source_id": aid, "status": "pending"})
+        await approve(a, aid, status=409)                                           # decided once
+        done, err = await tool(c, "confirm_action", approval_id=aid)
+        assert done["ok"] and not await db.vendors.find_one({"_id": server.ObjectId(vid), "active": {"$ne": False}})
+        assert await db.audit_logs.find_one({"action_type": "approve_ai_action", "entity_id": aid})
+        # the login the agent works as may approve its own agent's request
+        mgr_id = world["ids"][EMAILS[0]]
+        _, mkey = await key_agent(a, name="Manager's helper", access="full", run_as_user_id=mgr_id)
+        h, _ = await tool(client(app, mkey), "call_api", method="DELETE", path="/api/vendors/000000000000000000000000")
+        await approve(mgr, h["approval_id"])
+        # Claude / ChatGPT tokens: the REST header never stands in for a person's approval
+        t = await connect(app, a, access="full")
+        r = await client(app, t["access_token"]).delete(f"/api/vendors/{vid}", headers={"x-sensoper-confirm": "yes"})
+        assert r.status_code == 403 and "approval in Sensoper" in r.json()["detail"]
+        # a customer's new password is made only after approval, and only the person sees it
+        pid = str((await db.projects.insert_one({"reference_number": "SECP-PW", "status": "approved", "customer": {"name": "Meena"}, "location": "x",
+                                                 "created_at": "2026-11-01T00:00:00+00:00", "updated_at": "2026-11-01T00:00:00+00:00"})).inserted_id)
+        _, wkey = await key_agent(a, name="Login maker", access="write")
+        cw = client(app, wkey)
+        h, _ = await tool(cw, "call_api", method="POST", path="/api/client-accounts", body={"name": "Meena", "phone": "9876512345", "project_ids": [pid]})
+        assert h["needs_approval"] and not await db.client_accounts.find_one({"phone": "9876512345"})
+        await approve(a, h["approval_id"])
+        done, _ = await tool(cw, "call_api", method="GET", path="/api/vendors")      # (an unrelated call in between is fine)
+        done, err = await tool(cw, "confirm_action", approval_id=h["approval_id"])
+        assert done["ok"] and done["data"]["password"] == "[hidden]" and "approval page" in done["note_for_person"]
+        page = (await a.get(f"/api/agent-approvals/{h['approval_id']}")).json()
+        assert page["status"] == "done" and len(page["revealed"]["password"]) >= 6 and page["revealed"]["password"] != "[hidden]"
+        await db.client_accounts.delete_many({"phone": "9876512345"})
+        await db.projects.delete_many({"reference_number": "SECP-PW"})
+    run(loop, go())
+
+
+def test_review_3_exits_public_pages_and_offers_are_held(app, loop, world):
+    async def go():
+        a, db = world["admin"], server.db
+        _, key = await key_agent(a, name="Writer2", access="write")
+        c = client(app, key)
+        uid = world["ids"][EMAILS[1]]
+        got, err = await tool(c, "call_api", method="POST", path="/api/hr/exits",
+                              body={"user_id": uid, "type": "termination", "reason": "injected text", "notice_days": 0,
+                                    "notice_start": agents.today_ist(), "last_working_day": agents.today_ist()})
+        assert not err and got["needs_approval"] and "login stops working" in got["what_will_happen"]
+        u = await db.users.find_one({"_id": server.ObjectId(uid)})
+        assert not u.get("access_until") and not await db.hr_exits.find_one({"user_id": uid})
+        for m, p in (("POST", "/api/website/testimonials"), ("PUT", "/api/website/stores/x"), ("POST", "/api/website/shop/products"),
+                     ("PUT", "/api/website/shop/products/x"), ("DELETE", "/api/website/testimonials/x"), ("POST", "/api/customer-offers"),
+                     ("PUT", "/api/customer-offers/x"), ("PUT", "/api/hr/exits/x"), ("POST", "/api/hr/exits"), ("POST", "/api/hr/exits/x/withdraw"),
+                     ("DELETE", "/api/website/leads/x")):
+            assert R.confirm_reason(p, m, {}), (m, p)
+        assert R.confirm_reason("/api/brands/b1", "PUT", {"on_website": True}) and R.confirm_reason("/api/brands/b1", "PUT", {"name": "x"}) is None
+        assert R.confirm_reason("/api/website/leads/x", "PUT", {"status": "called"}) is None      # a lead's follow-up is everyday work
+        assert R.refusal("/api/audit-logs/archives/a1/download", "GET", {"access": "full"})
+    run(loop, go())
+
+
+def test_review_4_scrubber_gaps(app, loop, world):
+    data = {"portal": {"token": "abc123secretportaltoken", "path": "/my/abc123secretportaltoken"},
+            "audit": {"old_data": '{"totp_secret": "JBSWY3DPEHPK3PXP", "client_secret": "xyz", "name": "A"}'},
+            "camel": {"passwordHash": "x", "apiKey": "k", "accessToken": "t", "clientSecret": "s"},
+            "codes": {"login_pin": "1234", "otp": "9999", "pincode": "638052"}, "pairs": [{"key": "api_key", "value": "zz"}, {"key": "city", "value": "Erode"}],
+            "note": "call him, password: hunter2, PIN: 638052"}
+    out = R.scrub(data)
+    text = json.dumps(out)
+    for leaked in ("abc123secretportaltoken", "JBSWY3DPEHPK3PXP", "xyz", "hunter2", '"zz"', '"1234"', '"9999"'):
+        assert leaked not in text, leaked
+    assert out["camel"] == {k: "[hidden]" for k in data["camel"]} and out["codes"]["pincode"] == "638052"
+    assert json.loads(out["audit"]["old_data"])["name"] == "A" and out["pairs"][1]["value"] == "Erode" and "PIN: 638052" in out["note"]
+
+    async def go():
+        _, key = await key_agent(world["admin"], name="CSV reader", access="read")
+        raw = (await client(app, key).get("/api/sec-test/leaky.csv")).text
+        assert "AIzaSyLEAKED123" not in raw and "hunter2" not in raw and raw.startswith("name,api_key,notes")
+        assert "AIzaSyLEAKED123" in (await world["admin"].get("/api/sec-test/leaky.csv")).text     # people's downloads unchanged
+    run(loop, go())
+
+
+def test_review_5_every_message_in_a_batch_counts(app, loop, world):
+    async def go():
+        _, key = await key_agent(world["admin"], name="Batcher", access="full")
+        c = client(app, key)
+        msgs = [{"jsonrpc": "2.0", "id": i, "method": "tools/call", "params": {"name": "whoami", "arguments": {}}} for i in range(10)]
+        old = agents.RATE_PER_MINUTE
+        agents.RATE_PER_MINUTE = 5
+        try:
+            replies = (await c.post("/api/mcp", json=msgs)).json()
+        finally:
+            agents.RATE_PER_MINUTE = old
+        limited = [r for r in replies if "error" in r and "Too many calls" in r["error"]["message"]]
+        assert len(replies) == 10 and len(limited) == 5
+        assert (await c.post("/api/mcp", json=msgs + [msgs[0]])).status_code == 400          # at most 10 in one request
+    run(loop, go())
+
+
+def test_review_6_refresh_needs_its_client_and_retries_once(app, loop, world):
+    async def go():
+        a, anon = world["admin"], client(app)
+        t = await connect(app, a, access="read")
+        ask = lambda rt, cid: anon.post("/api/oauth/token", data={"grant_type": "refresh_token", "refresh_token": rt, **({"client_id": cid} if cid else {})})  # noqa: E731
+        assert (await ask(t["refresh_token"], None)).status_code == 400
+        first = (await ask(t["refresh_token"], t["client_id"])).json()
+        assert (await ask(t["refresh_token"], t["client_id"])).json() == first            # one retry: the same pair, nothing new minted
+        assert (await ask(t["refresh_token"], t["client_id"])).status_code == 400          # the next: reuse, the chain is revoked
+        assert (await rpc(client(app, first["access_token"]), "ping", status=401))["error"] == "invalid_token"
     run(loop, go())
