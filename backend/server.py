@@ -9047,17 +9047,25 @@ from live_sync import LiveSyncMiddleware  # noqa: E402
 app.add_middleware(LiveSyncMiddleware, db_getter=lambda: db)
 app.add_middleware(_agents.AgentActivityMiddleware, db_getter=lambda: db)
 
-# CORS — origins come from CORS_ORIGINS (comma-separated). "*" is expressed as an origin regex so the
-# exact requesting origin is echoed back, which is what cookie-based (credentialed) auth requires.
-_cors_origins = [o.strip() for o in os.environ.get("CORS_ORIGINS", "*").split(",") if o.strip()]
-if "*" in _cors_origins:
-    logger.warning("CORS_ORIGINS is '*' — any website can make credentialed requests to this API. "
-                   "Set CORS_ORIGINS=https://quote.sensoper.in in backend/.env for production.")
-_cors_kwargs = {"allow_origin_regex": ".*"} if "*" in _cors_origins else {"allow_origins": _cors_origins}
+def cors_origins(raw: Optional[str]) -> List[str]:
+    """The browser origins allowed to call the API with the sign-in cookie. The ERP and the website reach the API on
+    their own address through nginx (same-origin) and AI connectors call it from servers, so none are needed by
+    default. Unset or "*" used to echo back ANY origin with credentials — any website a signed-in user visited could
+    act as them. Now that means none; list specific https origins to allow them."""
+    origins = [o.strip().rstrip("/") for o in (raw or "").split(",") if o.strip()]
+    return [o for o in origins if o != "*"]
+
+
+_cors_origins = cors_origins(os.environ.get("CORS_ORIGINS"))
+if "*" in (os.environ.get("CORS_ORIGINS") or ""):
+    logger.warning("CORS_ORIGINS '*' is ignored: any-origin access with the sign-in cookie isn't allowed. List the exact origins.")
+if not _cors_origins:
+    logger.info("CORS: no cross-origin browser access (same-origin only). To allow another site, set "
+                "CORS_ORIGINS=https://site.example.in (comma-separated, exact origins) in backend/.env.")
 app.add_middleware(
     CORSMiddleware,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
-    **_cors_kwargs,
+    allow_origins=_cors_origins,
 )
