@@ -324,8 +324,16 @@ def create_router(db, get_current_user, require_role, create_audit_log, get_perm
     @router.post("/loans/emi-preview")
     async def emi_preview(request: Request):
         await _gate(request)
-        b = await request.json()
+        try:
+            b = await request.json()
+        except Exception:
+            b = None
+        if not isinstance(b, dict):
+            raise HTTPException(status_code=400, detail="Send the amount, interest rate and tenure in months")
         amt, rate, months = _f(b.get("amount")), _f(b.get("interest_rate")), int(_f(b.get("tenure_months")))
+        # the same limits as a saved loan — a 10^20-month tenure overflowed the EMI formula into a server error
+        if amt < 0 or amt > 1e12 or not 0 <= rate <= 60 or not 0 <= months <= 480:
+            raise HTTPException(status_code=400, detail="Use an amount above 0, a rate of 0–60% a year and a tenure of up to 480 months")
         emi = emi_amount(amt, rate, months)
         total = round(emi * months, 2)
         return {"emi": emi, "total_payable": total, "total_interest": round(total - amt, 2)}
