@@ -22,6 +22,45 @@ function Shell({ children }) {
 
 const minutesLeft = (iso) => Math.max(0, Math.round((new Date(iso).getTime() - Date.now()) / 60000));
 
+/** A value as a person reads it: secrets as dots, empty as a dash. */
+const shown = (v) => {
+  if (v === '[hidden]') return '••••••';
+  if (v === null || v === undefined || v === '') return '—';
+  if (typeof v === 'boolean') return v ? 'Yes' : 'No';
+  if (Array.isArray(v)) return '(empty list)';
+  if (typeof v === 'object') return '(empty)';
+  return String(v);
+};
+
+/** Every value the agent will send, each on its own line with its full path ("bank details › account number"), and
+ *  what it is now when Sensoper could read the record. Changed lines are highlighted. Long lists scroll; "Show all"
+ *  opens the rest — nothing is cut. */
+function Fields({ title, rows, compared, testid }) {
+  const [all, setAll] = useState(false);
+  if (!rows || rows.length === 0) return null;
+  const changed = rows.filter((r) => r.changed).length;
+  const list = all ? rows : rows.slice(0, 40);
+  return (
+    <div className="mt-3" data-testid={testid}>
+      <p className="text-xs font-medium text-slate-700">{title} · {rows.length} value{rows.length === 1 ? '' : 's'}{compared ? ` · ${changed} changed` : ''}</p>
+      <ul className="mt-1 max-h-96 divide-y divide-slate-100 overflow-y-auto rounded-lg border border-slate-200 bg-white">
+        {list.map((r) => (
+          <li key={r.path} className={`px-3 py-2 text-xs ${r.changed ? 'bg-amber-50' : ''}`} data-testid="approval-field">
+            <p className="break-words font-medium text-slate-600">{r.path.replace(/_/g, ' ')}</p>
+            {compared && 'before' in r ? (
+              <p className="mt-0.5 break-all font-mono text-[12px]">
+                {r.changed ? <><span className="text-slate-400 line-through">{shown(r.before)}</span><span className="mx-1 text-slate-400">→</span>
+                  <span className="font-semibold text-amber-900">{shown(r.value)}</span></>
+                  : <span className="text-slate-800">{shown(r.value)} <span className="font-sans text-[10px] text-slate-400">(no change)</span></span>}
+              </p>
+            ) : <p className="mt-0.5 break-all font-mono text-[12px] text-slate-900">{shown(r.value)}</p>}
+          </li>))}
+      </ul>
+      {rows.length > list.length && <button type="button" onClick={() => setAll(true)} className="mt-1 text-xs font-medium text-emerald-700 underline" data-testid={`${testid}-all`}>Show all {rows.length}</button>}
+    </div>
+  );
+}
+
 const STATUS = {
   approved: ['You approved it. The AI runs it the next time it checks — tell it to go ahead if it’s waiting.', 'green', CheckCircle2],
   running: ['Running now.', 'green', Loader2],
@@ -81,9 +120,10 @@ export default function AgentApprovalPage() {
       <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950" data-testid="approval-what">
         <p className="font-medium">What will happen</p>
         <p className="mt-1">{a.what}</p>
-        {a.summary && <p className="mt-2 text-xs text-amber-900">Details: {a.summary}</p>}
-        <p className="mt-2 break-all font-mono text-[11px] text-amber-800">{a.detail || `${a.method} ${a.path}`}</p>
+        <p className="mt-2 break-all font-mono text-[11px] text-amber-800">{a.detail ? a.detail.split(' with ')[0] : `${a.method} ${a.path}`}</p>
       </div>
+      <Fields title="What it will send" rows={a.fields} compared={a.compared} testid="approval-fields" />
+      <Fields title="Filters" rows={a.query_fields} testid="approval-query" />
 
       {waiting ? (
         <>
