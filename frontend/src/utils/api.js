@@ -711,6 +711,11 @@ export const agentsAPI = {
   request: (id) => api.get(`/oauth/requests/${id}`),
   approve: (id, data) => api.post(`/oauth/requests/${id}/approve`, data),
   deny: (id, data) => api.post(`/oauth/requests/${id}/deny`, data),
+  // What an agent asked to do that waits for a person (the login it works as, or an admin)
+  approvals: (status = 'waiting') => api.get('/agent-approvals', { params: { status } }),
+  approval: (id) => api.get(`/agent-approvals/${id}`),
+  approveAction: (id, data) => api.post(`/agent-approvals/${id}/approve`, data),
+  declineAction: (id, data) => api.post(`/agent-approvals/${id}/decline`, data),
 };
 
 // Brands & trademarks (own brands, dealership / distribution brands)

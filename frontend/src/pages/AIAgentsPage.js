@@ -17,8 +17,11 @@ import { Card, Chip, Empty, Field, Loading, PageHeader, PillTabs, addDaysISO, er
 export const ACCESS = [
   ['read', 'Read only', 'Looks things up. Changes nothing.'],
   ['write', 'Read & write', 'Adds and changes records. Can’t delete.'],
-  ['full', 'Full control', 'Everything the login can do, deleting too. Deletes still wait for your yes.'],
+  ['full', 'Full control', 'Everything the login can do, deleting too. Deletes still wait for your approval.'],
 ];
+
+/** True inside another site's frame: pages with agent controls then refuse to draw them (clickjacking). */
+export const isFramed = () => { try { return window.self !== window.top; } catch { return true; } };
 const accessLabel = (k) => (ACCESS.find((a) => a[0] === k) || [k, k])[1];
 const ACCESS_TONE = { read: 'slate', write: 'blue', full: 'amber' };
 export const ROLE = { admin: 'Admin', manager: 'Manager', staff: 'Staff' };
@@ -75,7 +78,7 @@ export function ExtraSwitches({ f, setF }) {
       {[['manage_access', 'Manage logins & permissions', 'Add or change users, roles, permissions and login security.'],
         ['read_saved_logins', 'Read saved passwords', 'Open passwords kept in Company logins and inverter passwords.']].map(([k, label, what]) => (
         <div key={k} className="flex items-start justify-between gap-3 rounded-lg border border-slate-200 p-3">
-          <div><p className="text-sm font-medium text-slate-900">{label}</p><p className="text-[11px] text-slate-500">{what} Each use still waits for your yes. Off unless you need it.</p></div>
+          <div><p className="text-sm font-medium text-slate-900">{label}</p><p className="text-[11px] text-slate-500">{what} Each use still waits for your approval in Sensoper. Off unless you need it.</p></div>
           <Switch checked={!!f[k]} onCheckedChange={(v) => setF((x) => ({ ...x, [k]: v }))} aria-label={label} data-testid={`agent-${k}`} />
         </div>
       ))}
@@ -177,7 +180,7 @@ function SetupGuide({ links, keyValue }) {
       {tab === 'other' && <div className="space-y-2"><CopyBox label="MCP server address (Streamable HTTP)" text={links.mcp_url} /><CopyBox label="Header" text={`Authorization: Bearer ${keyValue || '<agent key>'}`} />
         <p className="text-[11px] text-slate-500">n8n: add an MCP Client Tool to your AI Agent node. Endpoint = the address above, transport = HTTP Streamable, authentication = Bearer with the key. Cursor, Windsurf and the OpenAI Agents SDK take the same two values.</p></div>}
       {tab === 'rest' && <div className="space-y-2"><CopyBox label="Try it" text={s.curl} /><CopyBox label="API description (OpenAPI), same header" text={links.openapi_url} />
-        <p className="text-[11px] text-slate-500">Every /api address works with the key, within the agent’s access. Deletes, bulk changes, logins, bank details and anything that reaches customers answer 403 until you send them again with the header <code>X-Sensoper-Confirm: yes</code>.</p></div>}
+        <p className="text-[11px] text-slate-500">Every /api address works with the key, within the agent’s access. Deletes, bulk changes, logins, bank details and anything that reaches customers answer 403 until you send them again with the header <code>X-Sensoper-Confirm: yes</code>. This header works only with API keys; Claude and ChatGPT always wait for a person’s approval in Sensoper.</p></div>}
     </div>
   );
 }
@@ -230,15 +233,37 @@ function ConnectPanel({ links, off, onSwitchOn, busy }) {
       <div className="mt-3"><CopyBox big label="Connector address" text={links.mcp_url} testid="connect-mcp-url" /></div>
       <div className="mt-3 grid gap-3 md:grid-cols-2">
         <Steps title="Claude" testid="connect-steps-claude" items={[
-          <>In Claude, open <b>Settings → Connectors</b> and press <b>Add custom connector</b>.</>,
-          <>Name it <b>Sensoper</b>, paste the address above, and press <b>Add</b>. Then press <b>Connect</b>.</>,
+          <>In Claude, open <b>Customize → Connectors</b> and press <b>Add custom connector</b>. On a Team or Enterprise plan, an Owner does this under <b>Organization settings → Connectors → Add → Custom</b>.</>,
+          <>Name it <b>Sensoper</b> and paste the address above. If it asks how Claude identifies itself (OAuth client), choose <b>Register automatically</b>. Press <b>Add</b>, then <b>Connect</b>.</>,
           <>Sensoper opens. Sign in, choose what Claude may do, and press <b>Allow</b>.</>]} />
         <Steps title="ChatGPT" testid="connect-steps-chatgpt" items={[
-          <>In ChatGPT, open <b>Settings → Apps & Connectors → Advanced settings</b> and turn on <b>Developer mode</b>.</>,
-          <>Press <b>Create</b>, name it <b>Sensoper</b>, paste the address above, and choose <b>OAuth</b>.</>,
-          <>Sensoper opens. Sign in, choose what ChatGPT may do, and press <b>Allow</b>.</>]} />
+          <>Open <b>chatgpt.com/plugins</b>, press <b>+</b> and choose <b>Add custom MCP server</b>. If you don’t see it, turn on Developer mode in ChatGPT first.</>,
+          <>Name it <b>Sensoper</b>, paste the address above as the <b>Server URL</b>, choose <b>OAuth</b>, then <b>Create as a plugin</b>.</>,
+          <>Install it from your plugins. Sensoper opens: sign in, choose what ChatGPT may do, and press <b>Allow</b>. In a chat, type <b>@</b> and pick Sensoper.</>]} />
       </div>
-      <p className="mt-3 text-xs text-slate-600">It then shows in the list below. Pause or revoke it any time. Deletes and anything that reaches customers wait for your yes in the chat.</p>
+      <p className="mt-3 text-xs text-slate-600">It then shows in the list below. Pause or revoke it any time. Deletes and anything that reaches customers wait for your approval here in Sensoper — the AI can’t approve them itself.</p>
+    </section>
+  );
+}
+
+/** What agents asked to do that waits for a person: approve each on its own page (it shows exactly what will happen). */
+function WaitingApprovals({ rows }) {
+  if (!rows || rows.length === 0) return null;
+  return (
+    <section className="rounded-2xl border border-amber-300 bg-amber-50 p-4" data-testid="waiting-approvals">
+      <h2 className="flex items-center gap-2 font-['Outfit'] text-lg font-semibold text-amber-950"><AlertTriangle className="h-5 w-5 text-amber-600" />
+        Waiting for your approval ({rows.length})</h2>
+      <p className="text-xs text-amber-900">An AI agent asked to do these. Nothing happens until you approve. Decline anything you didn’t ask for.</p>
+      <ul className="mt-3 space-y-2">
+        {rows.map((r) => (
+          <li key={r.id} className="flex flex-wrap items-center gap-2 rounded-xl border border-amber-200 bg-white p-3" data-testid={`waiting-${r.id}`}>
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-medium text-slate-900">{r.what}</p>
+              <p className="truncate text-[11px] text-slate-500">{r.agent_name} · as {r.works_as} · {ago(r.created_at)}{r.summary ? ` · ${r.summary}` : ''}</p>
+            </div>
+            <a href={`/connect-agent/approve/${r.id}`} className="inline-flex h-9 items-center rounded-md bg-emerald-600 px-3 text-sm font-medium text-white hover:bg-emerald-700" data-testid={`waiting-open-${r.id}`}>Review</a>
+          </li>))}
+      </ul>
     </section>
   );
 }
@@ -343,10 +368,10 @@ function KeysTab({ links, onAdd }) {
   );
 }
 
-const OUTCOMES = [['all', 'All calls'], ['changes', 'Changes'], ['held', 'Waited for a yes'], ['refused', 'Refused'], ['failed', 'Failed']];
+const OUTCOMES = [['all', 'All calls'], ['changes', 'Changes'], ['held', 'Asked for approval'], ['refused', 'Refused'], ['failed', 'Failed']];
 
 function outcomeOf(r) {
-  if (r.status === 428) return ['Waited for a yes', 'violet'];
+  if (r.status === 428) return ['Asked for approval', 'violet'];
   if ([401, 403, 429].includes(r.status)) return ['Refused', 'amber'];
   if (r.status >= 500) return ['Failed', 'red'];
   if (r.status >= 400) return ['Failed', 'amber'];
@@ -390,7 +415,7 @@ function ActivityTab({ agents, initialAgent, keptDays }) {
             return (
               <li key={`${r.at}-${i}`} className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-0.5 px-3 py-2.5 text-sm sm:grid-cols-[8.5rem_10rem_minmax(0,1fr)_auto]" data-testid="activity-row">
                 <span className="text-[11px] tabular-nums text-slate-500 sm:pt-0.5">{new Date(r.at).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit', second: '2-digit' })}</span>
-                <span className="col-start-2 row-start-1 flex items-center justify-end gap-1.5 sm:col-start-4">{r.confirmed && <Chip tone="green">You said yes</Chip>}<Chip tone={tone}>{label}</Chip></span>
+                <span className="col-start-2 row-start-1 flex items-center justify-end gap-1.5 sm:col-start-4">{r.confirmed && <Chip tone="green">{r.approval_id ? 'Approved in Sensoper' : 'Confirmed by the script'}</Chip>}<Chip tone={tone}>{label}</Chip></span>
                 <span className="col-span-2 min-w-0 truncate text-xs font-medium text-slate-800 sm:col-span-1 sm:pt-0.5">{r.agent_name}{r.works_as ? <span className="font-normal text-slate-500"> as {r.works_as}</span> : null}</span>
                 <span className="col-span-2 min-w-0 sm:col-span-1">
                   <span className="block truncate font-mono text-xs text-slate-700">{r.method === 'TOOL' ? `tool · ${r.path}` : r.method === 'AUTH' ? `sign-in · ${r.path}` : `${r.method} ${r.path}`}{r.query ? <span className="text-slate-400"> ? {r.query}</span> : null}</span>
@@ -417,8 +442,16 @@ export default function AIAgentsPage() {
   const [confirm, setConfirm] = useState(null);
   const [savingSwitch, setSavingSwitch] = useState(false);
   const [toggling, setToggling] = useState('');
+  const [waiting, setWaiting] = useState([]);
+  const inFrame = isFramed();
   const load = useCallback(() => agentsAPI.list().then((r) => setData(r.data)).catch((e) => { toast.error(errText(e, 'Could not load AI agents')); setData(false); }), []);
-  useEffect(() => { load(); agentsAPI.users().then((r) => setUsers(r.data || [])).catch(() => setUsers([])); }, [load]);
+  const loadWaiting = useCallback(() => agentsAPI.approvals('waiting').then((r) => setWaiting(r.data.approvals || [])).catch(() => {}), []);
+  useEffect(() => {
+    if (inFrame) return undefined;
+    load(); loadWaiting(); agentsAPI.users().then((r) => setUsers(r.data || [])).catch(() => setUsers([]));
+    const t = setInterval(loadWaiting, 20000);     // new approvals show up while the page is open
+    return () => clearInterval(t);
+  }, [load, loadWaiting, inFrame]);
   const links = useMemo(() => (data ? { mcp_url: data.mcp_url, api_url: data.api_url, openapi_url: data.openapi_url } : {}), [data]);
   const { user } = useAuth();
   const meId = user?.id;
@@ -432,6 +465,8 @@ export default function AIAgentsPage() {
     triedAddress.current = true;
     agentsAPI.saveSettings({ public_url: mine }).then((r) => setData((d) => ({ ...d, ...r.data }))).catch(() => {});
   }, [data]);
+  // Clickjacking: inside another site's frame, never draw the switches and buttons.
+  if (inFrame) return <div className="px-4 py-6"><Empty icon={Bot} title="Open AI agents on its own" text="For your safety, Sensoper doesn’t show these settings inside another website." /></div>;
   if (data === null) return <div className="px-4 py-6"><Loading /></div>;
   if (!data) return <div className="px-4 py-6"><Empty title="Could not load AI agents" /></div>;
   const saveSwitches = async (patch) => {
@@ -464,9 +499,10 @@ export default function AIAgentsPage() {
           </div>
         </div>
         {!data.base_url_https && <AddressBox data={data} onSaved={(r) => setData((d) => ({ ...d, ...r }))} />}
-        <PillTabs value={tab} onChange={(t) => setTab(t, { agent: null })} testid="agents-tab" tabs={[['agents', `Agents (${agents.length})`], ['activity', 'Activity'], ['keys', 'Keys & scripts']]} />
+        <PillTabs value={tab} onChange={(t) => setTab(t, { agent: null })} testid="agents-tab" tabs={[['agents', `Agents (${agents.length})`, waiting.length], ['activity', 'Activity'], ['keys', 'Keys & scripts']]} />
         {tab === 'agents' && (
           <div className="space-y-4">
+            <WaitingApprovals rows={waiting} />
             <ConnectPanel links={links} off={!(data.enabled && data.allow_connectors)} busy={savingSwitch} onSwitchOn={() => saveSwitches({ enabled: true, allow_connectors: true })} />
             {agents.length === 0
               ? <Empty icon={Plug} title="No AI agents yet" text="Connect Claude or ChatGPT with the steps above, or add an API key for your own tools." />

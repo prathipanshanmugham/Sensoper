@@ -10,9 +10,9 @@ import { useAuth } from '../contexts/AuthContext';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Field, errText } from '../components/kit/PageBits';
-import { AccessPicker, ExpiryPicker, ExtraSwitches, ROLE, WorksAs, branchText, expiryDate } from './AIAgentsPage';
+import { AccessPicker, ExpiryPicker, ExtraSwitches, ROLE, WorksAs, branchText, expiryDate, isFramed } from './AIAgentsPage';
 
-const framed = () => { try { return window.self !== window.top; } catch { return true; } };
+const framed = isFramed;
 
 function Shell({ children }) {
   return (
@@ -131,7 +131,7 @@ export default function ConnectAgentPage() {
             <ExtraSwitches f={f} setF={setF} />
           </div>
         </details>
-        <p className="text-xs text-slate-500">Deletes, bulk changes, logins, bank details and anything that reaches customers wait for your yes in the chat. Every call is listed in Settings → AI agents → Activity, where you can pause or revoke it.</p>
+        <p className="text-xs text-slate-500">Deletes, bulk changes, logins, bank details and anything that reaches customers wait until you (or the login it works as) approve them in Sensoper — the AI can’t approve them itself. Every call is listed in Settings → AI agents → Activity, where you can pause or revoke it.</p>
       </div>
       <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
         <Button variant="outline" onClick={() => decide(false)} disabled={!!busy} className="h-11" data-testid="connect-deny">{busy === 'deny' ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Don’t allow'}</Button>
