@@ -1,5 +1,30 @@
 # Sensoper — change log
 
+## November 2026 · AI connector: easy, crisp and secure
+
+### In the ERP
+- **Settings → AI agents:** a *Connect Claude or ChatGPT* panel with the connector address, a copy button and three
+  steps per app. Agent cards show last used, calls today and when access ends, with one-click Pause / Resume and Revoke.
+  API keys for your own tools live under **Keys & scripts**.
+- **Activity:** filter by agent, outcome (changes, waited for a yes, refused, failed), words and day. Each row shows the
+  login it worked as and a short summary of what was sent, never passwords or keys. Kept 90 days.
+- **Approval page** (when Claude or ChatGPT connects): who is asking and exactly where access goes, the login it works as
+  with its branches, access in plain words, and an expiry (never, 30 or 90 days, or a date).
+
+### Backend (`backend/agents.py`, new `backend/agent_rules.py`)
+- MCP tools: `whoami`, `app_map`, `list_endpoints`, `describe_endpoint`, `call_api` (unchanged names) plus
+  `confirm_action`. Deletes, bulk/import, logins and password resets, company/bank/pay details, public-website settings
+  and calls that reach customers come back from `call_api` as `needs_confirmation` with a one-time token;
+  `confirm_action` runs exactly that call. REST: send `X-Sensoper-Confirm: yes`.
+- `call_api` checks one canonical path (encoded slashes, `..`, `//`, `?`/`#` refused), returns a one-line `summary`,
+  pages long lists (`start`) and says what to do next on errors. Answers to agents never carry secrets.
+- OAuth: registration limits and clean-up, PKCE S256 only, exact redirect match, 2-minute codes bound to client and
+  redirect (a replayed code signs the connection out), consent CSRF token, rotating refresh tokens with reuse detection,
+  revoke that takes access tokens with it.
+- `/api/mcp`: Origin and Host checks, 1 MB body limit, protocol-version check, per-address limit on failed sign-ins.
+  Paused or switched-off agents get 403 (the app keeps its token, so Resume needs no reconnecting).
+- Tests: `backend/tests/test_ai_connector_security.py`.
+
 ## November 2026 · Website: brands, testimonials, store pickup
 
 ### In the ERP

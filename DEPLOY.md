@@ -4,6 +4,26 @@ Your server already has `/root/Sensoper/deploy.sh`. It pulls the code, installs 
 copies the build to `/var/www/sensoper`, restarts the `sensoper` service and checks the live bundle. This release needs
 nothing new installed.
 
+## AI connector update (Claude / ChatGPT): safer, clearer, easier
+
+Nothing to install and nothing to set. The Claude connector you already use keeps working: no reconnecting.
+
+What changes for you:
+- **Settings → AI agents** opens with a *Connect Claude or ChatGPT* panel: the address to paste and three steps per app.
+  Each agent shows when it was last used and its calls today, with **Pause** and **Revoke** buttons.
+- Claude now asks you in the chat before it **deletes, changes many records at once, touches logins or passwords, changes
+  bank or company details, or does anything a customer or the public sees**. Say yes and it goes ahead.
+- **Activity** can be filtered: changes, waited for a yes, refused, failed, by words and by day.
+- Pausing an agent or switching agents off stops it at once; resuming works without connecting again.
+- If an old sign-in token is ever used twice, Sensoper signs that connection out and says so on its card. Connect it
+  again from Claude.
+
+For your own scripts or n8n using an API key: deletes and the other calls above now answer 403 until you send them again
+with the header `X-Sensoper-Confirm: yes`.
+
+Smoke test after deploy: in Claude, ask "Which vendors do we have?" (works as before), then "Delete vendor X" (Claude
+should ask you first). Settings → AI agents → Activity shows both.
+
 ## This release: shop.sensoper.in, five systems, brands, testimonial videos, store pickup
 
 No new packages and no new server settings. On the server, as root:
