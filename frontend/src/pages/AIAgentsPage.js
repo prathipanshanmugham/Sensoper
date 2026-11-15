@@ -267,8 +267,9 @@ function AgentCard({ a, onEdit, onToggle, onRotate, onRevoke, onActivity, toggli
       {a.signed_out_reason && a.kind === 'connector' && <p className="mt-2 flex items-start gap-1.5 rounded-lg bg-rose-50 p-2 text-xs text-rose-800"><ShieldOff className="mt-0.5 h-3.5 w-3.5 shrink-0" />{a.signed_out_reason}</p>}
       {a.note && <p className="mt-1 text-xs text-slate-500">{a.note}</p>}
       <div className="mt-3 flex flex-wrap gap-1.5">
-        <Button size="sm" variant="outline" className="h-9 gap-1" onClick={onToggle} disabled={toggling} data-testid={`agent-toggle-${a.id}`}>
-          {toggling ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : paused ? <Play className="h-3.5 w-3.5" /> : <Pause className="h-3.5 w-3.5" />}{paused ? 'Resume' : 'Pause'}</Button>
+        {!(a.signed_out_at && a.kind === 'connector') && (
+          <Button size="sm" variant="outline" className="h-9 gap-1" onClick={onToggle} disabled={toggling} data-testid={`agent-toggle-${a.id}`}>
+            {toggling ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : paused ? <Play className="h-3.5 w-3.5" /> : <Pause className="h-3.5 w-3.5" />}{paused ? 'Resume' : 'Pause'}</Button>)}
         <Button size="sm" variant="outline" className="h-9 gap-1 text-rose-700 hover:text-rose-800" onClick={onRevoke} data-testid={`agent-remove-${a.id}`}><ShieldOff className="h-3.5 w-3.5" />Revoke</Button>
         <Button size="sm" variant="ghost" className="h-9 gap-1" onClick={onEdit} data-testid={`agent-edit-${a.id}`}><Pencil className="h-3.5 w-3.5" />Edit</Button>
         {a.kind === 'key' && <Button size="sm" variant="ghost" className="h-9 gap-1" onClick={onRotate} data-testid={`agent-rotate-${a.id}`}><RefreshCw className="h-3.5 w-3.5" />New key</Button>}
