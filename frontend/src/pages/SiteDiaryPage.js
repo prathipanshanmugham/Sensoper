@@ -67,7 +67,7 @@ function DiaryForm({ projectId, date, projects, partners, items, onSaved }) {
     const added = [];
     for (const f of list) {
       try { const small = await compressImage(f); added.push((await uploadAPI.uploadSiteImage(small)).data.storage_path); }
-      catch (e) { toast.error(e.response?.data?.detail || `Could not upload ${f.name}`); }
+      catch (e) { toast.error(errText(e, `Could not upload ${f.name}`)); }
       setUploading((n) => n - 1);
     }
     if (added.length) { setForm((f) => ({ ...f, photos: [...f.photos, ...added] })); setDirty(true); }
