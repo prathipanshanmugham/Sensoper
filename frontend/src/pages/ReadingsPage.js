@@ -86,7 +86,8 @@ export default function ReadingsPage() {
   };
 
   const handleSave = async () => {
-    if (!form.site_name || !form.start_date) { setError('Site name and start date are required'); return; }
+    if (!form.site_name?.trim() || !form.start_date) { setError('Site name and start date are required'); return; }
+    if (!(parseInt(form.days, 10) > 0) || Number(form.estimated_monthly_kwh) < 0) { setError('The reading period must be at least 1 day and the expected units can’t be negative'); return; }
     setSaving(true); setError('');
     try {
       const payload = { ...form, days: parseInt(form.days, 10) || 0, estimated_monthly_kwh: parseFloat(form.estimated_monthly_kwh) || 0 };
@@ -112,7 +113,8 @@ export default function ReadingsPage() {
   const openGenDialog = (r) => { setGenFor(r); setGenForm({ date: localDate().slice(0, 7), kwh: '' }); };
 
   const handleLogGeneration = async () => {
-    if (!genFor || !genForm.kwh) return;
+    if (!genFor) return;
+    if (!(parseFloat(genForm.kwh) >= 0) || !genForm.date) { toast.error('Enter the month and the units generated (0 or more)'); return; }
     setGenSaving(true);
     try {
       await readingsAPI.logGeneration(genFor.id, { date: genForm.date, kwh: parseFloat(genForm.kwh) });

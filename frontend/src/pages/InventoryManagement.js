@@ -198,8 +198,12 @@ export default function InventoryManagement() {
   };
 
   const handleSaveItem = async () => {
-    if (!itemForm.name || !itemForm.sku_code || !itemForm.category) {
+    if (!itemForm.name?.trim() || !itemForm.sku_code?.trim() || !itemForm.category) {
       setError('Name, SKU Code, and Category are required');
+      return;
+    }
+    if (Number(itemForm.quantity) < 0 || Number(itemForm.unit_price) < 0 || Number(itemForm.reorder_level) < 0) {
+      setError('Quantity, unit price and reorder level can’t be negative');
       return;
     }
     if (itemForm.image_url && !isValidImageUrl(itemForm.image_url)) {
