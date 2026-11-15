@@ -47,6 +47,7 @@ export default function PurchaseInboundPage() {
   const [vendors, , setVendors] = useVendorChoices(showCreate);
   const [nextPo, setNextPo] = useState('');
   const [poError, setPoError] = useState('');
+  const [itemsError, setItemsError] = useState('');
   useEffect(() => {
     if (!showCreate) return;
     purchaseOrdersAPI.nextNumber(form.location_id || undefined).then(r => setNextPo(r.data.po_number)).catch(() => setNextPo(''));
@@ -84,7 +85,7 @@ export default function PurchaseInboundPage() {
 
   const addItem = () => setForm(p => ({...p, items: [...p.items, { name: '', qty: '', unit_price: '', inventory_item_id: '', sku_code: '' }]}));
   const removeItem = (i) => setForm(p => ({...p, items: p.items.filter((_, idx) => idx !== i)}));
-  const updateItem = (i, k, v) => setForm(p => { const items = [...p.items]; items[i] = {...items[i], [k]: v}; return {...p, items}; });
+  const updateItem = (i, k, v) => { setItemsError(''); setForm(p => { const items = [...p.items]; items[i] = {...items[i], [k]: v}; return {...p, items}; }); };
   const pickInventoryItem = (i, invId) => setForm(p => {
     const items = [...p.items];
     const inv = inventoryItems.find(it => it.id === invId);
@@ -100,20 +101,24 @@ export default function PurchaseInboundPage() {
 
   const handleCreate = async () => {
     if (!form.vendor_id) { toast.error('Choose the vendor'); return; }
-    if (form.items.length === 0) return;
-    const named = form.items.filter(i => i.name);
-    if (!named.length) { toast.error('Add at least one item'); return; }
-    const badItem = named.find(i => !(parseFloat(i.qty) > 0) || parseFloat(i.unit_price) < 0);
-    if (badItem) { toast.error(`${badItem.name}: quantity must be more than 0 and the price can't be negative`); return; }
-    setSaving(true); setPoError('');
+    // Only lines with an item name are sent; each needs a quantity above 0 (the server refuses 0 / empty quantities)
+    const named = form.items.filter(i => String(i.name || '').trim());
+    const fail = (m) => { setItemsError(m); toast.error(m); };
+    if (!named.length) { fail('Add at least one item with its quantity'); return; }
+    const noQty = named.find(i => !(parseFloat(i.qty) > 0));
+    if (noQty) { fail(`Enter a quantity of more than 0 for ${noQty.name.trim()}`); return; }
+    const badPrice = named.find(i => String(i.unit_price ?? '').trim() !== '' && !(parseFloat(i.unit_price) >= 0));
+    if (badPrice) { fail(`The price for ${badPrice.name.trim()} can't be negative`); return; }
+    setSaving(true); setPoError(''); setItemsError('');
     try {
-      const items = form.items.filter(i => i.name).map(i => ({name: i.name, qty: parseFloat(i.qty) || 0, unit_price: parseFloat(i.unit_price) || 0, inventory_item_id: i.inventory_item_id || null, sku_code: i.sku_code || null}));
+      const items = named.map(i => ({name: i.name.trim(), qty: parseFloat(i.qty), unit_price: parseFloat(i.unit_price) || 0, inventory_item_id: i.inventory_item_id || null, sku_code: i.sku_code || null}));
       const r = await purchaseOrdersAPI.create({...form, po_number: form.po_number.trim() || null, skip_reason: form.skip_reason.trim() || null, items});
       toast.success(`PO ${r.data.po_number} created`);
       setShowCreate(false); setForm(BLANK_PO); await fetch();
     } catch (err) {
       const msg = errText(err, 'Could not create PO');
       if (err.response?.status === 409) setPoError(typeof msg === 'string' ? msg : 'PO number already used for this supplier');
+      else setItemsError(msg);   // e.g. the server refusing a line — keep the reason next to the items, not only in a toast
       toast.error(typeof msg === 'string' ? msg : 'Could not create PO');
     } finally { setSaving(false); }
   };
@@ -261,6 +266,7 @@ export default function PurchaseInboundPage() {
                     <Button variant="ghost" size="icon" className="h-9 text-red-400" onClick={() => removeItem(i)}><Trash2 className="h-4 w-4" /></Button>
                   </div>
                 ))}
+                {itemsError && <p className="text-xs text-red-600 flex items-center gap-1" data-testid="po-items-error"><AlertTriangle className="h-3.5 w-3.5 shrink-0" />{itemsError}</p>}
                 <Button variant="outline" size="sm" onClick={addItem} className="h-8 text-xs"><Plus className="h-3.5 w-3.5 mr-1" />Add Item</Button>
                 <p className="text-[10px] text-slate-400">Linking to an inventory item lets Complete Inbound match it precisely — unlinked items must be resolved before the inbound can be completed.</p>
               </div>
