@@ -13,7 +13,7 @@ Ships with:
 from __future__ import annotations
 from typing import List, Optional, Dict, Any
 from datetime import datetime, timezone, timedelta
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from bson import ObjectId
 from fastapi import APIRouter, HTTPException, Request
 from locations import location_scope_filter
@@ -95,7 +95,7 @@ class SaleFullEdit(BaseModel):
 
 class SalePaymentAdd(BaseModel):
     mode: str
-    amount: float
+    amount: float = Field(gt=0)   # a negative payment raised the balance due
     reference: Optional[str] = None
 
 

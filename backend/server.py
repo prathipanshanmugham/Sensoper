@@ -487,13 +487,13 @@ class CustomerCreditCreate(BaseModel):
     customer_name: str
     customer_phone: str = ""
     invoice_ref: str = ""
-    total_amount: float
+    total_amount: float = Field(gt=0)
     due_date: str = ""
     notes: str = ""
 
 class CreditPaymentCreate(BaseModel):
     credit_id: str
-    amount: float
+    amount: float = Field(gt=0)   # a negative "payment" raised the balance
     payment_method: str = "cash"
     notes: str = ""
 
