@@ -10,9 +10,11 @@ import pytest
 import requests
 from dotenv import dotenv_values
 from pymongo import MongoClient
+from http_env import require_mongo, require_server, throwaway_password, TEST_ADMIN_EMAIL, TEST_MANAGER_EMAIL, TEST_MANAGER_PASSWORD, TEST_STAFF_EMAIL, TEST_STAFF_PASSWORD  # noqa: E402,F401
+_SERVER_URL, TEST_ADMIN_PASSWORD = require_server(manager=False, staff=False)
 
 frontend_env = dotenv_values("/app/frontend/.env")
-backend_env = dotenv_values("/app/backend/.env")
+backend_env = {}   # MONGO_URL / DB_NAME come from the environment only
 base_url = os.environ.get("REACT_APP_BACKEND_URL") or frontend_env.get("REACT_APP_BACKEND_URL")
 if not base_url:
     raise RuntimeError("REACT_APP_BACKEND_URL missing")
@@ -24,12 +26,8 @@ DB_NAME = os.environ.get("DB_NAME") or backend_env.get("DB_NAME")
 
 @pytest.fixture(scope="session")
 def creds():
-    c = Path("/app/memory/test_credentials.md").read_text(encoding="utf-8")
-    e = re.search(r"(?im)^\s*[-*]?\s*(?:\*\*)?Email(?:\*\*)?\s*:\s*`?([^`\s]+)", c)
-    pw = re.search(r"(?im)^\s*[-*]?\s*(?:\*\*)?Password(?:\*\*)?\s*:\s*`?([^`\s]+)", c)
-    assert e and pw, "credentials not parseable"
-    return {"email": e.group(1), "password": pw.group(1)}
-
+    # was read from /app/memory/test_credentials.md (not in the repository) — now the environment (tests/http_env.py)
+    return {"email": TEST_ADMIN_EMAIL, "password": TEST_ADMIN_PASSWORD}
 
 @pytest.fixture(scope="session")
 def client(creds):
@@ -46,8 +44,11 @@ def client(creds):
 
 @pytest.fixture(scope="session")
 def mongo():
+    # Without the server's MongoDB the API checks still run (the order, the report, the stock); only the direct
+    # look at inventory_movements is left out — skipping the whole order test left the later tests without an order
     if not MONGO_URL or not DB_NAME:
-        pytest.skip("MONGO_URL/DB_NAME not available")
+        yield None
+        return
     cl = MongoClient(MONGO_URL)
     yield cl[DB_NAME]
     cl.close()
@@ -177,10 +178,11 @@ class TestEcommerceOrderLifecycle:
         assert it["quantity"] == state["qty_before"] - 2
 
         # REGRESSION: movement must be traceable back to the order
-        mv = list(mongo.inventory_movements.find({"reference_type": "ecommerce_order",
-                                                  "reference_id": state["order_id"]}))
-        assert mv, "no inventory_movements row with reference_id == order id (orphaned movement bug)"
-        assert all(m.get("reference_id") == state["order_id"] for m in mv)
+        if mongo is not None:
+            mv = list(mongo.inventory_movements.find({"reference_type": "ecommerce_order",
+                                                      "reference_id": state["order_id"]}))
+            assert mv, "no inventory_movements row with reference_id == order id (orphaned movement bug)"
+            assert all(m.get("reference_id") == state["order_id"] for m in mv)
 
     def test_payment_status_settled_sets_settlement_date(self, client, state):
         r = client.put(f"{API}/ecommerce/orders/{state['order_id']}",
@@ -201,9 +203,10 @@ class TestEcommerceOrderLifecycle:
         assert r.json()["order_status"] == "cancelled"
         it = client.get(f"{API}/inventory/items/{state['item_id']}", timeout=60).json()
         assert it["quantity"] == state["qty_before"], f"stock not restored on cancel: {it['quantity']}"
-        mv = list(mongo.inventory_movements.find({"reference_type": "ecommerce_order_return",
-                                                  "reference_id": state["order_id"]}))
-        assert mv, "return movement missing reference_id"
+        if mongo is not None:
+            mv = list(mongo.inventory_movements.find({"reference_type": "ecommerce_order_return",
+                                                      "reference_id": state["order_id"]}))
+            assert mv, "return movement missing reference_id"
 
     def test_cancel_then_second_cancel_no_double_restore(self, client, state):
         r = client.put(f"{API}/ecommerce/orders/{state['order_id']}",

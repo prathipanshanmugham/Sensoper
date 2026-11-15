@@ -5,9 +5,8 @@ import os
 from datetime import datetime
 import pytest
 import requests
-TEST_ADMIN_PASSWORD = os.environ.get("TEST_ADMIN_PASSWORD") or "Admin@123"
-
-
+from http_env import require_server, throwaway_password, TEST_ADMIN_EMAIL, TEST_MANAGER_EMAIL, TEST_MANAGER_PASSWORD, TEST_STAFF_EMAIL, TEST_STAFF_PASSWORD  # noqa: E402,F401
+_SERVER_URL, TEST_ADMIN_PASSWORD = require_server(manager=False, staff=False)
 BASE_URL = os.environ.get("REACT_APP_BACKEND_URL").rstrip("/")
 ADMIN_EMAIL = "admin@sensoper.com"
 ADMIN_PASSWORD = TEST_ADMIN_PASSWORD
@@ -137,10 +136,10 @@ class TestCeoDashboardAccounts:
         j = r.json()
         acc = j.get("accounts_summary")
         assert isinstance(acc, dict), f"accounts_summary missing/not dict: {type(acc)}"
-        for k in ["operational_expense_mtd", "gst_input_mtd", "net_cash_flow_mtd", "cash_history"]:
+        for k in ["operational_expense_mtd", "gst_input_mtd", "gst_net_mtd", "cash_history"]:   # net_cash_flow_mtd was dropped with the Expenses rework (May 2026)
             assert k in acc, f"accounts_summary missing '{k}': {list(acc.keys())}"
         assert "meter_reading" not in acc, f"meter_reading should not be in accounts_summary: {list(acc.keys())}"
         assert isinstance(acc["cash_history"], list)
         # numeric sanity
-        for k in ["operational_expense_mtd", "gst_input_mtd", "net_cash_flow_mtd"]:
+        for k in ["operational_expense_mtd", "gst_input_mtd", "gst_net_mtd"]:
             float(acc[k])  # must parse

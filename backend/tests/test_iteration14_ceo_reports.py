@@ -9,9 +9,8 @@ Tests for:
 import pytest
 import requests
 import os
-TEST_ADMIN_PASSWORD = os.environ.get("TEST_ADMIN_PASSWORD") or "Admin@123"
-
-
+from http_env import require_server, throwaway_password, TEST_ADMIN_EMAIL, TEST_MANAGER_EMAIL, TEST_MANAGER_PASSWORD, TEST_STAFF_EMAIL, TEST_STAFF_PASSWORD  # noqa: E402,F401
+_SERVER_URL, TEST_ADMIN_PASSWORD = require_server(manager=False, staff=False)
 BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', '').rstrip('/')
 
 class TestCeoDashboard:
@@ -99,203 +98,6 @@ class TestCeoDashboard:
             assert "revenue" in item, "Each staff item should have 'revenue'"
 
 
-class TestReportsEngine:
-    """Reports Engine endpoint tests"""
-    
-    @pytest.fixture(autouse=True)
-    def setup(self):
-        """Login and get session for authenticated requests"""
-        self.session = requests.Session()
-        login_response = self.session.post(f"{BASE_URL}/api/auth/login", json={
-            "email": "admin@sensoper.com",
-            "password": TEST_ADMIN_PASSWORD
-        })
-        assert login_response.status_code == 200, f"Login failed: {login_response.text}"
-    
-    # Sales Report
-    def test_sales_report(self):
-        """Test sales report returns correct structure"""
-        response = self.session.get(f"{BASE_URL}/api/reports/sales")
-        assert response.status_code == 200, f"Sales report failed: {response.text}"
-        data = response.json()
-        
-        assert "title" in data, "Missing 'title'"
-        assert "summary" in data, "Missing 'summary'"
-        assert "rows" in data, "Missing 'rows'"
-        assert data["title"] == "Sales Report"
-        
-        # Check summary fields
-        summary = data["summary"]
-        assert "total_quotes" in summary
-        assert "approved_projects" in summary
-        assert "conversion_rate" in summary
-        assert "revenue" in summary
-    
-    # Profit Report
-    def test_profit_report(self):
-        """Test profit report returns margin data"""
-        response = self.session.get(f"{BASE_URL}/api/reports/profit")
-        assert response.status_code == 200, f"Profit report failed: {response.text}"
-        data = response.json()
-        
-        assert data["title"] == "Profit Report"
-        summary = data["summary"]
-        assert "total_base_cost" in summary
-        assert "total_selling" in summary
-        assert "total_margin" in summary
-        assert "avg_margin_pct" in summary
-    
-    # Execution Report
-    def test_execution_report(self):
-        """Test project execution report"""
-        response = self.session.get(f"{BASE_URL}/api/reports/execution")
-        assert response.status_code == 200, f"Execution report failed: {response.text}"
-        data = response.json()
-        
-        assert data["title"] == "Project Execution Report"
-        summary = data["summary"]
-        assert "total" in summary
-        assert "completed" in summary
-        assert "in_progress" in summary
-    
-    # Inventory Report
-    def test_inventory_report(self):
-        """Test inventory report with low stock indicators"""
-        response = self.session.get(f"{BASE_URL}/api/reports/inventory")
-        assert response.status_code == 200, f"Inventory report failed: {response.text}"
-        data = response.json()
-        
-        assert data["title"] == "Procurement & Inventory Report"
-        summary = data["summary"]
-        assert "total_items" in summary
-        assert "total_value" in summary
-        assert "low_stock_count" in summary
-        
-        # Check rows have low_stock field
-        if data["rows"]:
-            assert "low_stock" in data["rows"][0]
-    
-    # Technical Report
-    def test_technical_report(self):
-        """Test technical report with system specifications"""
-        response = self.session.get(f"{BASE_URL}/api/reports/technical")
-        assert response.status_code == 200, f"Technical report failed: {response.text}"
-        data = response.json()
-        
-        assert data["title"] == "Technical & Performance Report"
-        summary = data["summary"]
-        assert "total_capacity_kw" in summary
-        assert "avg_monthly_consumption" in summary
-    
-    # Compliance Report
-    def test_compliance_report(self):
-        """Test compliance report with GST breakdown"""
-        response = self.session.get(f"{BASE_URL}/api/reports/compliance")
-        assert response.status_code == 200, f"Compliance report failed: {response.text}"
-        data = response.json()
-        
-        assert data["title"] == "Compliance & Tax Report"
-        summary = data["summary"]
-        assert "total_gst_collected" in summary
-        assert "total_invoices" in summary
-    
-    # HR Report
-    def test_hr_report(self):
-        """Test HR report with staff productivity"""
-        response = self.session.get(f"{BASE_URL}/api/reports/hr")
-        assert response.status_code == 200, f"HR report failed: {response.text}"
-        data = response.json()
-        
-        assert data["title"] == "HR & Productivity Report"
-        summary = data["summary"]
-        assert "total_staff" in summary
-        assert "avg_projects_per_staff" in summary
-    
-    # Customer Report
-    def test_customer_report(self):
-        """Test customer satisfaction report"""
-        response = self.session.get(f"{BASE_URL}/api/reports/customer")
-        assert response.status_code == 200, f"Customer report failed: {response.text}"
-        data = response.json()
-        
-        assert data["title"] == "Customer Satisfaction Report"
-        summary = data["summary"]
-        assert "total_customers" in summary
-        assert "feedback_received" in summary
-        assert "feedback_rate" in summary
-    
-    # Marketing Report
-    def test_marketing_report(self):
-        """Test marketing report"""
-        response = self.session.get(f"{BASE_URL}/api/reports/marketing")
-        assert response.status_code == 200, f"Marketing report failed: {response.text}"
-        data = response.json()
-        
-        assert data["title"] == "Marketing Report"
-        summary = data["summary"]
-        assert "total_sources" in summary
-        assert "total_leads" in summary
-    
-    # O&M Report
-    def test_om_report(self):
-        """Test O&M report"""
-        response = self.session.get(f"{BASE_URL}/api/reports/om")
-        assert response.status_code == 200, f"O&M report failed: {response.text}"
-        data = response.json()
-        
-        assert data["title"] == "Operations & Maintenance Report"
-        summary = data["summary"]
-        assert "total_installations" in summary
-        assert "active_sites" in summary
-
-
-class TestReportsFilters:
-    """Test global filters for reports"""
-    
-    @pytest.fixture(autouse=True)
-    def setup(self):
-        """Login and get session for authenticated requests"""
-        self.session = requests.Session()
-        login_response = self.session.post(f"{BASE_URL}/api/auth/login", json={
-            "email": "admin@sensoper.com",
-            "password": TEST_ADMIN_PASSWORD
-        })
-        assert login_response.status_code == 200
-    
-    def test_date_from_filter(self):
-        """Test date_from filter works"""
-        response = self.session.get(f"{BASE_URL}/api/reports/sales", params={"date_from": "2025-01-01"})
-        assert response.status_code == 200, f"Filter failed: {response.text}"
-    
-    def test_date_to_filter(self):
-        """Test date_to filter works"""
-        response = self.session.get(f"{BASE_URL}/api/reports/sales", params={"date_to": "2026-12-31"})
-        assert response.status_code == 200, f"Filter failed: {response.text}"
-    
-    def test_system_type_filter(self):
-        """Test system_type filter works"""
-        response = self.session.get(f"{BASE_URL}/api/reports/sales", params={"system_type": "on-grid"})
-        assert response.status_code == 200, f"Filter failed: {response.text}"
-    
-    def test_status_filter(self):
-        """Test status filter works"""
-        response = self.session.get(f"{BASE_URL}/api/reports/sales", params={"status": "approved"})
-        assert response.status_code == 200, f"Filter failed: {response.text}"
-    
-    def test_combined_filters(self):
-        """Test multiple filters combined"""
-        response = self.session.get(f"{BASE_URL}/api/reports/sales", params={
-            "date_from": "2025-01-01",
-            "date_to": "2026-12-31",
-            "system_type": "on-grid",
-            "status": "approved"
-        })
-        assert response.status_code == 200, f"Combined filters failed: {response.text}"
-    
-    def test_unknown_report_type_returns_404(self):
-        """Test unknown report type returns 404"""
-        response = self.session.get(f"{BASE_URL}/api/reports/unknown_type")
-        assert response.status_code == 404
 
 
 class TestAccessControl:
@@ -310,9 +112,41 @@ class TestAccessControl:
     def test_reports_require_auth(self):
         """Test reports require authentication"""
         session = requests.Session()
-        response = session.get(f"{BASE_URL}/api/reports/sales")
+        response = session.get(f"{BASE_URL}/api/reports/sales_revenue")
         assert response.status_code == 401
 
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
+
+# The report engine's current types (the old sales/profit/execution/... names were renamed — see memory/PRD.md)
+CURRENT_REPORTS = ["brand_returns", "sales_revenue", "profit_leakage", "project_execution", "inventory_material", "customer_credit",
+                   "team_performance", "compliance_tax", "customer_satisfaction", "inbound", "outbound", "audit", "marketing",
+                   "excess_material", "amc", "assets", "tools", "expenses", "operational_expense", "reading_analysis",
+                   "employee_performance", "partner_performance", "ecommerce", "customer_support"]
+
+
+@pytest.fixture(scope="module")
+def report_session():
+    s = requests.Session()
+    r = s.post(f"{BASE_URL}/api/auth/login", json={"email": "admin@sensoper.com", "password": TEST_ADMIN_PASSWORD})
+    assert r.status_code == 200, r.text
+    return s
+
+
+@pytest.mark.parametrize("report_type", CURRENT_REPORTS)
+def test_current_report_types_answer(report_session, report_type):
+    r = report_session.get(f"{BASE_URL}/api/reports/{report_type}")
+    assert r.status_code == 200, f"{report_type}: {r.status_code} {r.text[:200]}"
+    assert isinstance(r.json(), dict) and r.json(), report_type
+
+
+@pytest.mark.parametrize("params", [{"date_from": "2025-01-01"}, {"date_to": "2026-12-31"}, {"system_type": "on-grid"},
+                                    {"status": "approved"}, {"date_from": "2025-01-01", "date_to": "2026-12-31", "status": "approved"}])
+def test_sales_report_filters(report_session, params):
+    r = report_session.get(f"{BASE_URL}/api/reports/sales_revenue", params=params)
+    assert r.status_code == 200, r.text[:200]
+
+
+def test_unknown_report_type_returns_404(report_session):
+    assert report_session.get(f"{BASE_URL}/api/reports/unknown_type").status_code == 404

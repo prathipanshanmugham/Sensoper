@@ -3,9 +3,11 @@ import os
 import uuid
 import pytest
 import requests
+from http_env import require_server, throwaway_password, TEST_ADMIN_EMAIL, TEST_MANAGER_EMAIL, TEST_MANAGER_PASSWORD, TEST_STAFF_EMAIL, TEST_STAFF_PASSWORD  # noqa: E402,F401
+_SERVER_URL, TEST_ADMIN_PASSWORD = require_server(manager=False, staff=False)
 
 BASE_URL = (os.environ.get("REACT_APP_BACKEND_URL") or open("/app/frontend/.env").read().split("REACT_APP_BACKEND_URL=")[1].splitlines()[0]).rstrip("/")
-ADMIN = {"email": "admin@sensoper.com", "password": "Admin@123"}
+ADMIN = {"email": "admin@sensoper.com", "password": TEST_ADMIN_PASSWORD}
 
 
 @pytest.fixture(scope="module")
@@ -78,12 +80,28 @@ def test_pump_zero_tariff_returns_reliability_mode(admin_client):
     assert data["result"].get("payback_years") is None or data["result"]["payback_years"] > 0
 
 
+_ITEMS = {}
+
+
+def _generic_panel_and_pump(admin_client):
+    """The catalogue collections were removed (Iter 45): string-design specs now live on stock items. A 'Generic'
+    panel and solar-pump controller like the old seeded ones (controller absolute max 450 V)."""
+    if not _ITEMS:
+        import uuid
+        tag = uuid.uuid4().hex[:6]
+        for key, cat, specs in (("panel", "solar_panels", {"voc": 45, "vmp": 37, "imp": 10, "temp_coefficient_voc": -0.29}),
+                                ("pump", "pumps", {"controller_input_v_min": 150, "controller_input_v_max": 400,
+                                                   "controller_input_v_absolute_max": 450, "controller_input_current_max": 15})):
+            r = admin_client.post(f"{BASE_URL}/api/inventory/items", json={"name": f"Generic {key} {tag}", "sku_code": f"GEN-{key}-{tag}",
+                                                                           "category": cat, "quantity": 0, "unit_price": 1000, "gst_percentage": 12, "specs": specs})
+            assert r.status_code in (200, 201), r.text
+            _ITEMS[key] = {"id": r.json()["id"]}
+    return _ITEMS["panel"], _ITEMS["pump"]
+
+
+
 def test_string_voltage_validation_ok_case(admin_client):
-    # Get panel and pump ids from seeded catalogue
-    panels = admin_client.get(f"{BASE_URL}/api/catalogue/products/panel").json()
-    pumps = admin_client.get(f"{BASE_URL}/api/catalogue/products/pump").json()
-    panel = next(p for p in panels if p["make"] == "Generic")
-    pump = next(p for p in pumps if p["make"] == "Generic")
+    panel, pump = _generic_panel_and_pump(admin_client)
 
     r = admin_client.post(f"{BASE_URL}/api/calculate/pump/string-voltage", json={
         "panel_product_id": panel["id"], "pump_product_id": pump["id"],
@@ -100,10 +118,7 @@ def test_string_voltage_validation_ok_case(admin_client):
 
 def test_string_voltage_validation_overvolt_blocked(admin_client):
     """12 modules in series should exceed the seeded Generic controller's 450V absolute max."""
-    panels = admin_client.get(f"{BASE_URL}/api/catalogue/products/panel").json()
-    pumps = admin_client.get(f"{BASE_URL}/api/catalogue/products/pump").json()
-    panel = next(p for p in panels if p["make"] == "Generic")
-    pump = next(p for p in pumps if p["make"] == "Generic")
+    panel, pump = _generic_panel_and_pump(admin_client)
 
     r = admin_client.post(f"{BASE_URL}/api/calculate/pump/string-voltage", json={
         "panel_product_id": panel["id"], "pump_product_id": pump["id"],
@@ -121,10 +136,7 @@ def test_string_voltage_uses_configurable_tmin(admin_client):
     # Set global Tmin to +5°C (warm-climate)
     admin_client.put(f"{BASE_URL}/api/catalogue/config", json={"string_low_temp_default_c": 5}, timeout=15)
     try:
-        panels = admin_client.get(f"{BASE_URL}/api/catalogue/products/panel").json()
-        pumps = admin_client.get(f"{BASE_URL}/api/catalogue/products/pump").json()
-        panel = next(p for p in panels if p["make"] == "Generic")
-        pump = next(p for p in pumps if p["make"] == "Generic")
+        panel, pump = _generic_panel_and_pump(admin_client)
 
         r = admin_client.post(f"{BASE_URL}/api/calculate/pump/string-voltage", json={
             "panel_product_id": panel["id"], "pump_product_id": pump["id"],

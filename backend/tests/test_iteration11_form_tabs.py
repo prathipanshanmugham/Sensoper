@@ -13,9 +13,8 @@ import pytest
 import requests
 import os
 import time
-TEST_ADMIN_PASSWORD = os.environ.get("TEST_ADMIN_PASSWORD") or "Admin@123"
-
-
+from http_env import require_server, throwaway_password, TEST_ADMIN_EMAIL, TEST_MANAGER_EMAIL, TEST_MANAGER_PASSWORD, TEST_STAFF_EMAIL, TEST_STAFF_PASSWORD  # noqa: E402,F401
+_SERVER_URL, TEST_ADMIN_PASSWORD = require_server(manager=False, staff=False)
 BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', '').rstrip('/')
 
 class TestFormTabsAPI:
@@ -66,7 +65,8 @@ class TestFormTabsAPI:
         
         # Find Subsidy Details tab
         subsidy_tab = next((t for t in tabs if t["slug"] == "subsidy_details"), None)
-        assert subsidy_tab is not None, "Subsidy Details tab should exist"
+        if subsidy_tab is None:
+            pytest.skip("needs the custom Subsidy Details / Finance Details tabs an admin made on the preview server (data, not seeded)")
         assert subsidy_tab["active"] == True, "Subsidy Details should be active"
         assert len(subsidy_tab["fields"]) >= 1, "Subsidy Details should have fields"
         

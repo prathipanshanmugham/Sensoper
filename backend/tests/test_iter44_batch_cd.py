@@ -6,6 +6,8 @@ import uuid
 import pytest
 import requests
 from dotenv import dotenv_values
+from http_env import require_server, throwaway_password, TEST_ADMIN_EMAIL, TEST_MANAGER_EMAIL, TEST_MANAGER_PASSWORD, TEST_STAFF_EMAIL, TEST_STAFF_PASSWORD  # noqa: E402,F401
+_SERVER_URL, TEST_ADMIN_PASSWORD = require_server(manager=False, staff=True)
 
 frontend_env = dotenv_values("/app/frontend/.env")
 base_url = os.environ.get("REACT_APP_BACKEND_URL") or frontend_env.get("REACT_APP_BACKEND_URL")
@@ -14,8 +16,8 @@ if not base_url:
 BASE_URL = base_url.rstrip("/")
 API = f"{BASE_URL}/api"
 
-ADMIN = {"email": "admin@sensoper.com", "password": "Admin@123"}
-STAFF = {"email": "qa_staff_iter46@sensoper.com", "password": "Staff@123"}
+ADMIN = {"email": "admin@sensoper.com", "password": TEST_ADMIN_PASSWORD}
+STAFF = {"email": TEST_STAFF_EMAIL, "password": TEST_STAFF_PASSWORD}
 
 
 def _login(creds):
@@ -180,7 +182,7 @@ class TestAuditOwner:
         audits = admin.get(f"{API}/audits", timeout=60).json()
         rows = audits["audits"] if isinstance(audits, dict) else audits
         if not rows:
-            r = admin.post(f"{API}/audits", json={"week_start": "2026-07-06", "notes": "TEST audit"}, timeout=60)
+            r = admin.post(f"{API}/audits", json={"title": "TEST weekly audit", "auditor_name": "QA", "checklist": [{"item": "Stock count", "status": "ok"}], "notes": "TEST audit"}, timeout=60)   # current audit form: title, auditor, checklist
             assert r.status_code in (200, 201), r.text[:300]
             audits = admin.get(f"{API}/audits", timeout=60).json()
             rows = audits["audits"] if isinstance(audits, dict) else audits

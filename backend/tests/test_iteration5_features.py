@@ -9,9 +9,9 @@ import pytest
 import requests
 import os
 import time
-TEST_ADMIN_PASSWORD = os.environ.get("TEST_ADMIN_PASSWORD") or "Admin@123"
-
-
+from http_env import require_server, throwaway_password, TEST_ADMIN_EMAIL, TEST_MANAGER_EMAIL, TEST_MANAGER_PASSWORD, TEST_STAFF_EMAIL, TEST_STAFF_PASSWORD  # noqa: E402,F401
+_SERVER_URL, TEST_ADMIN_PASSWORD = require_server(manager=False, staff=False)
+_DATA_PW_7 = throwaway_password()   # test data, random per run
 BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', '').rstrip('/')
 
 class TestAuth:
@@ -221,33 +221,29 @@ class TestMarginEndpoint:
         # Cleanup - force delete
         admin_session.delete(f"{BASE_URL}/api/projects/{project_id}/force")
     
+    # Iter 52: there is no blanket project margin any more — every line carries its own margin %, set through
+    # item_margins [{index, margin_percentage}]. A body without item_margins is refused.
     def test_margin_update_as_admin(self, admin_session, test_project_id):
-        """PUT /api/projects/{id}/margin updates margin (admin)"""
+        """PUT /api/projects/{id}/margin sets a line's margin (admin)"""
+        assert admin_session.put(f"{BASE_URL}/api/projects/{test_project_id}/margin", json={"margin_percentage": 20}).status_code == 400
         response = admin_session.put(
             f"{BASE_URL}/api/projects/{test_project_id}/margin",
-            json={"margin_percentage": 20}
+            json={"item_margins": [{"index": 0, "margin_percentage": 20}]}
         )
         assert response.status_code == 200, f"Margin update failed: {response.text}"
         data = response.json()
-        assert "cost_estimation" in data
-        assert data["cost_estimation"]["margin_percentage"] == 20
-        print(f"✓ PUT /api/projects/{test_project_id}/margin updates margin to 20%")
-    
+        assert data["selected_items"][0]["margin_percentage"] == 20
+        assert data["cost_estimation"]["items_breakdown"][0]["margin_amount"] == 40000   # 20% of 10 × 20,000
+
     def test_margin_update_recalculates_total(self, admin_session, test_project_id):
-        """Margin update recalculates total cost"""
-        # Set margin to 25%
-        response = admin_session.put(
-            f"{BASE_URL}/api/projects/{test_project_id}/margin",
-            json={"margin_percentage": 25}
-        )
-        assert response.status_code == 200
-        data = response.json()
-        ce = data["cost_estimation"]
-        
-        # Verify calculation: subtotal * 0.25 = margin
-        expected_margin = ce["subtotal"] * 0.25
-        assert abs(ce["margin"] - expected_margin) < 1, f"Margin calculation incorrect"
-        print("✓ Margin update recalculates total correctly")
+        """A line's margin change moves the project total"""
+        before = admin_session.put(f"{BASE_URL}/api/projects/{test_project_id}/margin",
+                                   json={"item_margins": [{"index": 0, "margin_percentage": 20}]}).json()["cost_estimation"]
+        after = admin_session.put(f"{BASE_URL}/api/projects/{test_project_id}/margin",
+                                  json={"item_margins": [{"index": 0, "margin_percentage": 25}]}).json()["cost_estimation"]
+        assert after["items_breakdown"][0]["margin_amount"] == 50000
+        # GST is on cost + margin, so 10,000 more margin adds 11,800 to the total
+        assert abs((after["total_cost"] - before["total_cost"]) - 11800) < 2, (before["total_cost"], after["total_cost"])
 
 
 class TestStaffCannotUpdateMargin:
@@ -280,7 +276,7 @@ class TestStaffCannotUpdateMargin:
         staff_session = requests.Session()
         reg_response = staff_session.post(f"{BASE_URL}/api/auth/register", json={
             "email": staff_email,
-            "password": "TestPass123",
+            "password": _DATA_PW_7,
             "name": "Test Staff",
             "role": "staff"
         })
