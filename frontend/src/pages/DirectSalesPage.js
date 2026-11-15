@@ -15,6 +15,10 @@ import { useLiveRefresh } from '../lib/liveSync';
 
 import { errText } from '../components/kit/PageBits';
 import { toast } from 'sonner';
+// A typed number, or the default when the box is empty — 0 is a real value (0% GST), not "missing".
+const numOr = (v, d) => { const n = parseFloat(v); return Number.isFinite(n) ? n : d; };
+// Lines the form would send with a quantity of zero/less or a negative price or GST — say so instead of saving something else.
+const badLine = (ls) => ls.find(l => !(parseFloat(l.quantity) > 0) || numOr(l.unit_price, 0) < 0 || numOr(l.gst_percentage, 18) < 0 || numOr(l.discount_pct, 0) < 0 || numOr(l.discount_pct, 0) > 100);
 const LEAD_SOURCES = ['google_ads', 'meta_ads', 'referral', 'organic', 'exhibitions', 'field_marketing', 'telecalling', 'website_seo', 'whatsapp', 'other'];
 
 export default function DirectSalesPage() {
@@ -81,7 +85,7 @@ export default function DirectSalesPage() {
     setLines(prev => [...prev, {
       inventory_item_id: item.id, name: item.name, sku_code: item.sku_code,
       category: item.category, quantity: 1, unit_price: item.unit_price || 0,
-      cost_price: item.unit_price || 0, gst_percentage: item.gst_percentage || 18,
+      cost_price: item.unit_price || 0, gst_percentage: item.gst_percentage ?? 18,
       discount_pct: 0
     }]);
   };
@@ -94,7 +98,7 @@ export default function DirectSalesPage() {
       const q = parseFloat(l.quantity) || 0;
       const p = parseFloat(l.unit_price) || 0;
       const d = parseFloat(l.discount_pct) || 0;
-      const gpc = parseFloat(l.gst_percentage) || 0;
+      const gpc = numOr(l.gst_percentage, 18);   // the same rate the sale is saved with
       const t = q * p * (1 - d / 100);
       taxable += t;
       gst += t * gpc / 100;
@@ -105,6 +109,8 @@ export default function DirectSalesPage() {
   const confirmSale = async () => {
     if (!customer.name.trim() || !customer.phone.trim()) { toast.error('Customer name & phone required'); return; }
     if (lines.length === 0) { toast.error('Add at least one item'); return; }
+    const bad = badLine(lines);
+    if (bad) { toast.error(`Check ${bad.name}: quantity must be more than 0, and price, discount (0–100%) and GST can't be negative`); return; }
     setSaving(true);
     try {
       const payload = {
@@ -114,9 +120,9 @@ export default function DirectSalesPage() {
         location_id: locationId || undefined,
         lines: lines.map(l => ({
           inventory_item_id: l.inventory_item_id, name: l.name, sku_code: l.sku_code,
-          category: l.category, quantity: parseFloat(l.quantity) || 1,
-          unit_price: parseFloat(l.unit_price) || 0, gst_percentage: parseFloat(l.gst_percentage) || 18,
-          discount_pct: parseFloat(l.discount_pct) || 0,
+          category: l.category, quantity: parseFloat(l.quantity),
+          unit_price: numOr(l.unit_price, 0), gst_percentage: numOr(l.gst_percentage, 18),
+          discount_pct: numOr(l.discount_pct, 0),
         })),
         payments: amountPaid ? [{ mode: paymentMode, amount: parseFloat(amountPaid) }] : []
       };
@@ -138,13 +144,15 @@ export default function DirectSalesPage() {
   const rmEditLine = (i) => setEditSale(p => ({ ...p, lines: p.lines.filter((_, idx) => idx !== i) }));
   const saveEditSale = async () => {
     if (!editSale) return;
+    const bad = badLine(editSale.lines);
+    if (bad) { setActionError(`Check ${bad.name}: quantity must be more than 0, and price, discount (0–100%) and GST can't be negative`); return; }
     setSaving(true); setActionError('');
     try {
       await salesAPI.edit(editSale.sale.id, {
         lines: editSale.lines.map(l => ({
           inventory_item_id: l.inventory_item_id, name: l.name, sku_code: l.sku_code, category: l.category,
-          quantity: parseFloat(l.quantity) || 0, unit_price: parseFloat(l.unit_price) || 0,
-          gst_percentage: parseFloat(l.gst_percentage) || 18, discount_pct: parseFloat(l.discount_pct) || 0,
+          quantity: parseFloat(l.quantity), unit_price: numOr(l.unit_price, 0),
+          gst_percentage: numOr(l.gst_percentage, 18), discount_pct: numOr(l.discount_pct, 0),
         })),
       });
       setEditSale(null); await fetchAll();
