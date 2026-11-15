@@ -710,7 +710,7 @@ export const agentsAPI = {
   activity: (params = {}) => api.get('/agents/activity', { params }),
   request: (id) => api.get(`/oauth/requests/${id}`),
   approve: (id, data) => api.post(`/oauth/requests/${id}/approve`, data),
-  deny: (id) => api.post(`/oauth/requests/${id}/deny`),
+  deny: (id, data) => api.post(`/oauth/requests/${id}/deny`, data),
 };
 
 // Brands & trademarks (own brands, dealership / distribution brands)
