@@ -10,7 +10,8 @@ import { Loader2, Plus, Save, Trash2, Edit, Receipt, TrendingDown } from 'lucide
 import { errText } from './kit/PageBits';
 import { toast } from 'sonner';
 import { confirmAction } from './kit/confirm';
-const blank = { entry_type: 'operational_expense', entry_date: new Date().toISOString().slice(0,10), amount: '', description: '' };
+import { localDate } from '../lib/format';
+const blank = { entry_type: 'operational_expense', entry_date: localDate(), amount: '', description: '' };
 
 export default function ExpensesSection() {
   const [entries, setEntries] = useState([]);
@@ -69,7 +70,7 @@ export default function ExpensesSection() {
   };
 
   const opExpMtd = summary?.operational_expense_mtd || 0;
-  const monthPrefix = new Date().toISOString().slice(0,8); // YYYY-MM-
+  const monthPrefix = localDate().slice(0, 8); // YYYY-MM-
   const monthCount = entries.filter(e => (e.entry_date || '').startsWith(monthPrefix)).length;
 
   return (

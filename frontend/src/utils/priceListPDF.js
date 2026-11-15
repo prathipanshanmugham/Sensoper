@@ -5,6 +5,7 @@
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { loadUnicodeFont } from './pdfFont';
+import { localDate } from '../lib/format';
 
 const inr = (v) => `₹${(v || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const hexToRgb = (hex) => { const h = (hex || '#58A024').replace('#', ''); return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)]; };
@@ -68,5 +69,5 @@ export async function generatePriceListPDF({ groups, company, options = {} }) {
     doc.text(`Page ${p} of ${pages}`, pageW - m, 291, { align: 'right' });
     doc.text(company?.company_name || 'Sensoper Controls & Renewables', m, 291);
   }
-  doc.save(`PriceList_${options.preparedFor ? options.preparedFor.replace(/\s+/g, '_') + '_' : ''}${new Date().toISOString().slice(0, 10)}.pdf`);
+  doc.save(`PriceList_${options.preparedFor ? options.preparedFor.replace(/\s+/g, '_') + '_' : ''}${localDate()}.pdf`);
 }

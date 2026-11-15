@@ -8,7 +8,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Loader2 } from 'lucide-react';
 
 import { errText } from '../kit/PageBits';
-const today = () => new Date().toISOString().slice(0, 10);
+import { localDate } from '../../lib/format';
+const today = () => localDate();
 const EMPTY_ORDER = { platform_id: '', platform_order_id: '', order_date: today(), inventory_item_id: '', quantity: 1, sold_price: '', shipping_cost: 0 };
 
 export function RecordOrderDialog({ open, onOpenChange, platforms, products, items, onSaved }) {

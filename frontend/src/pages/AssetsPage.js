@@ -20,6 +20,7 @@ import Can from '../components/Can';
 
 import { errText } from '../components/kit/PageBits';
 import { toast } from 'sonner';
+import { localDate } from '../lib/format';
 const CATEGORIES = ['vehicle', 'power_tool', 'hand_tool', 'test_equipment', 'safety', 'it', 'furniture', 'other']; // fallback until /assets/filters loads
 const STATUSES = ['available', 'issued', 'in_maintenance', 'under_repair', 'lost', 'scrapped', 'sold'];
 const STATUS_STYLES = {
@@ -250,7 +251,7 @@ export default function AssetsPage() {
                   <div className="flex gap-1.5 flex-wrap pt-1">
                     {canManage && a.status === 'available' && <Button size="sm" variant="outline" className="h-7 text-[11px] gap-1" onClick={() => { setShowIssue(a); setIssueForm({ assigned_to_name: '', expected_return_date: '', condition_out: 'good' }); }} data-testid={`issue-asset-${a.id}`}><ArrowLeftRight className="h-3 w-3" />Issue</Button>}
                     {canManage && a.status === 'issued' && <Button size="sm" variant="outline" className="h-7 text-[11px] gap-1" onClick={() => { setShowReturn(a); setReturnForm({ condition_in: 'good', notes: '' }); }} data-testid={`return-asset-${a.id}`}>Return</Button>}
-                    {canManage && <Button size="sm" variant="outline" className="h-7 text-[11px] gap-1" onClick={() => { setShowMaintenance(a); setMaintenanceForm({ type: 'scheduled', date: new Date().toISOString().slice(0, 10), description: '', cost: '', is_calibration: false, next_due: '' }); }} data-testid={`maintenance-asset-${a.id}`}><Wrench className="h-3 w-3" />Log Service</Button>}
+                    {canManage && <Button size="sm" variant="outline" className="h-7 text-[11px] gap-1" onClick={() => { setShowMaintenance(a); setMaintenanceForm({ type: 'scheduled', date: localDate(), description: '', cost: '', is_calibration: false, next_due: '' }); }} data-testid={`maintenance-asset-${a.id}`}><Wrench className="h-3 w-3" />Log Service</Button>}
                     <Button size="sm" variant="outline" className="h-7 text-[11px] gap-1" onClick={() => openQr(a)} data-testid={`qr-asset-${a.id}`}><QrCode className="h-3 w-3" />QR</Button>
                     {canManage && <Button size="sm" variant="outline" className="h-7 text-[11px] gap-1 text-blue-600 border-blue-200" onClick={() => openEdit(a)} data-testid={`edit-asset-${a.id}`}><Pencil className="h-3 w-3" />Edit</Button>}
                     {canManage && a.status === 'available' && <Button size="sm" variant="outline" className="h-7 text-[11px] gap-1 text-rose-600 border-rose-200" onClick={() => { setArchiveTarget(a); setActionError(''); }} data-testid={`archive-asset-${a.id}`}><Archive className="h-3 w-3" />Archive</Button>}

@@ -11,6 +11,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 
 import { errText } from './kit/PageBits';
+import { localDate } from '../lib/format';
 const inr = (v) => (v == null ? '—' : `₹${Math.round(v).toLocaleString('en-IN')}`);
 
 /** Iter 53 — AMC operations: follow-up pipeline, scheduled-visit calendar, pincode batching, customer outbox. */
@@ -55,7 +56,7 @@ export function AmcOpsPanel({ canManage, canComplete = canManage }) {
           <div key={v.id} className="flex items-center justify-between gap-2 text-sm border-b border-slate-100 pb-1.5" data-testid={`amc-scheduled-${v.id}`}>
             <div className="min-w-0"><p className="font-medium text-slate-800">{v.scheduled_date} · {v.customer_name}</p><p className="text-[11px] text-slate-400">{v.contract_number} · {v.district || '—'} · {v.technician_name || 'technician to be chosen'}</p></div>
             <div className="flex shrink-0 items-center gap-1.5"><Badge variant="outline" className="text-[10px] capitalize">{v.visit_type}</Badge>
-              {canComplete && v.scheduled_date <= new Date().toISOString().slice(0, 10) && <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => markDone(v)} data-testid={`amc-visit-done-${v.id}`}>Done</Button>}</div>
+              {canComplete && v.scheduled_date <= localDate() && <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => markDone(v)} data-testid={`amc-visit-done-${v.id}`}>Done</Button>}</div>
           </div>
         ))}
       </CardContent>

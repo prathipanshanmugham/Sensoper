@@ -14,6 +14,7 @@ import { Textarea } from '../components/ui/textarea';
 import { Loader2, ArrowLeft, Star, Plus, ShieldCheck, Clock, Wallet, Pencil, Trash2 } from 'lucide-react';
 
 import { errText } from '../components/kit/PageBits';
+import { localDate } from '../lib/format';
 const STATUS_COLORS = { active: 'bg-emerald-100 text-emerald-800', inactive: 'bg-slate-100 text-slate-600', blacklisted: 'bg-red-100 text-red-800' };
 const ASSIGN_STATUS_COLORS = { assigned: 'bg-blue-100 text-blue-800', in_progress: 'bg-amber-100 text-amber-800', completed: 'bg-emerald-100 text-emerald-800', payment_pending: 'bg-orange-100 text-orange-800', closed: 'bg-slate-100 text-slate-600' };
 
@@ -40,7 +41,7 @@ export default function PartnerDetail() {
   const [assignForm, setAssignForm] = useState({ project_id: '', expected_completion: '', activities: [] });
   const [scopeHint, setScopeHint] = useState(null);
   const [showRate, setShowRate] = useState(false);
-  const [rateForm, setRateForm] = useState({ activity: '', unit: '', rate: '', effective_from: new Date().toISOString().slice(0, 10) });
+  const [rateForm, setRateForm] = useState({ activity: '', unit: '', rate: '', effective_from: localDate() });
   const [showPayment, setShowPayment] = useState(null);
   const [paymentForm, setPaymentForm] = useState({ amount: '', mode: 'bank_transfer', type: 'advance', reference: '', notes: '' });
   const [showQuality, setShowQuality] = useState(null);

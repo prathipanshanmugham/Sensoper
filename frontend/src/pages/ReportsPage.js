@@ -20,6 +20,7 @@ import { saveAs } from 'file-saver';
 import { loadUnicodeFont } from '../utils/pdfFont';
 import { useLocationScope, LocationScopeSelect } from '../components/LocationScope';
 import Can from '../components/Can';
+import { localDate } from '../lib/format';
 
 const PIE_COLORS = ['#58A024', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#84cc16'];
 const PARTNER_SPECIALITIES = ['on-grid', 'off-grid', 'hybrid', 'pump', 'electrical', 'civil'];
@@ -187,7 +188,7 @@ export default function ReportsPage() {
     if (reportData.rows?.length) {
       autoTable(doc, { startY: 42 + (reportData.summary ? Object.keys(reportData.summary).length * 6 + 4 : 0), head: [cols.map(formatHeader)], body: reportData.rows.map(r => cols.map(c => { const v = r[c]; return typeof v === 'number' ? v.toLocaleString('en-IN') : String(v ?? ''); })), theme: 'striped', styles: { font: FONT }, headStyles: { font: FONT, fillColor: [16, 185, 129], textColor: 255, fontSize: 8 }, bodyStyles: { font: FONT, fontSize: 7 }, margin: { left: 14, right: 14 } });
     }
-    doc.save(`${reportData.title.replace(/\s+/g, '_')}_${new Date().toISOString().slice(0, 10)}.pdf`);
+    doc.save(`${reportData.title.replace(/\s+/g, '_')}_${localDate()}.pdf`);
   };
 
   const exportExcel = () => {
@@ -198,7 +199,7 @@ export default function ReportsPage() {
     if (reportData.summary) { const ws1 = XLSX.utils.json_to_sheet(Object.entries(reportData.summary).map(([k, v]) => ({ Metric: formatHeader(k), Value: v }))); XLSX.utils.book_append_sheet(wb, ws1, 'Summary'); }
     if (reportData.rows?.length) { const cols = getColumns(); const ws2 = XLSX.utils.json_to_sheet(reportData.rows.map(r => { const row = {}; cols.forEach(c => { row[formatHeader(c)] = r[c]; }); return row; })); XLSX.utils.book_append_sheet(wb, ws2, 'Data'); }
     const buf = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
-    saveAs(new Blob([buf], { type: 'application/octet-stream' }), `${reportData.title.replace(/\s+/g, '_')}_${new Date().toISOString().slice(0, 10)}.xlsx`);
+    saveAs(new Blob([buf], { type: 'application/octet-stream' }), `${reportData.title.replace(/\s+/g, '_')}_${localDate()}.xlsx`);
   };
 
   return (

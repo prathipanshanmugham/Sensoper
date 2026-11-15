@@ -12,6 +12,7 @@ import { Loader2, Plus, Save, Trash2, Edit, Wallet, Banknote, Megaphone, Trendin
 import { errText } from './kit/PageBits';
 import { toast } from 'sonner';
 import { confirmAction } from './kit/confirm';
+import { localDate } from '../lib/format';
 const ENTRY_META = {
   cash_on_hand:      { label: 'Cash on Hand',      icon: Wallet,    color: 'emerald', accent: 'border-emerald-200 bg-emerald-50/40' },
   account_balance:   { label: 'Account Balance',   icon: Banknote,  color: 'violet',  accent: 'border-violet-200 bg-violet-50/40' },
@@ -33,7 +34,7 @@ const MARKETING_CHANNELS = [
 
 const blank = {
   entry_type: 'cash_on_hand',
-  entry_date: new Date().toISOString().slice(0, 10),
+  entry_date: localDate(),
   amount: '',
   description: '',
   marketing_channel: 'google_ads',

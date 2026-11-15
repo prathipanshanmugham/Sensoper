@@ -23,6 +23,7 @@ import {
 
 import { errText } from '../components/kit/PageBits';
 import { toast } from 'sonner';
+import { localDate } from '../lib/format';
 const roleConfig = {
   admin: { label: 'Admin', color: 'bg-purple-100 text-purple-800' },
   manager: { label: 'Manager', color: 'bg-blue-100 text-blue-800' },
@@ -45,7 +46,7 @@ export default function UserManagement() {
   const [actionLoading, setActionLoading] = useState(false);
   const [error, setError] = useState('');
   const [scoreUser, setScoreUser] = useState(null);
-  const [scoreForm, setScoreForm] = useState({ period: new Date().toISOString().slice(0, 7), score: 4, notes: '' });
+  const [scoreForm, setScoreForm] = useState({ period: localDate().slice(0, 7), score: 4, notes: '' });
   const [scoreSaving, setScoreSaving] = useState(false);
 
   const fetchUsers = useCallback(async () => {
@@ -65,7 +66,7 @@ export default function UserManagement() {
 
   const openScoreDialog = (user) => {
     setScoreUser(user);
-    setScoreForm({ period: new Date().toISOString().slice(0, 7), score: 4, notes: '' });
+    setScoreForm({ period: localDate().slice(0, 7), score: 4, notes: '' });
   };
 
   const handleLogScore = async () => {

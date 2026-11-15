@@ -14,6 +14,7 @@ import Can from '../components/Can';
 import { errText } from '../components/kit/PageBits';
 import { toast } from 'sonner';
 import { confirmAction } from '../components/kit/confirm';
+import { localDate } from '../lib/format';
 const STATUS_META = {
   active: { label: 'Active', color: 'bg-blue-100 text-blue-700 border-blue-200', icon: Clock },
   completed: { label: 'Completed', color: 'bg-emerald-100 text-emerald-700 border-emerald-200', icon: CheckCircle2 },
@@ -24,7 +25,7 @@ const blankForm = {
   site_name: '', site_ref: '', site_address: '',
   device_id: '', device_type: '', device_serial: '',
   customer_name: '', customer_phone: '', customer_account: '',
-  start_date: new Date().toISOString().slice(0, 10), days: 30,
+  start_date: localDate(), days: 30,
   status: 'active', estimated_monthly_kwh: 0, notes: ''
 };
 
@@ -51,7 +52,7 @@ export default function ReadingsPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [genFor, setGenFor] = useState(null);
-  const [genForm, setGenForm] = useState({ date: new Date().toISOString().slice(0, 7), kwh: '' });
+  const [genForm, setGenForm] = useState({ date: localDate().slice(0, 7), kwh: '' });
   const [genSaving, setGenSaving] = useState(false);
 
   const fetchAll = useCallback(async () => {
@@ -108,7 +109,7 @@ export default function ReadingsPage() {
     catch (e) { toast.error(errText(e, 'Failed')); }
   };
 
-  const openGenDialog = (r) => { setGenFor(r); setGenForm({ date: new Date().toISOString().slice(0, 7), kwh: '' }); };
+  const openGenDialog = (r) => { setGenFor(r); setGenForm({ date: localDate().slice(0, 7), kwh: '' }); };
 
   const handleLogGeneration = async () => {
     if (!genFor || !genForm.kwh) return;

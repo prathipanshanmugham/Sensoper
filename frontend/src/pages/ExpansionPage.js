@@ -29,6 +29,7 @@ import Can from '../components/Can';
 
 import { toast } from 'sonner';
 import { confirmAction } from '../components/kit/confirm';
+import { localDate } from '../lib/format';
 const BAND_STYLES = {
   strong:   { color: 'text-emerald-700', bg: 'bg-emerald-100 border-emerald-200', label: 'Strong Case' },
   watch:    { color: 'text-amber-700',   bg: 'bg-amber-100 border-amber-200',      label: 'Watch' },
@@ -375,7 +376,7 @@ export default function ExpansionPage() {
     const cols = ['district', 'state', 'score', 'projects', 'revenue', 'margin_pct'];
     const body = filteredDistricts.map(d => [d.district, d.state || '-', d.score.toFixed(1), d.metrics.projects, d.metrics.revenue, `${d.metrics.margin_pct}%`]);
     autoTable(doc, { startY: 28, head: [['District', 'State', 'Score', 'Projects', 'Revenue', 'Margin']], body, theme: 'striped', headStyles: { fillColor: [16, 185, 129] } });
-    doc.save(`Expansion_Districts_${new Date().toISOString().slice(0, 10)}.pdf`);
+    doc.save(`Expansion_Districts_${localDate()}.pdf`);
   };
   const exportDistrictsExcel = () => {
     if (!filteredDistricts.length) return;
@@ -385,7 +386,7 @@ export default function ExpansionPage() {
     const ws = XLSX.utils.json_to_sheet(filteredDistricts.map(d => ({ District: d.district, State: d.state || '-', Score: d.score, Projects: d.metrics.projects, Revenue: d.metrics.revenue, 'Margin %': d.metrics.margin_pct })));
     XLSX.utils.book_append_sheet(wb, ws, 'Districts');
     const buf = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
-    saveAs(new Blob([buf], { type: 'application/octet-stream' }), `Expansion_Districts_${new Date().toISOString().slice(0, 10)}.xlsx`);
+    saveAs(new Blob([buf], { type: 'application/octet-stream' }), `Expansion_Districts_${localDate()}.xlsx`);
   };
 
   return (

@@ -11,10 +11,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Plus, Pencil, Trash2, Loader2, Layers, X, Check } from 'lucide-react';
 
 import { confirmAction } from './kit/confirm';
+import { localDate } from '../lib/format';
 const inr = (v) => `₹${Math.round(v || 0).toLocaleString('en-IN')}`;
 const UNIT_LABEL = { kw: 'kW', hp: 'HP', unit: 'unit' };
 const DEFAULT_UNIT = { 'on-grid': 'kw', 'off-grid': 'kw', hybrid: 'kw', 'solar-pump': 'hp' };
-const today = () => new Date().toISOString().slice(0, 10);
+const today = () => localDate();
 const blankRow = () => ({ _key: Math.random().toString(36).slice(2), from_value: '', to_value: '', rate_per_unit: '', effective_from: today() });
 const err = (e, fb) => formatApiErrorDetail(e.response?.data?.detail) || fb;
 

@@ -21,6 +21,7 @@ import { useLiveRefresh } from '../lib/liveSync';
 import { errText } from '../components/kit/PageBits';
 import { toast } from 'sonner';
 import { confirmAction } from '../components/kit/confirm';
+import { localDate } from '../lib/format';
 const REQUIRED_IMPORT_FIELDS = ['name', 'sku_code', 'category', 'quantity', 'unit_price'];
 const IMPORT_STATUS_STYLES = {
   will_create: 'bg-emerald-100 text-emerald-700',
@@ -133,7 +134,7 @@ export default function InventoryManagement() {
     setExportLoading(format);
     try {
       const res = await inventoryAPI.exportItems(format);
-      const today = new Date().toISOString().slice(0, 10);
+      const today = localDate();
       downloadBlob(res.data, `inventory_${today}.${format}`);
     } catch (e) { setError('Export failed'); }
     finally { setExportLoading(null); }
