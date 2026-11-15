@@ -96,6 +96,22 @@ async def _bad_record_id(request: Request, exc: _InvalidId):
     """A link to a record that can't exist (a mistyped or cut-off id) is "not found", not a server error."""
     return JSONResponse(status_code=404, content={"detail": "Not found — that record doesn't exist or the link is incomplete."})
 
+
+@app.exception_handler(json.JSONDecodeError)
+async def _bad_json_body(request: Request, exc: json.JSONDecodeError):
+    """Routes that read `await request.json()` themselves got a server error on an empty or broken body."""
+    return JSONResponse(status_code=400, content={"detail": "The request needs a JSON body — send the fields as a JSON object."})
+
+
+@app.exception_handler(AttributeError)
+async def _wrong_body_shape(request: Request, exc: AttributeError):
+    """A list or a bare value where a route expects a JSON object (`body.get(...)`) is the caller's mistake, not a
+    server error. Any other AttributeError is a real bug: logged, and still a 500."""
+    if re.match(r"'(list|str|int|float|bool)' object has no attribute '(get|items|keys)'", str(exc)):
+        return JSONResponse(status_code=400, content={"detail": "Send the fields as a JSON object."})
+    logging.getLogger(__name__).error("Unhandled error on %s %s", request.method, request.url.path, exc_info=exc)
+    return JSONResponse(status_code=500, content={"detail": "Internal Server Error"})
+
 # Create a router with the /api prefix
 api_router = APIRouter(prefix="/api")
 
@@ -647,6 +663,16 @@ def daily_report_required(user: dict) -> bool:
 
 _PERM_CACHE = access_policy.PermCache()
 
+# Deletes that a role without the delete switch may still send: the route itself then files an approval request for
+# an admin instead of deleting (Approvals inbox). Refusing them here made those requests impossible to raise.
+_DELETE_OR_REQUEST = {
+    "/api/sales/{sale_id}": "module_direct_sales",
+    "/api/deliveries/{delivery_id}": "module_delivery_outbound",
+    "/api/purchase-orders/{po_id}/inbound": "module_purchase_inbound",
+    "/api/assets/{asset_id}": "module_assets",
+    "/api/returns/{return_id}": "module_returns",
+}
+
 
 async def _policy_gate(request: Request, user: dict) -> None:
     """Apply the Permissions page to this request: refuse what the role's matrix switches off, and remember
@@ -660,6 +686,9 @@ async def _policy_gate(request: Request, user: dict) -> None:
         raise HTTPException(status_code=403, detail="This login has no access")
     perms = await get_permissions(user["role"])
     ok, reason, grantable = access_policy.decide(perms, request.method, path)
+    page_key = _DELETE_OR_REQUEST.get(path) if request.method == "DELETE" else None
+    if ok is False and page_key and (perms.get(page_key) or {}).get("view"):
+        ok, grantable = True, False   # no delete switch: the route asks an admin instead (it checks the switch itself)
     if ok is False:
         raise HTTPException(status_code=403, detail=reason)
     request.state.policy_grant = bool(ok and grantable)
@@ -7082,6 +7111,8 @@ async def complete_inbound(po_id: str, request: Request):
     # Match every line first: the old loop added stock line by line and then refused on an unmatched line, so the
     # earlier lines' stock stayed added and a retry added it again
     for item in po.get("items", []):
+        if item.get("service"):
+            continue   # freight / service lines (a PO from a vendor quote adds one) aren't stock — they blocked the inbound
         inv_item = None
         if item.get("inventory_item_id") and ObjectId.is_valid(str(item["inventory_item_id"])):
             inv_item = await db.inventory_items.find_one({"_id": ObjectId(item["inventory_item_id"])})

@@ -392,3 +392,54 @@ def test_emi_preview_refuses_impossible_numbers(app, loop, world):
         ok = await a.post("/api/loans/emi-preview", json={"amount": 100000, "interest_rate": 12, "tenure_months": 12})
         assert ok.status_code == 200 and ok.json()["emi"] == 8884.88
     run(loop, go())
+
+
+def test_a_manager_without_delete_rights_can_ask_an_admin(app, loop, world):
+    async def go():
+        a, mgr = world["admin"], world["mgr_n"]
+        i1 = await item("Isolator", 5)
+        sid = (await a.post("/api/sales", json=sale_body([line(i1, 1)], location_id=world["north"]))).json()["id"]
+        r = await mgr.delete(f"/api/sales/{sid}")
+        assert r.status_code == 200 and r.json()["status"] == "pending_approval", r.text
+        assert (await server.db.sales.find_one({"_id": ObjectId(sid)}))["status"] == "confirmed"   # not cancelled by the request
+        assert await stock(i1) == 4
+        await server.db.action_requests.delete_many({"resource_id": sid})
+    run(loop, go())
+
+
+def test_a_freight_line_doesnt_block_the_inbound(app, loop, world):
+    async def go():
+        a = world["admin"]
+        i1 = await item("Combiner box", 0)
+        body = _po(world, [i1])
+        body["items"].append({"name": "Freight", "qty": 1, "unit_price": 800, "service": True})
+        po = (await a.post("/api/purchase-orders", json=body)).json()["id"]
+        for step in ("approve", "arrival", "qc"):
+            await a.put(f"/api/purchase-orders/{po}/{step}", json={})
+        r = await a.put(f"/api/purchase-orders/{po}/inbound", json={"storage_location": {"zone": "C"}})
+        assert r.status_code == 200, r.text
+        assert await stock(i1) == 5
+    run(loop, go())
+
+
+def test_broken_bodies_and_months_are_400_not_500(app, loop, world):
+    async def go():
+        a = world["admin"]
+        assert (await a.put("/api/hr/settings", content=b"", headers={"content-type": "application/json"})).status_code == 400
+        assert (await a.post("/api/approvals", json=[1, 2])).status_code == 400
+        assert (await a.get("/api/attendance/register", params={"month": "2026-13"})).status_code == 400
+    run(loop, go())
+
+
+def test_a_manager_corrects_only_their_own_branch_attendance(app, loop, world):
+    async def go():
+        db = server.db
+        other = await db.users.insert_one({"email": f"south.{TAG}@example.com", "name": "South Staff", "role": "staff", "password_hash": "x",
+                                           "location_ids": [world["south"]], "created_at": "2026-01-01T00:00:00+00:00"})
+        rec = await db.attendance.insert_one({"user_id": str(other.inserted_id), "date": "2026-11-02", "check_in": {"at": "2026-11-02T03:30:00+00:00"},
+                                              "check_out": None, "corrections": []})
+        r = await world["mgr_n"].put(f"/api/attendance/{rec.inserted_id}", json={"check_out_at": "18:00"})
+        assert r.status_code == 404
+        assert (await world["admin"].put(f"/api/attendance/{rec.inserted_id}", json={"check_out_at": "18:00"})).status_code == 200
+        await db.attendance.delete_one({"_id": rec.inserted_id})
+    run(loop, go())
