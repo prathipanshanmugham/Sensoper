@@ -3307,7 +3307,7 @@ async def list_pincodes(request: Request, state: Optional[str] = None, q: Option
     query = {}
     if state: query["state"] = state
     if q:
-        query["$or"] = [{"pincode": {"$regex": f"^{q}"}}, {"district": {"$regex": q, "$options": "i"}}]
+        query["$or"] = [{"pincode": {"$regex": f"^{re.escape(q)}"}}, {"district": {"$regex": re.escape(q), "$options": "i"}}]
     docs = await db.pincodes.find(query).limit(limit).to_list(limit)
     return [{k: v for k, v in d.items() if k != "_id"} for d in docs]
 
@@ -5189,9 +5189,9 @@ async def _get_filtered_projects(query_base, date_from, date_to, system_type, st
     if status and status != "all":
         query["status"] = status
     if customer:
-        query["customer.name"] = {"$regex": customer, "$options": "i"}
+        query["customer.name"] = {"$regex": re.escape(customer), "$options": "i"}
     if staff:
-        query["created_by_name"] = {"$regex": staff, "$options": "i"}
+        query["created_by_name"] = {"$regex": re.escape(staff), "$options": "i"}
     if project_id:
         query["_id"] = ObjectId(project_id)
     return await db.projects.find(query).to_list(5000)

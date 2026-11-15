@@ -14,6 +14,7 @@ from datetime import datetime, timezone
 from pydantic import BaseModel
 from bson import ObjectId
 from fastapi import APIRouter, HTTPException, Request, UploadFile, File
+import re
 import csv
 import io
 import math
@@ -459,7 +460,7 @@ def create_router(db, get_current_user, require_role, create_audit_log):
         if platform_id: q["platform_id"] = platform_id
         if status: q["status"] = status
         if search:
-            q["$or"] = [{"listing_title": {"$regex": search, "$options": "i"}}, {"platform_sku": {"$regex": search, "$options": "i"}}]
+            q["$or"] = [{"listing_title": {"$regex": re.escape(search), "$options": "i"}}, {"platform_sku": {"$regex": re.escape(search), "$options": "i"}}]
         docs = await db.ecommerce_listings.find(q).sort("updated_at", -1).to_list(5000)
         platforms = {str(p["_id"]): p["name"] for p in await db.ecommerce_platforms.find({}).to_list(200)}
         items = {str(i["_id"]): i for i in await db.inventory_items.find({}).to_list(5000)}

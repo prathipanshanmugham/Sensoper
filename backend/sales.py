@@ -479,7 +479,7 @@ def create_router(db, get_current_user, require_role, generate_pdf=None, company
         if payment_status: query["payment_status"] = payment_status
         if staff: query["sold_by"] = staff
         if status: query["status"] = status
-        if item: query["lines.name"] = {"$regex": item, "$options": "i"}
+        if item: query["lines.name"] = {"$regex": re.escape(item), "$options": "i"}
         docs = await db.sales.find(query).sort("created_at", -1).limit(limit).to_list(limit)
         return [await _sale_out(d) for d in docs]
 

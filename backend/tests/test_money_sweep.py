@@ -431,6 +431,16 @@ def test_broken_bodies_and_months_are_400_not_500(app, loop, world):
     run(loop, go())
 
 
+def test_search_boxes_take_any_text(app, loop, world):
+    async def go():
+        a = world["admin"]
+        for path, params in (("/api/sales", {"item": "Sun (P) Ltd"}), ("/api/calculate/pincodes", {"q": "638("}),
+                             ("/api/support/tickets", {"search": "C++"}), ("/api/vault", {"search": "*"}), ("/api/partners", {"search": "[x"})):
+            r = await a.get(path, params=params)
+            assert r.status_code < 500, (path, r.status_code, r.text[:200])
+    run(loop, go())
+
+
 def test_a_manager_corrects_only_their_own_branch_attendance(app, loop, world):
     async def go():
         db = server.db
