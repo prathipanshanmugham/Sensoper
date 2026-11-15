@@ -84,20 +84,26 @@ def apply_payments(loan: Dict[str, Any], payments: List[Dict[str, Any]]) -> Dict
     last = notify.to_date(loan.get("disbursal_date"))
     totals = {"interest_paid": 0.0, "principal_paid": 0.0, "charges_paid": 0.0, "drawn": 0.0}
     split = []
+    interest_settled = False   # the last thing that settled interest was an interest-only payment
     for p in sorted(payments, key=lambda x: (str(x.get("date")), str(x.get("created_at") or ""))):
         amt, kind, d = _f(p.get("amount")), p.get("kind"), notify.to_date(p.get("date"))
         interest = principal = 0.0
         if kind == "emi":
             months = 1
             if last and d:
-                months = max(1, round((d - last).days / 30.4))
+                # an interest-only payment already paid the interest up to its date, so only the months since then
+                # count (none, if it was this month) — before, the EMI charged those months' interest a second time
+                months = max(0 if interest_settled else 1, round((d - last).days / 30.4))
             interest = round(min(amt, bal * r * months), 2)
             principal = round(min(amt - interest, bal), 2)
             last = d or last
+            interest_settled = False
         elif kind in ("prepayment", "repayment"):
             principal = round(min(amt, bal), 2)
         elif kind == "interest":
             interest = amt
+            last = d or last          # interest is paid up to this date
+            interest_settled = True
         elif kind == "drawdown":
             bal += amt
             totals["drawn"] += amt

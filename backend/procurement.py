@@ -23,6 +23,7 @@ from pydantic import BaseModel, Field
 from pymongo import ReturnDocument
 
 from vendors import rating_average, scorecard
+from locations import location_scope_filter
 
 DEFAULT_SETTINGS = {"min_quotes": 3, "require_quotes": True, "skip_below_amount": 0, "low_rating": 3.0}
 OPEN_STATUSES = ("open", "quoting")
@@ -234,8 +235,8 @@ def create_router(db, get_current_user, require_role, create_audit_log, require_
     # ═══════════════ purchase requests ═══════════════
     @router.get("/purchase-requests")
     async def list_requests(request: Request, status: Optional[str] = None):
-        await require_module(request, "module_purchase_inbound", "view")
-        q: Dict[str, Any] = {}
+        user = await require_module(request, "module_purchase_inbound", "view")
+        q: Dict[str, Any] = dict(location_scope_filter(user))   # a branch sees its own purchase requests
         if status == "open":
             q["status"] = {"$in": list(OPEN_STATUSES)}
         elif status and status != "all":

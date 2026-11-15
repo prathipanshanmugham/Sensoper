@@ -13,6 +13,7 @@ from bson import ObjectId
 from pydantic import BaseModel
 from pymongo import ReturnDocument
 from fastapi import APIRouter, HTTPException, Request
+from locations import location_scope_filter
 
 
 # ═══════════ Models ═══════════
@@ -131,6 +132,9 @@ def _breach_flags(ticket: Dict[str, Any], sla: Dict[str, Dict[str, float]]) -> D
     """Compute the response/resolution breach + a bucket for triage colour-coding."""
     priority = ticket.get("priority", "medium")
     limits = sla.get(priority, DEFAULT_SLA_HOURS["medium"])
+    if not ticket.get("created_at"):   # a ticket stored without a time (old or imported) mustn't break the whole list
+        return {"breached_response_sla": False, "breached_resolution_sla": False, "response_hours_left": None, "resolution_hours_left": None,
+                "sla_response_hours": limits["response"], "sla_resolution_hours": limits["resolution"], "sla_bucket": "on_track"}
     now = _now()
     breached_response = False
     breached_resolution = False
@@ -242,8 +246,11 @@ def create_router(db, get_current_user, require_role, create_audit_log):
                             assigned_to: Optional[str] = None, sla_bucket: Optional[str] = None,
                             date_from: Optional[str] = None, date_to: Optional[str] = None,
                             search: Optional[str] = None):
-        await get_current_user(request)
+        user = await get_current_user(request)
         q: Dict[str, Any] = {}
+        scope = location_scope_filter(user)   # a branch sees its own customers' tickets (and unassigned ones)
+        if scope:
+            q["$and"] = [scope]
         if status: q["status"] = status
         if priority: q["priority"] = priority
         if category: q["category"] = category

@@ -21,6 +21,7 @@ from fastapi import APIRouter, HTTPException, Request
 from pymongo import ReturnDocument
 from pymongo.errors import DuplicateKeyError
 from locations import location_scope_filter, location_allowed
+from gst_state import is_inter_state
 
 MAX_QTY = 1_000_000          # per line — more than this is a typing slip, not a sale
 MAX_PRICE = 1_000_000_000    # ₹100 crore a unit
@@ -242,14 +243,15 @@ def _price_lines(lines: List[dict], header_discount: float = 0.0) -> List[dict]:
     return lines
 
 
-def _sale_totals(lines: List[dict], round_off: float, customer_state: Optional[str], company_state: Optional[str]) -> Dict[str, float]:
+def _sale_totals(lines: List[dict], round_off: float, customer_state: Optional[str], company_state: Optional[str],
+                customer_gstin: Optional[str] = None, company_gstin: Optional[str] = None) -> Dict[str, float]:
     if not _finite(round_off):
         raise HTTPException(400, "The round-off must be a plain number")
     subtotal = sum(float(l["quantity"]) * float(l["unit_price"]) for l in lines)
     line_disc = sum(float(l.get("discount_amount") or 0) for l in lines)
     bill_disc = sum(float(l.get("bill_discount") or 0) for l in lines)
     taxable = subtotal - line_disc - bill_disc
-    cgst, sgst, igst = _split_gst(lines, customer_state, company_state)
+    cgst, sgst, igst = _split_gst(lines, customer_state, company_state, customer_gstin, company_gstin)
     gst_total = _round(cgst + sgst + igst)
     grand = _round(_round(taxable) + gst_total + float(round_off or 0))
     if grand < 0:
@@ -419,9 +421,9 @@ async def _restore_stock(db, sale_lines, sale_id, user):
         await db.inventory_movements.insert_many(movements)
 
 
-def _split_gst(taxable_lines, customer_state, company_state):
+def _split_gst(taxable_lines, customer_state, company_state, customer_gstin=None, company_gstin=None):
     """Compute CGST/SGST or IGST based on inter-state vs intra-state supply."""
-    inter_state = (customer_state or "").strip().lower() != (company_state or "").strip().lower()
+    inter_state = is_inter_state(company_state, company_gstin, customer_state, customer_gstin)
     total = _round(sum(float(l.get("gst_amount") or 0) for l in taxable_lines))
     if inter_state:
         return 0, 0, total
@@ -550,7 +552,7 @@ def create_router(db, get_current_user, require_role, generate_pdf=None, company
         profile = await company_profile_fn(location_id) if company_profile_fn else {}
         company_state = (profile or {}).get("state", "Tamil Nadu")
 
-        t = _sale_totals(lines, payload.round_off or 0, payload.customer.state, company_state)
+        t = _sale_totals(lines, payload.round_off or 0, payload.customer.state, company_state, payload.customer.gstin, (profile or {}).get("gst_number"))
         grand_total = t["grand_total"]
 
         amount_paid = sum(_check_payment(p.amount) for p in (payload.payments or []))
@@ -745,7 +747,7 @@ def create_router(db, get_current_user, require_role, generate_pdf=None, company
         profile = await company_profile_fn(sale.get("location_id")) if company_profile_fn else {}
         company_state = (profile or {}).get("state", "Tamil Nadu")
         round_off = payload.round_off if payload.round_off is not None else sale.get("round_off", 0)
-        t = _sale_totals(new_lines, round_off, customer.get("state"), company_state)
+        t = _sale_totals(new_lines, round_off, customer.get("state"), company_state, customer.get("gstin"), (profile or {}).get("gst_number"))
         grand_total = t["grand_total"]
         amount_paid = sale.get("amount_paid", 0)
         if amount_paid > grand_total + 1:

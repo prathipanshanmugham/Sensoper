@@ -692,6 +692,50 @@ async def _policy_gate(request: Request, user: dict) -> None:
     if ok is False:
         raise HTTPException(status_code=403, detail=reason)
     request.state.policy_grant = bool(ok and grantable)
+    await _branch_gate(request, user)
+
+
+# Records that belong to a branch (location_id) and are opened by id in the URL. The lists were already filtered by
+# branch, but an id from another branch still opened, changed or deleted that record. (path param, paths it means
+# this kind of record on — None = every path, collection, what to call it)
+_BRANCH_RECORDS = [
+    ("project_id", None, "projects", "Project"),
+    ("item_id", ("/api/inventory/items/", "/api/pricelist/items/", "/api/ecommerce/products/", "/api/brands/"), "inventory_items", "Item"),
+    ("delivery_id", None, "deliveries", "Delivery"),
+    ("po_id", None, "purchase_orders", "Purchase order"),
+    ("sale_id", None, "sales", "Sale"),
+    ("credit_id", None, "customer_credits", "Credit"),
+    ("asset_id", None, "assets", "Asset"),
+    ("contract_id", None, "amc_contracts", "AMC contract"),
+    ("pr_id", None, "purchase_requests", "Purchase request"),
+    ("ticket_id", ("/api/support/",), "support_tickets", "Ticket"),
+]
+
+
+async def _branch_gate(request: Request, user: dict) -> None:
+    """A login tied to branches can't reach another branch's record by its id — it reads as not found, like a
+    record that doesn't exist. Admins and logins with no branch (all branches) aren't limited; records with no
+    branch are shared."""
+    if user.get("role") == "admin" or not (user.get("location_ids") or []):
+        return
+    params, path = request.path_params or {}, request.url.path
+    for name, prefixes, coll, label in _BRANCH_RECORDS:
+        rid = params.get(name)
+        if not rid or not ObjectId.is_valid(str(rid)) or (prefixes and not path.startswith(prefixes)):
+            continue
+        doc = await db[coll].find_one({"_id": ObjectId(str(rid))}, {"location_id": 1})
+        if doc and not location_allowed(user, doc.get("location_id")):
+            raise HTTPException(status_code=404, detail=f"{label} not found")
+
+
+async def project_in_scope(user: dict, project_id: Optional[str]) -> Optional[dict]:
+    """The project named in a request body, if this login's branch may use it (404 otherwise)."""
+    if not project_id:
+        return None
+    project = await db.projects.find_one({"_id": ObjectId(str(project_id))}) if ObjectId.is_valid(str(project_id)) else None
+    if not project or not location_allowed(user, project.get("location_id")):
+        raise HTTPException(status_code=404, detail="Project not found")
+    return project
 
 
 def role_ok(request: Request, user: dict, *roles) -> bool:
@@ -2785,6 +2829,15 @@ async def get_subsidy_tracking(project_id: str, request: Request):
 @api_router.post("/subsidy/tracking")
 async def upsert_subsidy_tracking(payload: SubsidyTracking, request: Request):
     user = await get_current_user(request)
+    # The subsidy card sits on the project page: changing it is changing the project (Permissions → Projects, edit),
+    # on a project this login can see — its branch, and for staff their own projects, as on the project page
+    if user["role"] != "admin" and not await check_module_permission(user, "module_projects", "edit"):
+        raise HTTPException(status_code=403, detail="Your role can’t change projects. An admin can change this in Settings → Permissions.")
+    if not payload.project_id:
+        raise HTTPException(status_code=400, detail="Say which project this subsidy belongs to")
+    project = await project_in_scope(user, payload.project_id)
+    if user["role"] == "staff" and project.get("created_by") != user["id"]:
+        raise HTTPException(status_code=403, detail="Access denied")
     body = payload.model_dump(exclude_unset=True)
     body["updated_at"] = datetime.now(timezone.utc).isoformat()
     body["updated_by"] = user.get("id")
@@ -6589,7 +6642,7 @@ async def delete_daily_update(update_id: str, request: Request):
 @api_router.post("/payments")
 async def create_payment(payment: PaymentCreate, request: Request):
     user = await get_current_user(request)
-    project = await db.projects.find_one({"_id": ObjectId(payment.project_id)})
+    project = await project_in_scope(user, payment.project_id)   # another branch's project reads as not found
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
     doc = {
@@ -7435,6 +7488,10 @@ async def reject_action_request(req_id: str, request: Request):
 @api_router.post("/deliveries")
 async def create_delivery(delivery: DeliveryOutboundCreate, request: Request):
     user = await require_module(request, "module_delivery_outbound", "create")
+    pid = str(delivery.project_id or "")
+    project = await db.projects.find_one({"_id": ObjectId(pid)}, {"location_id": 1}) if ObjectId.is_valid(pid) else None
+    if project and not location_allowed(user, project.get("location_id")):
+        raise HTTPException(status_code=404, detail="Project not found")   # not to another branch's project
     doc = {
         "project_id": delivery.project_id, "customer_name": delivery.customer_name,
         "customer_address": delivery.customer_address, "customer_contact": delivery.customer_contact,
@@ -7442,7 +7499,7 @@ async def create_delivery(delivery: DeliveryOutboundCreate, request: Request):
         "vehicle_number": delivery.vehicle_number, "driver_contact": delivery.driver_contact,
         "dispatch_date": delivery.dispatch_date, "delivery_date": delivery.delivery_date,
         "distance_km": delivery.distance_km, "notes": delivery.notes,
-        "location_id": user.get("default_location_id"),
+        "location_id": (project or {}).get("location_id") or user.get("default_location_id"),
         "status": "dispatched", "created_by": user["id"], "created_by_name": user["name"],
         "created_at": datetime.now(timezone.utc).isoformat()
     }
@@ -7909,6 +7966,40 @@ async def health_check():
 
 # ================== STARTUP EVENTS ==================
 
+async def seed_admin_user() -> str:
+    """The first admin login — made only from ADMIN_PASSWORD, never from a built-in password (the repository is
+    public, so a built-in one is known to everyone). An existing admin's password is never overwritten on restart.
+    Recovery: set RESET_ADMIN_PASSWORD=true together with ADMIN_PASSWORD for one restart.
+    Returns what happened: created / exists / reset / skipped."""
+    admin_email = os.environ.get("ADMIN_EMAIL", "admin@sensoper.com")
+    env_password = os.environ.get("ADMIN_PASSWORD") or ""
+    existing = await db.users.find_one({"email": admin_email})
+    if existing is None:
+        if not env_password:
+            if not await db.users.find_one({"role": "admin"}):
+                logger.warning("No admin login exists and ADMIN_PASSWORD is not set, so none was created. Set ADMIN_PASSWORD "
+                               "(and ADMIN_EMAIL) in backend/.env and restart to create the first admin.")
+            return "skipped"
+        await db.users.insert_one({
+            "email": admin_email,
+            "password_hash": hash_password(env_password),
+            "name": "System Admin",
+            "role": "admin",
+            "must_reset_password": False,
+            "created_at": datetime.now(timezone.utc).isoformat()
+        })
+        logger.info(f"Admin user created: {admin_email}")
+        return "created"
+    if env_password and os.environ.get("RESET_ADMIN_PASSWORD", "").lower() in ("1", "true", "yes"):
+        await db.users.update_one(
+            {"email": admin_email},
+            {"$set": {"password_hash": hash_password(env_password), "password_changed_at": datetime.now(timezone.utc).isoformat()}}
+        )
+        logger.warning(f"Admin password reset from ADMIN_PASSWORD (RESET_ADMIN_PASSWORD set): {admin_email}")
+        return "reset"
+    return "exists"
+
+
 @app.on_event("startup")
 async def startup_event():
     await _seed_kit_categories(db)
@@ -7988,6 +8079,11 @@ async def startup_event():
     await db.daily_updates.create_index([("source", 1), ("source_id", 1)])
     await db.daily_reports.create_index([("user_id", 1), ("date", 1)], unique=True)
     await db.daily_reports.create_index("date")
+    try:   # one GST invoice per project (a double click used to make two); old duplicates keep the index from forming
+        await db.project_invoices.create_index("project_id", unique=True)
+    except Exception as e:
+        logger.warning(f"Project invoices: some projects already have more than one invoice, so the one-per-project index "
+                       f"wasn't added ({e}). New invoices are still made once per project.")
     await db.investors.create_index("email", unique=True)
     await db.investor_ledger.create_index([("investor_id", 1), ("date", -1)])
     await db.investor_logins.create_index([("investor_id", 1), ("at", -1)])
@@ -8013,32 +8109,8 @@ async def startup_event():
     await db.employee_scores.create_index("user_id")
     await db.employee_scores.create_index("period")
     
-    # Seed admin user — only when it doesn't exist yet. An existing admin's password is never overwritten on
-    # restart (previously every restart reset it to ADMIN_PASSWORD / "Admin@123", undoing any password change).
-    # Recovery: set RESET_ADMIN_PASSWORD=true together with ADMIN_PASSWORD for one restart.
-    admin_email = os.environ.get("ADMIN_EMAIL", "admin@sensoper.com")
-    env_password = os.environ.get("ADMIN_PASSWORD")
-    admin_password = env_password or "Admin@123"
+    await seed_admin_user()
 
-    existing = await db.users.find_one({"email": admin_email})
-    if existing is None:
-        await db.users.insert_one({
-            "email": admin_email,
-            "password_hash": hash_password(admin_password),
-            "name": "System Admin",
-            "role": "admin",
-            # The built-in default password is public — make the first sign-in change it.
-            "must_reset_password": env_password is None,
-            "created_at": datetime.now(timezone.utc).isoformat()
-        })
-        logger.info(f"Admin user created: {admin_email}")
-    elif env_password and os.environ.get("RESET_ADMIN_PASSWORD", "").lower() in ("1", "true", "yes"):
-        await db.users.update_one(
-            {"email": admin_email},
-            {"$set": {"password_hash": hash_password(env_password), "password_changed_at": datetime.now(timezone.utc).isoformat()}}
-        )
-        logger.warning(f"Admin password reset from ADMIN_PASSWORD (RESET_ADMIN_PASSWORD set): {admin_email}")
-    
     # Update existing company profiles with new logo
     await db.company_profiles.update_many(
         {"logo_url": {"$regex": "job_solar-estimator|32se8qpu_snspr|x3rj9e2a_slg"}},
@@ -8975,17 +9047,25 @@ from live_sync import LiveSyncMiddleware  # noqa: E402
 app.add_middleware(LiveSyncMiddleware, db_getter=lambda: db)
 app.add_middleware(_agents.AgentActivityMiddleware, db_getter=lambda: db)
 
-# CORS — origins come from CORS_ORIGINS (comma-separated). "*" is expressed as an origin regex so the
-# exact requesting origin is echoed back, which is what cookie-based (credentialed) auth requires.
-_cors_origins = [o.strip() for o in os.environ.get("CORS_ORIGINS", "*").split(",") if o.strip()]
-if "*" in _cors_origins:
-    logger.warning("CORS_ORIGINS is '*' — any website can make credentialed requests to this API. "
-                   "Set CORS_ORIGINS=https://quote.sensoper.in in backend/.env for production.")
-_cors_kwargs = {"allow_origin_regex": ".*"} if "*" in _cors_origins else {"allow_origins": _cors_origins}
+def cors_origins(raw: Optional[str]) -> List[str]:
+    """The browser origins allowed to call the API with the sign-in cookie. The ERP and the website reach the API on
+    their own address through nginx (same-origin) and AI connectors call it from servers, so none are needed by
+    default. Unset or "*" used to echo back ANY origin with credentials — any website a signed-in user visited could
+    act as them. Now that means none; list specific https origins to allow them."""
+    origins = [o.strip().rstrip("/") for o in (raw or "").split(",") if o.strip()]
+    return [o for o in origins if o != "*"]
+
+
+_cors_origins = cors_origins(os.environ.get("CORS_ORIGINS"))
+if "*" in (os.environ.get("CORS_ORIGINS") or ""):
+    logger.warning("CORS_ORIGINS '*' is ignored: any-origin access with the sign-in cookie isn't allowed. List the exact origins.")
+if not _cors_origins:
+    logger.info("CORS: no cross-origin browser access (same-origin only). To allow another site, set "
+                "CORS_ORIGINS=https://site.example.in (comma-separated, exact origins) in backend/.env.")
 app.add_middleware(
     CORSMiddleware,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
-    **_cors_kwargs,
+    allow_origins=_cors_origins,
 )

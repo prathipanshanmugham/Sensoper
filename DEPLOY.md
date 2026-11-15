@@ -274,8 +274,8 @@ Check `backend/.env` on the server against `backend/.env.example`:
 |---|---|
 | `JWT_SECRET` | A long random string (not empty). Keep it unchanged between deploys. |
 | `VAULT_MASTER_KEY` | Set, and backed up somewhere safe. |
-| `CORS_ORIGINS` | `https://quote.sensoper.in` (not `*`). |
-| `ADMIN_PASSWORD` | Anything. From this release it's only used if the admin account doesn't exist. |
+| `CORS_ORIGINS` | Leave unset (the ERP and website are same-origin through nginx). Only list other sites that must call the API from a browser, e.g. `https://partner.example.in`; `*` is treated as unset. |
+| `ADMIN_PASSWORD` | A strong password. Only used to create the first admin when no admin account exists — without it no admin is created (there is no built-in password). |
 | `COOKIE_SECURE` | Leave unset (`auto`). |
 
 Make sure nginx passes `X-Forwarded-Proto` to the backend (most configs already do):
