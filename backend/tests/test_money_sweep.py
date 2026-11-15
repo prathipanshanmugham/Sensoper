@@ -428,6 +428,14 @@ def test_broken_bodies_and_months_are_400_not_500(app, loop, world):
         assert (await a.put("/api/hr/settings", content=b"", headers={"content-type": "application/json"})).status_code == 400
         assert (await a.post("/api/approvals", json=[1, 2])).status_code == 400
         assert (await a.get("/api/attendance/register", params={"month": "2026-13"})).status_code == 400
+        # NaN / Infinity / 1e400 aren't JSON numbers, but Python reads them as nan / inf (500s and nan in money fields)
+        h = {"content-type": "application/json"}
+        for body in (b'{"user_id": "x", "month": "2026-11", "kind": "bonus", "amount": NaN}',
+                     b'{"customer_name": "A", "total_amount": Infinity}', b'{"customer_name": "A", "total_amount": 1e400}'):
+            r = await a.post("/api/payroll/extras" if b"kind" in body else "/api/credits", content=body, headers=h)
+            assert r.status_code == 400, (body, r.status_code, r.text[:200])
+        ok = await a.post("/api/loans/emi-preview", content=b'{"amount": 1.5e5, "interest_rate": 9.5, "tenure_months": 60, "note": "NaN in text is fine"}', headers=h)
+        assert ok.status_code == 200, ok.text
     run(loop, go())
 
 

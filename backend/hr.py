@@ -263,10 +263,14 @@ def create_router(db, get_current_user, require_role, create_audit_log, hash_pas
         if user["role"] != "admin":
             raise HTTPException(status_code=403, detail="Only an admin can change HR settings")
         body = await request.json()
-        nd = {k: max(0, min(int(v), 180)) for k, v in (body.get("notice_days") or {}).items() if k in EXIT_TYPES}
+        try:
+            nd = {k: max(0, min(int(v), 180)) for k, v in (body.get("notice_days") or {}).items() if k in EXIT_TYPES}
+            grace = max(0, min(int(body.get("grace_minutes", 10)), 120))
+        except (TypeError, ValueError, AttributeError):
+            raise HTTPException(status_code=400, detail="Notice days and grace minutes must be whole numbers")
         depts = [str(x).strip()[:40] for x in (body.get("departments") or []) if str(x).strip()][:30]
         s = {"notice_days": {**DEFAULT_SETTINGS["notice_days"], **nd}, "departments": depts or DEFAULT_SETTINGS["departments"],
-             "grace_minutes": max(0, min(int(body.get("grace_minutes", 10)), 120))}
+             "grace_minutes": grace}
         await db.hr_settings.update_one({"key": "defaults"}, {"$set": {**s, "key": "defaults"}}, upsert=True)
         await create_audit_log(user["id"], user["name"], "hr_settings_updated", "hr_settings", "defaults", None, s)
         return s

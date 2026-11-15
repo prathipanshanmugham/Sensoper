@@ -3192,8 +3192,13 @@ async def validate_pump_string_voltage(payload: Dict[str, Any], request: Request
 
     pump_item_id = payload.get("pump_item_id") or payload.get("pump_product_id")
     panel_item_id = payload.get("panel_item_id") or payload.get("panel_product_id")
-    modules_in_series = int(payload.get("modules_in_series") or 0)
-    strings_in_parallel = int(payload.get("strings_in_parallel") or 1)
+    try:
+        modules_in_series = int(payload.get("modules_in_series") or 0)
+        strings_in_parallel = int(payload.get("strings_in_parallel") or 1)
+    except (TypeError, ValueError):
+        raise HTTPException(400, "Modules in series and strings in parallel must be whole numbers")
+    if not (0 <= modules_in_series <= 100 and 1 <= strings_in_parallel <= 100):
+        raise HTTPException(400, "Use 0–100 modules in series and 1–100 strings in parallel")
     pincode = payload.get("pincode")
 
     if not (pump_item_id and panel_item_id):
@@ -8902,6 +8907,68 @@ class SecureCookieMiddleware:
 
 
 app.add_middleware(SecureCookieMiddleware)
+
+
+class _NonFinite(ValueError):
+    pass
+
+
+def _no_constant(name):
+    raise _NonFinite(name)
+
+
+def _finite_float(text):
+    v = float(text)
+    if not math.isfinite(v):
+        raise _NonFinite(text)
+    return v
+
+
+class RejectNonFiniteJSONMiddleware:
+    """NaN, Infinity and numbers like 1e400 aren't valid JSON, but Python's parser turns them into nan / inf. They then
+    slipped past every "> 0" check, were stored in money fields, and any answer that echoed them failed to encode
+    (a 500). JSON bodies carrying them are refused with a 400 before any route sees them."""
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http" or scope.get("method") not in ("POST", "PUT", "PATCH", "DELETE"):
+            return await self.app(scope, receive, send)
+        ctype = dict(scope.get("headers") or []).get(b"content-type", b"")
+        if b"json" not in ctype.lower():
+            return await self.app(scope, receive, send)
+        chunks, more, last = [], True, None
+        while more:
+            last = await receive()
+            if last.get("type") != "http.request":
+                break
+            chunks.append(last.get("body", b""))
+            more = last.get("more_body", False)
+        body = b"".join(chunks)
+        if re.search(rb"NaN|Infinity|[0-9][eE]\+?[0-9]{3}", body):
+            try:
+                json.loads(body, parse_constant=_no_constant, parse_float=_finite_float)
+            except _NonFinite:
+                resp = JSONResponse(status_code=400, content={"detail": "Numbers must be plain finite values — NaN, Infinity and out-of-range numbers aren't accepted."})
+                return await resp(scope, receive, send)
+            except ValueError:
+                pass   # malformed JSON: the route answers that itself
+        replayed = False
+
+        async def replay():
+            nonlocal replayed
+            if not replayed:
+                replayed = True
+                if last is not None and last.get("type") != "http.request":
+                    return last
+                return {"type": "http.request", "body": body, "more_body": False}
+            return await receive()
+
+        return await self.app(scope, replay, send)
+
+
+app.add_middleware(RejectNonFiniteJSONMiddleware)
 
 # Live refresh — every successful change bumps its area's counter; screens poll /api/sync/version (see live_sync.py)
 from live_sync import LiveSyncMiddleware  # noqa: E402
