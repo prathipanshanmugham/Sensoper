@@ -450,6 +450,8 @@ def test_mcp_endpoint_checks(app, loop, world):
         bad = client(app, "snp_at_wrong", **{"x-forwarded-for": "198.51.100.7"})
         codes = [(await bad.post("/api/mcp", json={"jsonrpc": "2.0", "id": 1, "method": "ping"})).status_code for _ in range(32)]
         assert codes[:30] == [401] * 30 and codes[-1] == 429
+        same_address = client(app, key, **{"x-forwarded-for": "198.51.100.7"})
+        assert (await rpc(same_address, "ping"))["result"] == {}     # a valid token is never locked out by others' failures
         # per-agent limit
         old = agents.RATE_PER_MINUTE
         agents.RATE_PER_MINUTE = 3

@@ -1388,22 +1388,23 @@ def create_router(db, get_current_user, require_role, create_audit_log, user_out
             return JSONResponse(rpc_error(None, -32600, f"This isn't Sensoper's address. Use {base}/api/mcp."), status_code=421)
         if not origin_ok(request.headers.get("origin") or "", base, cors_hosts):
             return JSONResponse(rpc_error(None, -32600, "Requests from this website aren't allowed."), status_code=403)
-        if ip_limited("auth_fail", ip, count=False):
-            return too_many("Too many failed sign-ins from this address. Wait a minute.")
+        async def failed(detail: str, error: str = "invalid_token") -> Response:
+            # Only failed sign-ins count, and a valid token is never held up by someone else's failures from the same address.
+            if ip_limited("auth_fail", ip):
+                return too_many("Too many failed sign-ins from this address. Wait a minute.")
+            return await unauthorized(request, detail, error)
+
         auth = request.headers.get("authorization", "")
         if not auth.startswith("Bearer "):
-            ip_limited("auth_fail", ip)
-            return await unauthorized(request, "Sign in: send this agent's key as Authorization: Bearer <key>, or connect with OAuth", "invalid_request")
+            return await failed("Sign in: send this agent's key as Authorization: Bearer <key>, or connect with OAuth", "invalid_request")
         token = auth[7:].strip()
         if not token.startswith(PREFIX):
-            ip_limited("auth_fail", ip)
-            return await unauthorized(request, "That is not a Sensoper AI agent key")
+            return await failed("That is not a Sensoper AI agent key")
         try:
             u = await authenticate(request, token, check_route=False)
         except HTTPException as exc:
             if exc.status_code == 401:
-                ip_limited("auth_fail", ip)
-                return await unauthorized(request, exc.detail)
+                return await failed(exc.detail)
             return JSONResponse(rpc_error(None, -32000, exc.detail), status_code=exc.status_code)
         ctype = (request.headers.get("content-type") or "").lower()
         if ctype and "json" not in ctype:
