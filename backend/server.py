@@ -1779,8 +1779,20 @@ async def upload_document(request: Request, file: UploadFile = File(...)):
         logger.error(f"Document upload failed: {e}")
         raise HTTPException(status_code=500, detail="Upload failed")
 
+def _publicly_servable(path: str) -> bool:
+    """/files is open (photos in the public gallery and QR links use it), so it must never hand out what is kept next
+    to the uploads: hidden folders such as .keys (the vault master key), the .meta content-type notes, and the
+    audit-log archives (downloaded through their own admin/manager route)."""
+    parts = [p for p in str(path or "").replace("\\", "/").split("/") if p]
+    if not parts or any(p.startswith(".") for p in parts) or parts[-1].endswith(".meta"):
+        return False
+    return "log-archives" not in parts
+
+
 @api_router.get("/files/{path:path}")
 async def serve_file(path: str, request: Request):
+    if not _publicly_servable(path):
+        raise HTTPException(status_code=404, detail="File not found")
     try:
         data, content_type = get_object(path)
         return Response(content=data, media_type=content_type)
