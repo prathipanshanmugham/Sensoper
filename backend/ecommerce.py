@@ -16,6 +16,7 @@ from bson import ObjectId
 from fastapi import APIRouter, HTTPException, Request, UploadFile, File
 import csv
 import io
+import math
 
 
 # ═══════════ Models ═══════════
@@ -136,21 +137,49 @@ def _price_line(line: Dict[str, Any], commission_pct: float) -> Dict[str, Any]:
     return line
 
 
+def _check_order_lines(lines) -> None:
+    """An order line needs a quantity above 0 and a price that isn't negative (a negative quantity would add stock)."""
+    if not lines:
+        raise HTTPException(status_code=400, detail="Add at least one item to the order")
+    for l in lines:
+        q, p = float(l.get("quantity") or 0), float(l.get("sold_price") or 0)
+        if not (math.isfinite(q) and math.isfinite(p)) or q <= 0 or p < 0 or q > 1e6 or p > 1e9:
+            raise HTTPException(status_code=400, detail="Each item needs a quantity above 0 and a price that isn't negative")
+
+
 async def _decrement_stock(db, lines, order_id, override):
+    """All-or-nothing: every line is checked (one item on two lines counts once, in total) before any stock moves,
+    so a refused order never leaves earlier lines' stock taken."""
     movements = []
     now = _now()
+    need: Dict[str, float] = {}
+    for line in lines:
+        if line.get("inventory_item_id"):
+            need[str(line["inventory_item_id"])] = need.get(str(line["inventory_item_id"]), 0.0) + float(line.get("quantity") or 0)
+    items: Dict[str, Dict[str, Any]] = {}
+    for item_id, needed in need.items():
+        item = await db.inventory_items.find_one({"_id": ObjectId(item_id)}) if ObjectId.is_valid(item_id) else None
+        if not item:
+            raise HTTPException(status_code=400, detail=f"Inventory item {item_id} not found")
+        available = item.get("quantity", 0)
+        if available < needed and not override:
+            raise HTTPException(status_code=400, detail=f"Insufficient stock for {item.get('name')}: available {available}, needed {needed:g}")
+        items[item_id] = item
+    done = []
+    for item_id, needed in need.items():
+        filt: Dict[str, Any] = {"_id": ObjectId(item_id)} if override else {"_id": ObjectId(item_id), "quantity": {"$gte": needed}}
+        r = await db.inventory_items.update_one(filt, {"$inc": {"quantity": -needed}})
+        if r.matched_count == 0:
+            for did, dq in done:
+                await db.inventory_items.update_one({"_id": ObjectId(did)}, {"$inc": {"quantity": dq}})
+            raise HTTPException(status_code=400, detail=f"Insufficient stock for {items[item_id].get('name')} — it was just used elsewhere. Check the stock and try again.")
+        done.append((item_id, needed))
     for line in lines:
         item_id = line.get("inventory_item_id")
         if not item_id:
             continue
-        item = await db.inventory_items.find_one({"_id": ObjectId(item_id)})
-        if not item:
-            raise HTTPException(status_code=400, detail=f"Inventory item {item_id} not found")
-        available = item.get("quantity", 0)
+        item = items[str(item_id)]
         needed = float(line.get("quantity") or 0)
-        if available < needed and not override:
-            raise HTTPException(status_code=400, detail=f"Insufficient stock for {item.get('name')}: available {available}, needed {needed}")
-        await db.inventory_items.update_one({"_id": ObjectId(item_id)}, {"$inc": {"quantity": -needed}})
         movements.append({
             "inventory_item_id": item_id, "movement_type": "ecommerce_sale_out", "quantity": -needed,
             "reference_type": "ecommerce_order", "reference_id": order_id,
@@ -558,6 +587,9 @@ def create_router(db, get_current_user, require_role, create_audit_log):
         if existing:
             raise HTTPException(status_code=400, detail="This platform order id has already been recorded")
 
+        _check_order_lines([l.dict() for l in payload.lines])
+        if not math.isfinite(payload.shipping_cost or 0) or (payload.shipping_cost or 0) < 0:
+            raise HTTPException(status_code=400, detail="Shipping cost can't be negative")
         lines = []
         for l in payload.lines:
             listing = await db.ecommerce_listings.find_one({"_id": ObjectId(l.listing_id)}) if l.listing_id and ObjectId.is_valid(l.listing_id) else None
@@ -600,6 +632,9 @@ def create_router(db, get_current_user, require_role, create_audit_log):
         update = {k: v for k, v in payload.dict(exclude_unset=True).items() if v is not None}
         was_active = existing.get("order_status") not in ("returned", "cancelled", "refunded")
         now_inactive = update.get("order_status") in ("returned", "cancelled", "refunded")
+        if not was_active and "order_status" in update and not now_inactive:
+            # reopening would leave the stock that came back on the shelf; returning it again would add it twice
+            raise HTTPException(status_code=400, detail=f"This order is {existing.get('order_status')} — its stock is back on the shelf. Record a new order instead of reopening it.")
         if was_active and now_inactive:
             await _restore_stock(db, existing.get("lines", []), order_id)
         if update.get("payment_status") == "settled" and not update.get("settlement_date"):
@@ -684,6 +719,7 @@ def create_router(db, get_current_user, require_role, create_audit_log):
         platform = await db.ecommerce_platforms.find_one({"_id": ObjectId(payload.platform_id)})
         if not platform:
             raise HTTPException(status_code=400, detail="Platform not found")
+        _check_order_lines([{"quantity": r.quantity, "sold_price": r.sold_price} for r in payload.rows] or [{"quantity": 1, "sold_price": 0}])
         created, skipped = [], []
         for row in payload.rows:
             existing = await db.ecommerce_orders.find_one({"platform_id": payload.platform_id, "platform_order_id": row.platform_order_id})

@@ -3,6 +3,7 @@ per project (Iter 42 Change 4). Returned quantities flow back into inventory
 through the same movement trail used by Purchase Inbound / Direct Sales.
 """
 from __future__ import annotations
+import math
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 from bson import ObjectId
@@ -74,6 +75,27 @@ def create_router(db, get_current_user, require_role, create_audit_log):
         project = await db.projects.find_one({"_id": ObjectId(project_id)})
         if not project:
             raise HTTPException(status_code=404, detail="Project not found")
+        if payload.status not in ("submitted", "verified"):
+            raise HTTPException(status_code=400, detail="Status must be submitted or verified")
+        if payload.status == "verified" and user.get("role") not in ("admin", "manager"):
+            raise HTTPException(status_code=403, detail="Only a manager or admin can verify a material reconciliation")
+        for l in payload.lines:
+            nums = (l.qty_quoted, l.qty_issued, l.qty_consumed, l.qty_returned, l.qty_damaged, l.qty_at_site, l.unit_cost)
+            if any(not math.isfinite(v) or v < 0 for v in nums):
+                raise HTTPException(status_code=400, detail=f"{l.name}: quantities and cost can't be negative")
+        prev = await db.material_reconciliation.find_one({"project_id": project_id}) or {}
+        if prev.get("status") == "verified" and user.get("role") not in ("admin", "manager"):
+            raise HTTPException(status_code=403, detail="This reconciliation has been verified — ask a manager to change it")
+
+        # Saving again must not add the same returned stock twice: only the change since the last save moves stock,
+        # and only newly damaged pieces become brand returns
+        def _key(x: Dict[str, Any]) -> str:
+            return str(x.get("inventory_item_id") or "") + "|" + str(x.get("name") or "")
+        prev_ret: Dict[str, float] = {}
+        prev_dmg: Dict[str, float] = {}
+        for pl in prev.get("lines") or []:
+            prev_ret[_key(pl)] = prev_ret.get(_key(pl), 0.0) + float(pl.get("qty_returned") or 0)
+            prev_dmg[_key(pl)] = prev_dmg.get(_key(pl), 0.0) + float(pl.get("qty_damaged") or 0)
 
         now_iso = datetime.now(timezone.utc).isoformat()
         lines, movements = [], []
@@ -81,17 +103,22 @@ def create_router(db, get_current_user, require_role, create_audit_log):
             variance = l.qty_issued - (l.qty_consumed + l.qty_returned + l.qty_damaged)
             variance_value = round(variance * l.unit_cost, 2)
             lines.append({**l.dict(), "variance": variance, "variance_value": variance_value})
-            if l.qty_returned > 0 and l.inventory_item_id:
-                await db.inventory_items.update_one({"_id": ObjectId(l.inventory_item_id)}, {"$inc": {"quantity": l.qty_returned}})
+            k = _key(l.dict())
+            ret_delta = l.qty_returned - prev_ret.pop(k, 0.0)
+            dmg_delta = l.qty_damaged - prev_dmg.pop(k, 0.0)
+            if ret_delta and l.inventory_item_id and ObjectId.is_valid(l.inventory_item_id):
+                await db.inventory_items.update_one({"_id": ObjectId(l.inventory_item_id)}, {"$inc": {"quantity": ret_delta}})
                 movements.append({
                     "inventory_item_id": l.inventory_item_id, "movement_type": "reconciliation_return",
-                    "quantity": l.qty_returned, "reference_type": "project", "reference_id": project_id,
-                    "note": f"Returned to stores from site: {l.name}", "created_by": user["id"], "created_at": now_iso,
+                    "quantity": ret_delta, "reference_type": "project", "reference_id": project_id,
+                    "note": f"Returned to stores from site: {l.name}" if ret_delta > 0 else f"Reconciliation corrected: {l.name}",
+                    "created_by": user["id"], "created_at": now_iso,
                 })
-            if l.qty_damaged > 0:
-                await db.returns.insert_one({
+            if dmg_delta > 0:
+                # brand_returns is the collection the Returns page lists (this used to go to an unread "returns")
+                await db.brand_returns.insert_one({
                     "project_id": project_id, "supplier_name": "", "item_name": l.name,
-                    "quantity": l.qty_damaged, "reason": "damage",
+                    "quantity": dmg_delta, "reason": "damage", "source": "material_reconciliation",
                     "notes": f"Flagged during material reconciliation. {l.notes or ''}".strip(),
                     "status": "pending", "created_by": user["id"], "created_by_name": user["name"], "created_at": now_iso,
                 })
