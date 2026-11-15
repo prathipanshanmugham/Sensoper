@@ -6955,6 +6955,11 @@ async def reject_po(po_id: str, request: Request):
 async def record_arrival(po_id: str, request: Request):
     body = await request.json()
     await get_current_user(request)
+    po = await db.purchase_orders.find_one({"_id": ObjectId(po_id)}, {"status": 1})
+    if not po:
+        raise HTTPException(status_code=404, detail="Purchase order not found")
+    if po.get("status") != "approved":   # a received PO set back to 'arrived' could be received (and stocked) twice
+        raise HTTPException(status_code=400, detail="Only an approved PO that hasn't arrived yet can be marked as arrived")
     transport = {"transporter": body.get("transporter",""), "vehicle": body.get("vehicle",""), "driver_contact": body.get("driver_contact",""), "lr_number": body.get("lr_number","")}
     await db.purchase_orders.update_one({"_id": ObjectId(po_id)}, {"$set": {"status": "arrived", "transport": transport, "arrived_at": datetime.now(timezone.utc).isoformat()}})
     return {"message": "Arrival recorded"}
@@ -6963,6 +6968,11 @@ async def record_arrival(po_id: str, request: Request):
 async def record_qc(po_id: str, request: Request):
     body = await request.json()
     await get_current_user(request)
+    po = await db.purchase_orders.find_one({"_id": ObjectId(po_id)}, {"status": 1})
+    if not po:
+        raise HTTPException(status_code=404, detail="Purchase order not found")
+    if po.get("status") != "arrived":    # QC on a received PO reset it to 'qc_done' and let the stock be received again
+        raise HTTPException(status_code=400, detail="QC is recorded once the PO has arrived (and before it is received into stock)")
     qc = {"qty_check": body.get("qty_check", "pass"), "damage_check": body.get("damage_check", "pass"), "spec_match": body.get("spec_match", "pass"), "overall": body.get("overall", "pass"), "notes": body.get("notes", "")}
     await db.purchase_orders.update_one({"_id": ObjectId(po_id)}, {"$set": {"status": "qc_done", "qc": qc, "qc_at": datetime.now(timezone.utc).isoformat()}})
     return {"message": "QC recorded"}
