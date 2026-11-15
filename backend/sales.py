@@ -148,7 +148,8 @@ def _compute_line(line: dict) -> dict:
     gross = qty * price
     disc = disc_amt if disc_amt > 0 else gross * disc_pct / 100
     taxable = gross - disc
-    gst_pct = float(line.get("gst_percentage") or 18)
+    gst_raw = line.get("gst_percentage")
+    gst_pct = float(18 if gst_raw in (None, "") else gst_raw)   # 0% GST is a real rate, not "missing"
     gst_amt = taxable * gst_pct / 100
     line_total = taxable + gst_amt
     cost = float(line.get("cost_price") or 0) * qty
