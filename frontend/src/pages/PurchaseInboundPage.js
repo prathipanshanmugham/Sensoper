@@ -101,6 +101,10 @@ export default function PurchaseInboundPage() {
   const handleCreate = async () => {
     if (!form.vendor_id) { toast.error('Choose the vendor'); return; }
     if (form.items.length === 0) return;
+    const named = form.items.filter(i => i.name);
+    if (!named.length) { toast.error('Add at least one item'); return; }
+    const badItem = named.find(i => !(parseFloat(i.qty) > 0) || parseFloat(i.unit_price) < 0);
+    if (badItem) { toast.error(`${badItem.name}: quantity must be more than 0 and the price can't be negative`); return; }
     setSaving(true); setPoError('');
     try {
       const items = form.items.filter(i => i.name).map(i => ({name: i.name, qty: parseFloat(i.qty) || 0, unit_price: parseFloat(i.unit_price) || 0, inventory_item_id: i.inventory_item_id || null, sku_code: i.sku_code || null}));
@@ -113,6 +117,19 @@ export default function PurchaseInboundPage() {
       toast.error(typeof msg === 'string' ? msg : 'Could not create PO');
     } finally { setSaving(false); }
   };
+
+  // Approve straight from the PO row. (It used to set the action and call handleAction in the same click, so
+  // handleAction still saw the previous action — nothing happened, or an open Arrival/QC form for another PO was submitted.)
+  const approvePo = async (po) => {
+    setSaving(true); setActionError('');
+    try { await purchaseOrdersAPI.approve(po.id); toast.success(`${po.po_number || 'PO'} approved`); setActiveAction(null); setActionForm({}); await fetch(); }
+    catch (err) { toast.error(errText(err, 'Could not approve this PO')); } finally { setSaving(false); }
+  };
+
+  // The Arrival / QC / Inbound form opens above the list — bring it into view from a PO further down
+  useEffect(() => {
+    if (activeAction) document.querySelector('[data-testid="action-form"]')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, [activeAction]);
 
   const handleAction = async () => {
     if (!activeAction) return;
@@ -134,9 +151,10 @@ export default function PurchaseInboundPage() {
 
   const saveEditInbound = async () => {
     if (!editInbound) return;
+    if (editInbound.lines.some(l => l.qty_received === '' || !(parseFloat(l.qty_received) >= 0))) { setActionError('Enter the quantity received for every line (0 or more)'); return; }
     setSaving(true); setActionError('');
     try {
-      await purchaseOrdersAPI.editInbound(editInbound.po.id, { lines: editInbound.lines });
+      await purchaseOrdersAPI.editInbound(editInbound.po.id, { lines: editInbound.lines.map(l => ({ ...l, qty_received: parseFloat(l.qty_received) })) });
       setEditInbound(null); await fetch();
     } catch (err) { setActionError(errText(err, 'Could not save changes')); } finally { setSaving(false); }
   };
@@ -316,7 +334,7 @@ export default function PurchaseInboundPage() {
                     )}
                   </div>
                   <div className="flex flex-wrap gap-1 shrink-0">
-                    {po.status === 'pending' && can('can_approve_purchase') && <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => { setActiveAction({ poId: po.id, type: 'approve' }); handleAction(); }} data-testid={`approve-${po.id}`}>Approve</Button>}
+                    {po.status === 'pending' && can('can_approve_purchase') && <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => approvePo(po)} disabled={saving} data-testid={`approve-${po.id}`}>Approve</Button>}
                     {po.status === 'pending' && <Button size="sm" variant="outline" className="h-7 text-xs gap-1 text-rose-600 border-rose-200" onClick={() => handleDeletePo(po)} data-testid={`delete-po-${po.id}`}><Trash2 className="h-3 w-3" />Delete</Button>}
                     {po.status === 'approved' && <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => setActiveAction({ poId: po.id, type: 'arrival' })} data-testid={`arrival-${po.id}`}>Record Arrival</Button>}
                     {po.status === 'arrived' && <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => setActiveAction({ poId: po.id, type: 'qc' })} data-testid={`qc-${po.id}`}>QC Check</Button>}
