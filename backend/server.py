@@ -8045,6 +8045,11 @@ async def startup_event():
     await db.daily_updates.create_index([("source", 1), ("source_id", 1)])
     await db.daily_reports.create_index([("user_id", 1), ("date", 1)], unique=True)
     await db.daily_reports.create_index("date")
+    try:   # one GST invoice per project (a double click used to make two); old duplicates keep the index from forming
+        await db.project_invoices.create_index("project_id", unique=True)
+    except Exception as e:
+        logger.warning(f"Project invoices: some projects already have more than one invoice, so the one-per-project index "
+                       f"wasn't added ({e}). New invoices are still made once per project.")
     await db.investors.create_index("email", unique=True)
     await db.investor_ledger.create_index([("investor_id", 1), ("date", -1)])
     await db.investor_logins.create_index([("investor_id", 1), ("at", -1)])
