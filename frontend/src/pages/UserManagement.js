@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { usersAPI, employeeScoresAPI } from '../utils/api';
-import { formatApiErrorDetail } from '../contexts/AuthContext';
+import { formatApiErrorDetail, useAuth } from '../contexts/AuthContext';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
@@ -31,6 +31,7 @@ const roleConfig = {
 };
 
 export default function UserManagement() {
+  const { user: me } = useAuth();
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showDialog, setShowDialog] = useState(false);
@@ -139,7 +140,7 @@ export default function UserManagement() {
       setEditingUser(null);
       fetchUsers();
     } catch (err) {
-      console.error('Failed to delete user:', err);
+      toast.error(errText(err, 'Could not delete this user'));
     } finally {
       setActionLoading(false);
     }
@@ -221,6 +222,7 @@ export default function UserManagement() {
                         >
                           <Edit className="h-4 w-4" />
                         </Button>
+                        {user.id !== me?.id && (   // you can't delete your own login (the server refuses it)
                         <Button
                           variant="outline"
                           size="icon"
@@ -233,6 +235,7 @@ export default function UserManagement() {
                         >
                           <Trash2 className="h-4 w-4" />
                         </Button>
+                        )}
                       </div>
                     </div>
                   </CardContent>
