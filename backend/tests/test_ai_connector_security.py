@@ -540,7 +540,7 @@ def test_call_api_tricks_access_and_the_confirm_step(app, loop, world):
         await approve(a, h3["approval_id"])
         await a.put(f"/api/agents/{full_agent['id']}", json={"access": "write"})
         got, err = await tool(cf, "confirm_action", approval_id=h3["approval_id"])
-        assert err and got["status"] == 403
+        assert got["state"] == "void" and not got["ok"]                                   # less access than when it asked
         await a.put(f"/api/agents/{full_agent['id']}", json={"access": "full"})
         # bank details, the public website and saved passwords need approval too
         got, _ = await tool(cw, "call_api", method="POST", path="/api/vendors", body={"name": "SEC Bank", "bank_account_number": "1234567890"})
@@ -844,3 +844,99 @@ def test_review_6_refresh_needs_its_client_and_retries_once(app, loop, world):
         assert (await ask(t["refresh_token"], t["client_id"])).status_code == 400          # the next: reuse, the chain is revoked
         assert (await rpc(client(app, first["access_token"]), "ping", status=401))["error"] == "invalid_token"
     run(loop, go())
+
+
+# ───────────── second review ─────────────
+def test_review2_1_the_approver_sees_every_nested_value_and_what_changes(app, loop, world):
+    async def go():
+        a, db = world["admin"], server.db
+        profile = {"company_name": "SEC Co", "bank_details": {"account_number": "999000111", "ifsc_code": "SBIN0000001"},
+                   "address": "Erode", "phone": "9876500000", "email": "co@example.com", "created_at": "2026-11-01T00:00:00+00:00"}
+        pid = str((await db.company_profiles.insert_one(profile)).inserted_id)
+        _, key = await key_agent(a, name="Sneaky", access="write")
+        body = {"company_name": "SEC Co", "bank_details": {"account_number": "000111222333", "ifsc_code": "EVIL0000001"},
+                "contacts": [{"name": "A", "phone": "9"}, {"name": "B", "password": "x1y2z3"}]}
+        held, _ = await tool(client(app, key), "call_api", method="PUT", path=f"/api/company/{pid}", body=body)
+        page = (await a.get(f"/api/agent-approvals/{held['approval_id']}")).json()
+        rows = {f["path"]: f for f in page["fields"]}
+        assert rows["bank_details › account_number"]["value"] == "000111222333" and rows["bank_details › ifsc_code"]["value"] == "EVIL0000001"
+        assert rows["contacts › 2 › name"]["value"] == "B" and rows["contacts › 2 › password"]["value"] == "[hidden]"
+        assert len(page["fields"]) == 7                                                     # every value, none folded into "{…}"
+        # before → after, read from the current record
+        assert page["compared"] and rows["bank_details › account_number"]["before"] == "999000111" and rows["bank_details › account_number"]["changed"]
+        assert rows["company_name"]["changed"] is False and rows["contacts › 1 › name"]["changed"] is True
+        await db.company_profiles.delete_one({"company_name": "SEC Co"})
+    run(loop, go())
+
+
+def test_review2_2_the_held_request_is_sealed_and_wiped(app, loop, world):
+    async def go():
+        a, db = world["admin"], server.db
+        mgr = world["ids"][EMAILS[0]]
+        _, key = await key_agent(a, name="Sealer", access="full", manage_access=True)
+        c = client(app, key)
+        held, _ = await tool(c, "call_api", method="POST", path="/api/users",
+                             body={"email": "sec.new@example.com", "password": "Sup3rSecret!pw", "name": "SEC New", "role": "staff", "phone": "9876511199"})
+        doc = await db.agent_approvals.find_one({"_id": held["approval_id"]})
+        assert "Sup3rSecret!pw" not in json.dumps(doc, default=str) and doc["body_sealed"]
+        page = (await a.get(f"/api/agent-approvals/{held['approval_id']}")).json()
+        assert {f["path"]: f["value"] for f in page["fields"]}["password"] == "[hidden]"
+        await approve(a, held["approval_id"], "decline")
+        doc = await db.agent_approvals.find_one({"_id": held["approval_id"]})
+        assert "body_sealed" not in doc and "query_sealed" not in doc                         # wiped once decided
+        h2, _ = await tool(c, "call_api", method="DELETE", path="/api/vendors/000000000000000000000000")
+        await approve(a, h2["approval_id"])
+        assert (await db.agent_approvals.find_one({"_id": h2["approval_id"]})).get("query_sealed")   # kept only until it runs
+        await tool(c, "confirm_action", approval_id=h2["approval_id"])
+        assert "query_sealed" not in await db.agent_approvals.find_one({"_id": h2["approval_id"]})
+        h3, _ = await tool(c, "call_api", method="DELETE", path="/api/vendors/000000000000000000000000")
+        await db.agent_approvals.update_one({"_id": h3["approval_id"]}, {"$set": {"expires_at": "2020-01-01T00:00:00+00:00"}})
+        await a.get("/api/agent-approvals")
+        assert "query_sealed" not in await db.agent_approvals.find_one({"_id": h3["approval_id"]})     # and when it expires
+        assert mgr
+    run(loop, go())
+
+
+def test_review2_3_it_runs_only_as_the_login_it_was_asked_for(app, loop, world):
+    async def go():
+        a, db = world["admin"], server.db
+        mgr = world["ids"][EMAILS[0]]
+        admin_id = str((await db.users.find_one({"email": ADMIN["email"]}))["_id"])
+        agent, key = await key_agent(a, name="Switcher", access="full", run_as_user_id=mgr, manage_access=True)
+        c = client(app, key)
+        held, _ = await tool(c, "call_api", method="POST", path="/api/users",
+                             body={"email": "sec.sw@example.com", "password": "Sup3rSecret!pw", "name": "SEC Sw", "role": "admin", "phone": "9876511198"})
+        aid = held["approval_id"]
+        m1 = await login(app, EMAILS[0], PW)
+        page = (await m1.get(f"/api/agent-approvals/{aid}")).json()           # the manager may decide: the agent asked as them
+        await a.put(f"/api/agents/{agent['id']}", json={"run_as_user_id": admin_id})
+        r = await m1.post(f"/api/agent-approvals/{aid}/approve", json={"consent_token": page["consent_token"]})
+        assert r.status_code == 409 and "another login" in r.json()["detail"]
+        assert (await db.agent_approvals.find_one({"_id": aid}))["status"] == "void"
+        # approved first, switched afterwards: still never runs as the new login
+        await a.put(f"/api/agents/{agent['id']}", json={"run_as_user_id": mgr})
+        h2, _ = await tool(c, "call_api", method="POST", path="/api/users",
+                           body={"email": "sec.sw@example.com", "password": "Sup3rSecret!pw", "name": "SEC Sw", "role": "admin", "phone": "9876511198"})
+        await approve(m1, h2["approval_id"])
+        await a.put(f"/api/agents/{agent['id']}", json={"run_as_user_id": admin_id})
+        got, _ = await tool(c, "confirm_action", approval_id=h2["approval_id"])
+        assert got["state"] == "void" and not got["ok"] and not await db.users.find_one({"email": "sec.sw@example.com"})
+        # and with less access than when it asked
+        await a.put(f"/api/agents/{agent['id']}", json={"run_as_user_id": admin_id, "access": "full"})
+        h3, _ = await tool(c, "call_api", method="DELETE", path="/api/vendors/000000000000000000000000")
+        await approve(a, h3["approval_id"])
+        await a.put(f"/api/agents/{agent['id']}", json={"access": "write"})
+        assert (await tool(c, "confirm_action", approval_id=h3["approval_id"]))[0]["state"] == "void"
+    run(loop, go())
+
+
+def test_review2_4_more_secret_shapes_are_hidden():
+    data = {"h": {"Authorization": "Bearer abcdef123456"}, "pass": "hunter22", "passphrase": "correct horse",
+            "list": [{"name": "smtp_password", "value": "hunter22"}], "note": "wifi password - hunter22", "note2": "the password is hunter23",
+            "note3": "use Authorization: Bearer zzzzzzzzzz12", "upi_pin": "1234", "cfg": "API_KEY: abc123xyz", "pin_code": "638001", "pincode": "638001",
+            "headers": {"X-Api-Key": "k-123456", "Cookie": "session=abc"}, "passed": True}
+    text = json.dumps(R.scrub(data))
+    for leaked in ("abcdef123456", "hunter22", "correct horse", "hunter23", "zzzzzzzzzz12", '"1234"', "abc123xyz", "k-123456", "session=abc"):
+        assert leaked not in text, leaked
+    out = R.scrub(data)
+    assert out["pin_code"] == out["pincode"] == "638001" and out["passed"] is True

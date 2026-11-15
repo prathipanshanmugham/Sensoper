@@ -258,13 +258,16 @@ HIDDEN = "[hidden]"
 _SECRET_KEY = re.compile(
     r"(password|passwd|pwd)_?(hash|enc|encrypted)|hashed_?password|(^|_)hash(es)?$|_hashes$|_enc$|^enc_|encrypted|cipher|"
     r"secret|api_?key|private_?key|manual_key|(^|_)token$|(^|_)tokens$|token_(hash|enc)|"
-    r"(^|_)(pin|mpin|upi_pin|login_pin|otp|otp_code|otp_secret)$|totp|backup_?codes?|recovery_?codes?", re.I)
-_PASSWORD_KEY = re.compile(r"(^|_)(password|passwd|pwd|passcode|new_password|temp_password)$", re.I)
+    r"(^|_)(pin|mpin|upi_pin|login_pin|otp|otp_code|otp_secret)$|totp|backup_?codes?|recovery_?codes?|"
+    r"(^|_)(authorization|proxy_authorization|credentials?|cookie|set_cookie)$", re.I)
+_PASSWORD_KEY = re.compile(r"(^|_)(password|passwd|pwd|pass|passphrase|pass_phrase|passcode|new_password|temp_password)$", re.I)
 _SECRET_VALUE = re.compile(r"snp_(key|at|rt)_[A-Za-z0-9_-]{20,}|\$2[aby]\$\d\d\$[./A-Za-z0-9]{53}|"
-                           r"eyJ[A-Za-z0-9_-]{8,}\.eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}|gAAAAA[A-Za-z0-9_=-]{40,}")
-# "password: hunter2" or "api_key=xyz" written inside text (not PIN: in India that is also a postal code)
-_SECRET_TEXT = re.compile(r"(?i)\b(password|passwd|pwd|passcode|secret|client[_ -]?secret|api[_ -]?key|access[_ -]?token|"
-                          r"refresh[_ -]?token|otp)(\s*[:=]\s*)(\"[^\"]*\"|'[^']*'|[^\s,;&\"']+)")
+                           r"eyJ[A-Za-z0-9_-]{8,}\.eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}|gAAAAA[A-Za-z0-9_=-]{40,}|"
+                           r"(?i:\b(?:bearer|basic)\s+[A-Za-z0-9._~+/=-]{8,})")
+# "password: hunter2", "wifi password - hunter2", "password is hunter2" or "api_key=xyz" written inside text
+# (not PIN: in India that is also a postal code)
+_SECRET_TEXT = re.compile(r"(?i)\b(password|passwd|pwd|passphrase|passcode|secret|client[_ -]?secret|api[_ -]?key|access[_ -]?token|"
+                          r"refresh[_ -]?token|authorization|otp)(\s*(?:[:=]|-{1,2}|–|—|\bis\b)\s*)(\"[^\"]*\"|'[^']*'|[^\s,;&\"']+)")
 _CAMEL = re.compile(r"(?<=[a-z0-9])(?=[A-Z])")
 
 

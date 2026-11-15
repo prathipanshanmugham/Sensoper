@@ -506,6 +506,31 @@ def answer_summary(status: int, data: Any, shown: Optional[Tuple[int, int, int]]
     return head
 
 
+ACCESS_RANK = {"read": 0, "write": 1, "full": 2}
+KEY_SEP = " › "
+
+
+def flatten(data: Any, prefix: str = "", out: Optional[List[Dict[str, Any]]] = None, depth: int = 0) -> List[Dict[str, Any]]:
+    """Every value of a body on its own labelled line, nested ones too: [{"path": "bank_details › account_number",
+    "value": "000111222333"}]. List items are numbered from 1. Nothing is cut short."""
+    out = [] if out is None else out
+    if depth > 15 or len(out) >= 5000:
+        return out
+    if isinstance(data, dict):
+        if not data and prefix:
+            out.append({"path": prefix, "value": {}})
+        for k, v in data.items():
+            flatten(v, f"{prefix}{KEY_SEP}{k}" if prefix else str(k), out, depth + 1)
+    elif isinstance(data, list):
+        if not data and prefix:
+            out.append({"path": prefix, "value": []})
+        for i, v in enumerate(data):
+            flatten(v, f"{prefix}{KEY_SEP}{i + 1}" if prefix else str(i + 1), out, depth + 1)
+    else:
+        out.append({"path": prefix or "(body)", "value": data if data is None or isinstance(data, (str, int, float, bool)) else str(data)})
+    return out
+
+
 # ───────────────────────── request bodies ─────────────────────────
 class AgentSettingsBody(BaseModel):
     enabled: Optional[bool] = None
@@ -1130,7 +1155,10 @@ def create_router(db, get_current_user, require_role, create_audit_log, user_out
         user = await admin_write(request)
         agent = await find_agent(agent_id)
         await db.agent_tokens.delete_many({"agent_id": agent["_id"]})
-        await db.agent_approvals.update_many({"agent_id": str(agent["_id"]), "status": {"$in": ["waiting", "approved"]}}, {"$set": {"status": "expired"}})
+        await db.agent_approvals.update_many({"agent_id": str(agent["_id"]), "status": {"$in": ["waiting", "approved"]}},
+                                             {"$set": {"status": "expired"}, "$unset": {"body_sealed": "", "query_sealed": ""}})
+        await db.notifications.delete_many({"kind": "ai_approval", "status": "pending",
+                                            "source_id": {"$in": [d["_id"] async for d in db.agent_approvals.find({"agent_id": str(agent["_id"])}, {"_id": 1})]}})
         await db.agents.delete_one({"_id": agent["_id"]})
         await create_audit_log(user["id"], user["name"], "delete", "ai_agent", agent_id, {"name": agent["name"], "kind": agent.get("kind")}, None)
         return {"message": "Revoked — its key or connection stops working now"}
@@ -1181,12 +1209,12 @@ def create_router(db, get_current_user, require_role, create_audit_log, user_out
 
     def approval_out(d: Dict[str, Any]) -> Dict[str, Any]:
         st = d["status"]
-        if st == "waiting" and d["expires_at"] < now_utc().isoformat():
+        if st in ("waiting", "approved") and d["expires_at"] < now_utc().isoformat():
             st = "expired"
         return {"id": d["_id"], "agent_id": d["agent_id"], "agent_name": d["agent_name"], "agent_kind": d.get("agent_kind"),
-                "works_as": d.get("works_as"), "what": d["what"], "detail": d.get("detail"), "method": d["method"], "path": d["path"],
-                "summary": d.get("summary") or "", "status": st, "created_at": d["created_at"], "expires_at": d["expires_at"],
-                "decided_by_name": d.get("decided_by_name"), "decided_at": d.get("decided_at"),
+                "works_as": d.get("works_as"), "access": d.get("access"), "what": d["what"], "detail": d.get("detail"),
+                "method": d["method"], "path": d["path"], "summary": d.get("summary") or "", "status": st, "created_at": d["created_at"],
+                "expires_at": d["expires_at"], "decided_by_name": d.get("decided_by_name"), "decided_at": d.get("decided_at"),
                 "result_status": d.get("result_status"), "result_summary": d.get("result_summary")}
 
     async def approval_for(aid: str, user: Dict[str, Any]) -> Dict[str, Any]:
@@ -1195,11 +1223,41 @@ def create_router(db, get_current_user, require_role, create_audit_log, user_out
             raise HTTPException(status_code=404, detail="This approval doesn't exist, or it isn't yours to decide.")
         return d
 
+    async def end_approval(aid: str, status: str, extra: Optional[Dict[str, Any]] = None, only_from: Tuple[str, ...] = ()) -> None:
+        """An approval is finished (run, declined, expired or void): the sealed request is wiped; the bell note goes."""
+        q: Dict[str, Any] = {"_id": aid, **({"status": {"$in": list(only_from)}} if only_from else {})}
+        await db.agent_approvals.update_one(q, {"$set": {"status": status, **(extra or {})}, "$unset": {"body_sealed": "", "query_sealed": ""}})
+        await notify.clear(db, "ai_approval", "agent_approval", aid)
+
+    async def expire_stale() -> None:
+        stale = [d["_id"] async for d in db.agent_approvals.find({"status": {"$in": ["waiting", "approved"]}, "expires_at": {"$lt": now_utc().isoformat()}}, {"_id": 1})]
+        for aid in stale:
+            await end_approval(aid, "expired", only_from=("waiting", "approved"))
+
+    async def current_values(request: Request, path: str) -> Optional[Dict[str, Any]]:
+        """The record as it is now (read as the person approving), to show before → after. None when there's no plain GET."""
+        import httpx
+        headers = {k: v for k, v in (("cookie", request.headers.get("cookie")), ("x-forwarded-proto", request.headers.get("x-forwarded-proto"))) if v}
+        headers["accept"] = "application/json"
+        try:
+            async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app_getter()), base_url=await base_url(request), timeout=20) as c:
+                r = await c.get(path, headers=headers)
+                data = r.json() if r.status_code == 200 and "json" in r.headers.get("content-type", "") else None
+                parent, _, rid = path.rpartition("/")
+                if not isinstance(data, dict) and parent.count("/") >= 2:      # no GET for one record: find it in the list
+                    r = await c.get(parent, headers=headers)
+                    rows = r.json() if r.status_code == 200 and "json" in r.headers.get("content-type", "") else None
+                    _, rows = main_list(rows) if rows is not None else (None, None)
+                    data = next((x for x in rows or [] if isinstance(x, dict) and str(x.get("id") or x.get("_id") or "") == rid), None)
+        except Exception:  # noqa: BLE001 — "before" is a help, never a blocker
+            return None
+        return {f["path"]: f["value"] for f in flatten(scrub(data))} if isinstance(data, dict) else None
+
     @router.get("/agent-approvals")
     async def list_approvals(request: Request, status: str = "waiting", limit: int = 30):
         user = await person(request)
-        await db.agent_approvals.update_many({"status": "waiting", "expires_at": {"$lt": now_utc().isoformat()}}, {"$set": {"status": "expired"}})
-        q: Dict[str, Any] = {} if status == "all" else {"status": status}
+        await expire_stale()
+        q: Dict[str, Any] = {} if status == "all" else {"status": str(status)[:20]}
         if user.get("role") != "admin":
             q["works_as_id"] = user["id"]
         rows = [approval_out(d) async for d in db.agent_approvals.find(q).sort("created_at", -1).limit(max(1, min(limit, 100)))]
@@ -1208,8 +1266,22 @@ def create_router(db, get_current_user, require_role, create_audit_log, user_out
     @router.get("/agent-approvals/{aid}")
     async def get_approval(aid: str, request: Request):
         user = await person(request)
+        await expire_stale()
         d = await approval_for(aid, user)
         out = {**approval_out(d), "consent_token": approval_token(aid, user["id"]), "me": {"id": user["id"], "name": user["name"]}}
+        # Everything the agent will send, every nested value on its own labelled line (secrets shown as hidden), and for a
+        # change to one record, what each value is now — so nothing can hide inside a "{…}".
+        fields = [dict(f) for f in d.get("fields") or []]
+        if d["status"] == "waiting" and d["method"] in ("PUT", "PATCH") and fields:
+            now_vals = await current_values(request, d["path"])
+            if now_vals is not None:
+                for f in fields:
+                    before = now_vals.get(f["path"], None)
+                    f["before"] = before
+                    f["changed"] = f["path"] not in now_vals or before != f["value"]
+                out["compared"] = True
+        out["fields"] = fields
+        out["query_fields"] = d.get("query_fields") or []
         if d.get("revealed_enc"):                # a new customer password: for the person, never for the AI
             try:
                 out["revealed"] = json.loads(open_box(d["revealed_enc"]))
@@ -1224,17 +1296,24 @@ def create_router(db, get_current_user, require_role, create_audit_log, user_out
         if not body or not body.consent_token or not secrets.compare_digest(approval_token(aid, user["id"]), str(body.consent_token)):
             raise HTTPException(status_code=403, detail="This approval page is out of date. Reload it and try again.")
         if d["expires_at"] < now_utc().isoformat():
+            await end_approval(aid, "expired", only_from=("waiting", "approved"))
             raise HTTPException(status_code=410, detail="This request has expired. Ask the AI to try again if you still want it.")
         if status == "approved":
             agent = await db.agents.find_one({"_id": ObjectId(d["agent_id"])}) if ObjectId.is_valid(d["agent_id"]) else None
             if not agent or agent.get("status") != "active":
                 raise HTTPException(status_code=409, detail="This agent was paused or revoked, so it can't run this.")
-        now = now_utc().isoformat()
-        if not await db.agent_approvals.find_one_and_update({"_id": aid, "status": "waiting"}, {"$set": {
-                "status": status, "decided_by": user["id"], "decided_by_name": user["name"], "decided_at": now}}):
+            if agent.get("run_as_user_id") != d.get("works_as_id") or ACCESS_RANK.get(agent.get("access"), 0) < ACCESS_RANK.get(d.get("access"), 0):
+                await end_approval(aid, "void", {"result_summary": "The agent's login or access changed after it asked."}, only_from=("waiting",))
+                raise HTTPException(status_code=409, detail="This agent now works as another login (or with less access) than when it asked. Ask it again.")
+        now = now_utc()
+        fields = {"status": status, "decided_by": user["id"], "decided_by_name": user["name"], "decided_at": now.isoformat()}
+        if status == "approved":                 # a fresh window to run it; it is wiped if it isn't used
+            fields["expires_at"] = (now + timedelta(seconds=APPROVAL_SECONDS)).isoformat()
+        if not await db.agent_approvals.find_one_and_update({"_id": aid, "status": "waiting"}, {"$set": fields}):
             raise HTTPException(status_code=409, detail="Someone has already decided this one.")
+        if status == "declined":
+            await end_approval(aid, "declined")
         await notify.clear(db, "ai_approval", "agent_approval", aid)
-        await db.notifications.update_many({"kind": "ai_approval", "source_id": aid}, {"$set": {"status": "dismissed"}})
         await create_audit_log(user["id"], user["name"], "approve_ai_action" if status == "approved" else "decline_ai_action",
                                "ai_agent_approval", aid, None, {"agent": d["agent_name"], "what": d["what"], "call": f"{d['method']} {d['path']}"})
         return approval_out(await db.agent_approvals.find_one({"_id": aid}))
@@ -1492,11 +1571,15 @@ def create_router(db, get_current_user, require_role, create_audit_log, user_out
         detail = f"{method} {path}" + (f" ({ep['summary']})" if ep else "") + (f" with {summarize(body)}" if body else "") + \
                  (f", query {summarize(query)}" if query else "")
         await db.agent_approvals.insert_one({
-            "_id": aid, "agent_id": a["id"], "agent_name": a["name"], "agent_kind": a.get("kind", "key"), "works_as_id": u["id"],
-            "works_as": a["works_as"], "method": method, "path": path, "query_json": json.dumps(query, default=str),
-            "body_json": json.dumps(body, default=str) if body is not None else None, "what": what, "detail": detail,
-            "summary": summarize(body), "status": "waiting", "created_at": now_utc().isoformat(), "expires_at": exp.isoformat(),
-            "expires_dt": exp + timedelta(days=7)})
+            "_id": aid, "agent_id": a["id"], "agent_name": a["name"], "agent_kind": a.get("kind", "key"),
+            # bound now: it runs only as this login, with at least this access
+            "works_as_id": u["id"], "works_as": a["works_as"], "access": a["access"],
+            "method": method, "path": path, "what": what, "detail": detail, "summary": summarize(body),
+            # the request itself is sealed (it may hold a new password) and wiped once it's finished
+            "query_sealed": seal(json.dumps(query, default=str)), "body_sealed": seal(json.dumps(body, default=str)) if body is not None else None,
+            # what the person reads: every value on its own line, secrets hidden
+            "fields": flatten(scrub(body)) if body is not None else [], "query_fields": flatten(scrub(query)) if query else [],
+            "status": "waiting", "created_at": now_utc().isoformat(), "expires_at": exp.isoformat(), "expires_dt": exp + timedelta(days=7)})
         link = f"/connect-agent/approve/{aid}"
         await notify.plan(db, kind="ai_approval", source_type="agent_approval", source_id=aid, user_ids=await approvers_of(u["id"]),
                           title=f"{a['name']} is waiting for your approval", message=what, link=link)
@@ -1523,10 +1606,19 @@ def create_router(db, get_current_user, require_role, create_audit_log, user_out
             await asyncio.sleep(1)
             doc = await db.agent_approvals.find_one(q) or doc
         st = doc["status"]
-        if st == "waiting" and doc["expires_at"] < now_utc().isoformat():
-            await db.agent_approvals.update_one({"_id": aid, "status": "waiting"}, {"$set": {"status": "expired"}})
-            await notify.clear(db, "ai_approval", "agent_approval", aid)
+        if st in ("waiting", "approved") and doc["expires_at"] < now_utc().isoformat():
+            await end_approval(aid, "expired", only_from=("waiting", "approved"))
             st = "expired"
+        if st in ("waiting", "approved") and (u["id"] != doc.get("works_as_id") or
+                                              ACCESS_RANK.get(u["agent"]["access"], 0) < ACCESS_RANK.get(doc.get("access"), 0)):
+            # asked for as one login (or with more access), but the agent now works as another: never run it as someone else
+            await end_approval(aid, "void", {"result_summary": "The agent's login or access changed after it asked."}, only_from=("waiting", "approved"))
+            await log_row(u["agent"], doc["method"], doc["path"], 403, request, started, "void: works as another login now")
+            return {"ok": False, "status": 409, "state": "void", "summary": "Not run: this agent now works as another login (or with less "
+                    "access) than when it asked.", "next": "If the person still wants it, ask again with call_api."}
+        if st == "void":
+            return {"ok": False, "status": 409, "state": "void", "summary": doc.get("result_summary") or "Not run.",
+                    "next": "If the person still wants it, ask again with call_api."}
         if st == "waiting":
             return {"ok": False, "status": 428, "state": "waiting", "summary": "Still waiting for the person to approve it in Sensoper",
                     "approve_url": url, "next": "Ask the person to open approve_url and press Approve, then call confirm_action again. "
@@ -1545,13 +1637,13 @@ def create_router(db, get_current_user, require_role, create_audit_log, user_out
             return {"ok": False, "status": 409, "state": "running", "summary": "It is already running.", "next": "Nothing more to do."}
         why = refusal(doc["path"], doc["method"], u["agent"])      # access may have changed since it was asked for
         if why:
-            await db.agent_approvals.update_one({"_id": aid}, {"$set": {"status": "failed", "result_status": 403, "result_summary": why}})
+            await end_approval(aid, "failed", {"result_status": 403, "result_summary": why})
             await log_row(u["agent"], doc["method"], doc["path"], 403, request, started, "refused when approved")
             return {"ok": False, "status": 403, "summary": f"403 Refused · {why}", "error": why, "next": next_step(403, doc["method"], doc["path"])}
-        body = json.loads(doc["body_json"]) if doc.get("body_json") else None
-        out = await run_call(u, request, token, doc["method"], doc["path"], json.loads(doc.get("query_json") or "{}"), body, 0, approval=aid)
-        await db.agent_approvals.update_one({"_id": aid}, {"$set": {"status": "done" if out.get("ok") else "failed", "result_status": out.get("status"),
-                                                                    "result_summary": out.get("summary", "")[:200]}})
+        body = json.loads(open_box(doc["body_sealed"])) if doc.get("body_sealed") else None
+        query = json.loads(open_box(doc["query_sealed"])) if doc.get("query_sealed") else {}
+        out = await run_call(u, request, token, doc["method"], doc["path"], query, body, 0, approval=aid)
+        await end_approval(aid, "done" if out.get("ok") else "failed", {"result_status": out.get("status"), "result_summary": out.get("summary", "")[:200]})
         out["approved_by"] = doc.get("decided_by_name")
         if (await db.agent_approvals.find_one({"_id": aid}, {"revealed_enc": 1}) or {}).get("revealed_enc"):
             out["note_for_person"] = "A new password was made. It is hidden from the AI: the person sees it on the approval page in Sensoper."
