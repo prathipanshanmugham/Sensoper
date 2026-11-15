@@ -190,7 +190,7 @@ export default function FormTabsManager() {
     try {
       await formTabsAPI.reorder(newTabs.map(t => t.id));
     } catch (err) {
-      console.error('Reorder failed:', err);
+      setError(formatApiErrorDetail(err.response?.data?.detail) || 'Could not change the order');
       await fetchTabs();
     }
   };
