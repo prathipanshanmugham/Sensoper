@@ -4,17 +4,37 @@ Your server already has `/root/Sensoper/deploy.sh`. It pulls the code, installs 
 copies the build to `/var/www/sensoper`, restarts the `sensoper` service and checks the live bundle. This release needs
 nothing new installed.
 
-## AI connector update (Claude / ChatGPT): safer, clearer, easier
+## This release: bug sweep, security fixes and a safer AI connector
 
-Nothing to install and nothing to set. The Claude connector you already use keeps working: no reconnecting.
+No new packages. On the server, as root:
 
-What changes for you:
+    /root/Sensoper/deploy.sh
+    bash /root/Sensoper/website/deploy/enable-on-quote.sh
+
+The second line refreshes the nginx settings for quote.sensoper.in. They now also stop other websites from showing the
+ERP inside a frame (clickjacking), which protects the AI-agent switches and approval pages. It keeps a backup and puts it
+back if nginx doesn't accept the change.
+
+Nothing else to set. Two server settings now behave more safely without any change from you (see "Every release"):
+`CORS_ORIGINS` unset or `*` means same-site only, and without `ADMIN_PASSWORD` no admin is ever created with a built-in
+password (your existing admin isn't affected).
+
+### Fixed in the ERP
+GST at 0% charged 18%; GST before the bill discount; a received purchase order could be received again (double stock);
+returns and reopened orders put stock back twice; paid credits stayed open; invoice dates and financial years in UTC;
+CGST+SGST off by a paisa; IGST decided by exact state text; a double-click made two project invoices; check-out after
+midnight; interest-only loan payments; other branches' records opened by id; search boxes crashing on symbols; server
+errors on bad input; and the public file address handing out the vault key and audit archives.
+
+### AI connector (Claude / ChatGPT)
+The Claude connector you already use keeps working: no reconnecting.
 - **Settings → AI agents** opens with a *Connect Claude or ChatGPT* panel: the address to paste and three steps per app.
   Each agent shows when it was last used and its calls today, with **Pause** and **Revoke** buttons.
 - When Claude wants to **delete, change many records at once, touch logins or passwords, change bank or company
   details, end someone's employment, or change anything a customer or the public sees**, nothing happens until you
   approve it **in Sensoper**: Claude gives you a link, the bell shows it, and Settings → AI agents lists it at the top.
-  Press **Approve** (or **Decline**), then tell Claude to go ahead. Claude can't approve its own requests.
+  The approval page shows every value that will change (old → new). Press **Approve** (or **Decline**), then tell Claude
+  to go ahead. Claude can't approve its own requests.
 - **Activity** can be filtered: changes, asked for approval, refused, failed, by words and by day.
 - Pausing an agent or switching agents off stops it at once; resuming works without connecting again.
 - If an old sign-in token is ever used twice, Sensoper signs that connection out and says so on its card. Connect it
@@ -23,17 +43,11 @@ What changes for you:
 For your own scripts or n8n using an API key: those calls answer 403 until you send them again with the header
 `X-Sensoper-Confirm: yes`. Claude and ChatGPT can't use this header.
 
-Recommended nginx line (protects every ERP page from being shown inside another website), in the `server` block for
-quote.sensoper.in — and in any `location` that has its own `add_header`, because nginx doesn't inherit them there:
-
-    add_header Content-Security-Policy "frame-ancestors 'none'" always;
-    add_header X-Frame-Options "DENY" always;
-
 Smoke test after deploy: in Claude, ask "Which vendors do we have?" (works as before), then "Delete vendor X": Claude
 answers that it is waiting for your approval, the bell shows it, and after you approve and say "go ahead" it runs once.
 Settings → AI agents → Activity shows both.
 
-## This release: shop.sensoper.in, five systems, brands, testimonial videos, store pickup
+## Earlier release: shop.sensoper.in, five systems, brands, testimonial videos, store pickup
 
 No new packages and no new server settings. On the server, as root:
 
@@ -337,9 +351,12 @@ On GitHub, open the merged pull request and press **Revert**, merge the revert, 
 New collections (`daily_reports`, `site_diaries`, `site_photo_uploads`, `integrations`) are only added to, so rolling back loses nothing. Photos already copied to Drive stay in Drive.
 
 ## Running the tests
-Against the live API, with an admin login:
+Most tests need no server (in-memory database): `cd backend && pytest tests`.
 
-    cd backend && REACT_APP_BACKEND_URL=https://quote.sensoper.in ADMIN_PASSWORD='…' pytest tests/test_daily_reports.py
+The HTTP tests create and delete records, so never point them at the live ERP. Run them against a local or staging
+copy, with logins from the environment (they skip when these aren't set):
+
+    cd backend && REACT_APP_BACKEND_URL=http://127.0.0.1:8001 TEST_ADMIN_PASSWORD='…' pytest tests/test_daily_reports.py
 
 Site photos, Drive and site GPS need no server or network (fake Google, in-memory database):
 
