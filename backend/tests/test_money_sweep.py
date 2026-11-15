@@ -279,6 +279,8 @@ def test_a_branch_only_sees_and_sells_for_its_own_branch(app, loop, world):
         assert (await world["mgr_n"].post(f"/api/sales/{south_sale}/return", json={"reason": "x"})).status_code == 404
         r = await staff.post("/api/sales", json=sale_body([line(i1, 1)], location_id=world["south"]))
         assert r.status_code == 403
+        inv = await a.get(f"/api/sales/{south_sale}/invoice")   # was a 500: the company profile's ObjectId
+        assert inv.status_code == 200 and inv.json()["sale"]["invoice_number"].startswith("SOC"), inv.text[:200]
         own = await staff.post("/api/sales", json=sale_body([line(i1, 1)]))
         assert own.status_code == 200, own.text
         assert (await staff.get(f"/api/sales/{own.json()['id']}")).status_code == 200

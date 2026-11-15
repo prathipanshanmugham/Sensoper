@@ -819,6 +819,8 @@ def create_router(db, get_current_user, require_role, generate_pdf=None, company
         user = await get_current_user(request)
         sale = await _sale_for(user, sale_id)
         profile = await company_profile_fn(sale.get("location_id")) if company_profile_fn else {}
+        # the profile is a raw Mongo document: its ObjectId made every invoice request a server error
+        profile = {**{k: v for k, v in (profile or {}).items() if k != "_id"}, **({"id": str(profile["_id"])} if (profile or {}).get("_id") else {})}
         return {"sale": await _sale_out(sale), "company_profile": profile}
 
     return router
