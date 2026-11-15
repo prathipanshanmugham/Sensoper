@@ -7966,6 +7966,40 @@ async def health_check():
 
 # ================== STARTUP EVENTS ==================
 
+async def seed_admin_user() -> str:
+    """The first admin login — made only from ADMIN_PASSWORD, never from a built-in password (the repository is
+    public, so a built-in one is known to everyone). An existing admin's password is never overwritten on restart.
+    Recovery: set RESET_ADMIN_PASSWORD=true together with ADMIN_PASSWORD for one restart.
+    Returns what happened: created / exists / reset / skipped."""
+    admin_email = os.environ.get("ADMIN_EMAIL", "admin@sensoper.com")
+    env_password = os.environ.get("ADMIN_PASSWORD") or ""
+    existing = await db.users.find_one({"email": admin_email})
+    if existing is None:
+        if not env_password:
+            if not await db.users.find_one({"role": "admin"}):
+                logger.warning("No admin login exists and ADMIN_PASSWORD is not set, so none was created. Set ADMIN_PASSWORD "
+                               "(and ADMIN_EMAIL) in backend/.env and restart to create the first admin.")
+            return "skipped"
+        await db.users.insert_one({
+            "email": admin_email,
+            "password_hash": hash_password(env_password),
+            "name": "System Admin",
+            "role": "admin",
+            "must_reset_password": False,
+            "created_at": datetime.now(timezone.utc).isoformat()
+        })
+        logger.info(f"Admin user created: {admin_email}")
+        return "created"
+    if env_password and os.environ.get("RESET_ADMIN_PASSWORD", "").lower() in ("1", "true", "yes"):
+        await db.users.update_one(
+            {"email": admin_email},
+            {"$set": {"password_hash": hash_password(env_password), "password_changed_at": datetime.now(timezone.utc).isoformat()}}
+        )
+        logger.warning(f"Admin password reset from ADMIN_PASSWORD (RESET_ADMIN_PASSWORD set): {admin_email}")
+        return "reset"
+    return "exists"
+
+
 @app.on_event("startup")
 async def startup_event():
     await _seed_kit_categories(db)
@@ -8075,32 +8109,8 @@ async def startup_event():
     await db.employee_scores.create_index("user_id")
     await db.employee_scores.create_index("period")
     
-    # Seed admin user — only when it doesn't exist yet. An existing admin's password is never overwritten on
-    # restart (previously every restart reset it to ADMIN_PASSWORD / "Admin@123", undoing any password change).
-    # Recovery: set RESET_ADMIN_PASSWORD=true together with ADMIN_PASSWORD for one restart.
-    admin_email = os.environ.get("ADMIN_EMAIL", "admin@sensoper.com")
-    env_password = os.environ.get("ADMIN_PASSWORD")
-    admin_password = env_password or "Admin@123"
+    await seed_admin_user()
 
-    existing = await db.users.find_one({"email": admin_email})
-    if existing is None:
-        await db.users.insert_one({
-            "email": admin_email,
-            "password_hash": hash_password(admin_password),
-            "name": "System Admin",
-            "role": "admin",
-            # The built-in default password is public — make the first sign-in change it.
-            "must_reset_password": env_password is None,
-            "created_at": datetime.now(timezone.utc).isoformat()
-        })
-        logger.info(f"Admin user created: {admin_email}")
-    elif env_password and os.environ.get("RESET_ADMIN_PASSWORD", "").lower() in ("1", "true", "yes"):
-        await db.users.update_one(
-            {"email": admin_email},
-            {"$set": {"password_hash": hash_password(env_password), "password_changed_at": datetime.now(timezone.utc).isoformat()}}
-        )
-        logger.warning(f"Admin password reset from ADMIN_PASSWORD (RESET_ADMIN_PASSWORD set): {admin_email}")
-    
     # Update existing company profiles with new logo
     await db.company_profiles.update_many(
         {"logo_url": {"$regex": "job_solar-estimator|32se8qpu_snspr|x3rj9e2a_slg"}},
