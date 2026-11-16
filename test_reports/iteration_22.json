@@ -47,7 +47,7 @@
     "frontend": "100% for both retest targets"
   },
 
-  "test_credentials": { "admin": "admin@sensoper.com / Admin@123" },
+  "test_credentials": { "admin": "admin@sensoper.com / <TEST_ADMIN_PASSWORD>" },
 
   "seed_data_creation": "Created TEST_RETEST_FAST_ITEM inventory item + 5 material_usage_logs (item_name=TEST_RETEST_FAST_ITEM, actual_qty=2 each, project_id=first project). Inventory item was deleted in fixture teardown; usage logs persist (as in iteration_21). Also TEST_MOVE_FAST_ITEM logs from prior runs still exist, contributing to fast_moving count=1 via accumulated logs on any pre-existing inventory row matching that name.",
 

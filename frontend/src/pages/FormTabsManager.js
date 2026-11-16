@@ -190,7 +190,7 @@ export default function FormTabsManager() {
     try {
       await formTabsAPI.reorder(newTabs.map(t => t.id));
     } catch (err) {
-      console.error('Reorder failed:', err);
+      setError(formatApiErrorDetail(err.response?.data?.detail) || 'Could not change the order');
       await fetchTabs();
     }
   };
@@ -302,11 +302,13 @@ export default function FormTabsManager() {
                       </div>
                     </div>
                     <div className="flex items-center gap-1 shrink-0">
-                      <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleToggleActive(tab)} title={tab.active ? 'Deactivate' : 'Activate'} data-testid={`toggle-${tab.slug}`}>
+                      {/* System steps (Customer, Location…) are the New project form itself: they can get extra fields, not be switched off or deleted */}
+                      {/* …except a system step switched off before this rule: it keeps its switch so it can be turned back on */}
+                      {(!tab.system || !tab.active) && <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleToggleActive(tab)} title={tab.active ? 'Deactivate' : 'Activate'} data-testid={`toggle-${tab.slug}`}>
                         {tab.active ? <ToggleRight className="h-4 w-4 text-emerald-600" /> : <ToggleLeft className="h-4 w-4 text-slate-400" />}
-                      </Button>
+                      </Button>}
                       <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleEdit(tab)} data-testid={`edit-${tab.slug}`}><Pencil className="h-3.5 w-3.5 text-blue-600" /></Button>
-                      <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleDelete(tab)} data-testid={`delete-${tab.slug}`}><Trash2 className="h-3.5 w-3.5 text-red-500" /></Button>
+                      {!tab.system && <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleDelete(tab)} data-testid={`delete-${tab.slug}`}><Trash2 className="h-3.5 w-3.5 text-red-500" /></Button>}
                     </div>
                   </div>
                 </CardContent>

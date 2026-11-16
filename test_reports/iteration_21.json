@@ -17,7 +17,7 @@
   },
 
   "passed_tests": [
-    "Login admin@sensoper.com / Admin@123 -> /dashboard OK",
+    "Login admin@sensoper.com / <TEST_ADMIN_PASSWORD> -> /dashboard OK",
     "Inventory Add-Item dialog: file input count = 0 (upload dropzone removed)",
     "item-image-url-input + item-procurement-date-input visible in dialog",
     "Invalid URL 'not-a-url' shows inline text 'Invalid URL — must start with http:// or https://'",
@@ -58,7 +58,7 @@
     "frontend": "~90% — all required elements render correctly; movement-type filter has a 1-click lag bug"
   },
 
-  "test_credentials": { "admin": "admin@sensoper.com / Admin@123" },
+  "test_credentials": { "admin": "admin@sensoper.com / <TEST_ADMIN_PASSWORD>" },
 
   "seed_data_creation": "During pytest: temporary inventory item TEST_MOVE_FAST_ITEM + 5 material_usage_logs (item_name=TEST_MOVE_FAST_ITEM, actual_qty=2 each, project_id=first existing project) created and the inventory item was cleaned up. The 5 usage logs remain in material_usage_logs for reproducibility of FAST classification on the next run. Also a TEST_MOVE_ITEM_A was created+deleted as part of the round-trip test.",
 

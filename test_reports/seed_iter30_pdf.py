@@ -1,8 +1,8 @@
 """Seed a project with a REAL solar_report (sizing+financials from /api/solar/sizing)."""
 import os, requests, sys
-BASE = 'https://solar-ops-management.preview.emergentagent.com'
+BASE = os.environ['REACT_APP_BACKEND_URL'].rstrip('/')   # a test server — never the live one
 s = requests.Session()
-r = s.post(f'{BASE}/api/auth/login', json={'email':'admin@sensoper.com','password':'Admin@123'})
+r = s.post(f'{BASE}/api/auth/login', json={'email':'admin@sensoper.com','password': os.environ['TEST_ADMIN_PASSWORD']})
 assert r.status_code==200,r.text
 
 # 1) get a real sizing result

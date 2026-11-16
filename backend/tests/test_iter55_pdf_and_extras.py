@@ -4,11 +4,13 @@ import uuid
 
 import pytest
 import requests
+from http_env import require_server, throwaway_password, TEST_ADMIN_EMAIL, TEST_MANAGER_EMAIL, TEST_MANAGER_PASSWORD, TEST_STAFF_EMAIL, TEST_STAFF_PASSWORD  # noqa: E402,F401
+_SERVER_URL, TEST_ADMIN_PASSWORD = require_server(manager=False, staff=False)
 
 BASE_URL = os.environ.get("REACT_APP_BACKEND_URL").rstrip("/")
 API = f"{BASE_URL}/api"
 TAG = f"TEST55X_{uuid.uuid4().hex[:5]}"
-ADMIN_PW = os.environ.get("TEST_ADMIN_PASSWORD", "Admin@123")
+ADMIN_PW = os.environ.get("TEST_ADMIN_PASSWORD", TEST_ADMIN_PASSWORD)
 
 
 @pytest.fixture(scope="module")

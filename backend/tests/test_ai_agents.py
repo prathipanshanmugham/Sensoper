@@ -7,6 +7,7 @@ import base64
 import hashlib
 import json
 import os
+import secrets
 import sys
 from urllib.parse import parse_qs, urlparse
 
@@ -20,7 +21,7 @@ os.environ.setdefault("MONGO_URL", "mongodb://localhost:27017")
 os.environ.setdefault("DB_NAME", "ai_agents_test")
 os.environ.setdefault("JWT_SECRET", "t" * 48)
 os.environ.setdefault("ADMIN_EMAIL", "boss@example.com")
-os.environ.setdefault("ADMIN_PASSWORD", "Adm1n-pass-123")
+os.environ.setdefault("ADMIN_PASSWORD", "t-" + secrets.token_hex(12))   # random per run — the in-memory app seeds this admin
 os.environ.setdefault("STORAGE_ROOT", "/tmp/sensoper-ai-agents-test")
 ADMIN = {"email": os.environ["ADMIN_EMAIL"], "password": os.environ["ADMIN_PASSWORD"]}
 
@@ -29,7 +30,7 @@ _m.AsyncIOMotorClient = mongomock_motor.AsyncMongoMockClient
 import agents  # noqa: E402
 import server  # noqa: E402
 
-PW = "Passw0rd!x"
+PW = "pw-" + secrets.token_hex(8)   # for the users this test creates (random per run)
 BASE = "https://quote.example.in"
 
 
@@ -164,7 +165,7 @@ def test_agent_keys_access_levels_and_activity(app, loop, world):
         assert (await server.db.agent_tokens.find_one({"agent_id": server.ObjectId(reader["id"])}))["hash"] != key   # only the hash is kept
         c = client(app, key)
         r = await c.get("/api/vendors")
-        assert r.status_code == 401 and "switched off" in r.json()["detail"]          # off until an admin switches it on
+        assert r.status_code == 403 and "switched off" in r.json()["detail"]          # off until an admin switches it on (403 keeps the token)
         assert (await a.put("/api/agents/settings", json={"enabled": True})).json()["enabled"] is True
         assert (await c.get("/api/vendors")).status_code == 200
         me = (await c.get("/api/auth/me")).json()
@@ -183,7 +184,9 @@ def test_agent_keys_access_levels_and_activity(app, loop, world):
         assert (await cw.delete(f"/api/vendors/{vid}")).status_code == 403
         assert (await cw.put(f"/api/users/{ids['staff']}", json={"name": "Hacked"})).status_code == 403
         assert (await a.put(f"/api/agents/{w['agent']['id']}", json={"access": "full"})).json()["access"] == "full"
-        assert (await cw.delete(f"/api/vendors/{vid}")).status_code == 200
+        r = await cw.delete(f"/api/vendors/{vid}")
+        assert r.status_code == 403 and "X-Sensoper-Confirm" in r.json()["detail"]   # deletes need an explicit yes
+        assert (await cw.delete(f"/api/vendors/{vid}", headers={"x-sensoper-confirm": "yes"})).status_code == 200
         # working as a staff login: that role's permissions apply (loans are admin-only)
         s = (await a.post("/api/agents", json={"name": "Field helper", "access": "full", "run_as_user_id": ids["staff"]})).json()
         cs = client(app, s["key"])
@@ -221,7 +224,7 @@ def test_mcp_server(app, loop, world):
         assert "Stock checker" in init["result"]["instructions"]
         assert (await c.post("/api/mcp", json={"jsonrpc": "2.0", "method": "notifications/initialized"})).status_code == 202
         names = {t["name"] for t in (await rpc(c, "tools/list"))["result"]["tools"]}
-        assert names == {"whoami", "app_map", "list_endpoints", "describe_endpoint", "call_api"}
+        assert names == {"whoami", "app_map", "list_endpoints", "describe_endpoint", "call_api", "confirm_action"}   # old names kept
         who = tool_json(await rpc(c, "tools/call", {"name": "whoami", "arguments": {}}))
         assert who["access"] == "Read only" and who["works_as"]["role"] == "admin"
         amap = tool_json(await rpc(c, "tools/call", {"name": "app_map", "arguments": {}}))
@@ -278,11 +281,13 @@ def test_oauth_connector_flow(app, loop, world):
         m = await login(app, "mgr9@example.com", PW)
         assert (await m.get(f"/api/oauth/requests/{rid}")).status_code == 403              # only an admin approves
         info = (await a.get(f"/api/oauth/requests/{rid}")).json()
-        assert info["client_name"] == "Claude" and info["known_app"] and info["return_host"] == "claude.ai"
-        ok = (await a.post(f"/api/oauth/requests/{rid}/approve", json={"access": "read", "run_as_user_id": world["ids"]["manager"]})).json()
+        assert info["client_name"] == "Claude" and info["known_app"] and info["return_host"] == "claude.ai" and not info["warning"]
+        assert (await a.post(f"/api/oauth/requests/{rid}/approve", json={"access": "read"})).status_code == 403    # no consent token (CSRF)
+        body = {"access": "read", "run_as_user_id": world["ids"]["manager"], "consent_token": info["consent_token"]}
+        ok = (await a.post(f"/api/oauth/requests/{rid}/approve", json=body)).json()
         back = parse_qs(urlparse(ok["redirect"]).query)
         assert ok["redirect"].startswith("https://claude.ai/api/mcp/auth_callback?") and back["state"] == ["st8"]
-        assert (await a.post(f"/api/oauth/requests/{rid}/approve", json={"access": "read"})).status_code == 404   # used once
+        assert (await a.post(f"/api/oauth/requests/{rid}/approve", json={"access": "read", "consent_token": info["consent_token"]})).status_code == 404   # used once
         code = back["code"][0]
         form = {"grant_type": "authorization_code", "code": code, "client_id": cid, "redirect_uri": q["redirect_uri"], "code_verifier": "x" * 60}
         r = await anon.post("/api/oauth/token", data=form)
@@ -290,26 +295,39 @@ def test_oauth_connector_flow(app, loop, world):
         # a fresh approval, done properly
         r = await anon.get("/api/oauth/authorize", params=q)
         rid = parse_qs(urlparse(r.headers["location"]).query)["request"][0]
-        code = parse_qs(urlparse((await a.post(f"/api/oauth/requests/{rid}/approve", json={"access": "write", "name": "Claude for Prathipan"})).json()["redirect"]).query)["code"][0]
+        ct = (await a.get(f"/api/oauth/requests/{rid}")).json()["consent_token"]
+        mine = {"access": "write", "name": "Claude for Prathipan", "consent_token": ct}
+        code = parse_qs(urlparse((await a.post(f"/api/oauth/requests/{rid}/approve", json=mine)).json()["redirect"]).query)["code"][0]
         tok = await anon.post("/api/oauth/token", data={**form, "code": code, "code_verifier": verifier})
         assert tok.status_code == 200, tok.text
         t = tok.json()
         assert t["token_type"] == "Bearer" and t["access_token"].startswith("snp_at_") and t["refresh_token"].startswith("snp_rt_")
-        assert (await anon.post("/api/oauth/token", data={**form, "code": code, "code_verifier": verifier})).status_code == 400   # codes work once
         cc = client(app, t["access_token"])
         who = tool_json(await rpc(cc, "tools/call", {"name": "whoami", "arguments": {}}))
         assert who["agent"] == "Claude for Prathipan" and who["access"] == "Read & write"
+        # codes work once; a replayed code also signs out what the first use got (RFC 6749 §4.1.2)
+        assert (await anon.post("/api/oauth/token", data={**form, "code": code, "code_verifier": verifier})).status_code == 400
+        assert (await cc.post("/api/mcp", json={"jsonrpc": "2.0", "id": 1, "method": "ping"})).status_code == 401
+        r = await anon.get("/api/oauth/authorize", params=q)
+        rid = parse_qs(urlparse(r.headers["location"]).query)["request"][0]
+        ct = (await a.get(f"/api/oauth/requests/{rid}")).json()["consent_token"]
+        mine = {"access": "write", "name": "Claude for Prathipan", "consent_token": ct}
+        code = parse_qs(urlparse((await a.post(f"/api/oauth/requests/{rid}/approve", json=mine)).json()["redirect"]).query)["code"][0]
+        t = (await anon.post("/api/oauth/token", data={**form, "code": code, "code_verifier": verifier})).json()
         assert (await client(app, t["refresh_token"]).get("/api/vendors")).status_code == 401  # a refresh token isn't an access token
         r2 = (await anon.post("/api/oauth/token", data={"grant_type": "refresh_token", "refresh_token": t["refresh_token"], "client_id": cid})).json()
         assert r2["access_token"] != t["access_token"]
-        assert (await anon.post("/api/oauth/token", data={"grant_type": "refresh_token", "refresh_token": t["refresh_token"], "client_id": cid})).status_code == 400
         conn = [x for x in (await a.get("/api/agents")).json()["agents"] if x["kind"] == "connector"]
         assert {x["name"] for x in conn} >= {"Claude for Prathipan"} and all(x["client_name"] == "Claude" for x in conn)
         # connectors can be switched off on their own
         await a.put("/api/agents/settings", json={"allow_connectors": False})
-        assert (await client(app, r2["access_token"]).post("/api/mcp", json={"jsonrpc": "2.0", "id": 1, "method": "ping"})).status_code == 401
+        assert (await client(app, r2["access_token"]).post("/api/mcp", json={"jsonrpc": "2.0", "id": 1, "method": "ping"})).status_code == 403
         assert (await client(app, world["reader_key"]).get("/api/vendors")).status_code == 200       # keys still work
         await a.put("/api/agents/settings", json={"allow_connectors": True})
+        # a refresh token used again after the grace minute: the whole connection is signed out
+        await server.db.agent_tokens.update_one({"hash": agents.token_hash(t["refresh_token"])}, {"$set": {"rotated_at": "2020-01-01T00:00:00+00:00"}})
+        assert (await anon.post("/api/oauth/token", data={"grant_type": "refresh_token", "refresh_token": t["refresh_token"], "client_id": cid})).status_code == 400
+        assert (await client(app, r2["access_token"]).post("/api/mcp", json={"jsonrpc": "2.0", "id": 1, "method": "ping"})).status_code == 401
     run(loop, go())
 
 

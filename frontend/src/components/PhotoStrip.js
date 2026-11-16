@@ -6,6 +6,7 @@ import { toast } from 'sonner';
 import { uploadAPI } from '../utils/api';
 import { compressImage } from '../lib/format';
 import PhotoSourceButtons from './PhotoSourceButtons';
+import { errText } from './kit/PageBits';
 
 export const fileUrl = (path) => (path ? uploadAPI.getFileUrl(path) : null);
 
@@ -29,7 +30,7 @@ export default function PhotoStrip({ value = [], onChange, max = 6, compress = t
         if (small.size > 5 * 1024 * 1024) throw new Error('That picture is over 5 MB');
         added.push((await uploadAPI.uploadImage(small)).data.storage_path);
       } catch (e) {
-        toast.error(e.response?.data?.detail || e.message || 'Could not add the photo');
+        toast.error(e.response ? errText(e, 'Could not add the photo') : (e.message || 'Could not add the photo'));
       } finally { setBusy((n) => n - 1); }
     }
     if (added.length) onChange([...photos, ...added]);

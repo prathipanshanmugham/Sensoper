@@ -8,10 +8,13 @@ from datetime import date, timedelta
 
 import pytest
 import requests
+from http_env import require_server, throwaway_password, TEST_ADMIN_EMAIL, TEST_MANAGER_EMAIL, TEST_MANAGER_PASSWORD, TEST_STAFF_EMAIL, TEST_STAFF_PASSWORD  # noqa: E402,F401
+_SERVER_URL, TEST_ADMIN_PASSWORD = require_server(manager=False, staff=False)
+_TMP_USER_PW = throwaway_password()
 
 BASE = (os.environ.get("REACT_APP_BACKEND_URL") or "http://localhost:8001").rstrip("/")
 API = f"{BASE}/api"
-ADMIN = {"email": os.environ.get("ADMIN_EMAIL", "admin@sensoper.com"), "password": os.environ.get("ADMIN_PASSWORD", "Admin@123")}
+ADMIN = {"email": os.environ.get("ADMIN_EMAIL", "admin@sensoper.com"), "password": os.environ.get("ADMIN_PASSWORD", TEST_ADMIN_PASSWORD)}
 TAG = uuid.uuid4().hex[:6]
 TODAY = date.today().isoformat()
 YESTERDAY = (date.today() - timedelta(days=1)).isoformat()
@@ -31,9 +34,9 @@ def admin():
 
 def _make_user(admin, role, n=1):
     email = f"dr_{role}{n}_{TAG}@example.com"
-    r = admin.post(f"{API}/users", json={"email": email, "password": "Passw0rd!x", "name": f"DR {role.title()} {n} {TAG}", "role": role}, timeout=30)
+    r = admin.post(f"{API}/users", json={"email": email, "password": _TMP_USER_PW, "name": f"DR {role.title()} {n} {TAG}", "role": role}, timeout=30)
     assert r.status_code in (200, 201), r.text
-    return _session({"email": email, "password": "Passw0rd!x"}), r.json().get("id")
+    return _session({"email": email, "password": _TMP_USER_PW}), r.json().get("id")
 
 
 @pytest.fixture(scope="module")

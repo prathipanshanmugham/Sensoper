@@ -13,7 +13,7 @@
   },
   
   "passed_tests": [
-    "Admin login with credentials (admin@sensoper.com / Admin@123)",
+    "Admin login with credentials (admin@sensoper.com / <TEST_ADMIN_PASSWORD>)",
     "Dashboard shows light theme sidebar (bg-white, no dark colors)",
     "Pricing Config nav item is REMOVED from sidebar",
     "Company Profile nav link present in sidebar for admin",

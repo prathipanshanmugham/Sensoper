@@ -6,12 +6,16 @@ import uuid
 
 import pytest
 import requests
+from http_env import require_mongo, require_server, throwaway_password, TEST_ADMIN_EMAIL, TEST_MANAGER_EMAIL, TEST_MANAGER_PASSWORD, TEST_STAFF_EMAIL, TEST_STAFF_PASSWORD  # noqa: E402,F401
+_SERVER_URL, TEST_ADMIN_PASSWORD = require_server(manager=False, staff=False)
+_TMP_PW_0 = throwaway_password()
+_TMP_PW_5 = throwaway_password()
 
 BASE_URL = os.environ.get("REACT_APP_BACKEND_URL").rstrip("/")
 API = f"{BASE_URL}/api"
 TAG = f"TEST52_{uuid.uuid4().hex[:5]}"
-ADMIN_PW = os.environ.get("TEST_ADMIN_PASSWORD", "Admin@123")
-STAFF_EMAIL, STAFF_PW = f"{TAG.lower()}_staff@test.com", "Staff@12345"
+ADMIN_PW = os.environ.get("TEST_ADMIN_PASSWORD", TEST_ADMIN_PASSWORD)
+STAFF_EMAIL, STAFF_PW = f"{TAG.lower()}_staff@test.com", _TMP_PW_0
 
 
 @pytest.fixture(scope="module")
@@ -88,7 +92,7 @@ class TestPricingRestructure:
         pid = r.json().get("id") or r.json().get("project_id")
         try:
             ce = client.get(f"{API}/projects/{pid}", timeout=60).json()["cost_estimation"]
-            exact = 100001 + 12000.4 + (1234.56 + 123.456 + 1234.56 * 0.18) + (999.99 + 999.99 * 0.18)
+            exact = 100001 + 12000.4 + (1234.56 + 123.456 + (1234.56 + 123.456) * 0.18) + (999.99 + 999.99 * 0.18)   # GST on cost + margin (Oct 2026)
             assert abs(ce["total_exact"] - round(exact, 2)) < 0.02
             assert ce["total_cost"] % 100 == 0 and ce["total_cost"] >= ce["total_exact"]
             assert ce["rounding"]["step"] == 100 and ce["rounding"]["mode"] == "up"
@@ -199,7 +203,7 @@ class TestPartnerDelete:
         assert hit and "Duplicate entry" in hit[0]["details"]
         from pymongo import MongoClient
         from dotenv import dotenv_values
-        env = dotenv_values("/app/backend/.env")
+        env = dict(zip(("MONGO_URL", "DB_NAME"), require_mongo()))
         log = MongoClient(env["MONGO_URL"])[env["DB_NAME"]].audit_logs.find_one({"entity_id": partner, "action_type": "partner_deleted"})
         assert log and TAG in log["old_data"] and "Duplicate entry" in log["new_data"], "full partner snapshot must be in the audit log"
         assert client.delete(f"{API}/partners/{partner}", json={"reason": "again"}, timeout=60).status_code == 404
@@ -279,12 +283,12 @@ class TestPermissionsAudit:
         ("POST", "/ecommerce/platforms", {"name": "x"}),
         ("GET", "/reports/profit_leakage", None),
         ("DELETE", "/hard-delete/sale/000000000000000000000000", {"reason": "xxx"}),
-        ("POST", "/auth/register", {"email": "evil@test.com", "password": "Evil@12345", "name": "Evil", "role": "admin"}),
+        ("POST", "/auth/register", {"email": "evil@test.com", "password": _TMP_PW_5, "name": "Evil", "role": "admin"}),
     ])
     def test_staff_cannot_write_or_see_sensitive(self, staff, method, path, body):
         r = staff.request(method, f"{API}{path}", json=body, timeout=60)
         assert r.status_code == 403, f"{method} {path} → {r.status_code} {r.text[:120]}"
 
     def test_self_registration_closed_after_bootstrap(self, anon):
-        r = anon.post(f"{API}/auth/register", json={"email": f"{TAG.lower()}@evil.com", "password": "Evil@12345", "name": "Evil", "role": "admin"}, timeout=60)
+        r = anon.post(f"{API}/auth/register", json={"email": f"{TAG.lower()}@evil.com", "password": _TMP_PW_5, "name": "Evil", "role": "admin"}, timeout=60)
         assert r.status_code == 401

@@ -17,7 +17,7 @@
     "pytest TestCeoDashboard: GET /api/dashboard/ceo includes accounts_summary{cash_on_hand, meter_reading, account_balance, cash_history[]} and readings_summary{total, active, completed, overdue}",
     "pytest TestPermissions: GET /api/permissions returns admin/manager/staff roles each with all 16 module_* keys (module_dashboard, module_accounts, module_readings, module_inventory, module_purchase_inbound, module_delivery_outbound, module_credits, module_returns, module_audits, module_reports, module_alerts, module_approvals, module_users, module_permissions, module_settings, module_ceo_dashboard), each containing view/create/edit/delete/export booleans. PUT /api/permissions/manager with toggled module_readings.export persists + GET returns updated value",
     "pytest TestPwaAssets: /manifest.json returns 200 with name='Sensoper Controls & Renewables', display='standalone', theme_color='#10b981'; /service-worker.js returns 200 JS; /offline.html returns 200 HTML",
-    "Playwright: Admin login + cookie-based auth works (admin@sensoper.com/Admin@123)",
+    "Playwright: Admin login + cookie-based auth works (admin@sensoper.com/<TEST_ADMIN_PASSWORD>)",
     "Playwright: /dashboard/credits — 'Customer Credits' and 'Accounts' tabs visible; clicking Accounts tab reveals 3 snapshot cards (Cash on Hand ₹7,77,000, Meter Reading ₹0, Account Balance ₹45,00,000) with history table of 4 rows (CRUD inline icons present)",
     "Playwright: Accounts 'New Entry' button opens form; filling amount=999999 + description=UI_TEST_IT23 + Save → entry appears in history table (verified by page content)",
     "Playwright: /dashboard/readings — Title 'Readings' visible; KPIs (Total/Active/Overdue/Completed) rendered; pre-existing row 'Coimbatore Roof A' shows start=2026-01-15 → end=2026-02-14 with red 'Overdue' badge (auto-derivation confirmed in UI); 'New Reading' button opens dialog; status filter + date filters present",
@@ -62,7 +62,7 @@
     "frontend": "~95% — all page-level renders and structural assertions pass; 2 deep-dive interactive flows were partially executed (see partial_coverage)"
   },
 
-  "test_credentials": { "admin": "admin@sensoper.com / Admin@123", "staff (auto-seeded)": "TEST_staff_it23@example.com / StaffPass@123" },
+  "test_credentials": { "admin": "admin@sensoper.com / <TEST_ADMIN_PASSWORD>", "staff (auto-seeded)": "TEST_staff_it23@example.com / StaffPass@123" },
 
   "seed_data_creation": "Auto-created via pytest: TEST_IT23-prefixed account entries (deleted at end of TestAccounts class), TEST_IT23 readings (deleted at end of TestReadings), TEST_staff_it23@example.com user (not deleted — persists for future auth tests), one 'TEST_IT23 ceo seed' cash_on_hand entry remains (used by CEO dashboard seeding test, small data). UI also created 'UI_TEST_IT23' account entry (remains in DB) and 'UI_TEST_Site_IT23' reading was not created (form fill aborted). Minor cleanup recommended for residual entries.",
 

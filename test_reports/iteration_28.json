@@ -34,7 +34,7 @@
     "/app/backend/tests/test_iteration28_solar_full_report.py (new — 7 tests, all pass)"
   ],
   "success_rate": {"backend": "100% (36/36 including iter26+iter27+iter28 regression)", "frontend": "Partial — section mounts, no console errors, all chart data-testids present in code, BUT toggle-to-expand blocked interactive verification of chart visual rendering"},
-  "test_credentials": "admin@sensoper.com / Admin@123 (cookie auth — login OK, /api/auth/me OK, /api/accounts OK)",
+  "test_credentials": "admin@sensoper.com / <TEST_ADMIN_PASSWORD> (cookie auth — login OK, /api/auth/me OK, /api/accounts OK)",
   "seed_data_creation": "Test project (customer.name='TEST_SolarIter28') created with full 25-entry yearly_breakdown solar_report dict, then deleted in teardown_class.",
   "retest_needed": true,
   "main_agent_can_self_test": true,

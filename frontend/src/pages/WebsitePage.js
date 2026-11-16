@@ -12,6 +12,7 @@ import Can from '../components/Can';
 import { useAuth } from '../contexts/AuthContext';
 import { confirmAction } from '../components/kit/confirm';
 import ClientPasswordDialog from '../components/ClientPasswordDialog';
+import { localDate } from '../lib/format';
 
 const API_URL = process.env.REACT_APP_BACKEND_URL;
 const LIVE_SITE = 'https://sensoper.in';
@@ -138,7 +139,7 @@ function LeadsTab({ onCount }) {
   const counts = data?.counts || {};
   const openCount = ['new', 'contacted', 'site_visit', 'quoted'].reduce((n, k) => n + (counts[k] || 0), 0);
   const setOpen = (id) => { const p = new URLSearchParams(params); if (id) p.set('lead', id); else p.delete('lead'); setParams(p, { replace: true }); };
-  const today = new Date().toISOString().slice(0, 10);
+  const today = localDate();
   return (
     <div className="space-y-3">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -732,7 +733,7 @@ function PopupsTab({ onCount }) {
     catch (e) { toast.error(errText(e)); } finally { setSaving(false); }
   };
   const remove = async (p) => { if (!await confirmAction({ title: `Delete the pop-up “${p.title}”?`, confirmLabel: 'Delete', tone: 'danger' })) return; try { await websiteAPI.popups.remove(p.id); load(); } catch (e) { toast.error(errText(e)); } };
-  const today = new Date().toISOString().slice(0, 10);
+  const today = localDate();
   return (
     <div className="grid gap-4 lg:grid-cols-[1fr_340px]">
       <div className="space-y-3">

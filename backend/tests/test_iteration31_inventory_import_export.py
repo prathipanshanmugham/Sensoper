@@ -13,9 +13,8 @@ import os
 import pytest
 import requests
 from openpyxl import Workbook, load_workbook
-TEST_ADMIN_PASSWORD = os.environ.get("TEST_ADMIN_PASSWORD") or "Admin@123"
-
-
+from http_env import require_server, throwaway_password, TEST_ADMIN_EMAIL, TEST_MANAGER_EMAIL, TEST_MANAGER_PASSWORD, TEST_STAFF_EMAIL, TEST_STAFF_PASSWORD  # noqa: E402,F401
+_SERVER_URL, TEST_ADMIN_PASSWORD = require_server(manager=False, staff=False)
 def _load_base_url():
     url = os.environ.get("REACT_APP_BACKEND_URL", "").strip()
     if not url:
@@ -72,7 +71,7 @@ class TestInventoryTemplate:
         ws = wb.active
         headers = [c.value for c in ws[1]]
         expected = ["name", "sku_code", "category", "quantity", "unit_price",
-                    "reorder_level", "supplier", "gst_percentage", "margin_pct",
+                    "reorder_level", "supplier", "gst_percentage", "hsn_code", "margin_pct",   # HSN added for GST invoices
                     "zone", "aisle", "shelf", "rack", "bin_location",
                     "procurement_date", "active"]
         assert headers == expected, f"Header mismatch: {headers}"
@@ -100,9 +99,9 @@ class TestInventoryImport:
         csv_bytes = b"name,sku\nFoo,F-1\n"
         files = {"file": ("bad.csv", csv_bytes, "text/csv")}
         r = admin_session.post(f"{BASE_URL}/api/inventory/import", files=files, timeout=20)
-        assert r.status_code == 400
-        detail = r.json().get("detail", "")
-        assert "Missing required columns" in detail or "missing" in detail.lower()
+        # Iter 42: unknown/missing columns are no longer a 400 — the file comes back for column mapping, nothing is written
+        assert r.status_code == 200, r.text
+        assert r.json().get("status") == "needs_mapping"
 
     def test_import_valid_template_creates_or_updates(self, admin_session):
         headers = ["name", "sku_code", "category", "quantity", "unit_price",

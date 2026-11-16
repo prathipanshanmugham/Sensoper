@@ -5,6 +5,8 @@ archive → purge allowed; deletion-snapshot entries counted in the archive; arc
 import os, uuid, pytest, requests
 from datetime import datetime, timezone
 from pymongo import MongoClient
+from http_env import require_server, throwaway_password, TEST_ADMIN_EMAIL, TEST_MANAGER_EMAIL, TEST_MANAGER_PASSWORD, TEST_STAFF_EMAIL, TEST_STAFF_PASSWORD  # noqa: E402,F401
+_SERVER_URL, TEST_ADMIN_PASSWORD = require_server(manager=False, staff=False)
 
 BASE_URL = os.environ.get("REACT_APP_BACKEND_URL").rstrip("/")
 API = f"{BASE_URL}/api"
@@ -13,10 +15,12 @@ TAG = f"TEST49ARC_{uuid.uuid4().hex[:5]}"
 
 
 def _env(key):
-    for line in open("/app/backend/.env"):
-        if line.startswith(key + "="):
-            return line.split("=", 1)[1].strip().strip('"')
-    return None
+    # was read from /app/backend/.env (not in the repository): the server's MongoDB comes from the environment,
+    # and a test that reads the database directly is skipped without it
+    value = os.environ.get(key)
+    if not value:
+        pytest.skip(f"set {key} (the MongoDB of the server under test) to run this check")
+    return value
 
 
 @pytest.fixture(scope="module")
@@ -27,7 +31,7 @@ def dbc():
 @pytest.fixture(scope="module")
 def client():
     s = requests.Session()
-    r = s.post(f"{API}/auth/login", json={"email": "admin@sensoper.com", "password": "Admin@123"}, timeout=60)
+    r = s.post(f"{API}/auth/login", json={"email": "admin@sensoper.com", "password": TEST_ADMIN_PASSWORD}, timeout=60)
     assert r.status_code == 200, r.text
     return s
 

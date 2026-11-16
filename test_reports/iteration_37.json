@@ -13,7 +13,7 @@
   ],
   "updated_files": [],
   "success_rate": {"backend": "N/A", "frontend": "100%"},
-  "test_credentials": "admin@sensoper.com / Admin@123",
+  "test_credentials": "admin@sensoper.com / <TEST_ADMIN_PASSWORD>",
   "seed_data_creation": "",
   "retest_needed": false,
   "main_agent_can_self_test": true,

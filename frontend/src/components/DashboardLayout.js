@@ -299,9 +299,10 @@ export default function DashboardLayout({ children }) {
                 <HelpCircle className="h-5 w-5" /><span className="hidden sm:inline">Help</span>
               </Button>
               {nudge && (
-                <div className="absolute right-0 top-full z-40 mt-2 w-56 rounded-lg bg-slate-900 p-3 text-xs leading-relaxed text-white shadow-lg" role="note" data-testid="help-nudge">
+                // the tip sits over the page's own top-right buttons (New, Export…): let clicks through, except on "Got it"
+                <div className="pointer-events-none absolute right-0 top-full z-40 mt-2 w-56 rounded-lg bg-slate-900 p-3 text-xs leading-relaxed text-white shadow-lg" role="note" data-testid="help-nudge">
                   New here? Every screen has a Help button explaining what it's for.
-                  <button type="button" onClick={() => { setNudge(false); writeStore(HELP_SEEN_KEY, true); }} className="mt-2 block font-semibold text-emerald-300">Got it</button>
+                  <button type="button" onClick={() => { setNudge(false); writeStore(HELP_SEEN_KEY, true); }} className="pointer-events-auto mt-2 block font-semibold text-emerald-300">Got it</button>
                 </div>
               )}
             </div>

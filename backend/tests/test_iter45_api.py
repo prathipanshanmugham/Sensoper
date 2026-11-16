@@ -9,6 +9,8 @@ from pathlib import Path
 import pytest
 import requests
 from dotenv import dotenv_values
+from http_env import ensure_vendor, require_server, throwaway_password, TEST_ADMIN_EMAIL, TEST_MANAGER_EMAIL, TEST_MANAGER_PASSWORD, TEST_STAFF_EMAIL, TEST_STAFF_PASSWORD  # noqa: E402,F401
+_SERVER_URL, TEST_ADMIN_PASSWORD = require_server(manager=False, staff=False)
 
 frontend_env = dotenv_values("/app/frontend/.env")
 base_url = os.environ.get("REACT_APP_BACKEND_URL") or frontend_env.get("REACT_APP_BACKEND_URL")
@@ -22,13 +24,8 @@ TAG = uuid.uuid4().hex[:6].upper()
 # ── fixtures ──
 @pytest.fixture(scope="session")
 def creds():
-    content = Path("/app/memory/test_credentials.md").read_text()
-    email = re.search(r'(?im)^\s*[-*]?\s*(?:\*\*)?email(?:\*\*)?\s*:\s*`?([^`\s]+)', content)
-    pwd = re.search(r'(?im)^\s*[-*]?\s*(?:\*\*)?password(?:\*\*)?\s*:\s*`?([^`\s]+)', content)
-    if not email or not pwd:
-        pytest.skip("credentials missing")
-    return {"email": email.group(1), "password": pwd.group(1)}
-
+    # was read from /app/memory/test_credentials.md (not in the repository) — now the environment (tests/http_env.py)
+    return {"email": TEST_ADMIN_EMAIL, "password": TEST_ADMIN_PASSWORD}
 
 @pytest.fixture(scope="session")
 def client(creds):
@@ -153,6 +150,7 @@ class TestPurchaseInbound:
 
     def test_full_inbound_flow_and_idempotency_and_edit_and_reverse(self, client, inv_item):
         start = self._qty(client, inv_item)
+        ensure_vendor(client, API, f"TEST_Supplier_{TAG}")
         po = client.post(f"{API}/purchase-orders", json={
             "supplier_name": f"TEST_Supplier_{TAG}", "supplier_contact": "9999999999",
             "items": [{"name": f"TEST_INB_ITEM_{TAG}", "qty": 10, "unit_price": 100,
@@ -167,12 +165,12 @@ class TestPurchaseInbound:
         assert client.put(f"{API}/purchase-orders/{po_id}/qc",
                           json={"overall": "pass"}, timeout=60).status_code == 200
 
-        r = client.put(f"{API}/purchase-orders/{po_id}/inbound", json={"storage_location": "A1"}, timeout=60)
+        r = client.put(f"{API}/purchase-orders/{po_id}/inbound", json={"storage_location": {"zone": "A", "bin": "1"}}, timeout=60)   # Iter 53: structured place only
         assert r.status_code == 200, r.text[:300]
         assert self._qty(client, inv_item) == start + 10
 
         # idempotency: second complete must be blocked, stock unchanged
-        r2 = client.put(f"{API}/purchase-orders/{po_id}/inbound", json={"storage_location": "A1"}, timeout=60)
+        r2 = client.put(f"{API}/purchase-orders/{po_id}/inbound", json={"storage_location": {"zone": "A", "bin": "1"}}, timeout=60)   # Iter 53: structured place only
         assert r2.status_code == 400, f"expected block, got {r2.status_code}"
         assert "already been received" in r2.text
         assert self._qty(client, inv_item) == start + 10
@@ -194,7 +192,7 @@ class TestPurchaseInbound:
         assert this_po["status"] == "qc_done", this_po["status"]
 
     def test_inbound_approval_queue_empty_for_admin(self, client):
-        r = client.get(f"{API}/purchase-orders/inbound-approvals", timeout=60)
+        r = client.get(f"{API}/inbound-action-requests", params={"status": "pending"}, timeout=60)   # the queue moved here (Iter 46)
         assert r.status_code in (200, 404), r.text[:300]
         if r.status_code == 200:
             body = r.json()

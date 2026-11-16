@@ -1,5 +1,6 @@
 """Panel and inverter are optional on a quote (typed in, or not part of this job) — mirrors solarCalc.spec.js."""
 import os
+import secrets
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -39,7 +40,7 @@ def test_addon_gst_is_on_selling_price_and_totals_add_up():
     import pytest
     mm = pytest.importorskip("mongomock_motor")
     for k, v in {"MONGO_URL": "mongodb://localhost:27017", "DB_NAME": "calc_test", "JWT_SECRET": "t" * 48, "ADMIN_EMAIL": "boss@example.com",
-                 "ADMIN_PASSWORD": "Adm1n-pass-123", "STORAGE_ROOT": "/tmp/sensoper-calc-test"}.items():
+                 "ADMIN_PASSWORD": "t-" + secrets.token_hex(12), "STORAGE_ROOT": "/tmp/sensoper-calc-test"}.items():
         os.environ.setdefault(k, v)
     import motor.motor_asyncio as _m
     _m.AsyncIOMotorClient = mm.AsyncMongoMockClient

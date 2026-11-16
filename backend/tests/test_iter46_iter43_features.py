@@ -7,6 +7,8 @@ import uuid
 import pytest
 import requests
 from dotenv import dotenv_values
+from http_env import ensure_vendor, require_server, throwaway_password, TEST_ADMIN_EMAIL, TEST_MANAGER_EMAIL, TEST_MANAGER_PASSWORD, TEST_STAFF_EMAIL, TEST_STAFF_PASSWORD  # noqa: E402,F401
+_SERVER_URL, TEST_ADMIN_PASSWORD = require_server(manager=True, staff=False)
 
 frontend_env = dotenv_values("/app/frontend/.env")
 base_url = os.environ.get("REACT_APP_BACKEND_URL") or frontend_env.get("REACT_APP_BACKEND_URL")
@@ -14,9 +16,9 @@ if not base_url:
     raise RuntimeError("REACT_APP_BACKEND_URL missing")
 BASE_URL = base_url.rstrip("/") + "/api"
 
-ADMIN = {"email": "admin@sensoper.com", "password": "Admin@123"}
+ADMIN = {"email": "admin@sensoper.com", "password": TEST_ADMIN_PASSWORD}
 MGR_EMAIL = f"test_mgr_iter46_{uuid.uuid4().hex[:6]}@sensoper.com"
-MGR_PASS = "Manager@123"
+MGR_PASS = TEST_MANAGER_PASSWORD
 
 
 def _client(email, password):
@@ -325,9 +327,10 @@ class TestPONumbering:
         loc_list = loc_list.get("locations", loc_list) if isinstance(loc_list, dict) else loc_list
         loc_id = loc_list[0]["id"] if loc_list else None
         payload = {"supplier_name": "TEST_ITER46 Supplier",
-                   "items": [{"name": "Cable", "quantity": 10, "unit_price": 50}]}
+                   "items": [{"name": "Cable", "qty": 10, "unit_price": 50}]}   # PO lines carry qty (a "quantity" key was ignored → a 0-qty line)
         if loc_id:
             payload["location_id"] = loc_id
+        ensure_vendor(admin, BASE_URL, payload["supplier_name"])
         r = admin.post(f"{BASE_URL}/purchase-orders", json=payload, timeout=30)
         assert r.status_code in (200, 201), f"{r.status_code} {r.text[:400]}"
         po_id = r.json().get("id")

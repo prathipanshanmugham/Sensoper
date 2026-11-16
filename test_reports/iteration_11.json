@@ -13,7 +13,7 @@
   },
 
   "passed_tests": [
-    "Admin login with credentials (admin@sensoper.com / Admin@123)",
+    "Admin login with credentials (admin@sensoper.com / <TEST_ADMIN_PASSWORD>)",
     "GET /api/form-tabs returns list of tabs with correct structure",
     "Existing tabs (Subsidy Details, Finance Details) have correct fields and roles",
     "POST /api/form-tabs creates new tab with auto-generated slug",
@@ -60,7 +60,7 @@
   },
 
   "test_credentials": {
-    "admin": "admin@sensoper.com / Admin@123"
+    "admin": "admin@sensoper.com / <TEST_ADMIN_PASSWORD>"
   },
 
   "seed_data_creation": "Created 'Customer Preferences' tab during UI testing with fields: preferred_brand (text), roof_preference (select), wants_monitoring (checkbox). Tab remains in database for future testing.",

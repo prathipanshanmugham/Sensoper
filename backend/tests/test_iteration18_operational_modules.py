@@ -10,9 +10,9 @@ import pytest
 import requests
 import os
 import time
-TEST_ADMIN_PASSWORD = os.environ.get("TEST_ADMIN_PASSWORD") or "Admin@123"
-
-
+import uuid
+from http_env import ensure_vendor, require_server, throwaway_password, TEST_ADMIN_EMAIL, TEST_MANAGER_EMAIL, TEST_MANAGER_PASSWORD, TEST_STAFF_EMAIL, TEST_STAFF_PASSWORD  # noqa: E402,F401
+_SERVER_URL, TEST_ADMIN_PASSWORD = require_server(manager=False, staff=False)
 BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', '').rstrip('/')
 
 class TestAuth:
@@ -209,6 +209,7 @@ class TestPurchaseInbound:
             "expected_delivery": "2026-02-10",
             "notes": "Test PO"
         }
+        ensure_vendor(auth_session, f"{BASE_URL}/api", po_data["supplier_name"])
         response = auth_session.post(f"{BASE_URL}/api/purchase-orders", json=po_data)
         assert response.status_code == 200, f"Create PO failed: {response.text}"
         data = response.json()
@@ -224,6 +225,7 @@ class TestPurchaseInbound:
             "supplier_name": "TEST_PO_List_Check",
             "items": [{"name": "Test Item", "qty": 5, "unit_price": 1000}]
         }
+        ensure_vendor(auth_session, f"{BASE_URL}/api", po_data["supplier_name"])
         create_resp = auth_session.post(f"{BASE_URL}/api/purchase-orders", json=po_data)
         po_id = create_resp.json()["id"]
         
@@ -243,6 +245,7 @@ class TestPurchaseInbound:
             "supplier_name": "TEST_Approve_PO",
             "items": [{"name": "Test Item", "qty": 1, "unit_price": 100}]
         }
+        ensure_vendor(auth_session, f"{BASE_URL}/api", po_data["supplier_name"])
         create_resp = auth_session.post(f"{BASE_URL}/api/purchase-orders", json=po_data)
         po_id = create_resp.json()["id"]
         
@@ -263,6 +266,7 @@ class TestPurchaseInbound:
             "supplier_name": "TEST_Arrival_PO",
             "items": [{"name": "Test Item", "qty": 1, "unit_price": 100}]
         }
+        ensure_vendor(auth_session, f"{BASE_URL}/api", po_data["supplier_name"])
         create_resp = auth_session.post(f"{BASE_URL}/api/purchase-orders", json=po_data)
         po_id = create_resp.json()["id"]
         auth_session.put(f"{BASE_URL}/api/purchase-orders/{po_id}/approve")
@@ -291,6 +295,7 @@ class TestPurchaseInbound:
             "supplier_name": "TEST_QC_PO",
             "items": [{"name": "Test Item", "qty": 1, "unit_price": 100}]
         }
+        ensure_vendor(auth_session, f"{BASE_URL}/api", po_data["supplier_name"])
         create_resp = auth_session.post(f"{BASE_URL}/api/purchase-orders", json=po_data)
         po_id = create_resp.json()["id"]
         auth_session.put(f"{BASE_URL}/api/purchase-orders/{po_id}/approve")
@@ -316,10 +321,14 @@ class TestPurchaseInbound:
     def test_complete_inbound(self, auth_session):
         """Test PUT /api/purchase-orders/{id}/inbound completes PO"""
         # Full workflow
+        # Iter 45/53: every PO line must be linked to a stock item, and the storage place is structured
+        item = auth_session.post(f"{BASE_URL}/api/inventory/items", json={"name": "TEST Inbound Item", "sku_code": f"TEST-INB-{uuid.uuid4().hex[:6]}",
+                                                                          "category": "cables_accessories", "quantity": 0, "unit_price": 100, "gst_percentage": 18}).json()
         po_data = {
             "supplier_name": "TEST_Inbound_PO",
-            "items": [{"name": "Test Item", "qty": 1, "unit_price": 100}]
+            "items": [{"name": "Test Item", "qty": 1, "unit_price": 100, "inventory_item_id": item["id"]}]
         }
+        ensure_vendor(auth_session, f"{BASE_URL}/api", po_data["supplier_name"])
         create_resp = auth_session.post(f"{BASE_URL}/api/purchase-orders", json=po_data)
         po_id = create_resp.json()["id"]
         auth_session.put(f"{BASE_URL}/api/purchase-orders/{po_id}/approve")
@@ -327,15 +336,15 @@ class TestPurchaseInbound:
         auth_session.put(f"{BASE_URL}/api/purchase-orders/{po_id}/qc", json={"overall": "pass"})
         
         # Complete inbound
-        inbound_data = {"storage_location": "A/2/3/1/5"}
+        inbound_data = {"storage_location": {"zone": "A", "aisle": "2", "shelf": "3", "rack": "1", "bin": "5"}}
         inbound_resp = auth_session.put(f"{BASE_URL}/api/purchase-orders/{po_id}/inbound", json=inbound_data)
-        assert inbound_resp.status_code == 200
-        
+        assert inbound_resp.status_code == 200, inbound_resp.text
+
         # Verify status and location
         list_resp = auth_session.get(f"{BASE_URL}/api/purchase-orders")
         po = next((p for p in list_resp.json() if p["id"] == po_id), None)
         assert po["status"] == "completed"
-        assert po["storage_location"] == "A/2/3/1/5"
+        assert po["storage_location"] == "Zone A / Aisle 2 / Shelf 3 / Rack 1 / Bin 5"
         print("✓ Inbound completed with storage location")
     
     def test_po_status_filter(self, auth_session):

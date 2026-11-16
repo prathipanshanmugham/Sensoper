@@ -4,8 +4,9 @@ import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '../ui/dialog';
 import { FileDown, Loader2 } from 'lucide-react';
+import { localDate } from '../../lib/format';
 
-const plus30 = () => { const d = new Date(); d.setDate(d.getDate() + 30); return d.toISOString().slice(0, 10); };
+const plus30 = () => { const d = new Date(); d.setDate(d.getDate() + 30); return localDate(d); };
 
 export function PdfOptionsDialog({ open, onOpenChange, categories, defaultCategory, onGenerate }) {
   const [opts, setOpts] = useState({ preparedFor: '', validUntil: plus30(), showGst: true, showCost: false, categories: defaultCategory && defaultCategory !== 'all' ? [defaultCategory] : categories.map(c => c.slug), notes: 'Prices are ex-works and subject to change without prior notice. Freight, installation and civil work are quoted separately.' });

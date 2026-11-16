@@ -7,7 +7,7 @@
   "critical_code_review_comments": [],
   "updated_files": [],
   "success_rate": {"backend": "skipped", "frontend": "100%"},
-  "test_credentials": "admin@sensoper.com / Admin@123",
+  "test_credentials": "admin@sensoper.com / <TEST_ADMIN_PASSWORD>",
   "seed_data_creation": "Created TEST59 Cam Kit and solar-camera slab doc during test, then deleted both. On-Grid slab doc left in place as intended seed.",
   "retest_needed": false,
   "main_agent_can_self_test": true,

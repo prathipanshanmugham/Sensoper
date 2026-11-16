@@ -13,13 +13,15 @@ existing `cost_estimation` (never recompute their own numbers):
    project, enforced server-side (not just hidden in the UI).
 """
 from __future__ import annotations
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Optional, Dict, Any, List
 import re
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 from bson import ObjectId
 from pymongo import ReturnDocument
+from pymongo.errors import DuplicateKeyError
+from gst_state import is_inter_state
 
 LABOUR_CATEGORIES = {"service", "labor", "labour", "installation", "commissioning", "subcontractor"}
 
@@ -43,10 +45,12 @@ def _three_digit_words(n: int) -> str:
 
 def amount_in_words(amount: float) -> str:
     """Indian numbering (crore/lakh/thousand) — 'Rupees X Lakh Y Thousand ... and Z Paise Only'."""
-    rupees = int(amount)
-    paise = round((amount - rupees) * 100)
+    # whole paise first: 99.999 used to give 100 paise (and an IndexError), and a negative amount garbage words
+    rupees, paise = divmod(int(round(abs(float(amount or 0)) * 100)), 100)
     if rupees == 0 and paise == 0:
         return "Rupees Zero Only"
+    if float(amount or 0) < 0:
+        return "Minus " + amount_in_words(abs(float(amount)))
     parts = []
     crore, rupees = divmod(rupees, 10000000)
     lakh, rupees = divmod(rupees, 100000)
@@ -60,6 +64,12 @@ def amount_in_words(amount: float) -> str:
     if paise:
         words += f" and {_two_digit_words(paise)} Paise"
     return words + " Only"
+
+
+def _sgst_half(gst: float) -> float:
+    """SGST is the GST less the (rounded) CGST, so CGST + SGST always equals the GST on the line — halving and
+    rounding both sides lost or added a paisa on odd amounts (₹181.25 → 90.62 + 90.62)."""
+    return round(round(float(gst), 2) - round(float(gst) / 2, 2), 2)
 
 
 class InvoiceSettingsUpdate(BaseModel):
@@ -178,7 +188,7 @@ def create_router(db, get_current_user, create_audit_log):
     @router.get("/projects/{project_id}/invoice")
     async def get_project_invoice(project_id: str, request: Request):
         await _require_billing_access(request)
-        inv = await db.project_invoices.find_one({"project_id": project_id})
+        inv = await db.project_invoices.find_one({"project_id": project_id, "invoice_number": {"$exists": True}}, sort=[("_id", 1)])
         if not inv:
             raise HTTPException(status_code=404, detail="No invoice generated for this project yet")
         inv["id"] = str(inv.pop("_id"))
@@ -187,10 +197,8 @@ def create_router(db, get_current_user, create_audit_log):
     @router.post("/projects/{project_id}/invoice")
     async def generate_project_invoice(project_id: str, payload: InvoiceGenerate, request: Request):
         user = await _require_billing_access(request)
-        existing = await db.project_invoices.find_one({"project_id": project_id})
+        existing = await _existing_invoice(project_id)
         if existing:
-            existing["id"] = str(existing.pop("_id"))
-            existing["already_existed"] = True
             return existing
 
         project = await db.projects.find_one({"_id": ObjectId(project_id)})
@@ -200,12 +208,55 @@ def create_router(db, get_current_user, create_audit_log):
         if not ce.get("items_breakdown") and not ce.get("manual_costs") and not ce.get("system_cost"):
             raise HTTPException(status_code=400, detail="This project has no confirmed cost data to invoice")
 
+        # A project has one GST invoice (asking again returns it). Two clicks at once both found none and each took
+        # a number; now the first one claims the project before a number is taken and the second gets the first's.
+        claim = await _claim(project_id)
+        if not isinstance(claim, ObjectId):
+            return claim
+        try:
+            return await _build_invoice(project_id, payload, user, project, ce, claim)
+        except BaseException:
+            await db.project_invoices.delete_one({"_id": claim, "invoice_number": {"$exists": False}})
+            raise
+
+    async def _existing_invoice(project_id: str) -> Optional[Dict[str, Any]]:
+        inv = await db.project_invoices.find_one({"project_id": project_id, "invoice_number": {"$exists": True}}, sort=[("_id", 1)])
+        if not inv:
+            return None
+        inv["id"] = str(inv.pop("_id"))
+        inv["already_existed"] = True
+        return inv
+
+    async def _claim(project_id: str):
+        """The claim's id when this request makes the invoice; otherwise the invoice already made (or a 409 while the
+        other click is still making it). A unique index on project_id settles it; without the index (old data with
+        duplicates) the earliest claim wins."""
+        try:
+            oid = (await db.project_invoices.insert_one({"project_id": project_id, "creating": True,
+                                                         "created_at": datetime.now(timezone.utc).isoformat()})).inserted_id
+        except DuplicateKeyError:
+            oid = None
+        if oid is not None:
+            first = await db.project_invoices.find_one({"project_id": project_id}, sort=[("_id", 1)])
+            if first and first["_id"] == oid:
+                return oid
+            await db.project_invoices.delete_one({"_id": oid})
+        done = await _existing_invoice(project_id)
+        if done:
+            return done
+        raise HTTPException(status_code=409, detail="This invoice is being made right now — refresh in a moment to see it")
+
+    async def _build_invoice(project_id, payload, user, project, ce, claim):
         profile = await db.company_profiles.find_one({"is_active": True})
         if not profile:
             profile = await db.company_profiles.find_one(sort=[("created_at", 1)]) or {}
         company_state = profile.get("state") or "Tamil Nadu"
+        customer_gstin = (project.get("customer") or {}).get("gstin")
         place_of_supply = payload.place_of_supply_override or (project.get("location") or {}).get("state") or company_state
-        inter_state = place_of_supply.strip().lower() != company_state.strip().lower()
+        # by GST state code: "TN" / "Tamilnadu" / "tamil nadu" are one state; the customer's GSTIN decides when given
+        # (an explicit place of supply overrides it)
+        inter_state = is_inter_state(company_state, profile.get("gst_number"), place_of_supply,
+                                     None if payload.place_of_supply_override else customer_gstin)
 
         # Line items — HSN/SAC looked up from the linked inventory item where available,
         # falling back to a case-insensitive name match for older projects/estimates.
@@ -241,7 +292,7 @@ def create_router(db, get_current_user, create_audit_log):
                     line_items.append({
                         "description": f"{labels[k][0]}{f' — {kw} kWp system' if k == 'panels' and kw else ''}", "hsn_sac": labels[k][1], "quantity": 1,
                         "unit_price": round(amt, 2), "taxable_value": round(amt, 2), "gst_pct": ln.get("gst_pct"), "gst_amount": round(g, 2),
-                        "cgst": round(g / 2, 2) if not inter_state else 0, "sgst": round(g / 2, 2) if not inter_state else 0, "igst": round(g, 2) if inter_state else 0,
+                        "cgst": round(g / 2, 2) if not inter_state else 0, "sgst": _sgst_half(g) if not inter_state else 0, "igst": round(g, 2) if inter_state else 0,
                     })
             else:
                 sys_gst = float(ce.get("system_gst", 0) or 0)
@@ -249,7 +300,7 @@ def create_router(db, get_current_user, create_audit_log):
                     "description": f"{kw} kWp Solar Power System (panels, inverter, structure, BOS, installation)" if kw else "Solar Power System (panels, inverter, structure, BOS, installation)",
                     "hsn_sac": "8541", "quantity": 1, "unit_price": round(system_cost, 2), "taxable_value": round(system_cost, 2),
                     "gst_pct": round(sys_gst / system_cost * 100, 2) if system_cost else None, "gst_amount": round(sys_gst, 2),
-                    "cgst": round(sys_gst / 2, 2) if not inter_state else 0, "sgst": round(sys_gst / 2, 2) if not inter_state else 0,
+                    "cgst": round(sys_gst / 2, 2) if not inter_state else 0, "sgst": _sgst_half(sys_gst) if not inter_state else 0,
                     "igst": round(sys_gst, 2) if inter_state else 0,
                 })
         for it in ce.get("items_breakdown", []):
@@ -271,7 +322,7 @@ def create_router(db, get_current_user, create_audit_log):
                 "gst_pct": it.get("gst_percentage", 0),
                 "gst_amount": round(gst_amt, 2),
                 "cgst": round(gst_amt / 2, 2) if not inter_state else 0,
-                "sgst": round(gst_amt / 2, 2) if not inter_state else 0,
+                "sgst": _sgst_half(gst_amt) if not inter_state else 0,
                 "igst": round(gst_amt, 2) if inter_state else 0,
             })
         for mc in ce.get("manual_costs", []) or []:
@@ -281,7 +332,7 @@ def create_router(db, get_current_user, create_audit_log):
                 "description": mc.get("description", ""), "hsn_sac": "", "quantity": 1,
                 "unit_price": round(taxable, 2), "taxable_value": round(taxable, 2),
                 "gst_pct": mc.get("gst_pct"), "gst_amount": round(g, 2),
-                "cgst": round(g / 2, 2) if not inter_state else 0, "sgst": round(g / 2, 2) if not inter_state else 0, "igst": round(g, 2) if inter_state else 0,
+                "cgst": round(g / 2, 2) if not inter_state else 0, "sgst": _sgst_half(g) if not inter_state else 0, "igst": round(g, 2) if inter_state else 0,
             })
 
         total_taxable = round(sum(li["taxable_value"] for li in line_items), 2)
@@ -301,7 +352,7 @@ def create_router(db, get_current_user, create_audit_log):
         doc = {
             "project_id": project_id,
             "invoice_number": invoice_number,
-            "invoice_date": now.date().isoformat(),
+            "invoice_date": (now + timedelta(hours=5, minutes=30)).date().isoformat(),   # India date: an invoice made at 00:30 IST on 1 April is in the new financial year
             "reverse_charge": payload.reverse_charge,
             "place_of_supply": place_of_supply,
             "company": {
@@ -333,9 +384,9 @@ def create_router(db, get_current_user, create_audit_log):
             "created_by_name": user.get("name"),
             "created_at": now.isoformat(),
         }
-        result = await db.project_invoices.insert_one(doc)
+        await db.project_invoices.update_one({"_id": claim}, {"$set": doc, "$unset": {"creating": ""}})
         doc.pop("_id", None)
-        doc["id"] = str(result.inserted_id)
+        doc["id"] = str(claim)
         await db.projects.update_one({"_id": ObjectId(project_id)}, {"$set": {
             "invoice_number": invoice_number, "invoice_date": doc["invoice_date"],
         }})

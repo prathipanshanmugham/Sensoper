@@ -38,7 +38,7 @@
   "seed_data_creation": "Created + deleted reading 'TEST_Site_Gen' (3 generation logs), archived vendor TEST_UI_Vendor_QA1, account_entries TEST_op_exp / TEST_mkt_exp (2026-07-05), employee score for qa_staff_iter46 (2026-07, score 4) and for System Admin (2026-06, score 2 via UI), audit issue 'TEST UI issue owner check' owner 'Ravi QA'. Reading 'Coimbatore Roof A' now has 3 generation logs (2026-05:410, 2026-06:470, 2026-08:430).",
   "should_call_test_agent_after_fix": false,
   "should_main_agent_self_test": true,
-  "test_credentials": "admin@sensoper.com / Admin@123; staff qa_staff_iter46@sensoper.com / Staff@123 (used for RBAC)",
+  "test_credentials": "admin@sensoper.com / <TEST_ADMIN_PASSWORD>; staff qa_staff_iter46@sensoper.com / <TEST_STAFF_PASSWORD> (used for RBAC)",
   "context_for_next_testing_agent": "Run `pytest tests/test_iter44_batch_cd.py` for Batch C+D regression. Old suites (test_iteration15/17/18 etc.) ERROR at setup because they read a BASE_URL env var that is not exported in this shell — environmental, NOT code regressions; new tests read REACT_APP_BACKEND_URL from /app/frontend/.env. Auth is cookie-based (POST /api/auth/login sets httpOnly cookies; no bearer token in body) — use requests.Session. POST account entry endpoint is POST /api/accounts (not /accounts/entries); POST /api/readings requires start_date. Reports endpoints are admin/manager only (403 for staff).",
   "rca_of_the_issue": "Only cosmetic findings. The kWh-as-rupees display comes from the shared SummaryCard formatting rule (value > 999 => currency) in ReportsPage.js, which the new non-currency reports inherit; no backend defect."
 }

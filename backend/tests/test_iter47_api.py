@@ -12,6 +12,8 @@ import uuid
 import pytest
 import requests
 from dotenv import dotenv_values
+from http_env import ensure_vendor, require_server, throwaway_password, TEST_ADMIN_EMAIL, TEST_MANAGER_EMAIL, TEST_MANAGER_PASSWORD, TEST_STAFF_EMAIL, TEST_STAFF_PASSWORD  # noqa: E402,F401
+_SERVER_URL, TEST_ADMIN_PASSWORD = require_server(manager=True, staff=True)
 
 frontend_env = dotenv_values("/app/frontend/.env")
 base_url = os.environ.get("REACT_APP_BACKEND_URL") or frontend_env.get("REACT_APP_BACKEND_URL")
@@ -20,9 +22,9 @@ if not base_url:
 BASE_URL = base_url.rstrip("/")
 API = f"{BASE_URL}/api"
 
-ADMIN = {"email": "admin@sensoper.com", "password": "Admin@123"}
-MGR = {"email": "qa_mgr_iter46@sensoper.com", "password": "Manager@123"}
-STAFF = {"email": "qa_staff_iter46@sensoper.com", "password": "Staff@123"}
+ADMIN = {"email": "admin@sensoper.com", "password": TEST_ADMIN_PASSWORD}
+MGR = {"email": TEST_MANAGER_EMAIL, "password": TEST_MANAGER_PASSWORD}
+STAFF = {"email": TEST_STAFF_EMAIL, "password": TEST_STAFF_PASSWORD}
 
 TAG = uuid.uuid4().hex[:6]
 
@@ -99,6 +101,7 @@ class TestPurchaseOrderDelete:
         }
         if location_id:
             payload["location_id"] = location_id
+        ensure_vendor(admin, API, payload["supplier_name"])
         r = admin.post(f"{API}/purchase-orders", json=payload, timeout=30)
         assert r.status_code == 200, r.text
         return r.json()
@@ -256,8 +259,10 @@ class TestSalesSummaryExcludesReturned:
             after_rev = after.get("total_revenue", after.get("revenue", 0))
             assert after_rev > base_rev, "active sale not counted in summary revenue"
 
-            ret = admin.put(f"{API}/sales/{sale_id}", json={"status": "returned"}, timeout=30)
-            assert ret.status_code == 200, f"status update failed: {ret.status_code} {ret.text[:300]}"
+            # Returning goes through the Return action (it puts the stock back); PUT /sales/{id} can't set "returned"
+            ret = admin.post(f"{API}/sales/{sale_id}/return", json={"reason": "TEST return"}, timeout=30)
+            assert ret.status_code == 200, f"return failed: {ret.status_code} {ret.text[:300]}"
+            assert admin.put(f"{API}/sales/{sale_id}", json={"status": "returned"}, timeout=30).status_code == 400
             final = admin.get(f"{API}/sales/summary", timeout=30).json()
             final_rev = final.get("total_revenue", final.get("revenue", 0))
             assert abs(final_rev - base_rev) < 0.01, (

@@ -26,7 +26,7 @@
   ],
   "updated_files": [],
   "success_rate": {"backend": "100% (21/21 iter53 pytest)", "frontend": "≈95% (all 9 focus flows pass; AmcInterestToggle visibility not confirmed on the sampled project)"},
-  "test_credentials": "admin@sensoper.com / Admin@123 (unchanged; 2FA setup opened but NOT enabled on admin per instructions, cancelled).",
+  "test_credentials": "admin@sensoper.com / <TEST_ADMIN_PASSWORD> (unchanged; 2FA setup opened but NOT enabled on admin per instructions, cancelled).",
   "seed_data_creation": "Approved 1 pending approval and Rejected 1 pending approval (reason='Automated test rejection') via unified Approvals inbox — visible in History. Pending count went 47 → 45 → 44 (approvals accepted). No throwaway test user was created for 2FA (2FA setup UI was verified visually without enabling).",
   "retest_needed": false,
   "should_main_agent_self_test": true,

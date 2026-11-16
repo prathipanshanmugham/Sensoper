@@ -11,6 +11,7 @@ import { Loader2, IndianRupee, CheckCircle2, Clock, XCircle, FileCheck, Save } f
 
 import { errText } from './kit/PageBits';
 import { toast } from 'sonner';
+import { localDate } from '../lib/format';
 const STATUS_STEPS = [
   { key: 'eligible',       label: 'Eligible',       color: 'bg-slate-200 text-slate-700', border: 'border-slate-300', icon: CheckCircle2 },
   { key: 'applied',        label: 'Applied',        color: 'bg-blue-100 text-blue-700',    border: 'border-blue-300',  icon: FileCheck },
@@ -80,7 +81,7 @@ export default function SubsidyTrackingCard({ projectId }) {
     setSaving(true);
     try {
       const patch = { project_id: projectId, status: newStatus };
-      const today = new Date().toISOString().slice(0, 10);
+      const today = localDate();
       if (newStatus === 'applied' && !form.application_date) patch.application_date = today;
       if (newStatus === 'approved' && !form.approval_date) patch.approval_date = today;
       if (newStatus === 'disbursed' && !form.disbursement_date) patch.disbursement_date = today;

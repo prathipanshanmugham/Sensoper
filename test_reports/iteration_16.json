@@ -13,7 +13,7 @@
   },
 
   "passed_tests": [
-    "Admin login with credentials (admin@sensoper.com / Admin@123)",
+    "Admin login with credentials (admin@sensoper.com / <TEST_ADMIN_PASSWORD>)",
     "POST /api/daily-updates creates progress update",
     "POST /api/daily-updates creates payment update",
     "POST /api/daily-updates creates material update",
@@ -70,7 +70,7 @@
   },
 
   "test_credentials": {
-    "admin": "admin@sensoper.com / Admin@123"
+    "admin": "admin@sensoper.com / <TEST_ADMIN_PASSWORD>"
   },
 
   "seed_data_creation": "Created test daily updates (Progress, Material, Payment, Installation, O&M), test payments, and test material usage logs via API and UI testing",

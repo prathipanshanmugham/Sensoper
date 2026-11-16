@@ -30,7 +30,7 @@
     "/app/backend/tests/test_iteration29_complete_flow.py (new — 6 tests, all pass)"
   ],
   "success_rate": {"backend": "100% (6/6 new + regression of iter28 unaffected)", "frontend": "Compile fix applied; testid presence verified via code grep — interactive wizard navigation not completed because Customer step required-field validation halted automated Next clicks; manual driver needed for full E2E"},
-  "test_credentials": "admin@sensoper.com / Admin@123 (cookie auth — verified working)",
+  "test_credentials": "admin@sensoper.com / <TEST_ADMIN_PASSWORD> (cookie auth — verified working)",
   "seed_data_creation": "Each test creates a TEST_Iter29_<suffix> project, approves it (admin role), completes/edits, then deletes in finally{} — no residual data.",
   "retest_needed": true,
   "main_agent_can_self_test": true,

@@ -19,7 +19,7 @@
   },
 
   "passed_tests": [
-    "Admin login with credentials (admin@sensoper.com / Admin@123)",
+    "Admin login with credentials (admin@sensoper.com / <TEST_ADMIN_PASSWORD>)",
     
     "REPORTS PAGE:",
     "12 report cards visible on Reports page",
@@ -75,7 +75,7 @@
   },
 
   "test_credentials": {
-    "admin": "admin@sensoper.com / Admin@123"
+    "admin": "admin@sensoper.com / <TEST_ADMIN_PASSWORD>"
   },
 
   "seed_data_creation": "Created Leads update via UI: 20 total leads, 12 qualified, 8 site visits, 6 quotes, 15 followups, 4 conversions",

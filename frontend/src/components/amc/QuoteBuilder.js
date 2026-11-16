@@ -12,6 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { inr, SYSTEM_TYPE_OPTIONS } from './amcCommon';
 
 import { errText } from '../kit/PageBits';
+import { localDate } from '../../lib/format';
 const blank = { source_type: 'manual', source_id: null, customer_name: '', phone: '', site_address: '', district: '', system_type: 'on-grid', system_type_other: '', system_capacity_kw: '', commissioning_date: '', tariff: '', notes: '', terms_text: '', recommended_plan: 'standard' };
 
 export function PlanCards({ calc, recommended, onRecommend, chosen, onChoose, compact }) {
@@ -88,7 +89,7 @@ export default function QuoteBuilder({ open, onOpenChange, prefill, onSaved }) {
       const ps = p.custom_fields?.proposed_solution || {};
       setF((x) => (x.source_id !== id ? x : { ...x, customer_name: p.customer?.name || '', phone: p.customer?.phone || '', site_address: p.customer?.address || p.location?.address || '',
         district: p.location?.district || '', system_type: ps.system_type || 'on-grid', system_capacity_kw: ps.system_size_kw || slim?.system_size_kw || '',
-        system_type_other: '', commissioning_date: (p.commissioning_date || p.completed_at || '').slice(0, 10), tariff: ps.tariff_per_unit || p.electrical?.eb_tariff || '' }));
+        system_type_other: '', commissioning_date: p.commissioning_date ? String(p.commissioning_date).slice(0, 10) : (p.completed_at ? localDate(p.completed_at) : ''), tariff: ps.tariff_per_unit || p.electrical?.eb_tariff || '' }));
     } catch { /* the slim row is enough to quote */ }
   };
 

@@ -4,6 +4,7 @@ In-process, no MongoDB server:
 """
 import asyncio
 import os
+import secrets
 import re
 import sys
 
@@ -17,7 +18,7 @@ os.environ.setdefault("MONGO_URL", "mongodb://localhost:27017")
 os.environ.setdefault("DB_NAME", "website_test")
 os.environ.setdefault("JWT_SECRET", "t" * 48)
 os.environ.setdefault("ADMIN_EMAIL", "boss@example.com")
-os.environ.setdefault("ADMIN_PASSWORD", "Adm1n-pass-123")
+os.environ.setdefault("ADMIN_PASSWORD", "t-" + secrets.token_hex(12))   # random per run — the in-memory app seeds this admin
 os.environ.setdefault("STORAGE_ROOT", "/tmp/sensoper-website-test")
 ADMIN = {"email": os.environ["ADMIN_EMAIL"], "password": os.environ["ADMIN_PASSWORD"]}
 
@@ -27,7 +28,8 @@ from bson import ObjectId  # noqa: E402
 import server  # noqa: E402
 import website  # noqa: E402
 
-PW = "Passw0rd!x"
+PW = "pw-" + secrets.token_hex(8)   # for the users this test creates (random per run)
+_CUSTOMER_NEW_PW = "pw-" + secrets.token_hex(8)
 EMAILS = ["web.staff@example.com", "web.mgr@example.com"]
 TAG = "website-test"
 
@@ -297,7 +299,7 @@ def test_customer_logins_made_by_staff(app, loop, world):
         assert (await cust.get(f"/api/client/projects/{p1}/dashboard")).status_code == 403     # set a password first
         r = await cust.post("/api/client/auth/change-password", json={"current_password": pw, "new_password": "short"})
         assert r.status_code == 422
-        r = await cust.post("/api/client/auth/change-password", json={"current_password": pw, "new_password": "Selvi-sun-2026"})
+        r = await cust.post("/api/client/auth/change-password", json={"current_password": pw, "new_password": _CUSTOMER_NEW_PW})
         assert r.status_code == 200
         r = await cust.get(f"/api/client/projects/{p1}/dashboard")
         assert r.status_code == 200, r.text

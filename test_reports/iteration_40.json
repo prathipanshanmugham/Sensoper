@@ -33,7 +33,7 @@
     "/app/backend/tests/test_iteration40_material_kits.py (new)"
   ],
   "success_rate": { "backend": "100%", "frontend": "95%" },
-  "test_credentials": "admin@sensoper.com / Admin@123",
+  "test_credentials": "admin@sensoper.com / <TEST_ADMIN_PASSWORD>",
   "seed_data_creation": "None persisted (test_crud_flow creates and deletes TEST_KIT_iter40; test_create_project_solar_pump creates and deletes TEST_iter40_pump project).",
   "retest_needed": false,
   "main_agent_can_self_test": true,

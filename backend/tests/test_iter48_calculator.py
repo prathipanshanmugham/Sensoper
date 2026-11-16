@@ -9,6 +9,8 @@ expected values are derived from the live config so a deliberate admin change to
 constants does not break the suite, but the formulas themselves are pinned.
 """
 import math, os, uuid, pytest, requests
+from http_env import require_server, throwaway_password, TEST_ADMIN_EMAIL, TEST_MANAGER_EMAIL, TEST_MANAGER_PASSWORD, TEST_STAFF_EMAIL, TEST_STAFF_PASSWORD  # noqa: E402,F401
+_SERVER_URL, TEST_ADMIN_PASSWORD = require_server(manager=False, staff=False)
 
 BASE_URL = os.environ.get("REACT_APP_BACKEND_URL").rstrip("/")
 API = f"{BASE_URL}/api"
@@ -18,7 +20,7 @@ TAG = f"TEST48_{uuid.uuid4().hex[:5]}"
 @pytest.fixture(scope="module")
 def client():
     s = requests.Session()
-    r = s.post(f"{API}/auth/login", json={"email": "admin@sensoper.com", "password": "Admin@123"}, timeout=60)
+    r = s.post(f"{API}/auth/login", json={"email": "admin@sensoper.com", "password": TEST_ADMIN_PASSWORD}, timeout=60)
     assert r.status_code == 200, r.text
     return s
 

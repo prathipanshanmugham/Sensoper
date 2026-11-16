@@ -8,6 +8,8 @@ import os
 import pytest
 import requests
 from dotenv import dotenv_values
+from http_env import ensure_vendor, require_server, throwaway_password, TEST_ADMIN_EMAIL, TEST_MANAGER_EMAIL, TEST_MANAGER_PASSWORD, TEST_STAFF_EMAIL, TEST_STAFF_PASSWORD  # noqa: E402,F401
+_SERVER_URL, TEST_ADMIN_PASSWORD = require_server(manager=False, staff=False)
 
 frontend_env = dotenv_values("/app/frontend/.env")
 base_url = os.environ.get("REACT_APP_BACKEND_URL") or frontend_env.get("REACT_APP_BACKEND_URL")
@@ -16,7 +18,7 @@ if not base_url:
 BASE_URL = base_url.rstrip("/")
 API = f"{BASE_URL}/api"
 
-ADMIN = {"email": "admin@sensoper.com", "password": "Admin@123"}
+ADMIN = {"email": "admin@sensoper.com", "password": TEST_ADMIN_PASSWORD}
 
 
 @pytest.fixture(scope="module")
@@ -89,6 +91,7 @@ class TestPoDelete:
             "items": [{"name": "TEST_ITER48 Part", "qty": 2, "unit_price": 50}],
             "location_id": loc_id,
         }
+        ensure_vendor(client, API, body["supplier_name"])
         r = client.post(f"{API}/purchase-orders", json=body, timeout=30)
         assert r.status_code in (200, 201), r.text[:400]
         return r.json()["id"], r.json()["po_number"]

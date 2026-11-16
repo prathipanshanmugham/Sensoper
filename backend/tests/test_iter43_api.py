@@ -3,9 +3,11 @@ import os
 import uuid
 import pytest
 import requests
+from http_env import require_server, throwaway_password, TEST_ADMIN_EMAIL, TEST_MANAGER_EMAIL, TEST_MANAGER_PASSWORD, TEST_STAFF_EMAIL, TEST_STAFF_PASSWORD  # noqa: E402,F401
+_SERVER_URL, TEST_ADMIN_PASSWORD = require_server(manager=False, staff=False)
 
 BASE_URL = (os.environ.get("REACT_APP_BACKEND_URL") or open("/app/frontend/.env").read().split("REACT_APP_BACKEND_URL=")[1].splitlines()[0]).rstrip("/")
-ADMIN = {"email": "admin@sensoper.com", "password": "Admin@123"}
+ADMIN = {"email": "admin@sensoper.com", "password": TEST_ADMIN_PASSWORD}
 
 
 @pytest.fixture(scope="module")
@@ -15,6 +17,20 @@ def admin_client():
     r = s.post(f"{BASE_URL}/api/auth/login", json=ADMIN, timeout=15)
     assert r.status_code == 200, r.text
     return s
+
+
+def _real_project(admin_client):
+    """Subsidy tracking now belongs to a real project (its branch and the project-edit permission are checked) —
+    these tests used made-up project ids."""
+    r = admin_client.post(f"{BASE_URL}/api/projects", json={
+        "customer": {"name": f"TEST_SUBSIDY_{uuid.uuid4().hex[:6]}", "phone": "9000000043", "address": "x"},
+        "location": {"address": "x", "state": "Tamil Nadu"},
+        "electrical": {"sanction_load_kw": 3, "connected_load_kw": 3, "monthly_consumption_units": 300, "eb_tariff": 7},
+        "mounting": {"roof_type": "RCC", "tilt_angle": 15, "structure_type": "fixed"},
+        "additional": {"cable_length_meters": 20, "inverter_to_panel_distance": 10},
+        "solar_system": {"system_type": "on-grid", "capacity_kw": 3}, "selected_items": [], "manual_costs": []}, timeout=30)
+    assert r.status_code == 200, r.text
+    return r.json()["id"]
 
 
 # ---------------- Marketing Expense entries ----------------
@@ -56,7 +72,7 @@ def test_marketing_summary_endpoint(admin_client):
 
 # ---------------- Subsidy tracking incremental merge ----------------
 def test_subsidy_upsert_merge_preserves_dates_and_computes_days(admin_client):
-    project_id = f"TEST_PROJ_{uuid.uuid4().hex[:10]}"
+    project_id = _real_project(admin_client)
     # 1st POST: set application_date only
     r1 = admin_client.post(f"{BASE_URL}/api/subsidy/tracking", json={
         "project_id": project_id,
@@ -88,7 +104,7 @@ def test_subsidy_upsert_merge_preserves_dates_and_computes_days(admin_client):
 
 
 def test_subsidy_status_only_update_preserves_amounts(admin_client):
-    project_id = f"TEST_PROJ_{uuid.uuid4().hex[:10]}"
+    project_id = _real_project(admin_client)
     admin_client.post(f"{BASE_URL}/api/subsidy/tracking", json={
         "project_id": project_id, "eligible_amount": 60000, "claimed_amount": 60000,
         "status": "eligible", "scheme": "pm_surya_ghar"

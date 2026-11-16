@@ -6,6 +6,7 @@ import asyncio
 import inspect
 import json
 import os
+import secrets
 import re
 import sys
 
@@ -19,7 +20,7 @@ os.environ.setdefault("MONGO_URL", "mongodb://localhost:27017")
 os.environ.setdefault("DB_NAME", "perm_test")
 os.environ.setdefault("JWT_SECRET", "t" * 48)
 os.environ.setdefault("ADMIN_EMAIL", "boss@example.com")
-os.environ.setdefault("ADMIN_PASSWORD", "Adm1n-pass-123")
+os.environ.setdefault("ADMIN_PASSWORD", "t-" + secrets.token_hex(12))   # random per run — the in-memory app seeds this admin
 os.environ.setdefault("STORAGE_ROOT", "/tmp/sensoper-perm-test")
 ADMIN = {"email": os.environ["ADMIN_EMAIL"], "password": os.environ["ADMIN_PASSWORD"]}  # the in-process app seeds this admin
 
@@ -28,7 +29,9 @@ _m.AsyncIOMotorClient = mongomock_motor.AsyncMongoMockClient
 import access_policy as ap  # noqa: E402
 import server  # noqa: E402
 
-PW = "Passw0rd!x"
+PW = "pw-" + secrets.token_hex(8)   # for the users this test creates (random per run)
+_INVESTOR_PW = "pw-" + secrets.token_hex(8)
+_INVESTOR_NEW_PW = "pw-" + secrets.token_hex(8)
 
 
 @pytest.fixture(scope="module")
@@ -194,8 +197,8 @@ def test_daily_report_switch(app, loop, world):
 def test_investor_login_dashboard_and_isolation(app, loop, world):
     async def go():
         a = await login(app, ADMIN["email"], ADMIN["password"])
-        assert (await a.post("/api/investors", json={"name": "X", "email": "sam@example.com", "password": "Temp-pass-1"})).status_code == 400
-        r = await a.post("/api/investors", json={"name": "Ira Investor", "email": "ira@example.com", "password": "Temp-pass-1", "share_pct": 12.5,
+        assert (await a.post("/api/investors", json={"name": "X", "email": "sam@example.com", "password": _INVESTOR_PW})).status_code == 400
+        r = await a.post("/api/investors", json={"name": "Ira Investor", "email": "ira@example.com", "password": _INVESTOR_PW, "share_pct": 12.5,
                                                  "committed_amount": 1000000, "sections": {"branches": False}})
         assert r.status_code == 200, r.text
         iid = r.json()["id"]
@@ -206,7 +209,7 @@ def test_investor_login_dashboard_and_isolation(app, loop, world):
 
         inv = client(app)
         assert (await inv.post("/api/investor/auth/login", json={"email": "ira@example.com", "password": "nope"})).status_code == 401
-        r = await inv.post("/api/investor/auth/login", json={"email": "IRA@example.com", "password": "Temp-pass-1"})
+        r = await inv.post("/api/investor/auth/login", json={"email": "IRA@example.com", "password": _INVESTOR_PW})
         assert r.status_code == 200 and r.json()["must_reset_password"] is True
         d = (await inv.get("/api/investor/dashboard")).json()
         assert "branches" not in d and d["investment"]["invested"] == 1000000 and d["investment"]["share_pct"] == 12.5
@@ -216,7 +219,7 @@ def test_investor_login_dashboard_and_isolation(app, loop, world):
         assert (await a.get("/api/investor/dashboard")).status_code == 401           # staff session isn't an investor session
         prev = (await a.get(f"/api/investors/{iid}/preview")).json()
         assert set(prev["sections"]) == set(d["sections"]) and "branches" not in prev
-        r = await inv.post("/api/investor/auth/change-password", json={"current_password": "Temp-pass-1", "new_password": "Brand-new-pass-2"})
+        r = await inv.post("/api/investor/auth/change-password", json={"current_password": _INVESTOR_PW, "new_password": _INVESTOR_NEW_PW})
         assert r.status_code == 200
         assert (await inv.get("/api/investor/me")).json()["must_reset_password"] is False
         # switching the investor off signs them out

@@ -16,9 +16,10 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '
 import BusinessView, { PeriodPicker, inr, inrShort } from '../components/investor/BusinessView';
 
 import { confirmAction } from '../components/kit/confirm';
+import { localDate } from '../lib/format';
 const inputCls = 'h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none focus:border-emerald-400';
 const when = (iso) => (iso ? new Date(iso).toLocaleString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' }) : 'Never');
-const today = () => new Date().toISOString().slice(0, 10);
+const today = () => localDate();
 const EMPTY = { name: '', email: '', phone: '', organisation: '', share_pct: '', committed_amount: '', notes: '', active: true, password: '', sections: null };
 
 function tempPassword() {

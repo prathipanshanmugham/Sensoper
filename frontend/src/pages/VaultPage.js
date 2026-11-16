@@ -169,7 +169,7 @@ export default function VaultPage() {
                   <td className="px-3 py-2">{it.two_fa_enabled ? <Badge className="bg-emerald-100 text-emerald-800 hover:bg-emerald-100 text-[10px]">{METHODS.find(m => m[0] === it.two_fa_method)?.[1] || 'On'}</Badge> : <Badge className="bg-red-100 text-red-700 hover:bg-red-100 text-[10px]" data-testid={`vault-2fa-off-${it.id}`}>Off — risk</Badge>}</td>
                   <td className="px-3 py-2 text-slate-600 text-xs">{it.owner || '—'}</td>
                   <td className="px-3 py-2 text-xs"><span className={it.rotation_stale ? 'text-red-700 font-medium' : 'text-slate-500'} data-testid={`vault-rotation-${it.id}`}>{it.last_rotated?.slice(0, 10) || '—'}</span><span className="block text-[10px] text-slate-400">every {it.rotation_days}d{it.rotation_source === 'service' ? '' : ' (default)'}{it.rotation_stale ? ` · ${it.days_since_rotation == null ? 'never' : `${it.days_overdue}d overdue`}` : ''}</span></td>
-                  <td className="px-3 py-2 text-xs text-slate-500">{it.view_count}{it.last_viewed && <span className="block text-[10px]">{it.last_viewed.slice(0, 16).replace('T', ' ')}</span>}</td>
+                  <td className="px-3 py-2 text-xs text-slate-500">{it.view_count}{it.last_viewed && <span className="block text-[10px]">{new Date(it.last_viewed).toLocaleString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' })}</span>}</td>
                   <td className="px-3 py-2"><div className="flex gap-0.5">
                     <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => showLog(it)} data-testid={`vault-log-${it.id}`}><History className="h-3.5 w-3.5" /></Button>
                     <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEdit(it)} data-testid={`vault-edit-${it.id}`}><Edit className="h-3.5 w-3.5" /></Button>
@@ -218,7 +218,7 @@ export default function VaultPage() {
             {log.length === 0 ? <p className="py-6 text-center text-slate-400">No access yet.</p> : log.map((a, i) => (
               <div key={i} className="py-1.5 flex items-center justify-between gap-2">
                 <span><Badge variant={a.action === 'reveal' ? 'default' : 'outline'} className="text-[10px] mr-2">{a.action}</Badge>{a.user_name}</span>
-                <span className="text-slate-400">{a.timestamp?.slice(0, 19).replace('T', ' ')}{a.ip ? ` · ${a.ip}` : ''}</span>
+                <span className="text-slate-400">{a.timestamp ? new Date(a.timestamp).toLocaleString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit', second: '2-digit' }) : ''}{a.ip ? ` · ${a.ip}` : ''}</span>
               </div>
             ))}
           </div>

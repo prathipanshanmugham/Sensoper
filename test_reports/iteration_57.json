@@ -36,7 +36,7 @@
   ],
   "updated_files": [],
   "success_rate": {"backend": "100%", "frontend": "40%"},
-  "test_credentials": "admin@sensoper.com / Admin@123 (from /app/memory/test_credentials.md)",
+  "test_credentials": "admin@sensoper.com / <TEST_ADMIN_PASSWORD> (from /app/memory/test_credentials.md)",
   "seed_data_creation": "Created and cleaned up two temporary projects: TEST51UI_5ebc8 (main fixture) and TEST51REG_ (regression: add-ons-only). Both deleted via /api/projects/{id}/force.",
   "retest_needed": true,
   "should_main_agent_self_test": false,

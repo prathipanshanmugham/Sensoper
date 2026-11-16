@@ -13,7 +13,7 @@
   },
 
   "passed_tests": [
-    "Admin login with credentials (admin@sensoper.com / Admin@123)",
+    "Admin login with credentials (admin@sensoper.com / <TEST_ADMIN_PASSWORD>)",
     "GET /api/alerts/dashboard returns total_leakage, total_alerts, risky_projects, top_risks, alerts_by_type, chart_data, thresholds",
     "Alerts dashboard top_risks contains risk_score (0-100), risk_level (High/Medium/Low), alert_count",
     "Alerts dashboard thresholds contains min_margin_pct, max_material_variance_pct, payment_delay_days, max_project_duration_days",
@@ -74,7 +74,7 @@
   },
 
   "test_credentials": {
-    "admin": "admin@sensoper.com / Admin@123"
+    "admin": "admin@sensoper.com / <TEST_ADMIN_PASSWORD>"
   },
 
   "seed_data_creation": "No new seed data created - used existing projects and data from previous iterations",

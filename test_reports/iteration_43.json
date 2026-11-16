@@ -31,7 +31,7 @@
     "/app/backend/tests/test_iter43_api.py (new)"
   ],
   "success_rate": {"backend": "100% (6/6)", "frontend": "100%"},
-  "test_credentials": "admin@sensoper.com / Admin@123 (cookie/session auth)",
+  "test_credentials": "admin@sensoper.com / <TEST_ADMIN_PASSWORD> (cookie/session auth)",
   "seed_data_creation": "Test creates 2 marketing_expense account entries (TEST_Camp_<uuid>) + 2 subsidy_tracking docs (TEST_PROJ_<uuid>). Not cleaned up — safe because they are TEST_ prefixed and appear only in History list.",
   "retest_needed": false,
   "main_agent_can_self_test": true,

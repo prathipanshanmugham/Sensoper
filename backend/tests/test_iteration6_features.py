@@ -11,9 +11,8 @@ import pytest
 import requests
 import os
 import time
-TEST_ADMIN_PASSWORD = os.environ.get("TEST_ADMIN_PASSWORD") or "Admin@123"
-
-
+from http_env import require_server, throwaway_password, TEST_ADMIN_EMAIL, TEST_MANAGER_EMAIL, TEST_MANAGER_PASSWORD, TEST_STAFF_EMAIL, TEST_STAFF_PASSWORD  # noqa: E402,F401
+_SERVER_URL, TEST_ADMIN_PASSWORD = require_server(manager=False, staff=False)
 BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', '').rstrip('/')
 
 class TestAuth:
@@ -320,7 +319,7 @@ class TestCompletionMedia:
             json={"completion_media": []}
         )
         assert response.status_code == 400, f"Expected 400, got {response.status_code}"
-        assert "photo or video is required" in response.json()["detail"].lower()
+        assert "completion drive link is required" in response.json()["detail"].lower()   # photos now live in the completion Drive folder (Site photos → Drive)
         print(f"✓ Complete without media correctly rejected")
     
     def test_complete_with_empty_body_fails(self, admin_session, approved_project):

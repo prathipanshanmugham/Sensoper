@@ -1,5 +1,37 @@
 # Sensoper — change log
 
+## November 2026 · AI connector: easy, crisp and secure
+
+### In the ERP
+- **Settings → AI agents:** a *Connect Claude or ChatGPT* panel with the connector address, a copy button and three
+  steps per app. Agent cards show last used, calls today and when access ends, with one-click Pause / Resume and Revoke.
+  API keys for your own tools live under **Keys & scripts**.
+- **Activity:** filter by agent, outcome (changes, asked for approval, refused, failed), words and day. Each row shows the
+  login it worked as and a short summary of what was sent, never passwords or keys. Kept 90 days.
+- **Connection page** (when Claude or ChatGPT connects): who is asking and the exact host access goes to (look-alike and
+  odd addresses are refused or flagged), the login it works as with its branches, access in plain words, and an expiry.
+- **Approvals** (`/connect-agent/approve/<id>`): deletes, bulk changes, logins and passwords, bank and company details,
+  exits, and anything customers or the public see wait for a person — the login the agent works as, or an admin — to
+  press Approve. They show in the bell and at the top of Settings → AI agents. The AI can't approve. A customer's new
+  password is shown only to the person who approved, never to the AI.
+- Pages with agent controls refuse to show inside another website's frame.
+
+### Backend (`backend/agents.py`, new `backend/agent_rules.py`)
+- MCP tools: `whoami`, `app_map`, `list_endpoints`, `describe_endpoint`, `call_api` (unchanged names) plus
+  `confirm_action`. Held calls come back from `call_api` as `needs_approval` with an `approve_url`; `confirm_action`
+  runs exactly that call, once, only after a person approved it in Sensoper (`/api/agent-approvals`). API-key scripts may
+  send `X-Sensoper-Confirm: yes` instead; Claude / ChatGPT tokens can't.
+- `call_api` checks one canonical path (encoded slashes, `..`, `//`, `?`/`#` refused), returns a one-line `summary`,
+  pages long lists (`start`) and says what to do next on errors. Answers to agents never carry secrets.
+- OAuth: registration limits and clean-up, PKCE S256 only, exact redirect match, 2-minute codes bound to client and
+  redirect (a replayed code signs the connection out), consent CSRF token, rotating refresh tokens that need their
+  client_id (one retry gets the same pair; any other reuse signs the connection out), revoke that takes access tokens
+  with it. Return addresses: strict pattern (no `\`, `%`, `@`, spaces), "known app" from the exact host.
+- `/api/mcp`: Origin and Host checks, 1 MB body limit, protocol-version check, per-address limit on failed sign-ins,
+  every message in a batch (at most 10) counts against the agent's limit. CSV and text downloads are scrubbed too.
+  Paused or switched-off agents get 403 (the app keeps its token, so Resume needs no reconnecting).
+- Tests: `backend/tests/test_ai_connector_security.py`.
+
 ## November 2026 · Website: brands, testimonials, store pickup
 
 ### In the ERP
@@ -607,7 +639,7 @@ and 223 read-only checks ran against the live data. Nothing was removed.
 ## What changed
 
 ### Bugs fixed
-- **Admin password reset on every restart.** Startup re-applied `ADMIN_PASSWORD` (or `Admin@123`) to the admin account on every deploy, undoing any password change. The admin is now only created if missing. To recover a lost admin password, set `RESET_ADMIN_PASSWORD=true` together with `ADMIN_PASSWORD` for one restart, then remove it. A brand-new admin created with the built-in default password is asked to change it.
+- **Admin password reset on every restart.** Startup re-applied `ADMIN_PASSWORD` (or a built-in default) to the admin account on every deploy, undoing any password change. The admin is now only created if missing. To recover a lost admin password, set `RESET_ADMIN_PASSWORD=true` together with `ADMIN_PASSWORD` for one restart, then remove it. A brand-new admin created with the built-in default password is asked to change it.
 - **Admin credentials written to disk.** Startup no longer writes `/app/memory/test_credentials.md`.
 - **"Unexpected token '<'" crash.** The service worker served `offline.html` in place of any failed third-party script (ad-blockers, flaky network). It now leaves other sites' files alone (`service-worker.js` v1.2.0).
 - **Emergent leftovers.** Removed Emergent's script and PostHog analytics from `index.html`. Logo, favicon, app icons and PDF fonts are now inside the app (`public/`), so they no longer depend on Emergent's CDN or jsDelivr.

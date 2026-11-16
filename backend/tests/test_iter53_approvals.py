@@ -12,12 +12,15 @@ import uuid
 
 import pytest
 import requests
+from http_env import ensure_vendor, require_server, throwaway_password, TEST_ADMIN_EMAIL, TEST_MANAGER_EMAIL, TEST_MANAGER_PASSWORD, TEST_STAFF_EMAIL, TEST_STAFF_PASSWORD  # noqa: E402,F401
+_SERVER_URL, TEST_ADMIN_PASSWORD = require_server(manager=False, staff=False)
+_TMP_PW_2 = throwaway_password()
 
 BASE_URL = os.environ.get("REACT_APP_BACKEND_URL").rstrip("/")
 API = f"{BASE_URL}/api"
 TAG = f"TEST53A_{uuid.uuid4().hex[:5]}"
-ADMIN_PW = os.environ.get("TEST_ADMIN_PASSWORD", "Admin@123")
-MGR_EMAIL, MGR_PW = f"{TAG.lower()}_mgr@test.com", "Manager@12345"
+ADMIN_PW = os.environ.get("TEST_ADMIN_PASSWORD", TEST_ADMIN_PASSWORD)
+MGR_EMAIL, MGR_PW = f"{TAG.lower()}_mgr@test.com", _TMP_PW_2
 
 
 def _login(email, pw):
@@ -134,6 +137,7 @@ class TestProjectDeletionRequest:
 
 class TestPurchaseOrder:
     def _make(self, admin, inv_item):
+        ensure_vendor(admin, API, f"{TAG} Supplier")
         r = admin.post(f"{API}/purchase-orders", json={"supplier_name": f"{TAG} Supplier", "items": [{"name": f"{TAG} MC4 pair", "qty": 5, "unit_price": 100, "inventory_item_id": inv_item}]}, timeout=60)
         assert r.status_code in (200, 201), r.text
         po_id = r.json().get("id") or r.json().get("po_id")
@@ -157,6 +161,7 @@ class TestPurchaseOrder:
 
 class TestInboundReversal:
     def _completed_po(self, admin, inv_item):
+        ensure_vendor(admin, API, f"{TAG} Rev")
         po = admin.post(f"{API}/purchase-orders", json={"supplier_name": f"{TAG} Rev", "items": [{"name": "x", "qty": 3, "unit_price": 50, "inventory_item_id": inv_item}]}, timeout=60).json()
         po_id = po.get("id") or po.get("po_id")
         assert admin.put(f"{API}/purchase-orders/{po_id}/approve", timeout=60).status_code == 200
@@ -193,6 +198,7 @@ class TestGenericEngineDeletions:
     """Manager requests a hard delete of a sale / PO via /approvals; admin approves → the real hard-delete runs."""
 
     def _po(self, admin, inv_item):
+        ensure_vendor(admin, API, f"{TAG} GenDel")
         po = admin.post(f"{API}/purchase-orders", json={"supplier_name": f"{TAG} GenDel", "items": [{"name": "x", "qty": 1, "unit_price": 10, "inventory_item_id": inv_item}]}, timeout=60).json()
         return po.get("id") or po.get("po_id")
 

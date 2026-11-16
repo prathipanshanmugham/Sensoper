@@ -14,6 +14,8 @@ from pathlib import Path
 import pytest
 import requests
 from dotenv import dotenv_values
+from http_env import require_server, throwaway_password, TEST_ADMIN_EMAIL, TEST_MANAGER_EMAIL, TEST_MANAGER_PASSWORD, TEST_STAFF_EMAIL, TEST_STAFF_PASSWORD  # noqa: E402,F401
+_SERVER_URL, TEST_ADMIN_PASSWORD = require_server(manager=False, staff=False)
 
 _env = dotenv_values("/app/frontend/.env")
 _base = os.environ.get("REACT_APP_BACKEND_URL") or _env.get("REACT_APP_BACKEND_URL")
@@ -24,14 +26,8 @@ BASE = _base.rstrip("/") + "/api"
 
 @pytest.fixture(scope="session")
 def creds():
-    p = Path("/app/memory/test_credentials.md")
-    c = p.read_text()
-    e = re.search(r"(?im)^\s*[-*]?\s*Email:\s*(\S+)", c)
-    pw = re.search(r"(?im)^\s*[-*]?\s*Password:\s*(\S+)", c)
-    if not e or not pw:
-        pytest.skip("no creds")
-    return {"email": e.group(1), "password": pw.group(1)}
-
+    # was read from /app/memory/test_credentials.md (not in the repository) — now the environment (tests/http_env.py)
+    return {"email": TEST_ADMIN_EMAIL, "password": TEST_ADMIN_PASSWORD}
 
 @pytest.fixture(scope="session")
 def client(creds):

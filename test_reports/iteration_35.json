@@ -23,7 +23,7 @@
     "/app/backend/tests/test_iteration35_reference.py (new — 9 pytest cases)"
   ],
   "success_rate": {"backend": "100% (9/9 pytest)", "frontend": "focus-loss + auto-calc verified 100%; Reference Site dropdown verified via source-code review + presence of all testids; E2E PDF download deferred due to wizard-navigation blocker (test-script limitation, not a defect)"},
-  "test_credentials": "admin@sensoper.com / Admin@123",
+  "test_credentials": "admin@sensoper.com / <TEST_ADMIN_PASSWORD>",
   "seed_data_creation": "Created 1 test project via API (ProjectCreate roundtrip test) and deleted in teardown. No completed projects added — used existing 7 in DB.",
   "retest_needed": false,
   "should_main_agent_self_test": true,

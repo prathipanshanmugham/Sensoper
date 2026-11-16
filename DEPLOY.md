@@ -4,7 +4,58 @@ Your server already has `/root/Sensoper/deploy.sh`. It pulls the code, installs 
 copies the build to `/var/www/sensoper`, restarts the `sensoper` service and checks the live bundle. This release needs
 nothing new installed.
 
-## This release: shop.sensoper.in, five systems, brands, testimonial videos, store pickup
+## This release: bug sweep, security fixes and a safer AI connector
+
+No new packages. On the server, as root:
+
+    /root/Sensoper/deploy.sh
+    bash /root/Sensoper/website/deploy/enable-on-quote.sh
+
+The second line refreshes the nginx settings for quote.sensoper.in. They now also stop other websites from showing the
+ERP inside a frame (clickjacking), which protects the AI-agent switches and approval pages. It keeps a backup and puts it
+back if nginx doesn't accept the change.
+
+Nothing else to set. Two server settings now behave more safely without any change from you (see "Every release"):
+`CORS_ORIGINS` unset or `*` means same-site only, and without `ADMIN_PASSWORD` no admin is ever created with a built-in
+password (your existing admin isn't affected).
+
+### Fixed in the ERP
+GST at 0% charged 18%; GST before the bill discount; a received purchase order could be received again (double stock);
+returns and reopened orders put stock back twice; paid credits stayed open; invoice dates and financial years in UTC;
+CGST+SGST off by a paisa; IGST decided by exact state text; a double-click made two project invoices; check-out after
+midnight; interest-only loan payments; other branches' records opened by id; search boxes crashing on symbols; server
+errors on bad input; and the public file address handing out the vault key and audit archives.
+
+### Fixed on the ERP screens (every page checked as admin, manager, staff and on a phone)
+"Today" and "This month" were a day behind before 5:30 AM IST; direct sales saved 0% GST as 18% and an empty quantity
+as 1; Approve on a purchase order did nothing (or sent another PO's form); deliveries lost their stock links on edit;
+Locations was empty for a non-admin given access; negative amounts and blank names were accepted in partners, assets,
+users, terms, inventory, readings and support; several saves failed with no message; Generate Invoice showed on
+unapproved projects; the form builder could delete the built-in Customer and Location steps; the first-run help tip
+blocked the top-right buttons; support and company-login times showed 5h30m behind; and raw error lists could crash a page.
+
+### AI connector (Claude / ChatGPT)
+The Claude connector you already use keeps working: no reconnecting.
+- **Settings → AI agents** opens with a *Connect Claude or ChatGPT* panel: the address to paste and three steps per app.
+  Each agent shows when it was last used and its calls today, with **Pause** and **Revoke** buttons.
+- When Claude wants to **delete, change many records at once, touch logins or passwords, change bank or company
+  details, end someone's employment, or change anything a customer or the public sees**, nothing happens until you
+  approve it **in Sensoper**: Claude gives you a link, the bell shows it, and Settings → AI agents lists it at the top.
+  The approval page shows every value that will change (old → new). Press **Approve** (or **Decline**), then tell Claude
+  to go ahead. Claude can't approve its own requests.
+- **Activity** can be filtered: changes, asked for approval, refused, failed, by words and by day.
+- Pausing an agent or switching agents off stops it at once; resuming works without connecting again.
+- If an old sign-in token is ever used twice, Sensoper signs that connection out and says so on its card. Connect it
+  again from Claude.
+
+For your own scripts or n8n using an API key: those calls answer 403 until you send them again with the header
+`X-Sensoper-Confirm: yes`. Claude and ChatGPT can't use this header.
+
+Smoke test after deploy: in Claude, ask "Which vendors do we have?" (works as before), then "Delete vendor X": Claude
+answers that it is waiting for your approval, the bell shows it, and after you approve and say "go ahead" it runs once.
+Settings → AI agents → Activity shows both.
+
+## Earlier release: shop.sensoper.in, five systems, brands, testimonial videos, store pickup
 
 No new packages and no new server settings. On the server, as root:
 
@@ -274,8 +325,8 @@ Check `backend/.env` on the server against `backend/.env.example`:
 |---|---|
 | `JWT_SECRET` | A long random string (not empty). Keep it unchanged between deploys. |
 | `VAULT_MASTER_KEY` | Set, and backed up somewhere safe. |
-| `CORS_ORIGINS` | `https://quote.sensoper.in` (not `*`). |
-| `ADMIN_PASSWORD` | Anything. From this release it's only used if the admin account doesn't exist. |
+| `CORS_ORIGINS` | Leave unset (the ERP and website are same-origin through nginx). Only list other sites that must call the API from a browser, e.g. `https://partner.example.in`; `*` is treated as unset. |
+| `ADMIN_PASSWORD` | A strong password. Only used to create the first admin when no admin account exists — without it no admin is created (there is no built-in password). |
 | `COOKIE_SECURE` | Leave unset (`auto`). |
 
 Make sure nginx passes `X-Forwarded-Proto` to the backend (most configs already do):
@@ -308,9 +359,12 @@ On GitHub, open the merged pull request and press **Revert**, merge the revert, 
 New collections (`daily_reports`, `site_diaries`, `site_photo_uploads`, `integrations`) are only added to, so rolling back loses nothing. Photos already copied to Drive stay in Drive.
 
 ## Running the tests
-Against the live API, with an admin login:
+Most tests need no server (in-memory database): `cd backend && pytest tests`.
 
-    cd backend && REACT_APP_BACKEND_URL=https://quote.sensoper.in ADMIN_PASSWORD='…' pytest tests/test_daily_reports.py
+The HTTP tests create and delete records, so never point them at the live ERP. Run them against a local or staging
+copy, with logins from the environment (they skip when these aren't set):
+
+    cd backend && REACT_APP_BACKEND_URL=http://127.0.0.1:8001 TEST_ADMIN_PASSWORD='…' pytest tests/test_daily_reports.py
 
 Site photos, Drive and site GPS need no server or network (fake Google, in-memory database):
 

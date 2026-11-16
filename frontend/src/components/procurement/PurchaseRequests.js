@@ -53,7 +53,9 @@ function NewRequestDialog({ open, onOpenChange, onCreated }) {
     if (!items.length) inventoryAPI.getItems().then((r) => setItems(r.data || [])).catch(() => {});
   }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
   const lines = f.lines.filter((l) => l.name.trim() && Number(l.qty) > 0);
+  const noQty = f.lines.find((l) => l.name.trim() && !(Number(l.qty) > 0));   // would otherwise be dropped without a word
   const save = async () => {
+    if (noQty) { toast.error(`Enter a quantity of more than 0 for ${noQty.name.trim()}`); return; }
     setSaving(true);
     try {
       const r = await procurementAPI.create({ ...f, needed_by: f.needed_by || null, lines: lines.map((l) => ({ ...l, qty: Number(l.qty) })) });
@@ -67,6 +69,7 @@ function NewRequestDialog({ open, onOpenChange, onCreated }) {
         <div className="space-y-2">
           {f.lines.map((l, i) => <ItemLine key={i} index={i} line={l} items={items} onChange={(nl) => setF((x) => ({ ...x, lines: x.lines.map((y, j) => (j === i ? nl : y)) }))}
             onRemove={() => setF((x) => ({ ...x, lines: x.lines.length > 1 ? x.lines.filter((_, j) => j !== i) : [blankLine()] }))} />)}
+          {noQty && f.lines.some((l) => l.qty !== '') && <p className="text-xs text-red-600" data-testid="pr-qty-error">Enter a quantity of more than 0 for {noQty.name.trim()}</p>}
           <Button type="button" variant="outline" size="sm" className="gap-1 border-dashed" onClick={() => setF((x) => ({ ...x, lines: [...x.lines, blankLine()] }))} data-testid="pr-add-line"><Plus className="h-4 w-4" />Add item</Button>
           <div className="grid grid-cols-2 gap-2 pt-1">
             <Field label="Needed by"><input type="date" value={f.needed_by} min={todayISO()} onChange={(e) => setF((x) => ({ ...x, needed_by: e.target.value }))} className={inputCls} data-testid="pr-needed-by" /></Field>

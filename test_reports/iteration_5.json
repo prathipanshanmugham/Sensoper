@@ -13,7 +13,7 @@
   },
   
   "passed_tests": [
-    "Admin login with credentials (admin@sensoper.com / Admin@123)",
+    "Admin login with credentials (admin@sensoper.com / <TEST_ADMIN_PASSWORD>)",
     "Login page is light themed (white/light backgrounds, no dark colors)",
     "Register page is light themed",
     "Sensoper logo present on login and register pages",
@@ -63,7 +63,7 @@
   },
   
   "test_credentials": {
-    "admin": "admin@sensoper.com / Admin@123",
+    "admin": "admin@sensoper.com / <TEST_ADMIN_PASSWORD>",
     "test_staff": "teststaff_ui@test.com / TestPass123"
   },
   

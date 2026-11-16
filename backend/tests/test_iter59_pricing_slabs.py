@@ -5,18 +5,20 @@ import uuid
 
 import pytest
 import requests
+from http_env import require_mongo, require_server, throwaway_password, TEST_ADMIN_EMAIL, TEST_MANAGER_EMAIL, TEST_MANAGER_PASSWORD, TEST_STAFF_EMAIL, TEST_STAFF_PASSWORD  # noqa: E402,F401
+_SERVER_URL, TEST_ADMIN_PASSWORD = require_server(manager=False, staff=False)
 
 BASE_URL = os.environ.get("REACT_APP_BACKEND_URL").rstrip("/")
 API = f"{BASE_URL}/api"
 TAG = f"TEST59_{uuid.uuid4().hex[:5]}"
-ADMIN_PW = os.environ.get("TEST_ADMIN_PASSWORD", "Admin@123")
+ADMIN_PW = os.environ.get("TEST_ADMIN_PASSWORD", TEST_ADMIN_PASSWORD)
 sys.path.insert(0, "/app/backend")
 
 
 def _db():
     import pymongo
     from dotenv import dotenv_values
-    env = dotenv_values("/app/backend/.env")
+    env = dict(zip(("MONGO_URL", "DB_NAME"), require_mongo()))
     return pymongo.MongoClient(env["MONGO_URL"])[env["DB_NAME"]]
 
 

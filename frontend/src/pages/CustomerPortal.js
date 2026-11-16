@@ -17,7 +17,8 @@ const digits = (p) => String(p || '').replace(/\D/g, '').slice(-10);
 const TYPE = { 'on-grid': 'On-grid', 'off-grid': 'Off-grid', hybrid: 'Hybrid', 'solar-pump': 'Solar pump' };
 const TICKET_STATUS = { open: ['Received', 'bg-sky-50 text-sky-700'], assigned: ['Technician assigned', 'bg-indigo-50 text-indigo-700'], in_progress: ['Being worked on', 'bg-amber-50 text-amber-800'],
   pending_customer: ['Waiting for you', 'bg-orange-50 text-orange-700'], resolved: ['Resolved', 'bg-emerald-50 text-emerald-700'], closed: ['Closed', 'bg-slate-100 text-slate-600'], reopened: ['Reopened', 'bg-amber-50 text-amber-800'] };
-const errText = (e, fallback) => e?.response?.data?.detail || (e?.response ? fallback : 'No internet connection — try again.');
+// A plain-text reason only: a validation error (a list) must never reach the screen as an object
+const errText = (e, fallback) => { const d = e?.response?.data?.detail; return typeof d === 'string' && d.trim() ? d : (e?.response ? fallback : 'No internet connection — try again.'); };
 
 function Card({ title, icon: I, children, testid, right }) {
   return (

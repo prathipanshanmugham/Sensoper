@@ -25,6 +25,7 @@ from pydantic import BaseModel
 
 IST = timezone(timedelta(hours=5, minutes=30))
 HALF_DAY_MINUTES = 4 * 60        # under this → half day in the register
+MAX_SHIFT_HOURS = 16             # a check-out after midnight belongs to yesterday's open check-in up to this long
 
 
 class Punch(BaseModel):
@@ -50,7 +51,7 @@ def today_ist(now: Optional[datetime] = None) -> str:
 
 def _month_ok(m: Optional[str]) -> str:
     m = m or _now().astimezone(IST).strftime("%Y-%m")
-    if not re.fullmatch(r"\d{4}-\d{2}", m):
+    if not re.fullmatch(r"\d{4}-(0[1-9]|1[0-2])", m):   # 2026-13 used to pass and crash the register
         raise HTTPException(status_code=400, detail="Month must look like 2026-10")
     return m
 
@@ -130,10 +131,20 @@ def create_router(db, get_current_user, require_role, create_audit_log):
                         "location_ids": u.get("location_ids") or [], "joined": _ist_day(u.get("created_at"))})
         return sorted(out, key=lambda x: ({"admin": 0, "manager": 1}.get(x["role"], 2), x["name"].lower()))
 
+    async def _open_overnight(user_id: str) -> Optional[Dict[str, Any]]:
+        """Yesterday's record still open (a shift that crossed midnight IST), if it began under MAX_SHIFT_HOURS ago."""
+        yesterday = (_now().astimezone(IST).date() - timedelta(days=1)).isoformat()
+        rec = await db.attendance.find_one({"user_id": user_id, "date": yesterday, "check_out": None})
+        try:
+            started = datetime.fromisoformat(str((rec or {}).get("check_in", {}).get("at")))
+        except (TypeError, ValueError):
+            return None
+        return rec if _now() - started <= timedelta(hours=MAX_SHIFT_HOURS) else None
+
     @router.get("/attendance/me/today")
     async def my_today(request: Request):
         user = await get_current_user(request)
-        rec = await db.attendance.find_one({"user_id": user["id"], "date": today_ist()})
+        rec = await db.attendance.find_one({"user_id": user["id"], "date": today_ist()}) or await _open_overnight(user["id"])
         return {"date": today_ist(), "server_time": _now().isoformat(), "record": _public(rec)}
 
     @router.post("/attendance/check-in")
@@ -144,6 +155,8 @@ def create_router(db, get_current_user, require_role, create_audit_log):
         existing = await db.attendance.find_one({"user_id": user["id"], "date": day})
         if existing:
             raise HTTPException(status_code=400, detail="You've already checked in today" + (" and out." if existing.get("check_out") else "."))
+        if await _open_overnight(user["id"]):
+            raise HTTPException(status_code=400, detail="You're still checked in from yesterday's shift — check out first.")
         now = _now().isoformat()
         doc = {
             "user_id": user["id"], "user_name": user.get("name", ""), "role": user.get("role", ""),
@@ -162,7 +175,9 @@ def create_router(db, get_current_user, require_role, create_audit_log):
     async def check_out(body: Punch, request: Request):
         user = await get_current_user(request)
         _check_coords(body)
-        rec = await db.attendance.find_one({"user_id": user["id"], "date": today_ist()})
+        # a shift that crossed midnight IST checks out on the record it checked in on (up to MAX_SHIFT_HOURS later);
+        # looking only at today's date said "Check in first." to anyone leaving after midnight
+        rec = await db.attendance.find_one({"user_id": user["id"], "date": today_ist()}) or await _open_overnight(user["id"])
         if not rec:
             raise HTTPException(status_code=400, detail="Check in first.")
         if rec.get("check_out"):
@@ -246,7 +261,8 @@ def create_router(db, get_current_user, require_role, create_audit_log):
             rec = await db.attendance.find_one({"_id": ObjectId(record_id)})
         except Exception:
             rec = None
-        if not rec:
+        # a manager corrects only the people they can see (their branch) — not another branch's register
+        if not rec or (viewer.get("role") != "admin" and rec.get("user_id") not in {p["id"] for p in await _people_for(viewer)}):
             raise HTTPException(status_code=404, detail="Record not found")
         upd: Dict[str, Any] = {"updated_at": _now().isoformat()}
         if body.check_in_at:

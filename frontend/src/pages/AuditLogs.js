@@ -27,6 +27,7 @@ import {
   Send
 } from 'lucide-react';
 import Can from '../components/Can';
+import { localDate } from '../lib/format';
 
 const actionConfig = {
   create: { label: 'Created', icon: Plus, color: 'bg-green-100 text-green-800' },
@@ -56,7 +57,7 @@ export default function AuditLogs() {
   const [loading, setLoading] = useState(true);
   const { isAdmin } = useAuth();
   const exportRows = () => logs.map(l => [new Date(l.timestamp).toLocaleString('en-IN'), l.user_name || '', l.action_type || '', l.entity_type || '', l.entity_id || '', typeof l.details === 'object' ? JSON.stringify(l.details) : String(l.details ?? '')]);
-  const exportName = () => `AuditLogs_${filterEntity}_${filterAction}_${new Date().toISOString().slice(0, 10)}`;
+  const exportName = () => `AuditLogs_${filterEntity}_${filterAction}_${localDate()}`;
   const exportPDF = () => {
     const doc = new jsPDF({ orientation: 'landscape' });
     doc.setFontSize(14); doc.text(`Audit Logs — entity: ${filterEntity}, action: ${filterAction} (${logs.length} entries)`, 14, 14);

@@ -5,9 +5,9 @@ persistence, and ProjectResponse echoing new fields.
 import os
 import pytest
 import requests
-TEST_ADMIN_PASSWORD = os.environ.get("TEST_ADMIN_PASSWORD") or "Admin@123"
-
-
+from http_env import require_server, throwaway_password, TEST_ADMIN_EMAIL, TEST_MANAGER_EMAIL, TEST_MANAGER_PASSWORD, TEST_STAFF_EMAIL, TEST_STAFF_PASSWORD  # noqa: E402,F401
+_SERVER_URL, TEST_ADMIN_PASSWORD = require_server(manager=False, staff=False)
+_DATA_PW_5 = throwaway_password()   # test data, random per run
 BASE_URL = os.environ.get('REACT_APP_BACKEND_URL').rstrip('/')
 ADMIN_EMAIL = 'admin@sensoper.com'
 ADMIN_PASSWORD = TEST_ADMIN_PASSWORD
@@ -87,7 +87,7 @@ class TestCompleteValidation:
         pid = _create_and_approve(auth_session, '_valid')
         try:
             inv = {'url': 'https://app.inverter.com', 'username': 'admin@test.com',
-                   'password': 'S3cret!', 'notes': 'Wifi: TestNet'}
+                   'password': _DATA_PW_5, 'notes': 'Wifi: TestNet'}
             r = auth_session.post(
                 f'{BASE_URL}/api/projects/{pid}/complete',
                 json={'completion_drive_link': 'https://drive.google.com/drive/folders/abc123',
@@ -105,7 +105,8 @@ class TestCompleteValidation:
             il = data.get('inverter_login') or {}
             assert il.get('url') == inv['url']
             assert il.get('username') == inv['username']
-            assert il.get('password') == inv['password']
+            assert il.get('password') is None and il.get('has_password') is True   # sent only on request (GET …/inverter-password), logged
+            assert auth_session.get(f'{BASE_URL}/api/projects/{pid}/inverter-password').json() == {'password': inv['password']}
             assert il.get('notes') == inv['notes']
             assert data.get('customer_feedback') == 'Very satisfied'
         finally:
@@ -149,7 +150,7 @@ class TestProjectListResponseFields:
             assert 'completion_drive_link' in data, 'completion_drive_link missing'
             assert 'inverter_login' in data, 'inverter_login missing'
             assert data['completion_drive_link'] == ''
-            assert data['inverter_login'] == {}
+            assert data['inverter_login'] == {'has_password': False}
         finally:
             auth_session.delete(f'{BASE_URL}/api/projects/{pid}')
 

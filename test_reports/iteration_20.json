@@ -38,7 +38,7 @@
   },
 
   "passed_tests": [
-    "Login admin@sensoper.com/Admin@123 -> /dashboard OK",
+    "Login admin@sensoper.com/<TEST_ADMIN_PASSWORD> -> /dashboard OK",
     "Notification Bell present in header (data-testid=notification-bell-btn)",
     "Notification count badge shows 11 (matches GET /api/alerts/dashboard total_alerts)",
     "Clicking bell opens notification-panel listing 'Profit Leakage Alerts · 11 active · Impact ₹1,62,907' with risky project entries",
@@ -80,7 +80,7 @@
   },
 
   "test_credentials": {
-    "admin": "admin@sensoper.com / Admin@123"
+    "admin": "admin@sensoper.com / <TEST_ADMIN_PASSWORD>"
   },
 
   "seed_data_creation": "Created 1 daily update via UI: type=leads, total_leads=10, qualified_leads=5, project_id=general (id 69f77c4abd2b463031501a0c)",
