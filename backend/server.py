@@ -503,13 +503,13 @@ class CustomerCreditCreate(BaseModel):
     customer_name: str
     customer_phone: str = ""
     invoice_ref: str = ""
-    total_amount: float = Field(gt=0)
+    total_amount: float             # checked in create_credit (above 0), with a clear message
     due_date: str = ""
     notes: str = ""
 
 class CreditPaymentCreate(BaseModel):
     credit_id: str
-    amount: float = Field(gt=0)   # a negative "payment" raised the balance
+    amount: float                   # checked in record_credit_payment (above 0, not more than due)
     payment_method: str = "cash"
     notes: str = ""
 

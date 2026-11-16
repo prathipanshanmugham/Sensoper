@@ -26,6 +26,14 @@ CGST+SGST off by a paisa; IGST decided by exact state text; a double-click made 
 midnight; interest-only loan payments; other branches' records opened by id; search boxes crashing on symbols; server
 errors on bad input; and the public file address handing out the vault key and audit archives.
 
+### Fixed on the ERP screens (every page checked as admin, manager, staff and on a phone)
+"Today" and "This month" were a day behind before 5:30 AM IST; direct sales saved 0% GST as 18% and an empty quantity
+as 1; Approve on a purchase order did nothing (or sent another PO's form); deliveries lost their stock links on edit;
+Locations was empty for a non-admin given access; negative amounts and blank names were accepted in partners, assets,
+users, terms, inventory, readings and support; several saves failed with no message; Generate Invoice showed on
+unapproved projects; the form builder could delete the built-in Customer and Location steps; the first-run help tip
+blocked the top-right buttons; support and company-login times showed 5h30m behind; and raw error lists could crash a page.
+
 ### AI connector (Claude / ChatGPT)
 The Claude connector you already use keeps working: no reconnecting.
 - **Settings → AI agents** opens with a *Connect Claude or ChatGPT* panel: the address to paste and three steps per app.
