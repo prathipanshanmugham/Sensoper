@@ -135,36 +135,22 @@ class TestEditableSystemTabs:
         print("Cleaned up - removed test field")
     
     def test_05_toggle_system_tab_location_inactive(self):
-        """Toggle Location system tab to inactive"""
+        """A system step (Location) can't be switched off: it is part of the New project form"""
         resp = self.session.get(f"{BASE_URL}/api/form-tabs")
         tabs = resp.json()
         location_tab = next((t for t in tabs if t['slug'] == 'location'), None)
         assert location_tab, "Location tab not found"
         tab_id = location_tab['id']
-        original_active = location_tab.get('active', True)
-        print(f"Location tab id: {tab_id}, active: {original_active}")
-        
-        # Toggle to inactive
-        update_resp = self.session.put(f"{BASE_URL}/api/form-tabs/{tab_id}", json={
-            "active": False
-        })
-        assert update_resp.status_code == 200, f"Failed to toggle: {update_resp.text}"
-        print("Toggled Location to inactive")
-        
-        # Verify toggle worked
+
+        update_resp = self.session.put(f"{BASE_URL}/api/form-tabs/{tab_id}", json={"active": False})
+        assert update_resp.status_code == 400, f"System step was switched off: {update_resp.text}"
+
         resp2 = self.session.get(f"{BASE_URL}/api/form-tabs")
-        tabs2 = resp2.json()
-        toggled_tab = next((t for t in tabs2 if t['id'] == tab_id), None)
-        assert toggled_tab, "Toggled tab not found"
-        assert toggled_tab.get('active') == False, f"Active not updated: {toggled_tab.get('active')}"
-        print(f"PASS: Location tab toggled to inactive")
-        
-        # Restore to active
-        restore_resp = self.session.put(f"{BASE_URL}/api/form-tabs/{tab_id}", json={
-            "active": True
-        })
-        assert restore_resp.status_code == 200
-        print("Restored Location to active")
+        still = next((t for t in resp2.json() if t['id'] == tab_id), None)
+        assert still and still.get('active', True) is True
+
+        # switching it on (e.g. one switched off before this rule) still works
+        assert self.session.put(f"{BASE_URL}/api/form-tabs/{tab_id}", json={"active": True}).status_code == 200
     
     def test_06_add_required_select_field_to_materials(self):
         """Add a required select field 'warranty_type' to Materials system tab"""

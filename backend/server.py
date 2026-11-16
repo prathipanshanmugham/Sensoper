@@ -6552,6 +6552,8 @@ async def update_form_tab(tab_id: str, updates: FormTabUpdate, request: Request)
     if updates.roles_visible is not None:
         update_data["roles_visible"] = updates.roles_visible
     if updates.active is not None:
+        if updates.active is False and tab.get("system"):   # Customer, Location… are the New project form itself
+            raise HTTPException(status_code=400, detail="A system step can't be switched off — it's part of the New project form. You can add or remove its extra fields.")
         update_data["active"] = updates.active
     await db.form_tabs.update_one({"_id": ObjectId(tab_id)}, {"$set": update_data})
     await create_audit_log(user["id"], user["name"], "update", "form_tab", tab_id)
