@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { Input } from './ui/input';
 import { CalendarRange } from 'lucide-react';
+import { localDate } from '../lib/format';
 
-const iso = (d) => d.toISOString().slice(0, 10);
+const iso = (d) => localDate(d);
 const startOfWeek = (d) => { const x = new Date(d); const day = (x.getDay() + 6) % 7; x.setDate(x.getDate() - day); return x; };
 export const PRESETS = [
   ['all', 'All time', () => ({})],

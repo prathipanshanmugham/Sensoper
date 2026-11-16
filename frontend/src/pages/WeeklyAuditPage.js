@@ -9,10 +9,11 @@ import { Loader2, Plus, CheckCircle2, AlertTriangle, Clock, FileDown, Undo2, X }
 import Can from '../components/Can';
 
 import { errText } from '../components/kit/PageBits';
+import { localDate } from '../lib/format';
 /** Iter 57 — Weekly Audit rebuilt around the walk-through: one status board (open / overdue / resolved), a 4-field quick
  *  point entry (what · severity · owner · by when), reusable templates, PDF export in place. */
 const SEV = [['low', 'Low', 'bg-slate-100 text-slate-700 border-slate-300'], ['medium', 'Medium', 'bg-amber-100 text-amber-800 border-amber-300'], ['high', 'High', 'bg-red-100 text-red-800 border-red-300']];
-const plusDays = (n) => { const d = new Date(); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); };
+const plusDays = (n) => { const d = new Date(); d.setDate(d.getDate() + n); return localDate(d); };
 
 export default function WeeklyAuditPage() {
   const { user, isAdmin, isManager } = useAuth();
@@ -36,7 +37,7 @@ export default function WeeklyAuditPage() {
   }, [isAdmin, isManager]);
   useEffect(() => { load(); }, [load]);
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = localDate();
   const points = useMemo(() => audits.flatMap(a => (a.issues || []).map((is, idx) => {
     const st = is.status === 'resolved' ? 'resolved' : (is.fix_deadline && is.fix_deadline < today ? 'overdue' : 'open');
     return { ...is, idx, audit_id: a.id, audit_title: a.title, st };

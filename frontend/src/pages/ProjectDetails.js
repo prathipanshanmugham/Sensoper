@@ -69,6 +69,7 @@ import { useLiveRefresh, savedHereRecently } from '../lib/liveSync';
 
 import { errText } from '../components/kit/PageBits';
 import { confirmAction } from '../components/kit/confirm';
+import { localDate } from '../lib/format';
 const money = (v) => `₹${Math.round(Number(v) || 0).toLocaleString('en-IN')}`;
 
 const CATEGORY_LABELS = { solar_panels: 'Solar Panels', inverters: 'Inverters', batteries: 'Batteries', mounting_structures: 'Mounting Structures', cables_accessories: 'Cables & Accessories' };
@@ -353,7 +354,7 @@ export default function ProjectDetails() {
 
     const buf = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
     const refNum = project.reference_number || `SCR-${id.slice(0,8).toUpperCase()}`;
-    saveAs(new Blob([buf], { type: 'application/octet-stream' }), `Project-${refNum}-${new Date().toISOString().slice(0,10)}.xlsx`);
+    saveAs(new Blob([buf], { type: 'application/octet-stream' }), `Project-${refNum}-${localDate()}.xlsx`);
   };
 
   const shareViaWhatsApp = () => {
@@ -463,7 +464,8 @@ export default function ProjectDetails() {
                 )}
               </DropdownMenuContent>
             </DropdownMenu>
-            {can('can_make_invoice') && <ProjectInvoiceCard projectId={id} companyProfile={companyProfile} terms={invoiceTerms || terms} />}
+            {/* A GST tax invoice takes the next number in the series — only once the quotation is approved */}
+            {can('can_make_invoice') && ['approved', 'completed'].includes(project.status) && <ProjectInvoiceCard projectId={id} companyProfile={companyProfile} terms={invoiceTerms || terms} />}
             {['approved', 'completed', 'submitted'].includes(project.status) && (
               <Link to={`/dashboard/site-diary?project=${id}`}><Button variant="outline" className="gap-2" data-testid="open-site-diary-btn"><NotebookPen className="h-4 w-4" />Site diary</Button></Link>
             )}

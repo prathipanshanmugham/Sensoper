@@ -5,6 +5,7 @@ import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '../ui/dialog';
 import { Loader2, Search } from 'lucide-react';
+import { errText } from '../kit/PageBits';
 
 export function AddProductDialog({ open, onOpenChange, items, platforms, existingItemIds, onCreated }) {
   const [query, setQuery] = useState('');
@@ -35,7 +36,7 @@ export function AddProductDialog({ open, onOpenChange, items, platforms, existin
       if (payload.platforms.some(p => Number.isNaN(p.listed_price))) throw new Error('Every selected platform needs a listed price');
       await ecommerceAPI.products.create(payload);
       reset(); onOpenChange(false); onCreated();
-    } catch (e) { setError(e.response?.data?.detail || e.message || 'Failed to add product'); } finally { setSaving(false); }
+    } catch (e) { setError(e.response ? errText(e, 'Failed to add product') : (e.message || 'Failed to add product')); } finally { setSaving(false); }
   };
 
   return (

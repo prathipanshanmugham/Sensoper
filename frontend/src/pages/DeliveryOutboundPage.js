@@ -58,13 +58,17 @@ export default function DeliveryOutboundPage() {
   const updateItem = (i, k, v) => setForm(p => { const items = [...p.items]; items[i] = {...items[i], [k]: v}; return {...p, items}; });
 
   const handleCreate = async () => {
-    if (!form.customer_name) return;
+    if (!form.customer_name.trim()) { toast.error('Enter the customer name'); return; }
+    const named = form.items.filter(i => i.name.trim());
+    if (!named.length) { toast.error('Add at least one item'); return; }
+    if (named.some(i => !(parseFloat(i.qty) > 0))) { toast.error('Every item needs a quantity of more than 0'); return; }
     setSaving(true);
     try {
-      const items = form.items.filter(i => i.name).map(i => ({name: i.name, qty: parseFloat(i.qty) || 0}));
+      const items = named.map(i => ({ name: i.name.trim(), qty: parseFloat(i.qty) }));
       await deliveriesAPI.create({...form, items, distance_km: parseFloat(form.distance_km) || 0});
       setShowForm(false); setForm({ project_id: '', customer_name: '', customer_address: '', customer_contact: '', items: [{ name: '', qty: '' }], transporter_name: '', vehicle_number: '', driver_contact: '', dispatch_date: '', delivery_date: '', distance_km: '', notes: '' }); await fetch();
-    } catch (err) { console.error(err); } finally { setSaving(false); }
+      toast.success('Delivery created');
+    } catch (err) { toast.error(errText(err, 'Could not create the delivery')); } finally { setSaving(false); }
   };
 
   const openEditDelivery = (d) => {
@@ -77,7 +81,10 @@ export default function DeliveryOutboundPage() {
     setSaving(true); setActionError('');
     try {
       const { id, ...rest } = editDelivery;
-      const items = rest.items.filter(i => i.name).map(i => ({ name: i.name, qty: parseFloat(i.qty) || 0 }));
+      const named = rest.items.filter(i => String(i.name || '').trim());
+      if (!named.length || named.some(i => !(parseFloat(i.qty) > 0))) { setActionError('Every item needs a name and a quantity of more than 0'); setSaving(false); return; }
+      // keep the rest of each line (inventory link, unit) — only the name and quantity are edited here
+      const items = named.map(i => ({ ...i, name: String(i.name).trim(), qty: parseFloat(i.qty) }));
       const r = await deliveriesAPI.edit(id, { ...rest, items });
       if (r.data.status === 'needs_confirmation') {
         if (await confirmAction(r.data.message)) await deliveriesAPI.edit(id, { ...rest, items, confirm_reconciliation_impact: true });

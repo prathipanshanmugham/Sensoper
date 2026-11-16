@@ -69,7 +69,7 @@ export default function SupportTicketsTab() {
   const saveSLA = async () => { try { await supportAPI.slaConfig.update(sla); setShowSLA(false); fetchAll(); } catch (e) { toast.error(errText(e, 'Save failed')); } };
 
   const handleCreate = async () => {
-    if (!form.customer_name || !form.description) { toast.error('Customer & description required'); return; }
+    if (!form.customer_name.trim() || !form.description.trim()) { toast.error('Customer & description required'); return; }
     setSaving(true);
     try { await supportAPI.tickets.create({ ...form, system_capacity_kw: parseFloat(form.system_capacity_kw) || 0 }); setShowCreate(false); setForm(emptyTicket()); fetchAll(); }
     catch (e) { toast.error(errText(e, 'Failed')); } finally { setSaving(false); }
@@ -196,7 +196,7 @@ export default function SupportTicketsTab() {
               <div><p className="text-xs text-slate-500 mb-1">Timeline</p><div className="space-y-1 max-h-52 overflow-y-auto">
                 {(selected.timeline || []).map((tl, i) => (
                   <div key={i} className="text-xs p-2 rounded bg-slate-50 border border-slate-100">
-                    <span className="font-medium">{tl.actor}</span> · <span className="text-slate-500">{(tl.timestamp || '').slice(0,16).replace('T',' ')}</span> · <span className="text-emerald-700">{tl.action}</span>
+                    <span className="font-medium">{tl.actor}</span> · <span className="text-slate-500">{tl.timestamp ? new Date(tl.timestamp).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }) : ''}</span> · <span className="text-emerald-700">{tl.action}</span>
                     {tl.note && <p className="text-slate-600 mt-0.5">{tl.note}</p>}
                   </div>
                 ))}

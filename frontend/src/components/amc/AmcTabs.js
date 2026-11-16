@@ -12,6 +12,7 @@ import { PlanCards } from './QuoteBuilder';
 import { amcQuoteMessage, generateAmcQuotePDF } from '../../utils/amcPdf';
 
 import { errText } from '../kit/PageBits';
+import { localDate } from '../../lib/format';
 const fmt = (d) => (d ? new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '—');
 const STATUS = { draft: 'bg-slate-100 text-slate-700', sent: 'bg-sky-50 text-sky-800', accepted: 'bg-emerald-50 text-emerald-800', declined: 'bg-rose-50 text-rose-700' };
 const STATUS_LABEL = { draft: 'Not sent', sent: 'Sent', accepted: 'Accepted', declined: 'Declined' };
@@ -116,7 +117,7 @@ export function QuotesTab({ brand, canEdit, reloadKey, onChanged }) {
                 <Button size="sm" variant="outline" className="h-9 gap-1" onClick={() => pdf(q)} disabled={busy === `pdf-${q.id}`} data-testid={`amc-quote-pdf-${q.id}`}>{busy === `pdf-${q.id}` ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}PDF</Button>
                 {q.phone && <Button size="sm" variant="outline" className="h-9 gap-1" onClick={() => share(q)} data-testid={`amc-quote-wa-${q.id}`}><MessageCircle className="h-4 w-4" />WhatsApp</Button>}
                 {canEdit && q.status === 'draft' && <Button size="sm" variant="ghost" className="h-9 gap-1" onClick={() => status(q, 'sent')} data-testid={`amc-quote-sent-${q.id}`}><Send className="h-4 w-4" />Sent</Button>}
-                {canEdit && !['accepted', 'declined'].includes(q.status) && <Button size="sm" className="h-9 gap-1 bg-emerald-600 text-white hover:bg-emerald-700" onClick={() => setAccept({ q, plan: q.recommended_plan || 'standard', start: new Date().toISOString().slice(0, 10) })} data-testid={`amc-quote-accept-${q.id}`}><Check className="h-4 w-4" />Customer said yes</Button>}
+                {canEdit && !['accepted', 'declined'].includes(q.status) && <Button size="sm" className="h-9 gap-1 bg-emerald-600 text-white hover:bg-emerald-700" onClick={() => setAccept({ q, plan: q.recommended_plan || 'standard', start: localDate() })} data-testid={`amc-quote-accept-${q.id}`}><Check className="h-4 w-4" />Customer said yes</Button>}
                 {canEdit && !['accepted', 'declined'].includes(q.status) && <Button size="sm" variant="ghost" className="h-9 text-slate-500" onClick={() => status(q, 'declined')} data-testid={`amc-quote-decline-${q.id}`}>Said no</Button>}
               </div>
             </div>

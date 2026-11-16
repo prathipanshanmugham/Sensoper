@@ -77,7 +77,7 @@ export default function TermsConditions() {
   };
 
   const handleSubmit = async () => {
-    if (!formData.title || !formData.content) {
+    if (!formData.title?.trim() || !formData.content?.trim()) {
       setError('Title and content are required');
       return;
     }

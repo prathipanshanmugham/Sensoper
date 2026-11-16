@@ -28,6 +28,7 @@ import { AmcSettingsSheet } from '../components/amc/AmcSettings';
 import { useLiveRefresh } from '../lib/liveSync';
 
 import { errText } from '../components/kit/PageBits';
+import { localDate } from '../lib/format';
 const STATUS_STYLES = { active: 'bg-emerald-100 text-emerald-700', expiring: 'bg-amber-100 text-amber-700', expired: 'bg-rose-100 text-rose-700', renewed: 'bg-blue-100 text-blue-700', cancelled: 'bg-slate-200 text-slate-600', 'on-hold': 'bg-violet-100 text-violet-700' };
 
 const blankContract = { customer_name: '', contact: '', site_address: '', district: '', system_type: 'on-grid', system_type_other: '', system_capacity_kw: '', contract_type: 'comprehensive', start_date: '', duration_months: 12, annual_value: '', billing_frequency: 'annual', visits_per_year: 2, notes: '' };
@@ -187,7 +188,7 @@ export default function AMCDashboard() {
                     </div>
                     {c.status === 'active' && (
                       <div className="flex flex-wrap gap-1.5">
-                        {canEdit && <Button size="sm" variant="outline" className="h-8 text-xs" onClick={() => setVisitDlg({ contract: c, date: new Date(Date.now() + 3 * 864e5).toISOString().slice(0, 10), tech: '', notes: '' })} data-testid={`amc-plan-visit-${c.id}`}>Plan visit</Button>}
+                        {canEdit && <Button size="sm" variant="outline" className="h-8 text-xs" onClick={() => setVisitDlg({ contract: c, date: localDate(new Date(Date.now() + 3 * 864e5)), tech: '', notes: '' })} data-testid={`amc-plan-visit-${c.id}`}>Plan visit</Button>}
                         {ourManager && <Button size="sm" variant="outline" className="h-8 text-xs" onClick={() => handleRenew(c)} data-testid={`renew-amc-${c.id}`}>Renew</Button>}
                         {ourManager && <Button size="sm" variant="ghost" className="h-8 text-xs text-rose-600" onClick={() => handleCancel(c)} data-testid={`cancel-amc-${c.id}`}>Cancel</Button>}
                       </div>
@@ -202,7 +203,7 @@ export default function AMCDashboard() {
 
       <ContractSheet contractId={openContract} onOpenChange={(v) => !v && setOpenContract(null)} isAdmin={isAdmin}
         canChange={!!openContract && ourManager} onChanged={changed}
-        onPlanVisit={canEdit ? (c) => setVisitDlg({ contract: c, date: new Date(Date.now() + 3 * 864e5).toISOString().slice(0, 10), tech: '', notes: '' }) : null}
+        onPlanVisit={canEdit ? (c) => setVisitDlg({ contract: c, date: localDate(new Date(Date.now() + 3 * 864e5)), tech: '', notes: '' }) : null}
         onRenew={handleRenew} onCancel={handleCancel} />
       <QuoteBuilder open={quoteOpen} onOpenChange={setQuoteOpen} prefill={prefill} onSaved={() => { changed(); setTab('quotes'); }} />
       {isAdmin && <AmcSettingsSheet open={settingsOpen} onOpenChange={setSettingsOpen} onSaved={() => { changed(); reloadBrand(); }} />}

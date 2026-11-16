@@ -15,7 +15,7 @@ import math
 import re
 from typing import List, Optional, Dict, Any
 from datetime import datetime, timezone, timedelta
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from bson import ObjectId
 from fastapi import APIRouter, HTTPException, Request
 from pymongo import ReturnDocument
@@ -108,7 +108,7 @@ class SaleFullEdit(BaseModel):
 
 class SalePaymentAdd(BaseModel):
     mode: str
-    amount: float
+    amount: float = Field(gt=0)   # a negative payment raised the balance due
     reference: Optional[str] = None
 
 

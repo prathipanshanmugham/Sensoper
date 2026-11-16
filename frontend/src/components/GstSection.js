@@ -11,12 +11,13 @@ import { Loader2, Plus, Save, Trash2, Edit, ArrowDownToLine, ArrowUpFromLine, Fi
 import { errText } from './kit/PageBits';
 import { toast } from 'sonner';
 import { confirmAction } from './kit/confirm';
+import { localDate } from '../lib/format';
 const GST_META = {
   gst_paid: { label: 'GST Paid', icon: ArrowUpFromLine, color: 'rose', accent: 'border-rose-200 bg-rose-50/40' },
   gst_input: { label: 'GST Input Credit', icon: ArrowDownToLine, color: 'sky', accent: 'border-sky-200 bg-sky-50/40' }
 };
 
-const blank = { entry_type: 'gst_paid', entry_date: new Date().toISOString().slice(0,10), amount: '', description: '' };
+const blank = { entry_type: 'gst_paid', entry_date: localDate(), amount: '', description: '' };
 
 export default function GstSection() {
   const [entries, setEntries] = useState([]);

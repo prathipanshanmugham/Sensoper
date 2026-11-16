@@ -7,6 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../components/ui/dialog';
 import { Loader2, Plus, MapPin, Trash2, Pencil, Users as UsersIcon } from 'lucide-react';
 import Can from '../components/Can';
+import { useAuth } from '../contexts/AuthContext';
 
 import { errText } from '../components/kit/PageBits';
 import { toast } from 'sonner';
@@ -14,6 +15,7 @@ import { confirmAction } from '../components/kit/confirm';
 const TYPES = ['branch', 'warehouse', 'business_unit', 'head_office'];
 
 export default function LocationsPage() {
+  const { isAdmin } = useAuth();
   const [locations, setLocations] = useState([]);
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -24,23 +26,25 @@ export default function LocationsPage() {
   const [assignForm, setAssignForm] = useState({ location_ids: [], default_location_id: '' });
 
   const fetchAll = useCallback(async () => {
+    // The user list is admin-only: someone given Locations in Permissions still gets the locations themselves
     try {
-      const [l, u] = await Promise.all([locationsAPI.list(), usersAPI.getAll()]);
+      const [l, u] = await Promise.all([locationsAPI.list(), isAdmin ? usersAPI.getAll() : Promise.resolve({ data: [] })]);
       setLocations(l.data); setUsers(u.data);
-    } catch (e) { console.error(e); } finally { setLoading(false); }
-  }, []);
+    } catch (e) { toast.error(errText(e, 'Could not load the locations')); } finally { setLoading(false); }
+  }, [isAdmin]);
   useEffect(() => { fetchAll(); }, [fetchAll]);
 
   const handleCreate = async () => {
-    if (!form.name.trim()) return;
-    try { await locationsAPI.create(form); setShowCreate(false); setForm({ name: '', code: '', type: 'branch', address: '', district: '', state: '' }); await fetchAll(); }
-    catch (e) { toast.error('Failed to create location'); }
+    if (!form.name.trim()) { toast.error('Enter the location name'); return; }
+    try { await locationsAPI.create({ ...form, name: form.name.trim(), code: form.code.trim() }); setShowCreate(false); setForm({ name: '', code: '', type: 'branch', address: '', district: '', state: '' }); await fetchAll(); }
+    catch (e) { toast.error(errText(e, 'Failed to create location')); }
   };
 
   const openEdit = (l) => { setEditing(l); };
   const saveEdit = async () => {
-    try { await locationsAPI.update(editing.id, { name: editing.name, code: editing.code, type: editing.type, address: editing.address, district: editing.district, state: editing.state }); setEditing(null); await fetchAll(); }
-    catch (e) { toast.error('Failed to save'); }
+    if (!String(editing.name || '').trim()) { toast.error('Enter the location name'); return; }
+    try { await locationsAPI.update(editing.id, { name: editing.name.trim(), code: (editing.code || '').trim(), type: editing.type, address: editing.address, district: editing.district, state: editing.state }); setEditing(null); await fetchAll(); }
+    catch (e) { toast.error(errText(e, 'Failed to save')); }
   };
 
   const removeLocation = async (id) => {
@@ -52,7 +56,7 @@ export default function LocationsPage() {
   const toggleLocation = (id) => setAssignForm(p => ({ ...p, location_ids: p.location_ids.includes(id) ? p.location_ids.filter(x => x !== id) : [...p.location_ids, id] }));
   const saveAssign = async () => {
     try { await locationsAPI.assignUser(assigningUser.id, assignForm); setAssigningUser(null); await fetchAll(); }
-    catch (e) { toast.error('Failed to assign'); }
+    catch (e) { toast.error(errText(e, 'Failed to assign')); }
   };
 
   if (loading) return <div className="flex justify-center py-24"><Loader2 className="h-8 w-8 animate-spin text-emerald-600" /></div>;
@@ -87,7 +91,7 @@ export default function LocationsPage() {
           </CardContent>
         </Card>
 
-        <Card className="border-slate-200">
+        {isAdmin && <Card className="border-slate-200">
           <CardHeader className="py-3"><CardTitle className="text-sm font-['Outfit'] flex items-center gap-1.5"><UsersIcon className="h-4 w-4" />User Location Assignment</CardTitle></CardHeader>
           <CardContent className="space-y-2">
             {users.map(u => (
@@ -100,7 +104,7 @@ export default function LocationsPage() {
               </div>
             ))}
           </CardContent>
-        </Card>
+        </Card>}
       </div>
 
       <Dialog open={showCreate} onOpenChange={setShowCreate}>

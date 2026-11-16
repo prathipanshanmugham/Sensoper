@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { usersAPI, employeeScoresAPI } from '../utils/api';
-import { formatApiErrorDetail } from '../contexts/AuthContext';
+import { formatApiErrorDetail, useAuth } from '../contexts/AuthContext';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
@@ -23,6 +23,7 @@ import {
 
 import { errText } from '../components/kit/PageBits';
 import { toast } from 'sonner';
+import { localDate } from '../lib/format';
 const roleConfig = {
   admin: { label: 'Admin', color: 'bg-purple-100 text-purple-800' },
   manager: { label: 'Manager', color: 'bg-blue-100 text-blue-800' },
@@ -30,6 +31,7 @@ const roleConfig = {
 };
 
 export default function UserManagement() {
+  const { user: me } = useAuth();
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showDialog, setShowDialog] = useState(false);
@@ -45,7 +47,7 @@ export default function UserManagement() {
   const [actionLoading, setActionLoading] = useState(false);
   const [error, setError] = useState('');
   const [scoreUser, setScoreUser] = useState(null);
-  const [scoreForm, setScoreForm] = useState({ period: new Date().toISOString().slice(0, 7), score: 4, notes: '' });
+  const [scoreForm, setScoreForm] = useState({ period: localDate().slice(0, 7), score: 4, notes: '' });
   const [scoreSaving, setScoreSaving] = useState(false);
 
   const fetchUsers = useCallback(async () => {
@@ -65,7 +67,7 @@ export default function UserManagement() {
 
   const openScoreDialog = (user) => {
     setScoreUser(user);
-    setScoreForm({ period: new Date().toISOString().slice(0, 7), score: 4, notes: '' });
+    setScoreForm({ period: localDate().slice(0, 7), score: 4, notes: '' });
   };
 
   const handleLogScore = async () => {
@@ -100,13 +102,14 @@ export default function UserManagement() {
   };
 
   const handleSubmit = async () => {
+    if (!String(formData.name || '').trim()) { setError('Enter the person’s name'); return; }
     setActionLoading(true);
     setError('');
 
     try {
       if (editingUser) {
         await usersAPI.update(editingUser.id, {
-          name: formData.name,
+          name: formData.name.trim(),
           phone: formData.phone,
           role: formData.role,
           daily_report_required: !!formData.daily_report_required,
@@ -118,7 +121,7 @@ export default function UserManagement() {
           setActionLoading(false);
           return;
         }
-        await usersAPI.create(formData);
+        await usersAPI.create({ ...formData, name: formData.name.trim() });
       }
       setShowDialog(false);
       fetchUsers();
@@ -137,7 +140,7 @@ export default function UserManagement() {
       setEditingUser(null);
       fetchUsers();
     } catch (err) {
-      console.error('Failed to delete user:', err);
+      toast.error(errText(err, 'Could not delete this user'));
     } finally {
       setActionLoading(false);
     }
@@ -219,6 +222,7 @@ export default function UserManagement() {
                         >
                           <Edit className="h-4 w-4" />
                         </Button>
+                        {user.id !== me?.id && (   // you can't delete your own login (the server refuses it)
                         <Button
                           variant="outline"
                           size="icon"
@@ -231,6 +235,7 @@ export default function UserManagement() {
                         >
                           <Trash2 className="h-4 w-4" />
                         </Button>
+                        )}
                       </div>
                     </div>
                   </CardContent>
@@ -324,7 +329,7 @@ export default function UserManagement() {
             </Button>
             <Button
               onClick={handleSubmit}
-              disabled={actionLoading || !formData.name}
+              disabled={actionLoading || !String(formData.name || '').trim()}
               className="bg-[#4ADE40] hover:bg-[#3dba35] text-black"
               data-testid="save-user-btn"
             >

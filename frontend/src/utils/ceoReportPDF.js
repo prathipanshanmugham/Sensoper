@@ -1,6 +1,7 @@
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { loadUnicodeFont } from './pdfFont';
+import { localDate } from '../lib/format';
 
 // Strict one-page A4 CEO Report — mirrors every block on the CEO Dashboard screen.
 const M = 10;               // page margin (mm)
@@ -153,5 +154,5 @@ export async function generateCeoReportPDF({ data, support, sparkline = [], loca
   doc.setFont(FONT, 'normal'); doc.setFontSize(6); doc.setTextColor(...MUTED);
   doc.text('Figures use the same aggregation as the CEO Dashboard / Performance Master Report. Revenue channels are reported separately and never blended.', M, 292.5);
   doc.text('Page 1 of 1', 210 - M, 292.5, { align: 'right' });
-  doc.save(`CEO_Report_${new Date().toISOString().slice(0, 10)}.pdf`);
+  doc.save(`CEO_Report_${localDate()}.pdf`);
 }

@@ -213,7 +213,7 @@ export default function CompanyProfile() {
       await companyAPI.update(profile.id, { is_active: !profile.is_active });
       fetchProfiles();
     } catch (err) {
-      console.error('Failed to toggle active:', err);
+      toast.error(errText(err, 'Could not change the active profile'));
     } finally {
       setActionLoading(false);
     }

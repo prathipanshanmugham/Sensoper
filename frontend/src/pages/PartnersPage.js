@@ -16,6 +16,7 @@ import Can from '../components/Can';
 import { errText } from '../components/kit/PageBits';
 import { toast } from 'sonner';
 import { confirmAction } from '../components/kit/confirm';
+import { localDate } from '../lib/format';
 const STATUS_COLORS = { active: 'bg-emerald-100 text-emerald-800', inactive: 'bg-slate-100 text-slate-600', blacklisted: 'bg-red-100 text-red-800' };
 
 function StarRating({ value = 0, size = 'sm' }) {
@@ -38,7 +39,7 @@ const emptyForm = () => ({
   partner_type: 'external_subcontractor', name: '', company_name: '', contact_person: '', phone: '', email: '',
   address: '', gstin: '', pan: '', specialities: [], service_districts: '', team_size: 0, status: 'active',
   retention_pct: 10, payment_terms: '', non_solicit_acknowledged: false,
-  rate_card: [{ activity: '', unit: '', rate: '', effective_from: new Date().toISOString().slice(0, 10) }]
+  rate_card: [{ activity: '', unit: '', rate: '', effective_from: localDate() }]
 });
 
 export default function PartnersPage() {
@@ -84,7 +85,7 @@ export default function PartnersPage() {
   const toggleFilterTag = (tag) => setFilters(p => ({ ...p, selected_tags: p.selected_tags.includes(tag) ? p.selected_tags.filter(t => t !== tag) : [...p.selected_tags, tag] }));
   const toggleFormTag = (s) => setForm(p => ({ ...p, specialities: p.specialities.includes(s) ? p.specialities.filter(x => x !== s) : [...p.specialities, s] }));
   const updateRateRow = (i, field, val) => setForm(p => ({ ...p, rate_card: p.rate_card.map((r, idx) => idx === i ? { ...r, [field]: val } : r) }));
-  const addRateRow = () => setForm(p => ({ ...p, rate_card: [...p.rate_card, { activity: '', unit: '', rate: '', effective_from: new Date().toISOString().slice(0, 10) }] }));
+  const addRateRow = () => setForm(p => ({ ...p, rate_card: [...p.rate_card, { activity: '', unit: '', rate: '', effective_from: localDate() }] }));
   const removeRateRow = (i) => setForm(p => ({ ...p, rate_card: p.rate_card.filter((_, idx) => idx !== i) }));
 
   const handleCreate = async () => {

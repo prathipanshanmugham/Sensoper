@@ -14,6 +14,7 @@ import { Textarea } from '../components/ui/textarea';
 import { Loader2, ArrowLeft, Star, Plus, ShieldCheck, Clock, Wallet, Pencil, Trash2 } from 'lucide-react';
 
 import { errText } from '../components/kit/PageBits';
+import { localDate } from '../lib/format';
 const STATUS_COLORS = { active: 'bg-emerald-100 text-emerald-800', inactive: 'bg-slate-100 text-slate-600', blacklisted: 'bg-red-100 text-red-800' };
 const ASSIGN_STATUS_COLORS = { assigned: 'bg-blue-100 text-blue-800', in_progress: 'bg-amber-100 text-amber-800', completed: 'bg-emerald-100 text-emerald-800', payment_pending: 'bg-orange-100 text-orange-800', closed: 'bg-slate-100 text-slate-600' };
 
@@ -40,7 +41,7 @@ export default function PartnerDetail() {
   const [assignForm, setAssignForm] = useState({ project_id: '', expected_completion: '', activities: [] });
   const [scopeHint, setScopeHint] = useState(null);
   const [showRate, setShowRate] = useState(false);
-  const [rateForm, setRateForm] = useState({ activity: '', unit: '', rate: '', effective_from: new Date().toISOString().slice(0, 10) });
+  const [rateForm, setRateForm] = useState({ activity: '', unit: '', rate: '', effective_from: localDate() });
   const [showPayment, setShowPayment] = useState(null);
   const [paymentForm, setPaymentForm] = useState({ amount: '', mode: 'bank_transfer', type: 'advance', reference: '', notes: '' });
   const [showQuality, setShowQuality] = useState(null);
@@ -90,6 +91,7 @@ export default function PartnerDetail() {
 
   const submitAssign = async () => {
     if (!assignForm.project_id || assignForm.activities.length === 0) { setError('Pick a project and at least one activity'); return; }
+    if (assignForm.activities.some(a => !(parseFloat(a.quantity) > 0))) { setError('Each activity needs a quantity of more than 0'); return; }
     setSaving(true); setError('');
     try {
       await partnersAPI.createAssignment(id, { ...assignForm, activities: assignForm.activities.map(a => ({ activity: a.activity, quantity: parseFloat(a.quantity) || 0 })) });
@@ -98,12 +100,14 @@ export default function PartnerDetail() {
   };
 
   const submitRateCard = async () => {
-    setSaving(true);
+    if (!rateForm.activity.trim() || !(parseFloat(rateForm.rate) > 0) || !rateForm.effective_from) { setError('Enter the activity, a rate of more than ₹0 and the date it starts'); return; }
+    setSaving(true); setError('');
     try { await partnersAPI.addRateCard(id, { ...rateForm, rate: parseFloat(rateForm.rate) }); setShowRate(false); fetchPartner(); }
     catch (err) { setError(errText(err, 'Failed')); } finally { setSaving(false); }
   };
 
   const submitPayment = async () => {
+    if (!(parseFloat(paymentForm.amount) > 0)) { setError('Enter the amount paid (more than ₹0)'); return; }
     setSaving(true); setError('');
     try {
       await partnersAPI.recordPayment(id, { assignment_id: showPayment.id, amount: parseFloat(paymentForm.amount), mode: paymentForm.mode, type: paymentForm.type, reference: paymentForm.reference, notes: paymentForm.notes });
@@ -160,6 +164,8 @@ export default function PartnerDetail() {
   const toggleEditTag = (t) => setEditForm(p => ({ ...p, specialities: p.specialities.includes(t) ? p.specialities.filter(x => x !== t) : [...p.specialities, t] }));
 
   const submitEdit = async (force = false) => {
+    if (!String(editForm.name || '').trim()) { setError('Enter the partner name'); return; }
+    if (Number(editForm.team_size) < 0 || Number(editForm.retention_pct) < 0 || Number(editForm.retention_pct) > 100) { setError('Team size can’t be negative, and retention must be between 0 and 100%'); return; }
     setSaving(true); setError('');
     try {
       const payload = {
@@ -181,6 +187,7 @@ export default function PartnerDetail() {
 
   const startRateEdit = (idx, r) => { setRateEditIndex(idx); setRateEditForm({ activity: r.activity, unit: r.unit || '', rate: r.rate, effective_from: r.effective_from }); };
   const saveRateEdit = async () => {
+    if (!String(rateEditForm.activity || '').trim() || !(parseFloat(rateEditForm.rate) > 0)) { toast.error('Enter the activity and a rate of more than ₹0'); return; }
     try {
       await partnersAPI.editRateCard(id, { index: rateEditIndex, ...rateEditForm, rate: parseFloat(rateEditForm.rate) });
       setRateEditIndex(null); fetchPartner();
@@ -248,7 +255,7 @@ export default function PartnerDetail() {
                 {canManage && (
                   <div className="flex gap-2 mt-3 flex-wrap">
                     <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => { setShowQuality(a); setQualityForm({ status: a.status, actual_completion: a.actual_completion || '', quality_rating: a.quality_rating || '', quality_notes: a.quality_notes || '', delay_reason: a.delay_reason || '' }); }} data-testid={`update-status-${a.id}`}>Update Status / Rating</Button>
-                    <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => setShowPayment(a)} data-testid={`record-payment-${a.id}`}>Record Payment</Button>
+                    <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => { setError(''); setShowPayment(a); }} data-testid={`record-payment-${a.id}`}>Record Payment</Button>
                     {!a.retention_released && a.retention_held > 0 && (
                       <Button size="sm" variant="outline" className="h-7 text-xs text-emerald-700 border-emerald-300" onClick={() => handleReleaseRetention(a.id)} data-testid={`release-retention-${a.id}`}>Release Retention</Button>
                     )}
@@ -262,7 +269,7 @@ export default function PartnerDetail() {
 
       {tab === 'rate_card' && (
         <Card className="border-slate-200" data-testid="partner-rate-card">
-          <CardHeader className="py-3 flex-row items-center justify-between"><CardTitle className="text-sm font-['Outfit']">Rate Card (versioned)</CardTitle>{canManage && <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={() => setShowRate(true)} data-testid="add-rate-card-btn"><Plus className="h-3 w-3" />Add Rate</Button>}</CardHeader>
+          <CardHeader className="py-3 flex-row items-center justify-between"><CardTitle className="text-sm font-['Outfit']">Rate Card (versioned)</CardTitle>{canManage && <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={() => { setError(''); setShowRate(true); }} data-testid="add-rate-card-btn"><Plus className="h-3 w-3" />Add Rate</Button>}</CardHeader>
           <CardContent>
             <table className="w-full text-sm">
               <thead><tr className="text-left text-slate-500 border-b"><th className="py-2">Activity</th><th>Unit</th><th>Rate</th><th>Effective From</th>{canManage && <th></th>}</tr></thead>
@@ -277,7 +284,7 @@ export default function PartnerDetail() {
                   </tr>
                 ) : (
                   <tr key={i} className="border-b last:border-0" data-testid={`rate-row-${i}`}>
-                    <td className="py-2">{r.activity}</td><td>{r.unit}</td><td>₹{r.rate}</td><td>{r.effective_from}</td>
+                    <td className="py-2">{r.activity}</td><td>{r.unit}</td><td>₹{Number(r.rate || 0).toLocaleString('en-IN')}</td><td>{r.effective_from}</td>
                     {canManage && <td><Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => startRateEdit(i, r)} data-testid={`edit-rate-${i}`}><Pencil className="h-3 w-3 text-slate-500" /></Button></td>}
                   </tr>
                 )
@@ -350,6 +357,7 @@ export default function PartnerDetail() {
         <DialogContent>
           <DialogHeader><DialogTitle>Add Rate Card Entry</DialogTitle></DialogHeader>
           <div className="space-y-3 py-2">
+            {error && <div className="p-2 text-sm text-red-600 bg-red-50 border border-red-200 rounded">{error}</div>}
             <div className="space-y-1"><Label>Activity</Label><Input value={rateForm.activity} onChange={e => setRateForm(p => ({ ...p, activity: e.target.value }))} data-testid="new-rate-activity" /></div>
             <div className="space-y-1"><Label>Unit</Label><Input value={rateForm.unit} onChange={e => setRateForm(p => ({ ...p, unit: e.target.value }))} /></div>
             <div className="space-y-1"><Label>Rate ₹</Label><Input type="number" value={rateForm.rate} onChange={e => setRateForm(p => ({ ...p, rate: e.target.value }))} data-testid="new-rate-amount" /></div>
