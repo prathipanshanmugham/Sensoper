@@ -5,6 +5,7 @@ In-process, no MongoDB server:
 """
 import asyncio
 import os
+import re
 import secrets
 import sys
 from datetime import date, datetime, timedelta, timezone
@@ -68,7 +69,8 @@ def test_cors_never_echoes_any_origin():
 
 def test_no_built_in_admin_password_in_the_code():
     src = open(os.path.join(os.path.dirname(server.__file__), "server.py")).read()
-    assert "Admin@123" not in src and 'or "Admin' not in src
+    # no "ADMIN_PASSWORD or <a literal>" fallback anywhere: the admin password only ever comes from the environment
+    assert not re.search(r"""(ADMIN_PASSWORD|admin_password)[^\n]*\bor\s*(["'])[^"'\n]+\2""", src)
 
 
 # ───────────── the API ─────────────
