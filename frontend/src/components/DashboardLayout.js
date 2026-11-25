@@ -7,10 +7,14 @@ import { Badge } from './ui/badge';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from './ui/sheet';
 import {
   LogOut, Menu, X, Bell, AlertTriangle, HelpCircle, Search, ChevronDown, Plus, Home, FolderKanban, CalendarCheck,
-  LayoutGrid, Lightbulb, KeyRound,
+  LayoutGrid, Lightbulb, KeyRound, Contact, UserPlus, FileSpreadsheet, FolderPlus, Keyboard,
 } from 'lucide-react';
 import { NAV_SECTIONS, canSee, routeInfo, activeHref } from '../lib/navigation';
 import { useLiveRefresh } from '../lib/liveSync';
+import { useHotkeys, GO_TO, MOD } from '../lib/hotkeys';
+import CommandPalette from './CommandPalette';
+import ShortcutsHelp from './ShortcutsHelp';
+import NewLeadDialog from './crm/NewLeadDialog';
 
 const LOGO_URL = `${process.env.PUBLIC_URL}/logo.png`;
 const COLLAPSE_KEY = 'sensoper.nav.collapsed';
@@ -153,7 +157,8 @@ function HelpPanel({ open, onOpenChange, info }) {
           </div>
         )}
         <div className="mt-8 border-t border-slate-200 pt-4 text-xs leading-relaxed text-slate-500">
-          Looking for another screen? Use <b>Find a page</b> at the top of the menu. Every screen has this Help button.
+          Looking for another screen? Press <b>{MOD}+K</b> to search everything, or use <b>Find a page</b> at the top of the menu.
+          Press <b>?</b> for every keyboard shortcut.
         </div>
       </SheetContent>
     </Sheet>
@@ -233,6 +238,9 @@ export default function DashboardLayout({ children }) {
   const [alertInfo, setAlertInfo] = useState(null);
   const [nudge, setNudge] = useState(() => !readStore(HELP_SEEN_KEY, false));
   const seesAlerts = allowed('module_alerts');
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  const [keysOpen, setKeysOpen] = useState(false);
+  const [newLeadOpen, setNewLeadOpen] = useState(false);
 
   const fetchStats = useCallback(async () => { try { setStats((await dashboardAPI.getStats()).data); } catch { /* the menu works without counts */ } }, []);
   const fetchAlerts = useCallback(async () => {
@@ -245,7 +253,8 @@ export default function DashboardLayout({ children }) {
     } catch { /* optional */ }
   }, [seesAlerts]);
   useEffect(() => { fetchStats(); fetchAlerts(); }, [fetchStats, fetchAlerts]);
-  useLiveRefresh(['projects', 'approvals', 'inventory', 'purchases', 'amc', 'action-requests', 'hr', 'calendar', 'loans', 'brands'], () => { fetchStats(); fetchAlerts(); }, { enabled: !!user });
+  useLiveRefresh(['projects', 'approvals', 'inventory', 'purchases', 'amc', 'action-requests', 'hr', 'calendar', 'loans', 'brands', 'crm', 'public'], () => { fetchStats(); fetchAlerts(); }, { enabled: !!user });
+  useEffect(() => { window.addEventListener('sensoper:leads-changed', fetchStats); return () => window.removeEventListener('sensoper:leads-changed', fetchStats); }, [fetchStats]);
   useEffect(() => { setDrawerOpen(false); window.scrollTo?.(0, 0); }, [location.pathname]);
 
   const sections = useMemo(() => NAV_SECTIONS
@@ -265,9 +274,34 @@ export default function DashboardLayout({ children }) {
   };
   const openHelp = () => { setHelpOpen(true); if (nudge) { setNudge(false); writeStore(HELP_SEEN_KEY, true); } };
 
+  // ── keyboard: Ctrl+K search, N new lead, Q new quotation, G + letter to go somewhere, / search box, ? shortcuts ──
+  const canLead = allowed('module_leads', 'create');
+  const canQuote = allowed('module_material_quotes', 'create');
+  const newLead = useCallback(() => {
+    if (location.pathname === '/dashboard/leads') navigate('/dashboard/leads?new=1');
+    else setNewLeadOpen(true);
+  }, [location.pathname, navigate]);
+  const goKeys = useMemo(() => Object.fromEntries(GO_TO.map(([k, href]) => [href, k])), []);
+  const paletteActions = useMemo(() => [
+    canLead && { id: 'lead', label: 'New lead', sub: 'Someone called, walked in or messaged', icon: UserPlus, keys: ['N'], keywords: 'add enquiry customer crm', run: newLead },
+    canQuote && { id: 'quote', label: 'New material quotation', sub: 'Itemised quote with GST and a PDF', icon: FileSpreadsheet, keys: ['Q'], keywords: 'quote estimate price', run: () => navigate('/dashboard/quotations/new') },
+    can('/dashboard/projects/new') && { id: 'project', label: 'New project (site visit)', icon: FolderPlus, keywords: 'site visit solar install', run: () => navigate('/dashboard/projects/new') },
+    { id: 'keys', label: 'Keyboard shortcuts', icon: Keyboard, keys: ['?'], keywords: 'help keys hotkeys', run: () => setKeysOpen(true) },
+  ].filter(Boolean), [canLead, canQuote, newLead, navigate, visible]);   // eslint-disable-line react-hooks/exhaustive-deps
+  const palettePages = useMemo(() => sections.flatMap((s) => s.items.map((i) => ({ ...i, section: s.label, keys: goKeys[i.href] ? ['G', goKeys[i.href].toUpperCase()] : undefined }))), [sections, goKeys]);
+  useHotkeys([
+    { keys: 'mod+k', inInput: true, inDialog: true, run: () => setPaletteOpen((v) => !v) },
+    { keys: '?', run: () => setKeysOpen(true) },
+    { keys: '/', run: () => { const el = document.querySelector('[data-shortcut="search"]'); if (el) el.focus(); else setPaletteOpen(true); } },
+    { keys: 'n', when: () => canLead, run: newLead },
+    { keys: 'q', when: () => canQuote, run: () => navigate('/dashboard/quotations/new') },
+    ...GO_TO.map(([k, href]) => ({ keys: `g ${k}`, when: () => can(href), run: () => navigate(href) })),
+  ], [canLead, canQuote, newLead, visible]);
+
   const sidebarProps = { sections, active, stats, user, onLogout: handleLogout };
   const bottomItems = [
     { href: '/dashboard', label: 'Home', icon: Home },
+    { href: '/dashboard/leads', label: 'Leads', icon: Contact, badge: stats?.leads_due },
     { href: '/dashboard/projects', label: 'Projects', icon: FolderKanban },
     { href: '/dashboard/projects/new', label: 'New', icon: Plus, primary: true },
     { href: '/dashboard/daily-report', label: 'Report', icon: CalendarCheck },
@@ -294,6 +328,10 @@ export default function DashboardLayout({ children }) {
               {info?.section && info.section !== info.label && <><span className="hidden shrink-0 text-sm text-slate-500 sm:inline">{info.section}</span><span className="hidden text-slate-300 sm:inline" aria-hidden="true">/</span></>}
               <p className="truncate font-['Outfit'] text-base font-semibold text-slate-900 sm:text-[15px]" data-testid="page-title">{info?.label}</p>
             </div>
+            <button type="button" onClick={() => setPaletteOpen(true)} className="hidden h-9 items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 pl-2.5 pr-1.5 text-sm text-slate-500 transition-colors hover:border-slate-300 hover:bg-white md:flex" data-testid="open-palette" aria-label={`Search everything (${MOD}+K)`}>
+              <Search className="h-4 w-4" /><span className="pr-6">Search…</span><kbd className="rounded border border-slate-200 bg-white px-1.5 text-[10px] font-medium">{MOD} K</kbd>
+            </button>
+            <button type="button" onClick={() => setPaletteOpen(true)} className="rounded-full p-2 text-slate-600 hover:bg-slate-100 md:hidden" aria-label="Search everything" data-testid="open-palette-mobile"><Search className="h-5 w-5" /></button>
             <div className="relative">
               <Button variant="ghost" size="sm" onClick={openHelp} className="gap-1.5 px-2.5 text-slate-600" data-testid="help-btn" aria-label="Help for this screen">
                 <HelpCircle className="h-5 w-5" /><span className="hidden sm:inline">Help</span>
@@ -339,8 +377,9 @@ export default function DashboardLayout({ children }) {
               );
             }
             return (
-              <Link key={i.href} to={i.href} className={`flex flex-1 flex-col items-center gap-0.5 py-2 text-[11px] font-medium ${on ? 'text-emerald-700' : 'text-slate-500'}`} aria-current={on ? 'page' : undefined} data-testid={`bottom-${i.label.toLowerCase()}`}>
+              <Link key={i.href} to={i.href} className={`relative flex flex-1 flex-col items-center gap-0.5 py-2 text-[11px] font-medium ${on ? 'text-emerald-700' : 'text-slate-500'}`} aria-current={on ? 'page' : undefined} data-testid={`bottom-${i.label.toLowerCase()}`}>
                 <i.icon className="h-5 w-5" />{i.label}
+                {i.badge > 0 && <span className="absolute right-[calc(50%-18px)] top-1 min-w-[16px] rounded-full bg-red-500 px-1 text-center text-[10px] font-semibold leading-4 text-white">{i.badge > 99 ? '99+' : i.badge}</span>}
               </Link>
             );
           })}
@@ -351,6 +390,9 @@ export default function DashboardLayout({ children }) {
       </nav>
 
       <HelpPanel open={helpOpen} onOpenChange={setHelpOpen} info={info} />
+      <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} pages={palettePages} actions={paletteActions} />
+      <ShortcutsHelp open={keysOpen} onOpenChange={setKeysOpen} />
+      {canLead && <NewLeadDialog open={newLeadOpen} onOpenChange={setNewLeadOpen} />}
     </div>
   );
 }

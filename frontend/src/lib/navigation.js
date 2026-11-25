@@ -12,7 +12,7 @@ import {
   ShoppingBag, RefreshCw, Package, Boxes, PackageOpen, Truck, Undo2, Store, Tags, HardHat, Users, Wrench,
   CreditCard, AlertTriangle, BarChart3, MapPin, Building2, UserCog, Shield, Map, SlidersHorizontal, ScrollText,
   Layers, History, KeyRound, LockKeyhole, FileText, UserRound, Clock, Network, Gift, Landmark,
-  LifeBuoy, CalendarDays, BadgeCheck, IdCard, HandCoins, Bot, Wallet, Banknote, MessageCircleQuestion, Globe,
+  LifeBuoy, CalendarDays, BadgeCheck, IdCard, HandCoins, Bot, Wallet, Banknote, MessageCircleQuestion, Globe, Contact, FileSpreadsheet,
 } from 'lucide-react';
 
 export const NAV_SECTIONS = [
@@ -107,6 +107,30 @@ export const NAV_SECTIONS = [
   {
     id: 'sales', label: 'Sales & projects', items: [
       {
+        href: '/dashboard/leads', label: 'Leads', icon: Contact, module: 'module_leads', badge: 'leads_due',
+        keywords: 'crm leads enquiry enquiries follow up follow-up call back customers prospects pipeline indiamart justdial walk in referral',
+        help: {
+          what: 'Every enquiry in one list — calls, walk-ins, WhatsApp, referrals and the website — sorted so the people to call today come first.',
+          steps: ['Press N (or “New lead”) the moment someone calls: the number is enough, add when to call back.',
+            'Open a lead, tap Call or WhatsApp, then log what happened in two taps and pick when to call again.',
+            'Move it along: Called → Site visit → Quote sent → Won or Lost (with the reason). The board view lets you drag.',
+            'From a lead, make a material quotation or start a project — their details fill in by themselves.'],
+          tip: 'Follow-ups ring in your bell at the time you set. Press ? to see every keyboard shortcut.',
+        },
+      },
+      {
+        href: '/dashboard/quotations', label: 'Material quotations', icon: FileSpreadsheet, module: 'module_material_quotes',
+        keywords: 'material quotation quote estimate proforma price offer panels inverter cable items pdf whatsapp',
+        help: {
+          what: 'Itemised quotations for panels, inverters, cables, structures and other material — with HSN, GST, a PDF and WhatsApp.',
+          steps: ['New quotation (Q): fill the customer, then type an item name and press Enter — the Price list rate comes in.',
+            'Change the quantity, rate, discount or GST on any line; add transport or labour with “Add a line”.',
+            'Save (Ctrl+S), then send it on WhatsApp or download the PDF. Editing a sent quotation makes the next revision.',
+            'When they say yes, “Make the sale” opens Direct sales with everything filled in.'],
+          tip: 'Cost and margin show only to people who can see the Price list — never on the PDF.',
+        },
+      },
+      {
         href: '/dashboard/projects/new', label: 'New project', icon: FolderPlus, module: 'module_projects', action: 'create',
         keywords: 'site visit quotation estimate photos gps location coordinates',
         help: {
@@ -135,11 +159,11 @@ export const NAV_SECTIONS = [
         },
       },
       {
-        href: '/dashboard/website', label: 'Website', icon: Globe, module: 'module_website', badge: 'website_leads',
+        href: '/dashboard/website', label: 'Website', icon: Globe, module: 'module_website',
         keywords: 'website leads enquiries sensoper.in shop shop.sensoper.in customer login client login popup pop-up whatsapp',
         help: {
-          what: 'Leads from sensoper.in, the products in the online shop, customer logins and the pop-ups visitors see.',
-          steps: ['Leads: call new enquiries first, add a note or a call-back date, and tap "Make project" to start the site visit with their details filled in.',
+          what: 'The products in the online shop, testimonials, pickup stores, customer logins and the pop-ups visitors see on sensoper.in.',
+          steps: ['Enquiries from the website go straight to Leads, with everyone else’s — call them from there.',
             'Shop: pick an item from Inventory, set the shop price (including GST), add a photo, and show it in the shop.',
             'Customer logins: make a login for a customer, then send them the password on WhatsApp — they sign in at sensoper.in/account.',
             'Pop-ups: short notices on the website, like an offer or a deadline.'],

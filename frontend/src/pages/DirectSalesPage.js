@@ -1,6 +1,8 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
-import { Link } from 'react-router-dom';
-import { salesAPI, inventoryAPI, actionRequestsAPI, locationsAPI } from '../utils/api';
+import { Link, useSearchParams, useNavigate } from 'react-router-dom';
+import { salesAPI, inventoryAPI, actionRequestsAPI, locationsAPI, quotesAPI } from '../utils/api';
+import { priceIt } from '../utils/quoteMath';
+import { isInterState } from '../lib/indiaStates';
 import { useAuth } from '../contexts/AuthContext';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
@@ -9,7 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Badge } from '../components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '../components/ui/dialog';
-import { ArrowLeft, X, Loader2, Receipt, ShoppingCart, Users, Package, Pencil, Trash2, AlertTriangle } from 'lucide-react';
+import { ArrowLeft, X, Loader2, Receipt, ShoppingCart, Users, Package, Pencil, Trash2, AlertTriangle, FileSpreadsheet } from 'lucide-react';
 import HardDeleteButton from '../components/HardDeleteButton';
 import { useLiveRefresh } from '../lib/liveSync';
 
@@ -44,6 +46,26 @@ export default function DirectSalesPage() {
 
   const [locations, setLocations] = useState([]);
   const [locationId, setLocationId] = useState('');
+  // A sale made from a material quotation (Quotations → Make the sale): its customer, lines and discounts come in
+  const [params, setParams] = useSearchParams();
+  const navigate = useNavigate();
+  const [fromQuote, setFromQuote] = useState(null);
+  useEffect(() => {
+    const qid = params.get('quote');
+    if (!qid) return;
+    quotesAPI.get(qid).then(({ data: q }) => {
+      if (q.status === 'converted') { toast.error(`Quotation ${q.display_number} is already sold — invoice ${q.invoice_number}`); return; }
+      const c = q.customer || {};
+      setCustomer({ name: c.name || '', phone: c.phone || '', state: c.state || 'Tamil Nadu', gstin: c.gstin || '', email: c.email || '', address: c.address || '', is_registered: !!c.gstin });
+      setSaleType(c.gstin ? 'b2b' : 'counter');
+      setLines((q.lines || []).map((l) => ({ inventory_item_id: l.inventory_item_id, name: l.name, sku_code: l.sku_code, hsn_code: l.hsn_code, category: l.category,
+        quantity: l.quantity, unit_price: l.unit_price, gst_percentage: l.gst_percentage ?? 18, discount_pct: l.discount_pct || 0 })));
+      if (q.location_id) setLocationId(q.location_id);
+      setFromQuote(q);
+      setTimeout(() => document.querySelector('[data-testid="quick-sale-panel"]')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100);
+    }).catch((e) => toast.error(errText(e, 'Couldn’t open that quotation')));
+  }, [params]);
+  const clearQuote = () => { setFromQuote(null); setLines([]); setCustomer({ name: '', phone: '', state: 'Tamil Nadu' }); const p = new URLSearchParams(params); p.delete('quote'); setParams(p, { replace: true }); };
 
   const fetchAll = useCallback(async () => {
     setLoading(true);
@@ -92,7 +114,15 @@ export default function DirectSalesPage() {
   const updLine = (i, k, v) => setLines(prev => prev.map((l, idx) => idx === i ? { ...l, [k]: v } : l));
   const rmLine = (i) => setLines(prev => prev.filter((_, idx) => idx !== i));
 
+  const quoteTotals = useMemo(() => (fromQuote ? priceIt(lines, fromQuote.discount_amount || 0, isInterState('Tamil Nadu', null, customer.state, customer.gstin)) : null), [fromQuote, lines, customer.state, customer.gstin]);
+  const sameAsQuote = useMemo(() => {
+    if (!fromQuote) return false;
+    const key = (ls) => JSON.stringify(ls.map((l) => [l.inventory_item_id || l.name, Number(l.quantity), Number(l.unit_price), Number(l.discount_pct || 0), Number(l.gst_percentage ?? 18)]));
+    return key(lines) === key(fromQuote.lines || []);
+  }, [fromQuote, lines]);
   const totals = useMemo(() => {
+    if (sameAsQuote) return { taxable: Math.round(fromQuote.taxable_value), gst: Math.round(fromQuote.gst_total), grand: Math.round(fromQuote.grand_total) };
+    if (quoteTotals) return { taxable: Math.round(quoteTotals.taxable), gst: Math.round(quoteTotals.gst), grand: Math.round(quoteTotals.grand) };
     let taxable = 0, gst = 0;
     for (const l of lines) {
       const q = parseFloat(l.quantity) || 0;
@@ -104,7 +134,7 @@ export default function DirectSalesPage() {
       gst += t * gpc / 100;
     }
     return { taxable: Math.round(taxable), gst: Math.round(gst), grand: Math.round(taxable + gst) };
-  }, [lines]);
+  }, [lines, quoteTotals, sameAsQuote, fromQuote]);
 
   const confirmSale = async () => {
     if (!customer.name.trim() || !customer.phone.trim()) { toast.error('Customer name & phone required'); return; }
@@ -119,16 +149,22 @@ export default function DirectSalesPage() {
         lead_source: leadSource,
         location_id: locationId || undefined,
         lines: lines.map(l => ({
-          inventory_item_id: l.inventory_item_id, name: l.name, sku_code: l.sku_code,
+          inventory_item_id: l.inventory_item_id, name: l.name, sku_code: l.sku_code, hsn_code: l.hsn_code,
           category: l.category, quantity: parseFloat(l.quantity),
           unit_price: numOr(l.unit_price, 0), gst_percentage: numOr(l.gst_percentage, 18),
           discount_pct: numOr(l.discount_pct, 0),
         })),
-        payments: amountPaid ? [{ mode: paymentMode, amount: parseFloat(amountPaid) }] : []
+        payments: amountPaid ? [{ mode: paymentMode, amount: parseFloat(amountPaid) }] : [],
+        ...(fromQuote ? { material_quote_id: fromQuote.id, discount_amount: fromQuote.discount_amount || 0,
+          // the quotation's own round-off while its lines are unchanged, so the invoice comes to exactly the quoted total
+          round_off: sameAsQuote ? (fromQuote.round_off || 0) : (quoteTotals?.roundOff || 0) } : {}),
       };
       const r = await salesAPI.create(payload);
-      toast.success(`Invoice ${r.data.invoice_number} created for ₹${r.data.grand_total.toLocaleString('en-IN')}`);
+      toast.success(`Invoice ${r.data.invoice_number} created for ₹${r.data.grand_total.toLocaleString('en-IN')}${fromQuote ? ` — quotation ${fromQuote.display_number} is now sold` : ''}`,
+        fromQuote ? { action: { label: 'Open quotation', onClick: () => navigate(`/dashboard/quotations/${fromQuote.id}`) } } : undefined);
+      if (fromQuote) window.dispatchEvent(new Event('sensoper:leads-changed'));
       setLines([]); setCustomer({ name: '', phone: '', state: 'Tamil Nadu' }); setAmountPaid('');
+      if (fromQuote) { setFromQuote(null); const p = new URLSearchParams(params); p.delete('quote'); setParams(p, { replace: true }); }
       fetchAll();
     } catch (e) { toast.error(errText(e, 'Sale failed')); }
     finally { setSaving(false); }
@@ -235,6 +271,13 @@ export default function DirectSalesPage() {
             <CardTitle className="text-base font-['Outfit'] flex items-center gap-2"><ShoppingCart className="h-4 w-4 text-emerald-600" />Quick Sale</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
+            {fromQuote && (
+              <div className="flex flex-wrap items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-sm text-emerald-950" data-testid="qs-from-quote">
+                <FileSpreadsheet className="h-4 w-4 shrink-0 text-emerald-700" />
+                <span className="min-w-0 flex-1">Sale for quotation <b>{fromQuote.display_number}</b> — {fromQuote.customer?.name}, ₹{Number(fromQuote.grand_total || 0).toLocaleString('en-IN')}{Number(fromQuote.discount_amount) > 0 ? ` (incl. ₹${Number(fromQuote.discount_amount).toLocaleString('en-IN')} order discount)` : ''}. Check the stock and the payment, then press Confirm.</span>
+                <Button size="sm" variant="ghost" className="h-8" onClick={clearQuote}>Not now</Button>
+              </div>
+            )}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
               <div><Label className="text-xs">Customer Name *</Label><Input value={customer.name} onChange={e => setCustomer({...customer, name: e.target.value})} className="h-9" data-testid="qs-customer-name" /></div>
               <div><Label className="text-xs">Phone *</Label><Input value={customer.phone} onChange={e => setCustomer({...customer, phone: e.target.value})} className="h-9" data-testid="qs-customer-phone" /></div>
