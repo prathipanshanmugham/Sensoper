@@ -2781,6 +2781,13 @@ api_router.include_router(_create_website_router(db, get_current_user, require_r
                                                  get_permissions, check_module_permission, app_name=APP_NAME, get_object=get_object,
                                                  storage_path=_storage_path))
 
+# ═══════════ LEADS (CRM) AND MATERIAL QUOTATIONS (Nov 2026) ═══════════
+from crm import create_router as _create_crm_router  # noqa: E402
+from material_quotes import create_router as _create_material_quotes_router  # noqa: E402
+api_router.include_router(_create_crm_router(db, get_current_user, get_permissions, check_module_permission, create_audit_log))
+api_router.include_router(_create_material_quotes_router(db, get_current_user, get_permissions, check_module_permission, create_audit_log,
+                                                         company_profile_fn=_get_active_company_profile))
+
 # ═══════════ ECOMMERCE MARKETPLACES (Iter 46 Change 2) ═══════════
 from ecommerce import create_router as _create_ecommerce_router  # noqa: E402
 _ecommerce_router = _create_ecommerce_router(
@@ -4744,6 +4751,13 @@ async def get_dashboard_stats(request: Request):
     # New enquiries from the website, for the menu badge (anyone who can open the Website page)
     if user["role"] == "admin" or await check_module_permission(user, "module_website", "view"):
         stats["website_leads"] = await db.website_leads.count_documents({"status": "new"})
+    # Leads: my follow-ups due today or overdue, plus new leads nobody has taken (the Leads menu badge)
+    if user["role"] == "admin" or await check_module_permission(user, "module_leads", "view"):
+        from crm import today_ist as _crm_today  # noqa: E402
+        _open = ["new", "contacted", "site_visit", "quoted"]
+        stats["leads_due"] = await db.website_leads.count_documents({"status": {"$in": _open}, "$or": [
+            {"assigned_to": user["id"], "follow_up_on": {"$lte": _crm_today(), "$nin": [None, ""]}},
+            {"status": "new", "$or": [{"assigned_to": {"$in": [None, ""]}}, {"assigned_to": {"$exists": False}}]}]})
     
     return stats
 
@@ -8052,6 +8066,10 @@ async def startup_event():
     await db.portal_attempts.create_index("at", expireAfterSeconds=24 * 3600)
     from website import ensure_indexes as _website_indexes  # noqa: E402
     await _website_indexes(db)
+    from crm import ensure_indexes as _crm_indexes  # noqa: E402
+    from material_quotes import ensure_indexes as _mq_indexes  # noqa: E402
+    await _crm_indexes(db)
+    await _mq_indexes(db)
     await db.offer_interests.create_index([("offer_id", 1), ("project_id", 1)], unique=True)
     # What3words was removed (Oct 2026): clear its cache and the saved (encrypted) API key
     await db.w3w_cache.drop()

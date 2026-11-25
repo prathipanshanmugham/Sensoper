@@ -653,13 +653,13 @@ def create_router(db, get_current_user, require_role, create_audit_log, jwt_secr
 
     async def _tell_staff(lead: Dict[str, Any], again: bool = False):
         try:
-            users = await notify.users_who_can(db, get_permissions, "module_website", "view")
+            users = await notify.users_who_can(db, get_permissions, "module_leads", "view")   # leads are worked on the Leads page
             who = lead.get("name") or "Someone"
             title = (f"{who} asked again on the website" if again else
                      (f"New shop order request from {who}" if lead.get("kind") == "shop_order" else
                       f"New website lead: {who}" if lead.get("name") else f"Someone left their number on the website: {lead.get('phone')}"))
             await notify.plan(db, kind="website_lead", source_type="website_lead", source_id=str(lead["_id"]), user_ids=users,
-                              title=title, message=lead_summary(lead), link=f"/dashboard/website?lead={lead['_id']}",
+                              title=title, message=lead_summary(lead), link=f"/dashboard/leads?lead={lead['_id']}",
                               tag=f"submission-{lead.get('submissions', 1)}")
         except Exception:   # the lead is saved either way
             pass
@@ -692,7 +692,7 @@ def create_router(db, get_current_user, require_role, create_audit_log, jwt_secr
             lead = await db.website_leads.find_one({"_id": existing["_id"]})
             await _tell_staff(lead, again=bool(existing.get("name")))
             return lead
-        doc = {**fields, "number": await _next_number(), "status": "new", "needs_attention": True, "submissions": 1, "ip": ip,
+        doc = {**fields, "number": await _next_number(), "channel": "website", "status": "new", "needs_attention": True, "submissions": 1, "ip": ip,
                "created_at": now, "updated_at": now, "last_submitted_at": now, "activity": [entry]}
         res = await db.website_leads.insert_one(doc)
         doc["_id"] = res.inserted_id

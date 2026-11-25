@@ -69,6 +69,12 @@ SECTIONS: List[Dict[str, Any]] = [
               options=[_opt("can_approve_deletion", "Approve deletion requests", "Say yes to a request to delete a project.")]),
         _page("module_customer_offers", "Customer offers", "Offers on customers’ dashboards and who to call back.", actions=(V, C, E, D),
               manager=(V, C, E, D)),
+        _page("module_leads", "Leads", "Every enquiry in one place — calls, walk-ins, WhatsApp, referrals and the website — with follow-ups and owners.",
+              staff=(V, C, E), manager=(V, C, E, D, X),
+              options=[_opt("can_see_all_leads", "See everyone's leads", "Without it, people see the leads given to them, the ones they added and the ones nobody has taken.")]),
+        _page("module_material_quotes", "Material quotations", "Itemised price quotes for panels, inverters, cables and other material, with a PDF and a one-click sale.",
+              staff=(V, C, E), manager=(V, C, E, D, X),
+              options=[_opt("can_see_all_quotes", "See everyone's quotations", "Without it, people see the quotations they made and the ones for their leads.")]),
         _page("module_website", "Website", "Leads from sensoper.in, the shop at shop.sensoper.in, customer logins and website pop-ups.",
               actions=(V, C, E, D, X), staff=(V, C, E), manager=(V, C, E, D, X),
               options=[_opt("can_manage_website", "Run the shop, pop-ups and website settings",
@@ -417,6 +423,11 @@ rule("GET", "/api/projects/{project_id}/client-login", page("module_website", V)
 rule("POST", "/api/client-accounts/{account_id}/reset-password", page("module_website", E))
 rule("*", "/api/client-accounts*", page("module_website"))
 rule("*", "/api/website*", page("module_website"))
+rule("*", "/api/crm*", page("module_leads"))
+rule("GET", "/api/material-quotes/items", page("module_material_quotes", V))
+rule("POST", "/api/material-quotes/{quote_id}/status", page("module_material_quotes", E))
+rule("POST", "/api/material-quotes/{quote_id}/duplicate", page("module_material_quotes", C))
+rule("*", "/api/material-quotes*", page("module_material_quotes"))
 
 # shared look-ups and admin-only odds and ends — no decision here
 for m, pat in [("GET", "/api/inventory/items*"), ("GET", "/api/inventory/alerts"), ("GET", "/api/inventory/categories"),

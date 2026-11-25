@@ -87,6 +87,7 @@ class SaleCreate(BaseModel):
     override_negative_stock: Optional[bool] = False
     lead_source_campaign: Optional[str] = None
     location_id: Optional[str] = None
+    material_quote_id: Optional[str] = None   # the sale is made from this material quotation (it becomes Sold)
 
 
 class SaleUpdate(BaseModel):
@@ -560,6 +561,14 @@ def create_router(db, get_current_user, require_role, generate_pdf=None, company
             raise HTTPException(400, f"The payments (₹{amount_paid:,.2f}) are more than the bill (₹{grand_total:,.2f})")
         payment_status = "paid" if amount_paid >= grand_total - 1 else "partial" if amount_paid > 0 else "credit"
 
+        quote = None
+        if payload.material_quote_id:
+            quote = await db.material_quotes.find_one({"_id": ObjectId(payload.material_quote_id)}) if ObjectId.is_valid(payload.material_quote_id) else None
+            if not quote or not location_allowed(user, quote.get("location_id")):
+                raise HTTPException(400, "That quotation doesn't exist")
+            if quote.get("status") == "converted":
+                raise HTTPException(400, f"Quotation {quote.get('number')} is already sold — invoice {quote.get('invoice_number')}")
+
         # Check stock before the invoice number is taken, so a refused sale doesn't leave a gap in the series
         await _check_stock(db, lines, payload.override_negative_stock)
         invoice_no = await _generate_invoice_number(db, location_id)
@@ -609,6 +618,8 @@ def create_router(db, get_current_user, require_role, generate_pdf=None, company
             "warranty_expiry": (_ist_now() + timedelta(days=30 * (payload.warranty_months or 0))).date().isoformat() if payload.warranty_months else None,
             "sold_by": user.get("id"), "sold_by_name": user.get("name") or user.get("email"),
             "notes": payload.notes, "status": "confirmed",
+            "material_quote_id": payload.material_quote_id if quote else None,
+            "material_quote_number": quote.get("number") if quote else None,
             "created_at": now, "updated_at": now,
         }
 
@@ -638,6 +649,10 @@ def create_router(db, get_current_user, require_role, generate_pdf=None, company
                 "location_id": location_id,
                 "created_at": now,
             })
+
+        if quote:
+            from material_quotes import mark_converted   # imported here: material_quotes imports this module
+            await mark_converted(db, payload.material_quote_id, sale_id, invoice_no, doc["grand_total"], user)
 
         return {"id": sale_id, "invoice_number": invoice_no, "grand_total": doc["grand_total"]}
 
