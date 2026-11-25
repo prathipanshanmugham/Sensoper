@@ -545,7 +545,6 @@ def create_router(db, get_current_user, get_permissions, check_module_permission
         database = re.sub(r"[^\w.-]", "", (body.database or "").strip())[:120]
         login = (body.login or "").strip()[:200]
         changed_target = url != s.get("url") or database != s.get("database", "")
-        enc = encrypt_secret(key) if key else s["key_enc"]
         # try it before saving, so a typo never replaces a working connection
         try:
             await _check_public(url)
@@ -555,6 +554,7 @@ def create_router(db, get_current_user, get_permissions, check_module_permission
                 api, db_name = who["api"], o.db
         except OdooError as e:
             raise HTTPException(status_code=400, detail=str(e))
+        enc = encrypt_secret(key) if key else s["key_enc"]
         upd = {"url": url, "database": db_name or database, "login": login, "key_enc": enc, "api": api, "odoo_user": info.get("user"),
                "odoo_company": info.get("company"), "odoo_version": info.get("version"), "connected_at": _iso(), "last_error": None}
         if key:

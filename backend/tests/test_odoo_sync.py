@@ -19,7 +19,6 @@ os.environ.setdefault("JWT_SECRET", "o" * 48)
 os.environ.setdefault("ADMIN_EMAIL", "boss@example.com")
 os.environ.setdefault("ADMIN_PASSWORD", "t-" + secrets.token_hex(12))
 os.environ.setdefault("STORAGE_ROOT", "/tmp/sensoper-odoo-sync-test")
-os.environ.setdefault("VAULT_KEY_FILE", "/tmp/sensoper-odoo-sync-test/vault.key")
 ADMIN = {"email": os.environ["ADMIN_EMAIL"], "password": os.environ["ADMIN_PASSWORD"]}
 
 import motor.motor_asyncio as _m  # noqa: E402
@@ -76,9 +75,17 @@ def loop():
 
 @pytest.fixture(scope="module")
 def app(loop):
+    from cryptography.fernet import Fernet
+    saved = {k: os.environ.get(k) for k in ("ODOO_ALLOW_PRIVATE", "VAULT_MASTER_KEY")}
     os.environ["ODOO_ALLOW_PRIVATE"] = "1"   # the fake answers for odoo.example.com through the test transport
+    os.environ["VAULT_MASTER_KEY"] = Fernet.generate_key().decode()   # this module's own key, whatever other tests did
     loop.run_until_complete(server.app.router.startup())
-    return server.app
+    yield server.app
+    for k, v in saved.items():
+        if v is None:
+            os.environ.pop(k, None)
+        else:
+            os.environ[k] = v
 
 
 def run(loop, coro):
@@ -120,8 +127,24 @@ def world(app, loop):
             users[key] = await login(app, email, PW)
             users[f"{key}_id"] = str((await server.db.users.find_one({"email": email}))["_id"])
         return {"admin": a, "fake": fake, **users}
+    async def tidy():   # leave the shared test database as we found it
+        db = server.db
+        lead_ids = [str(l["_id"]) async for l in db.website_leads.find({"odoo": {"$exists": True}}, {"_id": 1})]
+        await db.notifications.delete_many({"source_id": {"$in": lead_ids}})
+        for coll in (db.customers, db.vendors, db.inventory_items, db.website_leads):
+            await coll.delete_many({"odoo": {"$exists": True}})
+        await db.material_quotes.delete_many({"$or": [{"odoo": {"$exists": True}}, {"copied_from_odoo": {"$exists": True}}]})
+        await db.inventory_categories.delete_many({"source": "odoo"})
+        await db.inventory_transactions.delete_many({"user_name": "Odoo sync"})
+        for coll in (db.odoo_settings, db.odoo_runs, db.odoo_records, db.odoo_lock):
+            await coll.delete_many({})
+        await db.users.delete_many({"email": {"$regex": TAG}})
+
     w = run(loop, go())
     yield w
+    for t in list(server._odoo_router.running):
+        run(loop, t)
+    run(loop, tidy())
     odoo_sync.TRANSPORT = None
 
 
