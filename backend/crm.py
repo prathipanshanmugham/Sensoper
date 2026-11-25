@@ -175,6 +175,22 @@ def month_start_utc() -> str:
     return t.replace(day=1, hour=0, minute=0, second=0, microsecond=0).astimezone(timezone.utc).isoformat()
 
 
+async def plan_follow_up(db, lead: Dict[str, Any]) -> None:
+    """Plan the owner's bell note for the next follow-up (or clear it when there is none / the lead is closed).
+    Also used by the Odoo sync for leads it brings in."""
+    lid = str(lead["_id"])
+    await notify.clear(db, "lead_follow_up", "lead", lid)
+    day = lead.get("follow_up_on")
+    owner = lead.get("assigned_to") or lead.get("created_by")
+    if not day or not owner or lead.get("status") in CLOSED:
+        return
+    who = lead.get("name") or f"+91 {lead.get('phone')}"
+    await notify.plan(db, kind="lead_follow_up", source_type="lead", source_id=lid, user_ids=[owner],
+                      title=f"Follow up: {who}", message=lead.get("follow_up_note") or lead_summary(lead),
+                      link=f"/dashboard/leads?lead={lid}", notify_at=follow_up_utc(day, lead.get("follow_up_at")),
+                      tag=f"{day} {lead.get('follow_up_at') or ''}".strip())
+
+
 # ───────────────────────── request bodies ─────────────────────────
 class LeadCreate(BaseModel):
     name: str = Field("", max_length=200)
@@ -321,18 +337,7 @@ def create_router(db, get_current_user, get_permissions, check_module_permission
         return out
 
     async def _remind(lead: Dict[str, Any]) -> None:
-        """Plan the owner's bell note for the next follow-up (or clear it when there is none / the lead is closed)."""
-        lid = str(lead["_id"])
-        await notify.clear(db, "lead_follow_up", "lead", lid)
-        day = lead.get("follow_up_on")
-        owner = lead.get("assigned_to") or lead.get("created_by")
-        if not day or not owner or lead.get("status") in CLOSED:
-            return
-        who = lead.get("name") or f"+91 {lead.get('phone')}"
-        await notify.plan(db, kind="lead_follow_up", source_type="lead", source_id=lid, user_ids=[owner],
-                          title=f"Follow up: {who}", message=lead.get("follow_up_note") or lead_summary(lead),
-                          link=f"/dashboard/leads?lead={lid}", notify_at=follow_up_utc(day, lead.get("follow_up_at")),
-                          tag=f"{day} {lead.get('follow_up_at') or ''}".strip())
+        await plan_follow_up(db, lead)
 
     async def _tell_new_owner(lead: Dict[str, Any], by: Dict[str, Any]) -> None:
         owner = lead.get("assigned_to")

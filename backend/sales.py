@@ -566,6 +566,8 @@ def create_router(db, get_current_user, require_role, generate_pdf=None, company
             quote = await db.material_quotes.find_one({"_id": ObjectId(payload.material_quote_id)}) if ObjectId.is_valid(payload.material_quote_id) else None
             if not quote or not location_allowed(user, quote.get("location_id")):
                 raise HTTPException(400, "That quotation doesn't exist")
+            if quote.get("read_only"):
+                raise HTTPException(400, f"Quotation {quote.get('number')} comes from Odoo — bill it in Odoo, or copy it and sell the copy")
             if quote.get("status") == "converted":
                 raise HTTPException(400, f"Quotation {quote.get('number')} is already sold — invoice {quote.get('invoice_number')}")
 
