@@ -125,7 +125,7 @@ export default function TermsConditions() {
     setShowPreviewDialog(true);
   };
 
-  const CATEGORY_LABELS = { quotation: 'Quotation', invoice: 'Invoice', amc: 'AMC' };
+  const CATEGORY_LABELS = { quotation: 'Quotation', invoice: 'Invoice', amc: 'AMC', material: 'Material quotation' };
   const visibleTerms = categoryFilter === 'all' ? terms : terms.filter(t => (t.category || 'quotation') === categoryFilter);
 
   const defaultTermsTemplate = `<ol>
@@ -171,7 +171,7 @@ export default function TermsConditions() {
         <Card className="border-blue-200 bg-blue-50 mb-6">
           <CardContent className="p-4">
             <p className="text-sm text-blue-800">
-              <strong>Note:</strong> Create multiple Terms & Conditions templates per document type. While creating a project you can pick which Quotation template to attach. Invoice and AMC documents always use the active template for their category.
+              <strong>Note:</strong> Create multiple Terms & Conditions templates per document type. While creating a project you can pick which Quotation template to attach. Invoice and AMC documents always use the active template for their category; a new material quotation starts with the active Material quotation terms (and can be edited on the quotation).
               Use HTML tags for formatting (ol, li, strong, em, etc.)
             </p>
           </CardContent>
@@ -179,7 +179,7 @@ export default function TermsConditions() {
 
         {/* Category Filter */}
         <div className="flex gap-2 mb-5" data-testid="terms-category-filter">
-          {['all', 'quotation', 'invoice', 'amc'].map(c => (
+          {['all', 'quotation', 'invoice', 'amc', 'material'].map(c => (
             <button key={c} onClick={() => setCategoryFilter(c)}
               className={`px-3 py-1.5 text-xs rounded-full border ${categoryFilter === c ? 'bg-emerald-100 border-emerald-300 text-emerald-800 font-medium' : 'bg-white border-slate-200 text-slate-600'}`}
               data-testid={`terms-category-tab-${c}`}>
@@ -301,6 +301,7 @@ export default function TermsConditions() {
                     <SelectItem value="quotation">Quotation</SelectItem>
                     <SelectItem value="invoice">Invoice</SelectItem>
                     <SelectItem value="amc">AMC</SelectItem>
+                    <SelectItem value="material">Material quotation</SelectItem>
                   </SelectContent>
                 </Select>
               </div>

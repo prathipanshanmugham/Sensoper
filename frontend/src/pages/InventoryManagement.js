@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { inventoryAPI, locationsAPI, brandsAPI } from '../utils/api';
 import { useAuth, formatApiErrorDetail } from '../contexts/AuthContext';
 import { Button } from '../components/ui/button';
@@ -39,7 +39,8 @@ export default function InventoryManagement() {
   const [showItemDialog, setShowItemDialog] = useState(false);
   const [showCatDialog, setShowCatDialog] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
-  const [searchQuery, setSearchQuery] = useState('');
+  const [urlParams] = useSearchParams();
+  const [searchQuery, setSearchQuery] = useState(() => urlParams.get('q') || '');   // Ctrl+K → a stock item opens here, already searched
   const [filterCategory, setFilterCategory] = useState('all');
   const [filterLocation, setFilterLocation] = useState('all');
   const [branchSort, setBranchSort] = useState(null); // 'asc' | 'desc' | null

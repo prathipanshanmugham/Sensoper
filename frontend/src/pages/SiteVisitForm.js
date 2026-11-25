@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { projectsAPI, inventoryAPI, formTabsAPI, termsAPI, materialKitsAPI, catalogueAPI, websiteAPI } from '../utils/api';
+import { projectsAPI, inventoryAPI, formTabsAPI, termsAPI, materialKitsAPI, catalogueAPI, crmAPI } from '../utils/api';
 import SitePhotoChecklist from '../components/SitePhotoChecklist';
 import { getPosition, mapsLink } from '../lib/geo';
 import { localDate } from '../lib/format';
@@ -155,22 +155,22 @@ export default function SiteVisitForm() {
 
   useEffect(() => {
     if (!leadId) return;
-    websiteAPI.leads.get(leadId).then(({ data: l }) => {
+    crmAPI.get(leadId).then(({ data: l }) => {
       const units = l.calc?.units ? Math.round(l.calc.mode === 'home' ? l.calc.units / 2 : l.calc.units) : '';
       setFormData((p) => ({
         ...p,
         customer: { ...p.customer, name: p.customer.name || l.name || '', phone: p.customer.phone || l.phone || '', email: p.customer.email || l.email || '',
-          address: p.customer.address || [l.address, l.area, l.pincode].filter(Boolean).join(', ') },
+          address: p.customer.address || [l.address, l.area, l.city, l.pincode].filter(Boolean).join(', ') },
         electrical: { ...p.electrical, monthly_consumption_units: p.electrical.monthly_consumption_units || units },
-        notes: p.notes || `From website lead ${l.number}: ${l.summary}${l.message ? ` — ${l.message}` : ''}`,
+        notes: p.notes || `From lead ${l.number}: ${l.summary}${l.message ? ` — ${l.message}` : ''}`,
       }));
-      toast.success(`Filled in from website lead ${l.number}`);
+      toast.success(`Filled in from lead ${l.number}`);
     }).catch(() => {});
   }, [leadId]);
   const linkLead = useCallback((projectId) => {
     if (!leadId || !projectId || leadLinked.current) return;
     leadLinked.current = true;
-    websiteAPI.leads.update(leadId, { project_id: projectId }).catch(() => { leadLinked.current = false; });
+    crmAPI.update(leadId, { project_id: projectId }).catch(() => { leadLinked.current = false; });
   }, [leadId]);
 
   const loadProject = useCallback(async () => {

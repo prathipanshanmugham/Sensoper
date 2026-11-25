@@ -1086,3 +1086,31 @@ export const investorPortalAPI = {
   changePassword: (current_password, new_password) => investorHttp.post('/auth/change-password', { current_password, new_password }),
   dashboard: (months = 12) => investorHttp.get('/dashboard', { params: { months } }),
 };
+
+// Leads (CRM) — every enquiry, follow-ups and calls (backend/crm.py)
+export const crmAPI = {
+  meta: () => api.get('/crm/meta'),
+  summary: () => api.get('/crm/summary'),
+  list: (params = {}) => api.get('/crm/leads', { params }),
+  get: (id) => api.get(`/crm/leads/${id}`),
+  create: (data) => api.post('/crm/leads', data),
+  update: (id, data) => api.put(`/crm/leads/${id}`, data),
+  log: (id, data) => api.post(`/crm/leads/${id}/activity`, data),
+  remove: (id) => api.delete(`/crm/leads/${id}`),
+};
+
+// Material quotations (backend/material_quotes.py)
+export const quotesAPI = {
+  list: (params = {}) => api.get('/material-quotes', { params }),
+  items: (params = {}) => api.get('/material-quotes/items', { params }),
+  defaults: () => api.get('/material-quotes/defaults'),
+  get: (id) => api.get(`/material-quotes/${id}`),
+  create: (data) => api.post('/material-quotes', data),
+  update: (id, data) => api.put(`/material-quotes/${id}`, data),
+  setStatus: (id, status, reason = '') => api.post(`/material-quotes/${id}/status`, { status, reason }),
+  duplicate: (id) => api.post(`/material-quotes/${id}/duplicate`),
+  remove: (id) => api.delete(`/material-quotes/${id}`),
+};
+
+// One search for Ctrl+K: leads, quotations, projects and stock
+export const searchAPI = { search: (q) => api.get('/search', { params: { q } }) };
