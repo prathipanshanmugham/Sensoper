@@ -59,6 +59,8 @@ import CustomerOffersPage from "./pages/CustomerOffersPage";
 import WebsitePage from "./pages/WebsitePage";
 import LeadsPage from "./pages/LeadsPage";
 import QuotationsPage from "./pages/QuotationsPage";
+import OdooSyncPage from "./pages/OdooSyncPage";
+import OdooDataPage from "./pages/OdooDataPage";
 import QuotationEditor from "./pages/QuotationEditor";
 import InvestorsPage from "./pages/InvestorsPage";
 import InvestorPortal from "./pages/InvestorPortal";
@@ -207,6 +209,8 @@ function AppRoutes() {
       <Route path="/dashboard/leads" element={<ProtectedRoute module="module_leads"><DashboardLayout><LeadsPage /></DashboardLayout></ProtectedRoute>} />
       <Route path="/dashboard/quotations" element={<ProtectedRoute module="module_material_quotes"><DashboardLayout><QuotationsPage /></DashboardLayout></ProtectedRoute>} />
       <Route path="/dashboard/quotations/:id" element={<ProtectedRoute module="module_material_quotes"><DashboardLayout><QuotationEditor /></DashboardLayout></ProtectedRoute>} />
+      <Route path="/dashboard/odoo" element={<ProtectedRoute module="module_odoo_sync"><DashboardLayout><OdooSyncPage /></DashboardLayout></ProtectedRoute>} />
+      <Route path="/dashboard/odoo/data/:key" element={<ProtectedRoute module="module_odoo_sync"><DashboardLayout><OdooDataPage /></DashboardLayout></ProtectedRoute>} />
       <Route path="/dashboard/investors" element={<ProtectedRoute allowedRoles={["admin"]} module="module_investors"><DashboardLayout><InvestorsPage /></DashboardLayout></ProtectedRoute>} />
       {/* Investors' own dashboard — separate investor session (they sign in on /login) */}
       <Route path="/investor" element={<InvestorPortal />} />

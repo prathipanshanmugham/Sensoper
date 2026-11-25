@@ -12,7 +12,7 @@ import {
   ShoppingBag, RefreshCw, Package, Boxes, PackageOpen, Truck, Undo2, Store, Tags, HardHat, Users, Wrench,
   CreditCard, AlertTriangle, BarChart3, MapPin, Building2, UserCog, Shield, Map, SlidersHorizontal, ScrollText,
   Layers, History, KeyRound, LockKeyhole, FileText, UserRound, Clock, Network, Gift, Landmark,
-  LifeBuoy, CalendarDays, BadgeCheck, IdCard, HandCoins, Bot, Wallet, Banknote, MessageCircleQuestion, Globe, Contact, FileSpreadsheet,
+  LifeBuoy, CalendarDays, BadgeCheck, IdCard, HandCoins, Bot, Wallet, Banknote, MessageCircleQuestion, Globe, Contact, FileSpreadsheet, CloudDownload,
 } from 'lucide-react';
 
 export const NAV_SECTIONS = [
@@ -451,6 +451,15 @@ export const NAV_SECTIONS = [
           what: 'A few company-wide basics: how totals are rounded, overdue interest, the monthly sales target, and the Google Drive connection.',
           steps: ['Tap a value, change it and press the tick.', 'Connect Google Drive once so site photos are copied there automatically.'],
           tip: 'Product prices, package slabs and service rates are in Price list.',
+        },
+      },
+      {
+        href: '/dashboard/odoo', label: 'Odoo sync', icon: CloudDownload, module: 'module_odoo_sync',
+        keywords: 'odoo import sync erp contacts products crm leads quotations api key',
+        help: {
+          what: 'Copies contacts, products, CRM leads and quotations from Odoo into Sensoper — one way, nothing in Odoo changes. It runs every hour and whenever you press Sync.',
+          steps: ['An admin pastes the Odoo address and an API key, then presses Connect and test.', 'Switch on what should come in and press Preview to see it first.', 'Press Sync everything now. Use Set up to map stages and salespeople, or add extra Odoo fields.', 'Add any other Odoo table (Studio or custom apps) to see and download it here.'],
+          tip: 'If you change a field in Sensoper, the next sync keeps your change — Odoo only updates fields you haven’t touched.',
         },
       },
       {

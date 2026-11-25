@@ -273,6 +273,8 @@ def create_router(db, get_current_user, get_permissions, check_module_permission
         lines = [{k: v for k, v in l.items() if k not in hidden} for l in q.get("lines") or []]
         st = q.get("status") or "draft"
         out = {k: v for k, v in q.items() if k not in ("_id", "lines", "internal_cost")}
+        if isinstance(out.get("odoo"), dict):   # what Odoo says; not the copy-tracking snapshot
+            out["odoo"] = {k: v for k, v in out["odoo"].items() if k != "values"}
         out.update({
             "id": str(q["_id"]), "lines": lines, "status": st, "status_label": QUOTE_STATUSES.get(st, st),
             "expired": st in ("draft", "sent") and bool(q.get("valid_until")) and q["valid_until"] < today,
@@ -399,7 +401,9 @@ def create_router(db, get_current_user, get_permissions, check_module_permission
     async def defaults(request: Request):
         user = await get_current_user(request)
         profile = await company_profile_fn(user.get("default_location_id")) if company_profile_fn else {}
-        return {"terms": await _default_terms(), "valid_days": DEFAULT_VALID_DAYS, "units": list(UNITS),
+        odoo = await db.odoo_settings.find_one({"_id": "main"}, {"url": 1, "syncs.orders.extra_labels": 1})
+        return {"odoo": {"url": odoo["url"], "order_fields": ((odoo.get("syncs") or {}).get("orders") or {}).get("extra_labels") or {}} if odoo and odoo.get("url") else None,
+                "terms": await _default_terms(), "valid_days": DEFAULT_VALID_DAYS, "units": list(UNITS),
                 "valid_until": _valid_until(None), "company_state": (profile or {}).get("state", "Tamil Nadu"),
                 "sees_cost": await _sees_cost(user), "statuses": [{"key": k, "label": v} for k, v in QUOTE_STATUSES.items()]}
 

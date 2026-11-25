@@ -14,6 +14,7 @@ import { confirmAction } from '../kit/confirm';
 import { crmAPI } from '../../utils/api';
 import { useAuth } from '../../contexts/AuthContext';
 import { useHotkeys, MOD } from '../../lib/hotkeys';
+import FromOdoo from '../odoo/FromOdoo';
 import { STAGE_TONE, HEAT_TONE, OPEN_STAGES, waLink, telLink, firstName, ago, whenLabel, followUpChoices, loadMeta, leadsChanged, inrPlain } from './leadBits';
 
 const LOG_TYPES = [['call', 'Call'], ['whatsapp', 'WhatsApp'], ['visit', 'Visit'], ['note', 'Note']];
@@ -337,6 +338,8 @@ export default function LeadPanel({ id, onClose, onNext, onPrev, onChanged }) {
                 <div className="flex justify-between border-t border-slate-100 pt-1 font-semibold"><span>Total incl. GST</span><span className="tabular-nums">{inr(l.order_total)}</span></div>
               </div>
             )}
+
+            {l.odoo && <FromOdoo odoo={l.odoo} url={meta?.odoo?.url} labels={meta?.odoo?.lead_fields} rows={[['Odoo stage', l.odoo.stage], ['Odoo salesperson', l.odoo.salesperson]]} />}
 
             {/* history */}
             <div>
