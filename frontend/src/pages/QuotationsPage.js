@@ -41,7 +41,7 @@ export default function QuotationsPage() {
     { keys: 'enter', when: () => !!items[sel], run: () => navigate(`/dashboard/quotations/${items[sel].id}`) },
   ], [items, sel]);
 
-  const tabs = [['open', 'Open', c.draft + c.sent || 0], ['draft', 'Drafts'], ['sent', 'Sent'], ['accepted', 'Accepted', c.accepted], ['expired', 'Expired'],
+  const tabs = [['open', 'Open', (c.draft || 0) + (c.sent || 0)], ['draft', 'Drafts'], ['sent', 'Sent'], ['accepted', 'Accepted', c.accepted], ['expired', 'Expired'],
     ['converted', 'Sold'], ['rejected', 'Not accepted'], ['all', 'All']];
 
   return (

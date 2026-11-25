@@ -26,6 +26,7 @@ import notify
 from locations import location_allowed, location_scope_filter
 from sales import _check_lines, _price_lines, _round, _sale_totals
 from website import OPEN_STATUSES, STATUSES, mobile
+from crm import inr
 
 IST = timezone(timedelta(hours=5, minutes=30))
 QUOTE_STATUSES = {"draft": "Draft", "sent": "Sent", "accepted": "Accepted", "rejected": "Not accepted", "converted": "Sold"}
@@ -360,9 +361,10 @@ def create_router(db, get_current_user, get_permissions, check_module_permission
                                       {"hsn_code": {"$regex": w, "$options": "i"}}, {"category": {"$regex": w, "$options": "i"}}]} for w in words]
         if category:
             query["category"] = category
-        rows = await db.inventory_items.find(query).sort("name", 1).limit(max(1, min(limit, 100))).to_list(100)
+        cap = max(1, min(limit, 3000))   # the picker loads the whole active list once and filters as you type
+        rows = await db.inventory_items.find(query).sort("name", 1).limit(cap).to_list(cap)
         brand_ids = [ObjectId(r["brand_id"]) for r in rows if r.get("brand_id") and ObjectId.is_valid(str(r["brand_id"]))]
-        brands = {str(b["_id"]): b.get("name") for b in await db.brands.find({"_id": {"$in": brand_ids}}, {"name": 1}).to_list(200)} if brand_ids else {}
+        brands = {str(b["_id"]): b.get("name") for b in await db.brands.find({"_id": {"$in": brand_ids}}, {"name": 1}).to_list(3000)} if brand_ids else {}
         out = []
         for r in rows:
             sell = selling_price(r)
@@ -418,7 +420,7 @@ def create_router(db, get_current_user, get_permissions, check_module_permission
         doc["_id"] = res.inserted_id
         if lead:
             await db.website_leads.update_one({"_id": lead["_id"]}, {"$inc": {"quote_count": 1}})
-            await _lead_log(str(lead["_id"]), f"Quotation {doc['number']} made — ₹{doc['grand_total']:,.0f}", user)
+            await _lead_log(str(lead["_id"]), f"Quotation {doc['number']} made — {inr(doc['grand_total'])}", user)
         return _out(doc, await _sees_cost(user))
 
     @router.put("/material-quotes/{quote_id}")
@@ -444,7 +446,7 @@ def create_router(db, get_current_user, get_permissions, check_module_permission
             push["text"] = f"Revised to R{upd['revision']} (was {QUOTE_STATUSES.get(q.get('status'))})"
         await db.material_quotes.update_one({"_id": q["_id"]}, {"$set": upd, "$push": {"history": push}})
         if "revision" in upd:
-            await _lead_log(q.get("lead_id"), f"Quotation {q.get('number')} revised to R{upd['revision']} — ₹{upd['grand_total']:,.0f}", user)
+            await _lead_log(q.get("lead_id"), f"Quotation {q.get('number')} revised to R{upd['revision']} — {inr(upd['grand_total'])}", user)
         return _out(await db.material_quotes.find_one({"_id": q["_id"]}), await _sees_cost(user))
 
     @router.post("/material-quotes/{quote_id}/status")
@@ -473,7 +475,7 @@ def create_router(db, get_current_user, get_permissions, check_module_permission
             extra: Dict[str, Any] = {}
             if st == "sent" and lead and lead.get("status") in ("new", "contacted", "site_visit"):
                 extra["status"] = "quoted"
-            text = {"sent": f"Quotation {label} sent — ₹{q.get('grand_total', 0):,.0f}", "accepted": f"Quotation {label} accepted",
+            text = {"sent": f"Quotation {label} sent — {inr(q.get('grand_total', 0))}", "accepted": f"Quotation {label} accepted",
                     "rejected": f"Quotation {label} not accepted" + (f" — {reason}" if reason else ""),
                     "draft": f"Quotation {label} back to draft"}[st]
             await _lead_log(lead_id, text, user, extra)
@@ -536,7 +538,7 @@ async def mark_converted(db, quote_id: Optional[str], sale_id: str, invoice_numb
     if not lead:
         return
     upd: Dict[str, Any] = {"updated_at": now}
-    log = [{"at": now, "by": by, "by_id": user.get("id"), "type": "sale", "text": f"Sale {invoice_number} made from quotation {q.get('number')} — ₹{grand_total:,.0f}"}]
+    log = [{"at": now, "by": by, "by_id": user.get("id"), "type": "sale", "text": f"Sale {invoice_number} made from quotation {q.get('number')} — {inr(grand_total)}"}]
     if lead.get("status") in OPEN_STATUSES:
         upd.update({"status": "won", "closed_at": now, "follow_up_on": None, "follow_up_at": None, "follow_up_note": ""})
         if not lead.get("value"):

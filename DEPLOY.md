@@ -4,7 +4,28 @@ Your server already has `/root/Sensoper/deploy.sh`. It pulls the code, installs 
 copies the build to `/var/www/sensoper`, restarts the `sensoper` service and checks the live bundle. This release needs
 nothing new installed.
 
-## This release: bug sweep, security fixes and a safer AI connector
+## This release: Leads (CRM), material quotations and keyboard shortcuts
+
+No new packages, no server settings. On the server, as root:
+
+    /root/Sensoper/deploy.sh
+
+What's new:
+- **Leads** (Sales & projects → Leads): every enquiry in one list — calls, walk-ins, WhatsApp, referrals, IndiaMART /
+  JustDial, ads and the website. Overdue and today's follow-ups come first; Call and WhatsApp in one tap; log a call in
+  two taps; follow-ups ring in the owner's bell at the time set; board view to drag leads through the stages. Website
+  enquiries now land here (the Website page keeps the shop, testimonials, stores, logins and pop-ups).
+- **Material quotations**: itemised quotes picked from stock (type, Enter, quantity), HSN, discounts, CGST + SGST or
+  IGST, a branded PDF, WhatsApp, revisions (R1, R2…) and "Make the sale", which opens Direct sales filled in and marks
+  the quotation sold and the lead won. Cost and margin show only to people who can see the Price list — never on the PDF.
+- **Shortcuts**: Ctrl+K (⌘K) searches pages, leads, quotations, projects and stock with prices; N new lead; Q new
+  quotation; G then a letter to go somewhere; / search on the page; ? lists them all.
+
+Permissions (Settings → Permissions): two new pages, **Leads** and **Material quotations**. Staff can view, add and edit
+by default and see only their own leads and quotations (plus leads nobody has taken); managers see everyone's. Optional
+default terms for quotations: Terms & conditions → "Material quotation".
+
+## Earlier release: bug sweep, security fixes and a safer AI connector
 
 No new packages. On the server, as root:
 

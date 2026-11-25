@@ -6,6 +6,8 @@ import { toast } from 'sonner';
 import { Contact, Plus, Search, Phone, MessageCircle, List, Columns3, Flame, CalendarClock, Inbox, AlertCircle, Trophy, Sparkles } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { PageHeader, Tile, Empty, Loading, Chip, inputCls, errText, inrShort } from '../components/kit/PageBits';
+
+const selectCls = `${inputCls.replace('w-full ', '')} w-auto max-w-full`;
 import { crmAPI } from '../utils/api';
 import { useAuth } from '../contexts/AuthContext';
 import { useLiveRefresh } from '../lib/liveSync';
@@ -75,7 +77,7 @@ function Board({ leads, stages, onOpen, onMove }) {
   const cols = stages.filter((s) => s.key !== 'lost');
   return (
     <div className="-mx-4 overflow-x-auto px-4 pb-2" data-testid="lead-board">
-      <div className="flex min-w-max gap-3">
+      <div className="flex min-w-max gap-2 xl:min-w-0">
         {[...cols, stages.find((s) => s.key === 'lost')].filter(Boolean).map((s) => {
           const rows = leads.filter((l) => l.status === s.key && (OPEN_STAGES.includes(s.key) || (l.closed_at && new Date(l.closed_at).getTime() > monthAgo)));
           const value = rows.reduce((n, l) => n + (Number(l.value) || 0), 0);
@@ -83,7 +85,7 @@ function Board({ leads, stages, onOpen, onMove }) {
             <section key={s.key}
               onDragOver={(e) => { e.preventDefault(); setOver(s.key); }} onDragLeave={() => setOver(null)}
               onDrop={(e) => { e.preventDefault(); setOver(null); const id = e.dataTransfer.getData('text/lead'); if (id) onMove(id, s.key); }}
-              className={`flex w-[260px] shrink-0 flex-col rounded-xl border p-2 transition-colors ${over === s.key ? 'border-emerald-400 bg-emerald-50' : 'border-slate-200 bg-slate-100/60'}`}
+              className={`flex shrink-0 flex-col rounded-xl border p-2 transition-colors ${OPEN_STAGES.includes(s.key) ? 'w-[240px] xl:w-auto xl:min-w-[190px] xl:flex-1' : s.key === 'won' ? 'w-[190px]' : 'w-[140px]'} ${over === s.key ? 'border-emerald-400 bg-emerald-50' : 'border-slate-200 bg-slate-100/60'}`}
               data-testid={`board-col-${s.key}`} aria-label={s.label}>
               <header className="flex items-baseline justify-between px-1.5 pb-2 pt-1">
                 <p className="text-sm font-semibold text-slate-800">{s.label} <span className="font-normal text-slate-500">{rows.length}</span></p>
@@ -216,18 +218,18 @@ export default function LeadsPage() {
           <kbd className="pointer-events-none absolute right-3 top-1/2 hidden -translate-y-1/2 rounded border border-slate-200 bg-slate-50 px-1.5 text-[10px] text-slate-500 sm:block">/</kbd>
         </label>
         {layout === 'list' && (
-          <select className={`${inputCls} w-auto`} value={view} onChange={(e) => pickView(e.target.value)} aria-label="Show" data-testid="leads-view">
+          <select className={selectCls} value={view} onChange={(e) => pickView(e.target.value)} aria-label="Show" data-testid="leads-view">
             {VIEWS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
           </select>
         )}
-        <select className={`${inputCls} w-auto`} value={owner} onChange={(e) => setOwner(e.target.value)} aria-label="Handled by" data-testid="leads-owner">
+        <select className={selectCls} value={owner} onChange={(e) => setOwner(e.target.value)} aria-label="Handled by" data-testid="leads-owner">
           <option value="">Anyone</option><option value="me">Mine</option><option value="none">Nobody yet</option>
           {meta?.sees_all && (meta?.people || []).filter((p) => p.id !== meta.me).map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
         </select>
-        <select className={`${inputCls} hidden w-auto md:block`} value={channel} onChange={(e) => setChannel(e.target.value)} aria-label="Came from">
+        <select className={`${selectCls} hidden md:block`} value={channel} onChange={(e) => setChannel(e.target.value)} aria-label="Came from">
           <option value="">Any source</option>{(meta?.channels || []).map((x) => <option key={x.key} value={x.key}>{x.label}</option>)}
         </select>
-        <select className={`${inputCls} hidden w-auto md:block`} value={kind} onChange={(e) => setKind(e.target.value)} aria-label="What they want">
+        <select className={`${selectCls} hidden md:block`} value={kind} onChange={(e) => setKind(e.target.value)} aria-label="What they want">
           <option value="">Anything</option>{(meta?.kinds || []).map((x) => <option key={x.key} value={x.key}>{x.label}</option>)}
         </select>
       </div>

@@ -46,6 +46,7 @@ OUTCOMES = {
 LOST_REASONS = ["Price too high", "Went with another company", "Not ready yet", "Not possible at the site",
                 "Couldn't reach them", "Only asking prices", "Other"]
 CLOSED = ("won", "lost")
+QUOTE_LABELS = {"draft": "Draft", "sent": "Sent", "accepted": "Accepted", "rejected": "Not accepted", "converted": "Sold"}
 MAX_VALUE = 1_000_000_000      # ₹100 crore — more is a typing slip
 
 
@@ -143,6 +144,30 @@ def follow_up_utc(day: str, at: Optional[str]) -> str:
     hh, mm = (at or "09:30").split(":")
     local = datetime.strptime(day, "%Y-%m-%d").replace(hour=int(hh), minute=int(mm), tzinfo=IST)
     return local.astimezone(timezone.utc).isoformat()
+
+
+def nice_day(d: Optional[str]) -> str:
+    """'Wed 26 Nov' for a YYYY-MM-DD date (history lines read better than an ISO date)."""
+    try:
+        return datetime.strptime(str(d)[:10], "%Y-%m-%d").strftime("%a %d %b").replace(" 0", " ")
+    except (TypeError, ValueError):
+        return str(d or "")
+
+
+def inr(v: Any, paise: bool = False) -> str:
+    """₹ with Indian digit grouping: ₹11,31,277 (or ₹17,644.11 with paise=True)."""
+    f = float(v or 0)
+    if paise:
+        whole = int(abs(round(f, 2)))
+        p = int(round((abs(round(f, 2)) - whole) * 100))
+        return f"{'-' if f < 0 else ''}{inr(whole)}.{p:02d}"
+    n = int(round(f))
+    neg, s = n < 0, str(abs(n))
+    if len(s) > 3:
+        head, tail = s[:-3], s[-3:]
+        head = ",".join([head[max(i - 2, 0):i] for i in range(len(head), 0, -2)][::-1])
+        s = f"{head},{tail}"
+    return f"{'-' if neg else ''}₹{s}"
 
 
 def month_start_utc() -> str:
@@ -495,13 +520,13 @@ def create_router(db, get_current_user, get_permissions, check_module_permission
             "location_id": location_id or None, "created_by": user["id"], "created_by_name": by,
             "created_at": now, "updated_at": now, "last_submitted_at": now, "contact_count": 0, "quote_count": 0,
             "activity": [{"at": now, "by": by, "by_id": user["id"], "type": "created",
-                          "text": f"Added — {CHANNELS[channel].lower()}" + (f", referred by {_clean(body.referred_by, 80)}" if body.referred_by else "")}],
+                          "text": f"Added — {CHANNELS[channel]}" + (f", referred by {_clean(body.referred_by, 80)}" if body.referred_by else "")}],
         }
         if owner["id"] != user["id"]:
             doc["activity"].append({"at": now, "by": by, "by_id": user["id"], "type": "assigned", "text": f"Given to {owner['name']}"})
         if fu_on:
             doc["activity"].append({"at": now, "by": by, "by_id": user["id"], "type": "follow_up",
-                                    "text": f"Follow up on {fu_on}{' at ' + fu_at if fu_at else ''}" + (f": {doc['follow_up_note']}" if doc["follow_up_note"] else "")})
+                                    "text": f"Follow up on {nice_day(fu_on)}{' at ' + fu_at if fu_at else ''}" + (f": {doc['follow_up_note']}" if doc["follow_up_note"] else "")})
         res = await db.website_leads.insert_one(doc)
         doc["_id"] = res.inserted_id
         await _remind(doc)
@@ -602,7 +627,7 @@ def create_router(db, get_current_user, get_permissions, check_module_permission
             n = (_clean(body.follow_up_note, 200) if body.follow_up_note is not None else (lead.get("follow_up_note") or "")) if d else ""
             if (d, t, n) != (lead.get("follow_up_on") or None, lead.get("follow_up_at") or None, lead.get("follow_up_note") or ""):
                 upd.update({"follow_up_on": d, "follow_up_at": t, "follow_up_note": n})
-                note((f"Follow up on {d}{' at ' + t if t else ''}" + (f": {n}" if n else "")) if d else "Follow-up cleared", "follow_up")
+                note((f"Follow up on {nice_day(d)}{' at ' + t if t else ''}" + (f": {n}" if n else "")) if d else "Follow-up cleared", "follow_up")
         elif body.follow_up_note is not None and lead.get("follow_up_on") and status not in CLOSED:
             upd["follow_up_note"] = _clean(body.follow_up_note, 200)
 
@@ -671,7 +696,7 @@ def create_router(db, get_current_user, get_permissions, check_module_permission
                 n = _clean(body.follow_up_note, 200)
                 upd.update({"follow_up_on": d, "follow_up_at": t, "follow_up_note": n})
                 log.append({"at": now, "by": by, "by_id": user["id"], "type": "follow_up",
-                            "text": f"Next: {d}{' at ' + t if t else ''}" + (f" — {n}" if n else "")})
+                            "text": f"Next follow-up {nice_day(d)}{' at ' + t if t else ''}" + (f" — {n}" if n else "")})
             elif body.done and body.type != "note" and lead.get("follow_up_on") and lead["follow_up_on"] <= today_ist():
                 upd.update({"follow_up_on": None, "follow_up_at": None, "follow_up_note": ""})
         if "status" in upd:
@@ -742,7 +767,7 @@ def create_router(db, get_current_user, get_permissions, check_module_permission
             if rows:
                 groups.append({"key": "quotes", "label": "Material quotations", "items": [{
                     "id": str(r["_id"]), "title": f"{r.get('number')}{'-R' + str(r['revision']) if r.get('revision') else ''} · {(r.get('customer') or {}).get('name') or ''}",
-                    "sub": f"₹{round(float(r.get('grand_total') or 0)):,} · {r.get('status')}", "href": f"/dashboard/quotations/{r['_id']}"} for r in rows]})
+                    "sub": f"{inr(r.get('grand_total'))} · {QUOTE_LABELS.get(r.get('status'), r.get('status'))}", "href": f"/dashboard/quotations/{r['_id']}"} for r in rows]})
 
         if await _can(user, "module_projects"):
             ors = [{"reference_number": rx}, {"customer.name": rx}]
@@ -771,7 +796,7 @@ def create_router(db, get_current_user, get_permissions, check_module_permission
                     sell = None if r.get("margin_pct") is None else round(float(r.get("unit_price") or 0) * (1 + float(r["margin_pct"]) / 100), 2)
                     bits = [r.get("sku_code"), f"{r.get('quantity', 0):g} in stock"]
                     if sell is not None:
-                        bits.append(f"₹{sell:,.2f} + {float(r.get('gst_percentage') or 0):g}% GST")
+                        bits.append(f"{inr(sell, paise=True)} + {float(r.get('gst_percentage') or 0):g}% GST")
                     items.append({"id": str(r["_id"]), "title": r.get("name"), "sub": " · ".join(filter(None, bits)),
                                   "href": f"/dashboard/inventory?q={r.get('sku_code') or r.get('name')}"})
                 groups.append({"key": "items", "label": "Stock & prices", "items": items})

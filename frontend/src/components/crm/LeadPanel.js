@@ -140,7 +140,7 @@ export default function LeadPanel({ id, onClose, onNext, onPrev, onChanged }) {
   };
   const whatsapp = () => {
     if (!l) return;
-    window.open(waLink(l.phone, `Hi ${firstName(l.name)}, this is ${'Sensoper'} — `), '_blank', 'noopener');
+    window.open(waLink(l.phone, `Hi ${firstName(l.name)}, this is Sensoper — `), '_blank', 'noopener');
   };
   const newQuote = () => navigate(`/dashboard/quotations/new?lead=${id}`);
 
@@ -151,7 +151,8 @@ export default function LeadPanel({ id, onClose, onNext, onPrev, onChanged }) {
     { keys: 'q', inDialog: true, when: () => !!l && can('module_material_quotes', 'create'), run: newQuote },
     { keys: 'j', inDialog: true, when: () => !!onNext, run: () => onNext?.() },
     { keys: 'k', inDialog: true, when: () => !!onPrev, run: () => onPrev?.() },
-    { keys: 'mod+enter', inDialog: true, inInput: true, when: () => !!l && document.activeElement === noteRef.current, run: log },
+    // Ctrl+Enter saves the call / note — from the box, or after tapping an outcome or "call again" chip
+    { keys: 'mod+enter', inDialog: true, inInput: true, when: () => !!l && !mode && (document.activeElement === noteRef.current || !!document.activeElement?.closest?.('[data-testid="lead-log"]') || !!text.trim() || !!outcome), run: log },
   ], [l, mode, logType, outcome, text, nextKey, onNext, onPrev]);
 
   const isOpen = l && OPEN_STAGES.includes(l.status);

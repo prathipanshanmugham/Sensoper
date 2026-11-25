@@ -27,7 +27,8 @@ let pendingG = 0;   // time "g" was pressed, for G-then-letter
 let watching = false;
 
 function comboOf(e) {
-  const key = (e.key || '').toLowerCase();
+  let key = (e.key || '').toLowerCase();
+  if (key === '/' && e.shiftKey) key = '?';   // some keyboards / tools report Shift+/ as "/" with Shift held
   if (['control', 'meta', 'shift', 'alt'].includes(key)) return null;
   const mod = e.ctrlKey || e.metaKey;
   const named = key.length > 1;   // enter, escape, arrowdown…
@@ -41,6 +42,11 @@ function watchG() {
   window.addEventListener('keydown', (e) => {
     const combo = comboOf(e);
     if (!combo) return;
+    // Esc leaves a text box (so single-key shortcuts work again) — unless the box has its own open list to close
+    if (combo === 'escape' && typing(e.target) && !dialogOpen() && e.target.getAttribute?.('aria-expanded') !== 'true') {
+      setTimeout(() => e.target.blur?.(), 0);
+      return;
+    }
     const plain = !e.ctrlKey && !e.metaKey && !e.altKey && !typing(e.target) && !dialogOpen();
     if (plain && combo === 'g') { pendingG = Date.now(); return; }
     if (plain && pendingG && Date.now() - pendingG < 1200) e.sensoperSeq = `g ${combo}`;

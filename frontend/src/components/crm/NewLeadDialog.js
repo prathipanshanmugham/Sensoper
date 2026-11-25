@@ -89,7 +89,7 @@ export default function NewLeadDialog({ open, onOpenChange, onCreated, initial }
               <Field label="Name"><input className={inputCls} value={f.name} onChange={set('name')} placeholder="Their name" data-testid="new-lead-name" /></Field>
             </div>
             <div>
-              <p className="mb-1.5 text-sm font-medium text-slate-700">What they want</p>
+              <p className="mb-1.5 text-xs font-medium text-slate-700">What they want</p>
               <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label="What they want">
                 {Object.entries(KIND_SHORT).map(([k, l]) => (
                   <button key={k} type="button" role="radio" aria-checked={f.kind === k} onClick={() => set('kind')(k)}
@@ -111,7 +111,7 @@ export default function NewLeadDialog({ open, onOpenChange, onCreated, initial }
               <textarea className={`${inputCls} h-auto min-h-[72px] py-2`} value={f.message} onChange={set('message')} placeholder="e.g. 3-phase, ₹6,000 bill, wants a site visit on Saturday" data-testid="new-lead-message" />
             </Field>
             <div>
-              <p className="mb-1.5 text-sm font-medium text-slate-700">Call back</p>
+              <p className="mb-1.5 text-xs font-medium text-slate-700">Call back</p>
               <div className="flex flex-wrap items-center gap-1.5">
                 {[...choices, { key: '', label: 'No date' }].map((c) => (
                   <button key={c.key || 'none'} type="button" onClick={() => set('fu')(c.key)} aria-pressed={f.fu === c.key}

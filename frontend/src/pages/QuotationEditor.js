@@ -21,22 +21,40 @@ import { num, r2, priceIt } from '../utils/quoteMath';
 
 const money = (v) => `₹${(Number(v) || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const blankCustomer = { name: '', phone: '', email: '', company: '', address: '', state: 'Tamil Nadu', gstin: '' };
+function usePhone() {   // lines show as cards on a phone, as a table from 640 px up
+  const q = '(max-width: 639px)';
+  const [on, setOn] = useState(() => typeof window !== 'undefined' && window.matchMedia?.(q).matches);
+  useEffect(() => {
+    const m = window.matchMedia?.(q);
+    if (!m) return undefined;
+    const h = () => setOn(m.matches);
+    m.addEventListener?.('change', h);
+    return () => m.removeEventListener?.('change', h);
+  }, []);
+  return !!on;
+}
 const cellCls = 'h-9 w-full rounded-md border border-slate-200 bg-white px-2 text-sm tabular-nums outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/25';
 
 function ItemPicker({ onPick, sees, inputRef }) {
+  // The whole active list is loaded once and filtered on every key, so Enter always takes what's on screen.
   const [q, setQ] = useState('');
-  const [rows, setRows] = useState([]);
+  const [all, setAll] = useState(null);
   const [open, setOpen] = useState(false);
   const [hi, setHi] = useState(0);
-  const [loading, setLoading] = useState(false);
   const boxRef = useRef(null);
   useEffect(() => {
-    if (!open) return undefined;
-    let live = true;
-    setLoading(true);
-    const t = setTimeout(() => quotesAPI.items({ q, limit: 25 }).then((r) => { if (live) { setRows(r.data.items || []); setHi(0); } }).catch(() => {}).finally(() => live && setLoading(false)), q ? 180 : 0);
-    return () => { live = false; clearTimeout(t); };
-  }, [q, open]);
+    if (!open || all) return;
+    quotesAPI.items({ limit: 3000 }).then((r) => setAll(r.data.items || [])).catch(() => setAll([]));
+  }, [open, all]);
+  const rows = useMemo(() => {
+    if (!all) return [];
+    const words = q.toLowerCase().split(/\s+/).filter(Boolean);
+    const hits = all.filter((it) => { const hay = `${it.name} ${it.sku_code} ${it.hsn_code} ${it.brand} ${it.category}`.toLowerCase(); return words.every((w) => hay.includes(w)); });
+    if (words[0]) hits.sort((a, b) => Number(!a.name.toLowerCase().startsWith(words[0])) - Number(!b.name.toLowerCase().startsWith(words[0])));
+    return hits.slice(0, 30);
+  }, [all, q]);
+  const loading = open && !all;
+  useEffect(() => { setHi(0); }, [q]);
   useEffect(() => {
     if (!open) return undefined;
     const close = (e) => { if (!boxRef.current?.contains(e.target)) setOpen(false); };
@@ -105,6 +123,7 @@ export default function QuotationEditor() {
   const [dirty, setDirty] = useState(isNew);
   const [busy, setBusy] = useState('');
   const pickerRef = useRef(null);
+  const isPhone = usePhone();
   const qtyRefs = useRef({});
   const focusQty = useRef(null);
 
@@ -139,12 +158,20 @@ export default function QuotationEditor() {
         address: c.address || [r.data.area, r.data.city, r.data.pincode].filter(Boolean).join(', ') }));
     }).catch(() => setLead(null));
   }, [leadId, isNew]);
-  useEffect(() => { if (isNew) setTimeout(() => document.querySelector('[data-testid="q-customer-name"]')?.focus(), 80); }, [isNew]);
+  useEffect(() => {   // start in the customer's name — unless the person already went somewhere (e.g. pressed A for the item box)
+    if (!isNew) return undefined;
+    const t = setTimeout(() => { if (!document.activeElement || document.activeElement === document.body) document.querySelector('[data-testid="q-customer-name"]')?.focus(); }, 80);
+    return () => clearTimeout(t);
+  }, [isNew]);
   useEffect(() => {   // after adding an item, put the cursor in its quantity
     if (focusQty.current && qtyRefs.current[focusQty.current]) { qtyRefs.current[focusQty.current].focus(); qtyRefs.current[focusQty.current].select(); focusQty.current = null; }
   }, [lines]);
 
   const locked = quote?.status === 'converted';
+  const lineWarnings = (l) => ({
+    short: !!(l.inventory_item_id && l.stock != null && num(l.quantity) > num(l.stock)),
+    low: !!(defaults?.sees_cost && l.cost_price && num(l.unit_price) * (1 - num(l.discount_pct) / 100) < num(l.cost_price)),
+  });
   const sees = !!defaults?.sees_cost;
   const inter = isInterState(defaults?.company_state || 'Tamil Nadu', profile?.gst_number, customer.state, customer.gstin);
   const t = useMemo(() => priceIt(lines, billDisc, inter), [lines, billDisc, inter]);
@@ -299,7 +326,7 @@ export default function QuotationEditor() {
       )}
       {quote?.expired && !locked && <div className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-900"><AlertTriangle className="h-4 w-4" />Valid till {fmtDate(quote.valid_until)} has passed. Check the rates and move the date before sending it again.</div>}
 
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_300px]">
         <div className="space-y-4">
           {/* customer */}
           <section className="rounded-xl border border-slate-200 bg-white p-4" data-testid="q-customer">
@@ -307,7 +334,7 @@ export default function QuotationEditor() {
               <p className="text-sm font-semibold text-slate-900">Customer</p>
               {lead && <Link to={`/dashboard/leads?lead=${lead.id}`} className="flex items-center gap-1 text-xs font-medium text-emerald-700 hover:underline"><Contact className="h-3.5 w-3.5" />Lead {lead.number}{lead.name ? ` — ${lead.name}` : ''}</Link>}
             </div>
-            <fieldset disabled={locked} className="grid gap-3 sm:grid-cols-2">
+            <fieldset disabled={locked} className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
               <Field label="Name"><input className={inputCls} value={customer.name} onChange={setC('name')} data-testid="q-customer-name" /></Field>
               <Field label="Mobile"><input className={inputCls} inputMode="tel" value={customer.phone} onChange={setC('phone')} placeholder="For WhatsApp" data-testid="q-customer-phone" /></Field>
               <Field label="Company (optional)"><input className={inputCls} value={customer.company} onChange={setC('company')} /></Field>
@@ -316,46 +343,76 @@ export default function QuotationEditor() {
                 <select className={inputCls} value={customer.state} onChange={setC('state')} data-testid="q-customer-state">{INDIA_STATES.map((s) => <option key={s} value={s}>{s}</option>)}</select>
               </Field>
               <Field label="Email (optional)"><input className={inputCls} type="email" value={customer.email} onChange={setC('email')} /></Field>
-              <Field label="Address" className="sm:col-span-2"><input className={inputCls} value={customer.address} onChange={setC('address')} placeholder="Street, town, PIN" /></Field>
+              <Field label="Address" className="sm:col-span-2 xl:col-span-3"><input className={inputCls} value={customer.address} onChange={setC('address')} placeholder="Street, town, PIN" /></Field>
             </fieldset>
           </section>
 
           {/* items */}
           <section className="rounded-xl border border-slate-200 bg-white" data-testid="q-items">
             <div className="flex flex-wrap items-center gap-2 border-b border-slate-100 p-4">
-              <p className="mr-auto text-sm font-semibold text-slate-900">Items <span className="font-normal text-slate-500">{lines.length || ''}</span></p>
+              <p className="mr-auto text-sm font-semibold text-slate-900">Items <span className="font-normal text-slate-500">{lines.length || ''}</span><span className="ml-2 text-xs font-normal text-slate-500">Rates are before GST</span></p>
               {!locked && <Button variant="outline" size="sm" className="h-9 gap-1.5" onClick={addCustom} data-testid="q-add-line"><Plus className="h-4 w-4" />Add a line (transport, labour…)</Button>}
             </div>
             {!locked && <div className="border-b border-slate-100 p-4"><ItemPicker onPick={addItem} sees={sees} inputRef={pickerRef} /></div>}
             {lines.length === 0 ? (
               <div className="px-4 py-10 text-center text-sm text-slate-500"><Package className="mx-auto mb-2 h-8 w-8 text-slate-300" />Type in the box above to add panels, inverters, cables… Press <b>Enter</b> to add, then type the quantity.</div>
+            ) : isPhone ? (
+              <ul className="divide-y divide-slate-100" data-testid="q-line-cards">
+                {lines.map((l, i) => {
+                  const w = lineWarnings(l);
+                  return (
+                    <li key={l.key} className="space-y-2 px-4 py-3" data-testid={`q-line-${i}`}>
+                      <div className="flex items-start gap-2">
+                        <input data-line-name={l.key} className={`${cellCls} font-medium`} value={l.name} onChange={(e) => updLine(i, 'name', e.target.value)} disabled={locked} placeholder="Item or service" aria-label="Item" />
+                        {!locked && <button type="button" onClick={() => rmLine(i)} className="shrink-0 rounded p-2 text-slate-400 hover:bg-rose-50 hover:text-rose-600" aria-label={`Remove ${l.name || 'line'}`}><Trash2 className="h-4 w-4" /></button>}
+                      </div>
+                      <div className="grid grid-cols-[1fr_1.4fr_0.8fr_0.8fr] gap-2">
+                        <label className="text-[11px] text-slate-500">Qty ({l.unit || 'Nos'})<input ref={(el) => { qtyRefs.current[l.key] = el; }} className={`${cellCls} mt-0.5 text-right`} inputMode="decimal" value={l.quantity} onChange={(e) => updLine(i, 'quantity', e.target.value)} disabled={locked} data-testid={`q-qty-${i}`} /></label>
+                        <label className="text-[11px] text-slate-500">Rate<input className={`${cellCls} mt-0.5 text-right`} inputMode="decimal" value={l.unit_price} onChange={(e) => updLine(i, 'unit_price', e.target.value)} disabled={locked} data-testid={`q-rate-${i}`} /></label>
+                        <label className="text-[11px] text-slate-500">Disc %<input className={`${cellCls} mt-0.5 text-right`} inputMode="decimal" value={l.discount_pct || ''} onChange={(e) => updLine(i, 'discount_pct', e.target.value)} disabled={locked} placeholder="0" /></label>
+                        <label className="text-[11px] text-slate-500">GST %<input className={`${cellCls} mt-0.5 text-right`} inputMode="decimal" value={l.gst_percentage} onChange={(e) => updLine(i, 'gst_percentage', e.target.value)} disabled={locked} /></label>
+                      </div>
+                      <div className="flex items-center justify-between gap-2 text-xs">
+                        <span className="flex flex-wrap gap-x-3">
+                          {l.hsn_code && <span className="text-slate-500">HSN {l.hsn_code}</span>}
+                          {w.short && <span className="text-amber-700">Only {l.stock} in stock</span>}
+                          {w.low && <span className="text-rose-700">Below cost</span>}
+                        </span>
+                        <span className="text-sm font-semibold tabular-nums text-slate-900">{money(t.rows[i]?.total)}</span>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
             ) : (
               <div className="overflow-x-auto">
-                <table className="w-full min-w-[760px] text-sm">
+                <table className="w-full min-w-[700px] text-sm">
                   <thead className="bg-slate-50 text-xs text-slate-500">
                     <tr>
-                      <th className="w-8 px-3 py-2 text-left font-medium">#</th>
+                      <th className="w-7 px-3 py-2 text-left font-medium">#</th>
                       <th className="px-2 py-2 text-left font-medium">Item</th>
-                      <th className="w-20 px-2 py-2 text-left font-medium">HSN</th>
-                      <th className="w-20 px-2 py-2 text-right font-medium">Qty</th>
-                      <th className="w-20 px-2 py-2 text-left font-medium">Unit</th>
-                      <th className="w-28 px-2 py-2 text-right font-medium">Rate</th>
+                      <th className="w-24 px-2 py-2 text-right font-medium">Qty</th>
+                      <th className="w-32 px-2 py-2 text-right font-medium">Rate</th>
                       <th className="w-16 px-2 py-2 text-right font-medium">Disc %</th>
                       <th className="w-16 px-2 py-2 text-right font-medium">GST %</th>
                       <th className="w-28 px-2 py-2 text-right font-medium">Amount</th>
-                      <th className="w-10" />
+                      <th className="w-9" />
                     </tr>
                   </thead>
                   <tbody>
                     {lines.map((l, i) => {
-                      const short = l.inventory_item_id && l.stock != null && num(l.quantity) > num(l.stock);
-                      const low = sees && l.cost_price && num(l.unit_price) * (1 - num(l.discount_pct) / 100) < num(l.cost_price);
+                      const { short, low } = lineWarnings(l);
                       return (
                         <tr key={l.key} className="border-t border-slate-100 align-top" data-testid={`q-line-${i}`}>
                           <td className="px-3 py-2.5 text-xs text-slate-400">{i + 1}</td>
                           <td className="px-2 py-1.5">
                             <input data-line-name={l.key} className={`${cellCls} font-medium`} value={l.name} onChange={(e) => updLine(i, 'name', e.target.value)} disabled={locked} placeholder="Item or service" aria-label="Item" />
-                            <input className="mt-1 h-7 w-full rounded border border-transparent px-2 text-xs text-slate-600 outline-none hover:border-slate-200 focus:border-emerald-500" value={l.description || ''} onChange={(e) => updLine(i, 'description', e.target.value)} disabled={locked} placeholder="Add a description (optional)" aria-label="Description" />
+                            <div className="mt-1 flex gap-1">
+                              <input className="h-7 min-w-0 flex-1 rounded border border-transparent px-2 text-xs text-slate-600 outline-none hover:border-slate-200 focus:border-emerald-500" value={l.description || ''} onChange={(e) => updLine(i, 'description', e.target.value)} disabled={locked} placeholder="Add a description (optional)" aria-label="Description" />
+                              <label className="flex shrink-0 items-center gap-1 text-[11px] text-slate-400">HSN
+                                <input className="h-7 w-[86px] rounded border border-slate-200 px-1.5 text-xs tabular-nums text-slate-700 outline-none focus:border-emerald-500" value={l.hsn_code || ''} onChange={(e) => updLine(i, 'hsn_code', e.target.value)} disabled={locked} aria-label="HSN code" />
+                              </label>
+                            </div>
                             {(short || low) && (
                               <p className="mt-0.5 flex flex-wrap gap-x-3 text-[11px]">
                                 {short && <span className="text-amber-700">Only {l.stock} in stock</span>}
@@ -363,11 +420,10 @@ export default function QuotationEditor() {
                               </p>
                             )}
                           </td>
-                          <td className="px-2 py-1.5"><input className={cellCls} value={l.hsn_code || ''} onChange={(e) => updLine(i, 'hsn_code', e.target.value)} disabled={locked} aria-label="HSN" /></td>
-                          <td className="px-2 py-1.5"><input ref={(el) => { qtyRefs.current[l.key] = el; }} className={`${cellCls} text-right`} inputMode="decimal" value={l.quantity} onChange={(e) => updLine(i, 'quantity', e.target.value)} disabled={locked} aria-label="Quantity" data-testid={`q-qty-${i}`}
-                            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); pickerRef.current?.focus(); } }} /></td>
                           <td className="px-2 py-1.5">
-                            <select className={cellCls} value={l.unit || 'Nos'} onChange={(e) => updLine(i, 'unit', e.target.value)} disabled={locked} aria-label="Unit">
+                            <input ref={(el) => { qtyRefs.current[l.key] = el; }} className={`${cellCls} text-right`} inputMode="decimal" value={l.quantity} onChange={(e) => updLine(i, 'quantity', e.target.value)} disabled={locked} aria-label="Quantity" data-testid={`q-qty-${i}`}
+                              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); pickerRef.current?.focus(); } }} />
+                            <select className="mt-1 h-7 w-full rounded border border-transparent bg-transparent px-1 text-right text-xs text-slate-600 outline-none hover:border-slate-200 focus:border-emerald-500" value={l.unit || 'Nos'} onChange={(e) => updLine(i, 'unit', e.target.value)} disabled={locked} aria-label="Unit">
                               {[...new Set([...(defaults?.units || ['Nos']), l.unit || 'Nos'])].map((u) => <option key={u} value={u}>{u}</option>)}
                             </select>
                           </td>

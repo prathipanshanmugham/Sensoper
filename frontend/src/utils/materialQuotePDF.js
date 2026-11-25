@@ -97,7 +97,7 @@ export async function materialQuotePDF(quote, companyProfile, { save = true } = 
   });
   y = doc.lastAutoTable.finalY + 5;
   if (Number(quote.header_discount) > 0) {
-    doc.setFont(FONT, 'italic'); doc.setFontSize(7.5); doc.setTextColor(...MUTED);
+    doc.setFont(FONT, 'normal'); doc.setFontSize(7.5); doc.setTextColor(...MUTED);   // (the italic face has no ₹)
     doc.text(`Includes a discount of ${money(quote.header_discount)} on the whole order, shared across the items; GST is on the discounted value.`, m, y); y += 5;
   }
 
@@ -110,7 +110,7 @@ export async function materialQuotePDF(quote, companyProfile, { save = true } = 
   if (Number(quote.round_off)) rows.push(['Round off', `${Number(quote.round_off) > 0 ? '+ ' : '− '}${money(Math.abs(quote.round_off))}`]);
   rows.push([{ content: 'TOTAL', styles: { fontStyle: 'bold', fillColor: INK, textColor: [255, 255, 255], fontSize: 10 } },
     { content: money(quote.grand_total), styles: { fontStyle: 'bold', fillColor: INK, textColor: [255, 255, 255], fontSize: 10, halign: 'right' } }]);
-  autoTable(doc, { startY: y, margin: { left: W / 2 + 4, right: m }, theme: 'plain', styles: { font: FONT, fontSize: 9, cellPadding: 2.2, textColor: INK },
+  autoTable(doc, { startY: y, margin: { left: W / 2 + 4, right: m }, theme: 'plain', styles: { font: FONT, fontSize: 9, cellPadding: 1.7, textColor: INK },
     columnStyles: { 1: { cellWidth: 42, halign: 'right', fontStyle: 'bold' } }, body: rows });
   const totalsEnd = doc.lastAutoTable.finalY;
 
@@ -133,7 +133,7 @@ export async function materialQuotePDF(quote, companyProfile, { save = true } = 
       headStyles: { fillColor: PAPER, textColor: MUTED, fontStyle: 'bold' }, columnStyles: { 1: { halign: 'right' }, 2: { halign: 'right' } } });
     yLeft = doc.lastAutoTable.finalY + 2;
   }
-  y = Math.max(totalsEnd, yLeft) + 8;
+  y = Math.max(totalsEnd, yLeft) + 6;
 
   // ── notes ──
   if (quote.notes) {
@@ -149,9 +149,9 @@ export async function materialQuotePDF(quote, companyProfile, { save = true } = 
   if (bank.length) {
     y = ensureSpace(doc, ctx, y, 12 + bank.length * 5, SUB);
     doc.setFont(FONT, 'bold'); doc.setFontSize(9); doc.setTextColor(...INK); doc.text('Payment details', m, y); y += 2;
-    autoTable(doc, { startY: y, margin: { left: m, right: W / 2 + 6 }, theme: 'plain', styles: { font: FONT, fontSize: 8, cellPadding: 1, textColor: INK },
-      columnStyles: { 0: { textColor: MUTED, cellWidth: 26 } }, body: bank });
-    y = doc.lastAutoTable.finalY + 6;
+    autoTable(doc, { startY: y, margin: { left: m, right: W / 2 + 6 }, theme: 'plain',
+      columnStyles: { 0: { textColor: MUTED, cellWidth: 26 } }, body: bank, styles: { font: FONT, fontSize: 8, cellPadding: 0.7, textColor: INK } });
+    y = doc.lastAutoTable.finalY + 5;
   }
 
   // ── terms ──
