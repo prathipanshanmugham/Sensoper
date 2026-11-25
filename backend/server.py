@@ -2788,6 +2788,11 @@ api_router.include_router(_create_crm_router(db, get_current_user, get_permissio
 api_router.include_router(_create_material_quotes_router(db, get_current_user, get_permissions, check_module_permission, create_audit_log,
                                                          company_profile_fn=_get_active_company_profile))
 
+# ═══════════ ODOO SYNC (one way, Odoo → Sensoper) ═══════════
+from odoo_sync import create_router as _create_odoo_router  # noqa: E402
+_odoo_router = _create_odoo_router(db, get_current_user, get_permissions, check_module_permission, create_audit_log)
+api_router.include_router(_odoo_router)
+
 # ═══════════ ECOMMERCE MARKETPLACES (Iter 46 Change 2) ═══════════
 from ecommerce import create_router as _create_ecommerce_router  # noqa: E402
 _ecommerce_router = _create_ecommerce_router(
@@ -8070,6 +8075,8 @@ async def startup_event():
     from material_quotes import ensure_indexes as _mq_indexes  # noqa: E402
     await _crm_indexes(db)
     await _mq_indexes(db)
+    from odoo_sync import ensure_indexes as _odoo_indexes  # noqa: E402
+    await _odoo_indexes(db)
     await db.offer_interests.create_index([("offer_id", 1), ("project_id", 1)], unique=True)
     # What3words was removed (Oct 2026): clear its cache and the saved (encrypted) API key
     await db.w3w_cache.drop()
@@ -8256,6 +8263,7 @@ async def startup_event():
         logger.warning(f"Object storage init failed (non-critical): {e}")
     try:
         _log_archive_router.start_scheduler()
+        _odoo_router.start_scheduler()
     except Exception as e:
         logger.warning(f"Log archive scheduler not started: {e}")
     try:

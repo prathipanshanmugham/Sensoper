@@ -1104,6 +1104,7 @@ export const quotesAPI = {
   list: (params = {}) => api.get('/material-quotes', { params }),
   items: (params = {}) => api.get('/material-quotes/items', { params }),
   defaults: () => api.get('/material-quotes/defaults'),
+  customers: (q) => api.get('/material-quotes/customers', { params: { q } }),
   get: (id) => api.get(`/material-quotes/${id}`),
   create: (data) => api.post('/material-quotes', data),
   update: (id, data) => api.put(`/material-quotes/${id}`, data),
@@ -1114,3 +1115,24 @@ export const quotesAPI = {
 
 // One search for Ctrl+K: leads, quotations, projects and stock
 export const searchAPI = { search: (q) => api.get('/search', { params: { q } }) };
+
+// Odoo sync, one way (backend/odoo_sync.py). The API key goes in, never comes back.
+export const odooAPI = {
+  settings: () => api.get('/odoo/settings'),
+  saveSettings: (data) => api.put('/odoo/settings', data),
+  connect: (data) => api.put('/odoo/connection', data),
+  forgetKey: () => api.delete('/odoo/connection'),
+  test: () => api.post('/odoo/test'),
+  saveSync: (name, data) => api.put(`/odoo/syncs/${name}`, data),
+  run: (name, full = false) => api.post(`/odoo/syncs/${encodeURIComponent(name)}/run`, null, { params: full ? { full: true } : {} }),
+  preview: (name) => api.post(`/odoo/syncs/${encodeURIComponent(name)}/preview`),
+  runs: () => api.get('/odoo/runs'),
+  runStatus: (id) => api.get(`/odoo/runs/${id}`),
+  fields: (model) => api.get('/odoo/fields', { params: { model } }),
+  models: (q) => api.get('/odoo/models', { params: { q } }),
+  lookups: () => api.get('/odoo/lookups'),
+  addTable: (data) => api.post('/odoo/tables', data),
+  editTable: (key, data) => api.put(`/odoo/tables/${key}`, data),
+  removeTable: (key) => api.delete(`/odoo/tables/${key}`),
+  data: (key, params = {}) => api.get(`/odoo/data/${key}`, { params }),
+};

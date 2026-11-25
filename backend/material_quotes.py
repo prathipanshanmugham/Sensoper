@@ -273,6 +273,8 @@ def create_router(db, get_current_user, get_permissions, check_module_permission
         lines = [{k: v for k, v in l.items() if k not in hidden} for l in q.get("lines") or []]
         st = q.get("status") or "draft"
         out = {k: v for k, v in q.items() if k not in ("_id", "lines", "internal_cost")}
+        if isinstance(out.get("odoo"), dict):   # what Odoo says; not the copy-tracking snapshot
+            out["odoo"] = {k: v for k, v in out["odoo"].items() if k != "values"}
         out.update({
             "id": str(q["_id"]), "lines": lines, "status": st, "status_label": QUOTE_STATUSES.get(st, st),
             "expired": st in ("draft", "sent") and bool(q.get("valid_until")) and q["valid_until"] < today,
@@ -377,11 +379,31 @@ def create_router(db, get_current_user, get_permissions, check_module_permission
             out.append(o)
         return {"items": out, "sees_cost": sees_cost}
 
+    @router.get("/material-quotes/customers")
+    async def customers_lookup(request: Request, q: str = "", limit: int = 8):
+        """Customers for the quotation form's name box — Odoo contacts and anyone who bought before."""
+        await get_current_user(request)
+        text = (q or "").strip()[:60]
+        if len(text) < 2:
+            return {"items": []}
+        rx = {"$regex": re.escape(text), "$options": "i"}
+        digits = re.sub(r"\D", "", text)
+        ors: List[Dict[str, Any]] = [{"name": rx}, {"company": rx}]
+        if len(digits) >= 4:
+            ors.append({"phone": {"$regex": re.escape(digits[-10:])}})
+        rows = await db.customers.find({"$or": ors, "odoo.archived": {"$ne": True}}).sort("name", 1).limit(max(1, min(limit, 20))).to_list(20)
+        return {"items": [{"id": str(r["_id"]), "name": r.get("name"), "company": r.get("company") or "", "phone": r.get("phone") or "",
+                           "email": r.get("email") or "", "gstin": r.get("gstin") or "", "state": r.get("state") or "",
+                           "address": ", ".join(x for x in (r.get("address"), r.get("city"), r.get("pincode")) if x),
+                           "from_odoo": bool(r.get("odoo"))} for r in rows]}
+
     @router.get("/material-quotes/defaults")
     async def defaults(request: Request):
         user = await get_current_user(request)
         profile = await company_profile_fn(user.get("default_location_id")) if company_profile_fn else {}
-        return {"terms": await _default_terms(), "valid_days": DEFAULT_VALID_DAYS, "units": list(UNITS),
+        odoo = await db.odoo_settings.find_one({"_id": "main"}, {"url": 1, "syncs.orders.extra_labels": 1})
+        return {"odoo": {"url": odoo["url"], "order_fields": ((odoo.get("syncs") or {}).get("orders") or {}).get("extra_labels") or {}} if odoo and odoo.get("url") else None,
+                "terms": await _default_terms(), "valid_days": DEFAULT_VALID_DAYS, "units": list(UNITS),
                 "valid_until": _valid_until(None), "company_state": (profile or {}).get("state", "Tamil Nadu"),
                 "sees_cost": await _sees_cost(user), "statuses": [{"key": k, "label": v} for k, v in QUOTE_STATUSES.items()]}
 
@@ -427,6 +449,8 @@ def create_router(db, get_current_user, get_permissions, check_module_permission
     async def update_quote(quote_id: str, body: QuoteIn, request: Request):
         user = await get_current_user(request)
         q = await _quote_for(user, quote_id)
+        if q.get("read_only"):
+            raise HTTPException(status_code=400, detail="This quotation comes from Odoo and changes there — copy it to make a Sensoper quotation")
         if q.get("status") == "converted":
             raise HTTPException(status_code=400, detail="This quotation is already a sale — make a copy to quote again")
         body.location_id = q.get("location_id")
@@ -454,6 +478,8 @@ def create_router(db, get_current_user, get_permissions, check_module_permission
         user = await get_current_user(request)
         q = await _quote_for(user, quote_id)
         st = body.status
+        if q.get("read_only"):
+            raise HTTPException(status_code=400, detail="This quotation comes from Odoo — its status changes there")
         if st not in ("draft", "sent", "accepted", "rejected"):
             raise HTTPException(status_code=400, detail="A quotation becomes Sold only by making the sale from it")
         if q.get("status") == "converted":
@@ -493,6 +519,8 @@ def create_router(db, get_current_user, get_permissions, check_module_permission
                 "igst", "gst_total", "round_off", "auto_round", "grand_total", "discount_amount", "subject", "notes", "internal_note",
                 "terms", "lead_id", "lead_number", "lead_owner", "location_id")
         doc = {k: q.get(k) for k in keep}
+        if q.get("read_only"):   # copied from Odoo: Sensoper's own numbering, rounding and terms from here on
+            doc.update({"auto_round": True, "terms": await _default_terms(), "copied_from_odoo": q.get("number")})
         doc.update({"number": await _number(q.get("location_id")), "revision": 0, "status": "draft", "created_by": user["id"],
                     "created_by_name": by, "created_at": now, "updated_at": now, "quote_date": today_ist(),
                     "valid_until": _valid_until(None), "copied_from": q.get("number"),
@@ -508,6 +536,8 @@ def create_router(db, get_current_user, get_permissions, check_module_permission
     async def delete_quote(quote_id: str, request: Request):
         user = await get_current_user(request)
         q = await _quote_for(user, quote_id)
+        if q.get("read_only"):
+            raise HTTPException(status_code=400, detail="This quotation comes from Odoo, so it stays here as Odoo's record")
         if q.get("status") == "converted":
             raise HTTPException(status_code=400, detail="This quotation is already a sale and stays on record")
         await db.material_quotes.delete_one({"_id": q["_id"]})

@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams, useSearchParams, Link } from 'react-router-dom';
 import { toast } from 'sonner';
 import {
-  ArrowLeft, Plus, Search, Trash2, Loader2, Download, MessageCircle, Copy, Receipt, Check, X, Send, Package, AlertTriangle, Save, Contact,
+  ArrowLeft, Plus, Search, Trash2, Loader2, Download, MessageCircle, Copy, Receipt, Check, X, Send, Package, AlertTriangle, Save, Contact, CloudDownload, ExternalLink,
 } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '../components/ui/dropdown-menu';
@@ -18,6 +18,7 @@ import { materialQuotePDF } from '../utils/materialQuotePDF';
 import { waLink, firstName, leadsChanged } from '../components/crm/leadBits';
 import { QUOTE_TONE } from './QuotationsPage';
 import { num, r2, priceIt } from '../utils/quoteMath';
+import FromOdoo, { odooLink } from '../components/odoo/FromOdoo';
 
 const money = (v) => `₹${(Number(v) || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const blankCustomer = { name: '', phone: '', email: '', company: '', address: '', state: 'Tamil Nadu', gstin: '' };
@@ -100,6 +101,54 @@ function ItemPicker({ onPick, sees, inputRef }) {
   );
 }
 
+function CustomerName({ value, onChange, onPick, disabled }) {
+  // Suggests customers already in Sensoper (from Odoo or earlier sales) as you type a name, company or mobile.
+  const [rows, setRows] = useState([]);
+  const [open, setOpen] = useState(false);
+  const [hi, setHi] = useState(-1);
+  const typed = useRef(false);
+  const boxRef = useRef(null);
+  useEffect(() => {
+    if (!typed.current || value.trim().length < 2) { setRows([]); return undefined; }
+    const t = setTimeout(() => quotesAPI.customers(value.trim()).then((r) => { setRows(r.data.items || []); setHi(-1); }).catch(() => setRows([])), 200);
+    return () => clearTimeout(t);
+  }, [value]);
+  useEffect(() => {
+    if (!open) return undefined;
+    const close = (e) => { if (!boxRef.current?.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', close);
+    return () => document.removeEventListener('mousedown', close);
+  }, [open]);
+  const pick = (c) => { typed.current = false; setOpen(false); setRows([]); onPick(c); };
+  const show = open && rows.length > 0;
+  return (
+    <div ref={boxRef} className="relative">
+      <input className={inputCls} value={value} disabled={disabled} data-testid="q-customer-name" autoComplete="off"
+        role="combobox" aria-expanded={show} aria-controls="customer-suggest" aria-autocomplete="list"
+        onChange={(e) => { typed.current = true; setOpen(true); onChange(e); }}
+        onKeyDown={(e) => {
+          if (!show) return;
+          if (e.key === 'ArrowDown') { e.preventDefault(); setHi((h) => Math.min(h + 1, rows.length - 1)); }
+          else if (e.key === 'ArrowUp') { e.preventDefault(); setHi((h) => Math.max(h - 1, -1)); }
+          else if (e.key === 'Enter' && hi >= 0) { e.preventDefault(); pick(rows[hi]); }
+          else if (e.key === 'Escape') { e.stopPropagation(); setOpen(false); }
+        }} />
+      {show && (
+        <ul id="customer-suggest" role="listbox" className="absolute inset-x-0 top-full z-30 mt-1 max-h-72 overflow-y-auto rounded-lg border border-slate-200 bg-white py-1 shadow-lg sm:min-w-[320px]">
+          {rows.map((c, i) => (
+            <li key={c.id} role="option" aria-selected={i === hi}>
+              <button type="button" onMouseEnter={() => setHi(i)} onClick={() => pick(c)} className={`w-full px-3 py-2 text-left ${i === hi ? 'bg-emerald-50' : ''}`} data-testid={`q-customer-pick-${i}`}>
+                <span className="flex items-center gap-1.5 text-sm font-medium text-slate-900">{c.name}{c.from_odoo && <Chip tone="violet">Odoo</Chip>}</span>
+                <span className="block truncate text-[11px] text-slate-500">{[c.company !== c.name && c.company, c.phone, c.gstin, c.address].filter(Boolean).join(' · ')}</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 export default function QuotationEditor() {
   const { id } = useParams();
   const isNew = !id || id === 'new';
@@ -167,14 +216,20 @@ export default function QuotationEditor() {
     if (focusQty.current && qtyRefs.current[focusQty.current]) { qtyRefs.current[focusQty.current].focus(); qtyRefs.current[focusQty.current].select(); focusQty.current = null; }
   }, [lines]);
 
-  const locked = quote?.status === 'converted';
+  const sold = quote?.status === 'converted';
+  const fromOdoo = !!quote?.read_only;   // a copy of an Odoo quotation: changed in Odoo, not here
+  const locked = sold || fromOdoo;
   const lineWarnings = (l) => ({
-    short: !!(l.inventory_item_id && l.stock != null && num(l.quantity) > num(l.stock)),
-    low: !!(defaults?.sees_cost && l.cost_price && num(l.unit_price) * (1 - num(l.discount_pct) / 100) < num(l.cost_price)),
+    short: !fromOdoo && !!(l.inventory_item_id && l.stock != null && num(l.quantity) > num(l.stock)),
+    low: !fromOdoo && !!(defaults?.sees_cost && l.cost_price && num(l.unit_price) * (1 - num(l.discount_pct) / 100) < num(l.cost_price)),
   });
   const sees = !!defaults?.sees_cost;
-  const inter = isInterState(defaults?.company_state || 'Tamil Nadu', profile?.gst_number, customer.state, customer.gstin);
-  const t = useMemo(() => priceIt(lines, billDisc, inter), [lines, billDisc, inter]);
+  const inter = fromOdoo ? num(quote.igst) > 0 : isInterState(defaults?.company_state || 'Tamil Nadu', profile?.gst_number, customer.state, customer.gstin);
+  const live = useMemo(() => priceIt(lines, billDisc, inter), [lines, billDisc, inter]);
+  const t = fromOdoo   // Odoo's own totals, exactly as Odoo worked them out
+    ? { rows: lines.map((l) => ({ total: num(l.line_total) })), subtotal: num(quote.subtotal), discount: num(quote.total_discount), taxable: num(quote.taxable_value),
+      cgst: num(quote.cgst), sgst: num(quote.sgst), igst: num(quote.igst), roundOff: num(quote.round_off), grand: num(quote.grand_total) }
+    : live;
   const changed = (fn) => (...a) => { fn(...a); setDirty(true); };
   const setC = (k) => changed((e) => setCustomer((c) => ({ ...c, [k]: e.target.value })));
   const updLine = changed((i, k, v) => setLines((ls) => ls.map((l, j) => (j === i ? { ...l, [k]: v } : l))));
@@ -249,7 +304,7 @@ export default function QuotationEditor() {
         if (q.customer?.phone) window.open(waLink(q.customer.phone, msg), '_blank', 'noopener');
         toast.message('The PDF is downloaded — attach it in the WhatsApp chat.');
       }
-      if (q.status === 'draft') await setStatus('sent', '', q);
+      if (q.status === 'draft' && !q.read_only) await setStatus('sent', '', q);
     } catch (e) { if (e?.name !== 'AbortError') toast.error('Couldn’t share it — download the PDF instead'); }
   };
   const copy = async () => {
@@ -280,8 +335,8 @@ export default function QuotationEditor() {
 
   if (!isNew && !quote) return <Loading />;
   const st = quote?.status || 'draft';
-  const stockShort = lines.filter((l) => l.inventory_item_id && l.stock != null && num(l.quantity) > num(l.stock));
-  const below = sees ? lines.filter((l) => l.cost_price && num(l.unit_price) * (1 - num(l.discount_pct) / 100) < num(l.cost_price)) : [];
+  const stockShort = fromOdoo ? [] : lines.filter((l) => l.inventory_item_id && l.stock != null && num(l.quantity) > num(l.stock));
+  const below = sees && !fromOdoo ? lines.filter((l) => l.cost_price && num(l.unit_price) * (1 - num(l.discount_pct) / 100) < num(l.cost_price)) : [];
   const marginAmt = sees ? r2(t.taxable - lines.reduce((n, l) => n + num(l.cost_price) * num(l.quantity), 0)) : null;
 
   return (
@@ -293,6 +348,7 @@ export default function QuotationEditor() {
           <h1 className="flex flex-wrap items-center gap-2 font-['Outfit'] text-xl font-semibold text-slate-900">
             {isNew ? 'New material quotation' : quote.display_number}
             {!isNew && <Chip tone={quote.expired ? 'amber' : QUOTE_TONE[st]}>{quote.expired ? 'Expired' : quote.status_label}</Chip>}
+            {fromOdoo && <Chip tone="violet"><CloudDownload className="h-3 w-3" />Odoo</Chip>}
             {dirty && !isNew && !locked && <Chip tone="amber">Not saved</Chip>}
           </h1>
           {!isNew && <p className="text-xs text-slate-500">{fmtDate(quote.quote_date || quote.created_at)} · by {quote.created_by_name}{quote.copied_from ? ` · copy of ${quote.copied_from}` : ''}</p>}
@@ -310,7 +366,7 @@ export default function QuotationEditor() {
               {!locked && st !== 'accepted' && <DropdownMenuItem onClick={() => setStatus('accepted')} data-testid="q-accepted"><Check className="mr-2 h-4 w-4" />Customer said yes</DropdownMenuItem>}
               {!locked && st !== 'rejected' && <DropdownMenuItem onClick={() => setStatus('rejected')}><X className="mr-2 h-4 w-4" />Not accepted</DropdownMenuItem>}
               {!locked && can('module_direct_sales', 'create') && !['sent', 'accepted'].includes(st) && <DropdownMenuItem onClick={makeSale}><Receipt className="mr-2 h-4 w-4" />Make the sale</DropdownMenuItem>}
-              <DropdownMenuSeparator />
+              {!locked && <DropdownMenuSeparator />}
               {can('module_material_quotes', 'create') && <DropdownMenuItem onClick={copy}><Copy className="mr-2 h-4 w-4" />Copy to a new quotation</DropdownMenuItem>}
               {!locked && can('module_material_quotes', 'delete') && <DropdownMenuItem onClick={remove} className="text-rose-600"><Trash2 className="mr-2 h-4 w-4" />Delete</DropdownMenuItem>}
             </DropdownMenuContent>
@@ -318,7 +374,14 @@ export default function QuotationEditor() {
         </>)}
       </div>
 
-      {locked && (
+      {fromOdoo && (
+        <div className="flex flex-wrap items-center gap-2 rounded-lg border border-violet-200 bg-violet-50 px-4 py-3 text-sm text-violet-900" data-testid="q-odoo">
+          <CloudDownload className="h-4 w-4" />
+          <span className="min-w-0 flex-1">A copy of Odoo quotation <b>{quote.number}</b>. Change it in Odoo — the next sync brings the change here. To quote it from Sensoper, use More → Copy to a new quotation.</span>
+          {odooLink(defaults?.odoo?.url, quote.odoo?.model, quote.odoo?.id) && <a href={odooLink(defaults.odoo.url, quote.odoo.model, quote.odoo.id)} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 font-semibold underline underline-offset-2">Open in Odoo<ExternalLink className="h-3.5 w-3.5" /></a>}
+        </div>
+      )}
+      {sold && (
         <div className="flex flex-wrap items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900" data-testid="q-sold">
           <Receipt className="h-4 w-4" />Sold — invoice <b>{quote.invoice_number}</b> for {inr(quote.sale_total || quote.grand_total)}. This quotation can’t change now; copy it to quote again.
           <Link to="/dashboard/sales" className="ml-auto font-semibold underline underline-offset-2">Open Direct sales</Link>
@@ -335,7 +398,9 @@ export default function QuotationEditor() {
               {lead && <Link to={`/dashboard/leads?lead=${lead.id}`} className="flex items-center gap-1 text-xs font-medium text-emerald-700 hover:underline"><Contact className="h-3.5 w-3.5" />Lead {lead.number}{lead.name ? ` — ${lead.name}` : ''}</Link>}
             </div>
             <fieldset disabled={locked} className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-              <Field label="Name"><input className={inputCls} value={customer.name} onChange={setC('name')} data-testid="q-customer-name" /></Field>
+              <Field label="Name"><CustomerName value={customer.name} onChange={setC('name')} disabled={locked}
+                onPick={changed((c) => setCustomer((x) => ({ ...x, name: c.name, phone: c.phone || x.phone, email: c.email || x.email, company: c.company && c.company !== c.name ? c.company : x.company,
+                  gstin: c.gstin || x.gstin, state: INDIA_STATES.includes(c.state) ? c.state : x.state, address: c.address || x.address })))} /></Field>
               <Field label="Mobile"><input className={inputCls} inputMode="tel" value={customer.phone} onChange={setC('phone')} placeholder="For WhatsApp" data-testid="q-customer-phone" /></Field>
               <Field label="Company (optional)"><input className={inputCls} value={customer.company} onChange={setC('company')} /></Field>
               <Field label="GSTIN (for a business)"><input className={`${inputCls} uppercase`} value={customer.gstin} onChange={setC('gstin')} placeholder="33ABCDE1234F1Z5" /></Field>
@@ -442,14 +507,14 @@ export default function QuotationEditor() {
           </section>
 
           {/* printed extras */}
-          <section className="grid gap-3 rounded-xl border border-slate-200 bg-white p-4 sm:grid-cols-2">
+          {!(fromOdoo && !subject && !notes && !internal && !termsText) && <section className="grid gap-3 rounded-xl border border-slate-200 bg-white p-4 sm:grid-cols-2">
             <fieldset disabled={locked} className="contents">
               <Field label="Subject (optional)" className="sm:col-span-2"><input className={inputCls} value={subject} onChange={changed((e) => setSubject(e.target.value))} placeholder="e.g. Material for 5 kW on-grid system" /></Field>
               <Field label="Notes for the customer (printed)"><textarea className={`${inputCls} h-auto min-h-[88px] py-2`} value={notes} onChange={changed((e) => setNotes(e.target.value))} placeholder="e.g. Delivery to site included within 30 km" /></Field>
               <Field label="Terms (one per line, printed)"><textarea className={`${inputCls} h-auto min-h-[88px] py-2 text-xs`} value={termsText} onChange={changed((e) => setTermsText(e.target.value))} /></Field>
               <Field label="Internal note (only our team sees it)" className="sm:col-span-2"><input className={inputCls} value={internal} onChange={changed((e) => setInternal(e.target.value))} placeholder="e.g. Price matched with the dealer’s offer" /></Field>
             </fieldset>
-          </section>
+          </section>}
         </div>
 
         {/* totals */}
@@ -470,7 +535,7 @@ export default function QuotationEditor() {
               {t.roundOff !== 0 && <div className="flex justify-between text-slate-500"><dt>Round off</dt><dd className="tabular-nums">{t.roundOff > 0 ? '+' : '−'} {money(Math.abs(t.roundOff))}</dd></div>}
               <div className="flex items-baseline justify-between border-t border-slate-200 pt-2"><dt className="font-semibold text-slate-900">Total</dt><dd className="font-['Outfit'] text-2xl font-semibold tabular-nums text-slate-900" data-testid="q-grand-total">{inr(t.grand)}</dd></div>
             </dl>
-            {sees && lines.length > 0 && (
+            {sees && !fromOdoo && lines.length > 0 && (
               <p className={`mt-3 rounded-md px-3 py-2 text-xs ${marginAmt < 0 ? 'bg-rose-50 text-rose-800' : 'bg-slate-50 text-slate-600'}`} data-testid="q-margin">
                 Margin {money(marginAmt)}{t.taxable > 0 ? ` (${Math.round((marginAmt / t.taxable) * 1000) / 10}%)` : ''} — only people who can see the Price list see this.
                 {below.length > 0 && <span className="block font-medium text-rose-700">{below.length} item{below.length === 1 ? ' is' : 's are'} below cost.</span>}
@@ -481,6 +546,8 @@ export default function QuotationEditor() {
           <section className="rounded-xl border border-slate-200 bg-white p-4">
             <Field label="Valid till"><input type="date" className={inputCls} value={validUntil} onChange={changed((e) => setValidUntil(e.target.value))} disabled={locked} data-testid="q-valid-until" /></Field>
           </section>
+          {fromOdoo && <FromOdoo odoo={quote.odoo} labels={defaults?.odoo?.order_fields} editable={false}
+            rows={[['Odoo status', { draft: 'Quotation', sent: 'Quotation sent', sale: 'Sales order', done: 'Locked', cancel: 'Cancelled' }[quote.odoo?.state] || quote.odoo?.state], ['Salesperson', quote.created_by_name]]} />}
           {quote?.history?.length > 0 && (
             <section className="rounded-xl border border-slate-200 bg-white p-4">
               <p className="mb-2 text-xs font-semibold text-slate-700">History</p>

@@ -182,6 +182,8 @@ _confirm("POST", "/api/tneb/fetch", "Sends this customer's details to the bill-f
 _confirm("POST", "/api/amc/contracts/{}/schedule", "Schedules visit reminders that go to the customer.")
 # company, bank and pay details, and settings that decide who sees what
 _confirm("POST,PUT,PATCH,DELETE", "/api/company/**", "Changes the company profile (name, GSTIN, bank details on invoices).")
+_confirm("PUT,DELETE", "/api/odoo/connection", "Changes the Odoo connection (its address and API key).")
+_confirm("POST", "/api/odoo/syncs/{}/run", "Copies data from Odoo into Sensoper — it can add or update many records at once.")
 _confirm("PUT", "/api/invoice-settings", "Changes invoice numbering and what invoices show.")
 _confirm("PUT,PATCH", "/api/payroll/people/{}", "Changes a person's pay details (bank account, PAN, UAN).")
 _confirm("PUT", "/api/payroll/settings", "Changes payroll settings, including who can open payroll.")

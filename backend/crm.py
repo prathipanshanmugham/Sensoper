@@ -175,6 +175,22 @@ def month_start_utc() -> str:
     return t.replace(day=1, hour=0, minute=0, second=0, microsecond=0).astimezone(timezone.utc).isoformat()
 
 
+async def plan_follow_up(db, lead: Dict[str, Any]) -> None:
+    """Plan the owner's bell note for the next follow-up (or clear it when there is none / the lead is closed).
+    Also used by the Odoo sync for leads it brings in."""
+    lid = str(lead["_id"])
+    await notify.clear(db, "lead_follow_up", "lead", lid)
+    day = lead.get("follow_up_on")
+    owner = lead.get("assigned_to") or lead.get("created_by")
+    if not day or not owner or lead.get("status") in CLOSED:
+        return
+    who = lead.get("name") or f"+91 {lead.get('phone')}"
+    await notify.plan(db, kind="lead_follow_up", source_type="lead", source_id=lid, user_ids=[owner],
+                      title=f"Follow up: {who}", message=lead.get("follow_up_note") or lead_summary(lead),
+                      link=f"/dashboard/leads?lead={lid}", notify_at=follow_up_utc(day, lead.get("follow_up_at")),
+                      tag=f"{day} {lead.get('follow_up_at') or ''}".strip())
+
+
 # ───────────────────────── request bodies ─────────────────────────
 class LeadCreate(BaseModel):
     name: str = Field("", max_length=200)
@@ -318,21 +334,14 @@ def create_router(db, get_current_user, get_permissions, check_module_permission
                     "items": l.get("items") or [], "order_total": l.get("order_total"), "delivery": l.get("delivery"),
                     "address": l.get("address") or "", "pickup_store": l.get("pickup_store"), "best_time": l.get("best_time") or "",
                     "page": l.get("page") or ""})
+        o = l.get("odoo") or {}
+        if o.get("id"):   # brought in from Odoo: what Odoo says, for the "From Odoo" box (not the copy-tracking values)
+            out["odoo"] = {"model": o.get("model"), "id": o.get("id"), "stage": o.get("stage"), "salesperson": o.get("salesperson"),
+                           "extra": o.get("extra") or {}, "extra_labels": {}, "synced_at": o.get("synced_at")}
         return out
 
     async def _remind(lead: Dict[str, Any]) -> None:
-        """Plan the owner's bell note for the next follow-up (or clear it when there is none / the lead is closed)."""
-        lid = str(lead["_id"])
-        await notify.clear(db, "lead_follow_up", "lead", lid)
-        day = lead.get("follow_up_on")
-        owner = lead.get("assigned_to") or lead.get("created_by")
-        if not day or not owner or lead.get("status") in CLOSED:
-            return
-        who = lead.get("name") or f"+91 {lead.get('phone')}"
-        await notify.plan(db, kind="lead_follow_up", source_type="lead", source_id=lid, user_ids=[owner],
-                          title=f"Follow up: {who}", message=lead.get("follow_up_note") or lead_summary(lead),
-                          link=f"/dashboard/leads?lead={lid}", notify_at=follow_up_utc(day, lead.get("follow_up_at")),
-                          tag=f"{day} {lead.get('follow_up_at') or ''}".strip())
+        await plan_follow_up(db, lead)
 
     async def _tell_new_owner(lead: Dict[str, Any], by: Dict[str, Any]) -> None:
         owner = lead.get("assigned_to")
@@ -376,8 +385,15 @@ def create_router(db, get_current_user, get_permissions, check_module_permission
             "activity_types": [{"key": k, "label": v} for k, v in ACTIVITY_TYPES.items()],
             "outcomes": [{"key": k, "label": v} for k, v in OUTCOMES.items()],
             "lost_reasons": LOST_REASONS, "people": people, "me": user["id"], "sees_all": await _sees_all(user),
-            "today": today_ist(),
+            "today": today_ist(), "odoo": await _odoo_meta(),
         }
+
+    async def _odoo_meta() -> Optional[Dict[str, Any]]:
+        """Odoo's address and the labels of extra Odoo fields on leads (for the "From Odoo" box) — never the key."""
+        s = await db.odoo_settings.find_one({"_id": "main"}, {"url": 1, "syncs.leads.extra_labels": 1})
+        if not s or not s.get("url"):
+            return None
+        return {"url": s["url"], "lead_fields": ((s.get("syncs") or {}).get("leads") or {}).get("extra_labels") or {}}
 
     async def _counts(user: Dict[str, Any], base: Dict[str, Any]) -> Dict[str, Any]:
         today = today_ist()

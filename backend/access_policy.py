@@ -130,6 +130,8 @@ SECTIONS: List[Dict[str, Any]] = [
         _page("module_form_builder", "Form builder", "Extra steps and fields on New project.", actions=(V, C, E, D)),
         _page("module_audit_logs", "Activity log", "Who changed what, and when.", actions=(V, X)),
         _page("module_vault", "Company logins", "Passwords for outside services.", locked=True),
+        _page("module_odoo_sync", "Odoo sync", "Copy contacts, products, CRM leads, quotations and any Odoo table into Sensoper (one way).",
+              actions=(V, E), manager=(V,)),
         _page("module_agents", "AI agents", "Connect AI agents (MCP, API keys, Claude / ChatGPT connectors) and see what they did.", locked=True),
         _page("module_security", "My login & 2FA", "Everyone can change their own password.", actions=(V,), always=True,
               staff=(V,), manager=(V,)),
@@ -424,6 +426,9 @@ rule("POST", "/api/client-accounts/{account_id}/reset-password", page("module_we
 rule("*", "/api/client-accounts*", page("module_website"))
 rule("*", "/api/website*", page("module_website"))
 rule("*", "/api/crm*", page("module_leads"))
+rule("GET", "/api/odoo*", page("module_odoo_sync", V))
+rule("POST", "/api/odoo/test", page("module_odoo_sync", V))
+rule("*", "/api/odoo*", page("module_odoo_sync", E))
 rule("GET", "/api/material-quotes/items", page("module_material_quotes", V))
 rule("POST", "/api/material-quotes/{quote_id}/status", page("module_material_quotes", E))
 rule("POST", "/api/material-quotes/{quote_id}/duplicate", page("module_material_quotes", C))
