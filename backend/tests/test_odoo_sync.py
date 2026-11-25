@@ -2,6 +2,7 @@
     cd backend && pytest tests/test_odoo_sync.py
 """
 import asyncio
+import json
 import os
 import secrets
 import sys
@@ -222,6 +223,22 @@ def test_first_sync_brings_everything_in(app, loop, world):
         # the run is in the history
         hist = (await a.get("/api/odoo/runs")).json()["items"]
         assert hist[0]["results"]["contacts"]["created"] >= 2 and hist[0]["trigger"] == "button"
+        # the settings page still loads after a run (last run with a plain id), with counts per card
+        st = await a.get("/api/odoo/settings")
+        assert st.status_code == 200, st.text
+        st = st.json()
+        assert st["last_run"]["id"] == hist[0]["id"] and "_id" not in st["last_run"] and st["counts"]["leads"] == 4
+        assert st["syncs"]["leads"]["last_run"]["created"] == 4
+        # the lead and the quotation show what Odoo says, never the copy-tracking snapshot
+        lead = (await a.get(f"/api/crm/leads/{big['_id']}")).json()
+        assert lead["odoo"]["stage"] and lead["odoo"]["extra"]["x_studio_roof_type"] == "Metal sheet" and "values" not in lead["odoo"]
+        meta = (await a.get("/api/crm/meta")).json()
+        assert meta["odoo"]["url"].startswith("http") and meta["odoo"]["lead_fields"]["x_studio_roof_type"] == "Roof type"
+        assert "key" not in json.dumps(meta["odoo"]).lower()
+        qo = (await a.get(f"/api/material-quotes/{q['_id']}")).json()
+        assert qo["read_only"] and qo["odoo"]["id"] == 300 and "values" not in qo["odoo"]
+        d = (await a.get("/api/material-quotes/defaults")).json()
+        assert d["odoo"]["url"] == meta["odoo"]["url"]
     run(loop, go())
 
 

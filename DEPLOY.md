@@ -4,7 +4,35 @@ Your server already has `/root/Sensoper/deploy.sh`. It pulls the code, installs 
 copies the build to `/var/www/sensoper`, restarts the `sensoper` service and checks the live bundle. This release needs
 nothing new installed.
 
-## This release: Leads (CRM), material quotations and keyboard shortcuts
+## This release: Odoo sync (Odoo → Sensoper, one way)
+
+No new packages, no server settings. On the server, as root:
+
+    /root/Sensoper/deploy.sh
+
+Then, as admin: **Settings → Odoo sync**.
+1. In Odoo: your name (top right) → My Profile → **Account Security** → **New API Key** → name it "Sensoper sync",
+   pick the longest duration (Odoo allows at most 3 months) and copy the key.
+2. In Sensoper: paste the Odoo address (e.g. `https://yourcompany.odoo.com`) and the key, add the login email for Odoo 18
+   or older, and press **Connect and test**. The key is checked before it's saved, stored encrypted, and never shown again.
+3. Switch on Contacts, Products & prices, CRM leads and Quotations & orders. **Preview** shows what would change;
+   **Set up** maps Odoo stages and salespeople and adds extra (custom/Studio) Odoo fields. **Add an Odoo table** copies
+   any other Odoo table to look through and download as CSV.
+4. Press **Sync everything now**. "Sync every hour" keeps it up to date after that.
+
+How it behaves:
+- Nothing in Odoo is ever changed. Only records changed since the last sync are read ("Check every record again" re-reads all).
+- If someone edits a copied field in Sensoper, later syncs keep that edit; Odoo only updates fields nobody touched here.
+- Odoo quotations and orders come in read-only with Odoo's own totals (violet "Odoo" tag). Copy one to quote it in Sensoper.
+- Leads show a "From Odoo" box (Odoo stage, salesperson, extra fields, Open in Odoo). Quotation customer names now
+  suggest customers already in Sensoper, including the ones from Odoo.
+- Odoo 14–19 work (JSON-2 on Odoo 19, JSON-RPC on older). Odoo Online needs the Custom plan for API access.
+- Odoo keys expire within 3 months: the page warns from day 75. Make a new key and paste it under "Change / new key".
+
+Permissions: a new page, **Odoo sync**. Admins connect Odoo; managers can view it by default; give "edit" to anyone who
+should run syncs or change what comes in. The AI connector needs a person's approval to change the connection or start a sync.
+
+## Earlier release: Leads (CRM), material quotations and keyboard shortcuts
 
 No new packages, no server settings. On the server, as root:
 

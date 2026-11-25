@@ -220,8 +220,8 @@ export default function QuotationEditor() {
   const fromOdoo = !!quote?.read_only;   // a copy of an Odoo quotation: changed in Odoo, not here
   const locked = sold || fromOdoo;
   const lineWarnings = (l) => ({
-    short: !!(l.inventory_item_id && l.stock != null && num(l.quantity) > num(l.stock)),
-    low: !!(defaults?.sees_cost && l.cost_price && num(l.unit_price) * (1 - num(l.discount_pct) / 100) < num(l.cost_price)),
+    short: !fromOdoo && !!(l.inventory_item_id && l.stock != null && num(l.quantity) > num(l.stock)),
+    low: !fromOdoo && !!(defaults?.sees_cost && l.cost_price && num(l.unit_price) * (1 - num(l.discount_pct) / 100) < num(l.cost_price)),
   });
   const sees = !!defaults?.sees_cost;
   const inter = fromOdoo ? num(quote.igst) > 0 : isInterState(defaults?.company_state || 'Tamil Nadu', profile?.gst_number, customer.state, customer.gstin);
@@ -335,8 +335,8 @@ export default function QuotationEditor() {
 
   if (!isNew && !quote) return <Loading />;
   const st = quote?.status || 'draft';
-  const stockShort = lines.filter((l) => l.inventory_item_id && l.stock != null && num(l.quantity) > num(l.stock));
-  const below = sees ? lines.filter((l) => l.cost_price && num(l.unit_price) * (1 - num(l.discount_pct) / 100) < num(l.cost_price)) : [];
+  const stockShort = fromOdoo ? [] : lines.filter((l) => l.inventory_item_id && l.stock != null && num(l.quantity) > num(l.stock));
+  const below = sees && !fromOdoo ? lines.filter((l) => l.cost_price && num(l.unit_price) * (1 - num(l.discount_pct) / 100) < num(l.cost_price)) : [];
   const marginAmt = sees ? r2(t.taxable - lines.reduce((n, l) => n + num(l.cost_price) * num(l.quantity), 0)) : null;
 
   return (
@@ -507,14 +507,14 @@ export default function QuotationEditor() {
           </section>
 
           {/* printed extras */}
-          <section className="grid gap-3 rounded-xl border border-slate-200 bg-white p-4 sm:grid-cols-2">
+          {!(fromOdoo && !subject && !notes && !internal && !termsText) && <section className="grid gap-3 rounded-xl border border-slate-200 bg-white p-4 sm:grid-cols-2">
             <fieldset disabled={locked} className="contents">
               <Field label="Subject (optional)" className="sm:col-span-2"><input className={inputCls} value={subject} onChange={changed((e) => setSubject(e.target.value))} placeholder="e.g. Material for 5 kW on-grid system" /></Field>
               <Field label="Notes for the customer (printed)"><textarea className={`${inputCls} h-auto min-h-[88px] py-2`} value={notes} onChange={changed((e) => setNotes(e.target.value))} placeholder="e.g. Delivery to site included within 30 km" /></Field>
               <Field label="Terms (one per line, printed)"><textarea className={`${inputCls} h-auto min-h-[88px] py-2 text-xs`} value={termsText} onChange={changed((e) => setTermsText(e.target.value))} /></Field>
               <Field label="Internal note (only our team sees it)" className="sm:col-span-2"><input className={inputCls} value={internal} onChange={changed((e) => setInternal(e.target.value))} placeholder="e.g. Price matched with the dealer’s offer" /></Field>
             </fieldset>
-          </section>
+          </section>}
         </div>
 
         {/* totals */}
@@ -535,7 +535,7 @@ export default function QuotationEditor() {
               {t.roundOff !== 0 && <div className="flex justify-between text-slate-500"><dt>Round off</dt><dd className="tabular-nums">{t.roundOff > 0 ? '+' : '−'} {money(Math.abs(t.roundOff))}</dd></div>}
               <div className="flex items-baseline justify-between border-t border-slate-200 pt-2"><dt className="font-semibold text-slate-900">Total</dt><dd className="font-['Outfit'] text-2xl font-semibold tabular-nums text-slate-900" data-testid="q-grand-total">{inr(t.grand)}</dd></div>
             </dl>
-            {sees && lines.length > 0 && (
+            {sees && !fromOdoo && lines.length > 0 && (
               <p className={`mt-3 rounded-md px-3 py-2 text-xs ${marginAmt < 0 ? 'bg-rose-50 text-rose-800' : 'bg-slate-50 text-slate-600'}`} data-testid="q-margin">
                 Margin {money(marginAmt)}{t.taxable > 0 ? ` (${Math.round((marginAmt / t.taxable) * 1000) / 10}%)` : ''} — only people who can see the Price list see this.
                 {below.length > 0 && <span className="block font-medium text-rose-700">{below.length} item{below.length === 1 ? ' is' : 's are'} below cost.</span>}

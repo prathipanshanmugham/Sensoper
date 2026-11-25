@@ -527,7 +527,9 @@ def create_router(db, get_current_user, get_permissions, check_module_permission
         for t in out["tables"]:
             t["count"] = await db.odoo_records.count_documents({"table": t["key"]})
         last = await db.odoo_runs.find({}, {"_id": 1, "status": 1, "started_at": 1, "finished_at": 1, "trigger": 1}).sort("started_at", -1).limit(1).to_list(1)
-        out["last_run"] = {**last[0], "id": str(last[0].pop("_id"))} if last else None
+        if last:
+            last[0]["id"] = str(last[0].pop("_id"))
+        out["last_run"] = last[0] if last else None
         if out.get("auto_hourly") and out.get("has_key") and out.get("last_auto_at"):
             out["next_auto_at"] = (datetime.fromisoformat(out["last_auto_at"]) + timedelta(seconds=HOURLY_SECONDS)).isoformat()
         return out

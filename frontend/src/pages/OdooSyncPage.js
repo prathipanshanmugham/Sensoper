@@ -178,8 +178,9 @@ export default function OdooSyncPage() {
   const progress = (key) => (running && active.results?.[key]) || null;
   const anyOn = (s.presets || []).some((p) => s.syncs?.[p.key]?.enabled) || (s.tables || []).length > 0;
   const counts = s.counts || {};
-  const countText = { contacts: `${counts.customers || 0} customers · ${counts.vendors || 0} vendors`, products: `${counts.products || 0} items`,
-    leads: `${counts.leads || 0} leads`, orders: `${counts.orders || 0} quotations` };
+  const n = (v, one, many) => `${v || 0} ${v === 1 ? one : many}`;
+  const countText = { contacts: `${n(counts.customers, 'customer', 'customers')} · ${n(counts.vendors, 'vendor', 'vendors')}`, products: n(counts.products, 'item', 'items'),
+    leads: n(counts.leads, 'lead', 'leads'), orders: n(counts.orders, 'quotation', 'quotations') };
 
   return (
     <div className="mx-auto max-w-6xl space-y-4 p-4 sm:p-6" data-testid="odoo-page">
@@ -257,7 +258,7 @@ export default function OdooSyncPage() {
                   <li key={t.key} className="flex flex-wrap items-center gap-3 py-3" data-testid={`odoo-table-${t.key}`}>
                     <div className="min-w-0 flex-1">
                       <Link to={`/dashboard/odoo/data/${t.key}`} className="font-medium text-slate-900 hover:underline">{t.label}</Link>
-                      <p className="text-xs text-slate-500">{t.model} · {t.fields.length} fields · {t.count || 0} records{pr ? ` · ${pr.done} of ${pr.total}…` : t.last_run ? ` · ${when(t.last_run.at)}: ${summary(t.last_run)}` : ''}</p>
+                      <p className="text-xs text-slate-500">{t.model} · {t.fields.length} fields · {t.count === 1 ? '1 record' : `${t.count || 0} records`}{pr ? ` · ${pr.done} of ${pr.total}…` : t.last_run ? ` · ${when(t.last_run.at)}: ${summary(t.last_run)}` : ''}</p>
                     </div>
                     {canRun && (
                       <div className="flex gap-1">
